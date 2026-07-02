@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"maps"
 	"reflect"
 	"testing"
 	"time"
@@ -21,8 +22,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 type treeDoc struct {
@@ -138,14 +139,14 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotDoc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	require.Contains(t, gotDoc.Attachments(), "hello.txt")
+	require.Contains(t, maps.Keys(gotDoc.Attachments()), "hello.txt")
 	attachmentData, ok := gotDoc.Attachments()["hello.txt"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.Equal[any](t, float64(11), attachmentData["length"])
+	assert.Equal[any](t, float64(2), attachmentData["revpos"])
 	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal[any](t, float64(2), attachmentData["ver"])
 
 	// Create rev 2-b
 	//    1-a
@@ -164,14 +165,14 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	log.Printf("Retrieve doc, verify rev 2-b")
 	gotDoc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	require.Contains(t, gotDoc.Attachments(), "hello.txt")
+	require.Contains(t, maps.Keys(gotDoc.Attachments()), "hello.txt")
 	attachmentData, ok = gotDoc.Attachments()["hello.txt"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
+	assert.Equal[any](t, float64(11), attachmentData["length"])
+	assert.Equal[any](t, float64(2), attachmentData["revpos"])
 	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal[any](t, float64(2), attachmentData["ver"])
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
@@ -1102,16 +1103,16 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	require.True(t, found, "Ancestor should exists")
 	attachment := meta["camera.txt"].(map[string]any)
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	assert.Equal[any](t, json.Number("20"), attachment["length"])
+	assert.Equal[any](t, json.Number("1"), attachment["revpos"])
 
 	// Get available attachments by immediate ancestor revision
 	meta, found = collection.getAvailableRevAttachments(ctx, doc, ancestor)
 	require.True(t, found, "Ancestor should exists")
 	attachment = meta["camera.txt"].(map[string]any)
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	assert.Equal[any](t, json.Number("20"), attachment["length"])
+	assert.Equal[any](t, json.Number("1"), attachment["revpos"])
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
@@ -1144,13 +1145,13 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.NoError(t, err, "It should not throw any error")
 	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "1-a", response[BodyRev])
 	assert.Equal(t, "6213100", response["sku"])
 	revisions, ok := response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("1"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a"}, revisions[RevisionsIds])
 
 	// Delete the document, creating tombstone revision rev3
 	rev3, _, err := collection.DeleteDoc(ctx, docId, DocVersion{RevTreeID: rev2})
@@ -1167,13 +1168,13 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	assert.NoError(t, err, "It should not throw any error")
 	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "2-a", response[BodyRev])
 	assert.Equal(t, "6213101", response["sku"])
 	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a", "a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("2"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a", "a"}, revisions[RevisionsIds])
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
@@ -1197,13 +1198,13 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.False(t, removed, "This shouldn't be a removed document")
 	var response = Body{}
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "1-a", response[BodyRev])
 	assert.Equal(t, "Los Angeles", response["city"])
 	revisions, ok := response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("1"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a"}, revisions[RevisionsIds])
 
 	// Create the second revision of the document
 	payload = `{"city":"Hollywood"}`
@@ -1219,13 +1220,13 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
+	assert.Equal[any](t, docId, response[BodyId])
 	assert.Equal(t, "2-a", response[BodyRev])
 	assert.Equal(t, "Hollywood", response["city"])
 	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"a", "a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("2"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"a", "a"}, revisions[RevisionsIds])
 
 	// Get body bytes from doc with unknown revision id; it simulates the error scenario.
 	// A 404 missing error should be thrown when trying get the body bytes of the document
@@ -1250,13 +1251,13 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.NoError(t, response.Unmarshal(bodyBytes))
-	assert.Equal(t, docId, response[BodyId])
-	assert.Equal(t, rev3, response[BodyRev])
+	assert.Equal[any](t, docId, response[BodyId])
+	assert.Equal[any](t, rev3, response[BodyRev])
 	assert.Equal(t, "Hollywood", response["city"])
 	revisions, ok = response[BodyRevisions].(map[string]any)
 	assert.True(t, ok, "revisions should be extracted from response body")
-	assert.Equal(t, json.Number("3"), revisions[RevisionsStart])
-	assert.Equal(t, []any{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
+	assert.Equal[any](t, json.Number("3"), revisions[RevisionsStart])
+	assert.Equal[any](t, []any{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
 
 	// If the provided revision ID is blank and the current revision is already deleted
 	// when checking document revision history, it should throw 404 deleted error.
@@ -1539,7 +1540,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 
 	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	require.Len(t, xattr["cluster_uuid"].(string), 32)

@@ -34,9 +34,10 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -227,6 +228,21 @@ func TestTLSSkipVerify() bool {
 	return val
 }
 
+// TestUseSystemMetadataCollection returns true if Sync Gateway should use the system metadata collection in tests. Default: DefaultTestUseSystemMetadataCollection
+func TestUseSystemMetadataCollection() bool {
+	useSystemMetadataCollection, isSet := os.LookupEnv(TestEnvUseSystemMetadataCollection)
+	if !isSet {
+		return DefaultTestUseSystemMetadataCollection
+	}
+
+	val, err := strconv.ParseBool(useSystemMetadataCollection)
+	if err != nil {
+		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvUseSystemMetadataCollection, useSystemMetadataCollection, err))
+	}
+
+	return val
+}
+
 func TestUseCouchbaseServerDockerName() (bool, string) {
 	testX509CouchbaseServerDockerName, isSet := os.LookupEnv(TestEnvCouchbaseServerDockerName)
 	if !isSet {
@@ -304,10 +320,16 @@ func TestDisableRevCache() bool {
 	return false
 }
 
-// Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
+// TestUseCouchbaseServer reports whether tests are configured to run against a real Couchbase Server cluster.
+// Deprecated: use sgtest.TestUseCouchbaseServer() in new code.
 func TestUseCouchbaseServer() bool {
-	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
-	return strings.EqualFold(backingStore, TestEnvBackingStoreCouchbase)
+	return sgtest.TestUseCouchbaseServer()
+}
+
+// UnitTestUrlIsWalrus reports whether tests are running against an in-memory Walrus/Rosmar store.
+// Deprecated: use sgtest.UnitTestUrlIsWalrus() in new code.
+func UnitTestUrlIsWalrus() bool {
+	return sgtest.UnitTestUrlIsWalrus()
 }
 
 func TestUseWalrus() bool {
@@ -771,6 +793,7 @@ func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (
 
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	t.Helper()
 	require.NotNil(t, getStatFunc, "Function for RequireWaitForStat cannot be nil")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()

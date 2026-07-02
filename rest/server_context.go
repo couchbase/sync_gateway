@@ -55,8 +55,6 @@ const (
 	CBXDCRCompatibleMinorVersion = 6
 )
 
-var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
-
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 
 var allServers = []serverType{publicServer, adminServer, metricsServer, diagnosticServer}
@@ -686,11 +684,6 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	spec.UseXattrs = config.UseXattrs()
-	if !spec.UseXattrs {
-		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
-	}
-
 	if config.BucketOpTimeoutMs != nil {
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
 		spec.BucketOpTimeout = &operationTimeout
@@ -867,10 +860,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	collectionsRequiringAttachmentMigration := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
-		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-			return nil, errCollectionsUnsupported
-		}
-
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName := range scopeConfig.Collections {
 				scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
@@ -2396,6 +2385,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					}
 					sc.ClusterCompat.Refresh(ctx)
 					sc.refreshBucketBootstrapTargets(ctx)
+					sc.RecheckPendingBucketMetadataMigrations(ctx)
 				}
 			}
 		}()
@@ -2405,6 +2395,24 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	base.InfofCtx(ctx, base.KeyAll, "Finished initializing bootstrap connection")
 
 	return nil
+}
+
+// RecheckPendingBucketMetadataMigrations iterates through all config buckets and re-evaluates
+// whether bucket-level metadata migration can now be completed.
+func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) {
+	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
+		return
+	}
+	buckets := sc.ClusterCompat.trackedBucketList()
+	for _, bucket := range buckets {
+		if sc.BootstrapContext.Connection.IsMigrationComplete(bucket) {
+			// migration done for this bucket, fast path skip to next bucket
+			continue
+		}
+		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+			base.WarnfCtx(ctx, "Re-check of bucket %q metadata migration failed: %v", base.MD(bucket), err)
+		}
+	}
 }
 
 // resolveUseSystemMetadataCollection returns the effective use_system_metadata_collection
@@ -2511,16 +2519,13 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		return fmt.Errorf("read registry for bucket %q: %w", bucketName, err)
 	}
 	expected := registryMetadataIDs(registry)
-	if len(expected) == 0 {
-		// No DBs in registry → nothing to migrate
-		return nil
-	}
 
 	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
 	}
 	if status.Bootstrap.State == base.MigrationStateComplete {
+		sc.BootstrapContext.Connection.SetMigrationComplete(bucketName)
 		return nil
 	}
 	if !status.AllDatabasesComplete(expected) {

@@ -27,14 +27,23 @@ import (
 // runFunctionStartedCallbackFunc is a test seam called at the top of Run before any compaction phases execute.
 type runFunctionStartedCallbackFunc func(context.Context, map[string]any, updateStatusCallbackFunc, *base.SafeTerminator)
 
+// AttachmentCompactionManager implements the attachment compaction background process. Compaction
+// runs in three sequential phases — mark, sweep, cleanup.
+//
+// Fields _compactID, _phase, _vbuuids, _dryRun are protected by lock.
 type AttachmentCompactionManager struct {
-	MarkedAttachments          base.AtomicInt
-	PurgedAttachments          base.AtomicInt
-	CompactID                  string
-	Phase                      string
-	VBUUIDs                    []uint64
-	dryRun                     bool
-	lock                       sync.Mutex
+	// MarkedAttachments counts attachments marked as live during the mark phase.
+	MarkedAttachments base.AtomicInt
+	// PurgedAttachments counts attachments deleted during the sweep phase.
+	PurgedAttachments base.AtomicInt
+
+	// The following fields are protected by lock and must be accessed via their getters/setters.
+	_compactID string   // unique identifier for the current compaction run, used to tag marked attachments
+	_phase     string   // current phase: "mark", "sweep", "cleanup", or "" when idle
+	_vbuuids   []uint64 // vBucket UUIDs captured after the mark phase, used to detect DCP rollbacks in cleanup
+	_dryRun    bool     // when true, sweep phase reports but does not delete attachments
+
+	lock                       sync.RWMutex
 	runFunctionStartedCallback atomic.Pointer[runFunctionStartedCallbackFunc]
 }
 
@@ -68,9 +77,9 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Running as dry run. No attachments will be purged")
 		}
 
-		a.dryRun = dryRun
-		a.CompactID = uniqueUUID.String()
-		base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
+		compactID := uniqueUUID.String()
+		a.initializeNewRun(compactID, dryRun)
+		base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Starting new compaction run with compact ID: %q", compactID)
 		return nil
 	}
 
@@ -90,14 +99,8 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
 			return backgroundManagerInitReset, newRunInit()
 		} else {
-			a.CompactID = statusDoc.CompactID
-			a.Phase = statusDoc.Phase
-			a.dryRun = statusDoc.DryRun
-			a.MarkedAttachments.Set(statusDoc.MarkedAttachments)
-			a.PurgedAttachments.Set(statusDoc.PurgedAttachments)
-			a.VBUUIDs = statusDoc.VBUUIDs
-
-			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", a.CompactID, a.Phase)
+			compactID, phase := a.initializeFromPreviousStatus(statusDoc)
+			base.InfofCtx(ctx, base.KeyAll, "Attachment Compaction: Attempting to resume compaction with compact ID: %q phase %q", compactID, phase)
 		}
 
 		return backgroundManagerInitResume, nil
@@ -136,14 +139,14 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
 	var err error
-	switch a.Phase {
+	switch a.getPhase() {
 	case "mark", "":
 		a.SetPhase("mark")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+			_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.getCompactID(), terminator, &a.MarkedAttachments)
 			if dcpClient != nil {
-				a.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+				a.setVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 			}
 			if err != nil {
 				// if dcpClient is nil, then dcpClient.GetMetadataKeyPrefix() will panic. This isn't a rollback
@@ -169,7 +172,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
+		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, database, a.getCompactID(), a.getVBUUIDs(), a.getDryRun(), terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -178,7 +181,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		a.SetPhase("cleanup")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			metadataKeyPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
+			metadataKeyPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.getCompactID(), a.getVBUUIDs(), terminator)
 			if err != nil {
 				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, dataStore, database, err, CleanupPhase, metadataKeyPrefix)
 			}
@@ -214,7 +217,7 @@ func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ct
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
-		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.CompactID)
+		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.getCompactID())
 		err = a.purgeCheckpoints(ctx, database, keyPrefix)
 		if err != nil {
 			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
@@ -231,7 +234,7 @@ func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ct
 			// we only handle rollback for mark and cleanup so if we call here it will be for cleanup phase
 			// we need to clear the vbUUID's on the manager for cleanup phase otherwise we will end up in loop of constant rollback
 			// as these are used for the initial metadata on the client
-			a.VBUUIDs = nil
+			a.setVBUUIDs(nil)
 		}
 		// we should try again if it is rollback error
 		return true, nil
@@ -244,7 +247,69 @@ func (a *AttachmentCompactionManager) SetPhase(phase string) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	a.Phase = phase
+	a._phase = phase
+}
+
+// setVBUUIDs updates the VBUUIDs stored on the manager.
+func (a *AttachmentCompactionManager) setVBUUIDs(vbuuids []uint64) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a._vbuuids = vbuuids
+}
+
+// initializeNewRun sets the compactID and dryRun fields for a new compaction run.
+func (a *AttachmentCompactionManager) initializeNewRun(compactID string, dryRun bool) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a._compactID = compactID
+	a._dryRun = dryRun
+}
+
+// initializeFromPreviousStatus restores in-memory state from a previously persisted status document
+// so that a resumed run starts with the correct accumulated counts and identifiers.
+// Returns the compactID and phase.
+func (a *AttachmentCompactionManager) initializeFromPreviousStatus(statusDoc AttachmentManagerStatusDoc) (compactID, phase string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a._compactID = statusDoc.CompactID
+	a._phase = statusDoc.Phase
+	a._dryRun = statusDoc.DryRun
+	a.MarkedAttachments.Set(statusDoc.MarkedAttachments)
+	a.PurgedAttachments.Set(statusDoc.PurgedAttachments)
+	a._vbuuids = statusDoc.VBUUIDs
+	return a._compactID, a._phase
+}
+
+// getCompactID returns the unique identifier for the current compaction run.
+func (a *AttachmentCompactionManager) getCompactID() string {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a._compactID
+}
+
+// getPhase returns the current compaction phase ("mark", "sweep", "cleanup", or "" when idle).
+func (a *AttachmentCompactionManager) getPhase() string {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a._phase
+}
+
+// getDryRun returns whether the compaction is running in dry-run mode, where attachments are
+// identified but not deleted.
+func (a *AttachmentCompactionManager) getDryRun() bool {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a._dryRun
+}
+
+// getVBUUIDs returns the vBucket UUIDs recorded after the mark phase.
+func (a *AttachmentCompactionManager) getVBUUIDs() []uint64 {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a._vbuuids
 }
 
 type AttachmentManagerResponse struct {
@@ -268,20 +333,20 @@ type AttachmentManagerStatusDoc struct {
 func (a *AttachmentCompactionManager) SetProcessStatus(context.Context, []byte, []byte) {}
 
 func (a *AttachmentCompactionManager) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	a.lock.RLock()
+	defer a.lock.RUnlock()
 
 	response := AttachmentManagerResponse{
 		BackgroundManagerStatus: status,
 		MarkedAttachments:       a.MarkedAttachments.Value(),
 		PurgedAttachments:       a.PurgedAttachments.Value(),
-		CompactID:               a.CompactID,
-		Phase:                   a.Phase,
-		DryRun:                  a.dryRun,
+		CompactID:               a._compactID,
+		Phase:                   a._phase,
+		DryRun:                  a._dryRun,
 	}
 
 	meta := AttachmentManagerMeta{
-		VBUUIDs: a.VBUUIDs,
+		VBUUIDs: a._vbuuids,
 	}
 
 	statusJSON, err := base.JSONMarshal(response)
@@ -303,5 +368,5 @@ func (a *AttachmentCompactionManager) ResetStatus() {
 
 	a.MarkedAttachments.Set(0)
 	a.PurgedAttachments.Set(0)
-	a.dryRun = false
+	a._dryRun = false
 }

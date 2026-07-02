@@ -12,10 +12,10 @@ package base
 
 import (
 	"errors"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -25,8 +25,7 @@ const (
 	GuestUsername = "GUEST"
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
-	kTestCouchbaseServerURL = "couchbase://127.0.0.1"
-	kTestWalrusURL          = rosmar.InMemoryURL
+	kTestWalrusURL = rosmar.InMemoryURL
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
@@ -35,6 +34,10 @@ const (
 	// Env variable to enable skipping of TLS certificate verification for client and server
 	TestEnvTLSSkipVerify     = "SG_TEST_TLS_SKIP_VERIFY"
 	DefaultTestTLSSkipVerify = true
+
+	// Env variable to enable _system._mobile collection for SG metadata
+	TestEnvUseSystemMetadataCollection     = "SG_TEST_USE_SYSTEM_METADATA_COLLECTION"
+	DefaultTestUseSystemMetadataCollection = false
 
 	// Walrus by default, but can set to "Couchbase" to have it use http://127.0.0.1:8091
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
@@ -226,29 +229,9 @@ const (
 )
 
 // UnitTestUrl returns the configured test URL.
+// Deprecated: use sgtest.UnitTestUrl() in new code.
 func UnitTestUrl() string {
-	if TestUseCouchbaseServer() {
-		testCouchbaseServerUrl := os.Getenv(TestEnvCouchbaseServerUrl)
-		if testCouchbaseServerUrl != "" {
-			// If user explicitly set a Test Couchbase Server URL, use that
-			return testCouchbaseServerUrl
-		}
-		// Otherwise fallback to hardcoded default
-		return kTestCouchbaseServerURL
-	} else {
-		testWalrusUrl := os.Getenv(TestEnvWalrusUrl)
-		if testWalrusUrl != "" {
-			// If user explicitly set a Test Walrus URL, use that
-			return testWalrusUrl
-		}
-		// Otherwise fallback to hardcoded default
-		return kTestWalrusURL
-	}
-}
-
-// UnitTestUrlIsWalrus returns true if we're running with a Walrus test URL.
-func UnitTestUrlIsWalrus() bool {
-	return ServerIsWalrus(UnitTestUrl())
+	return sgtest.UnitTestUrl()
 }
 
 // ServerIsTLS returns true if the server URL is using an accepted secure protocol as it's prefix

@@ -15,9 +15,176 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
+
+func TestBootstrapConnectionOptsConfigs(t *testing.T) {
+	bucketCreds := base.PerBucketCredentialsConfig{
+		"bucket1": {Username: "b1user", Password: "b1pass"},
+	}
+	tlsSkipVerify := base.Ptr(true)
+
+	testCases := []struct {
+		name          string
+		startupConfig StartupConfig
+		dbConfig      DbConfig
+		expected      bootstrapConnectionOpts
+	}{
+		{
+			name: "startup config only",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{
+					Server:       "couchbase://startup-host",
+					Username:     "startupUser",
+					Password:     "startupPass",
+					X509CertPath: "startup-cert.pem",
+					X509KeyPath:  "startup-key.pem",
+					CACertPath:   "startup-ca.pem",
+				},
+				BucketCredentials: bucketCreds,
+			},
+			dbConfig: DbConfig{},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://startup-host",
+				username:                    "",
+				password:                    "",
+				x509CertPath:                "",
+				x509KeyPath:                 "",
+				caCertPath:                  "",
+				bucketCredentials:           bucketCreds,
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "db config server overrides startup",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{
+					Server:   "couchbase://startup-host",
+					Username: "startupUser",
+					Password: "startupPass",
+				},
+			},
+			dbConfig: DbConfig{
+				BucketConfig: BucketConfig{
+					Server:   base.Ptr("couchbase://db-host"),
+					Username: "dbUser",
+					Password: "dbPass",
+				},
+			},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://db-host",
+				username:                    "dbUser",
+				password:                    "dbPass",
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "nil db config server preserves startup server",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{Server: "couchbase://startup-host"},
+			},
+			dbConfig: DbConfig{},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://startup-host",
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "empty db config server preserves startup server",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{Server: "couchbase://startup-host"},
+			},
+			dbConfig: DbConfig{
+				BucketConfig: BucketConfig{Server: base.Ptr("")},
+			},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://startup-host",
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "db config credentials override startup",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{
+					Server:       "couchbase://host",
+					X509CertPath: "startup-cert.pem",
+					X509KeyPath:  "startup-key.pem",
+					CACertPath:   "startup-ca.pem",
+				},
+			},
+			dbConfig: DbConfig{
+				BucketConfig: BucketConfig{
+					Username:   "dbUser",
+					Password:   "dbPass",
+					CertPath:   "db-cert.pem",
+					KeyPath:    "db-key.pem",
+					CACertPath: "db-ca.pem",
+				},
+			},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://host",
+				username:                    "dbUser",
+				password:                    "dbPass",
+				x509CertPath:                "db-cert.pem",
+				x509KeyPath:                 "db-key.pem",
+				caCertPath:                  "db-ca.pem",
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "tlsSkipVerify from startup config",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{
+					Server:              "couchbase://host",
+					ServerTLSSkipVerify: tlsSkipVerify,
+				},
+			},
+			dbConfig: DbConfig{},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://host",
+				tlsSkipVerify:               tlsSkipVerify,
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "useXattrConfig from startup unsupported config",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{Server: "couchbase://host"},
+				Unsupported: UnsupportedConfig{
+					UseXattrConfig: base.Ptr(true),
+				},
+			},
+			dbConfig: DbConfig{},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://host",
+				useXattrConfig:              true,
+				useSystemMetadataCollection: DefaultUseSystemMetadataCollection,
+			},
+		},
+		{
+			name: "useSystemMetadataCollection set to true",
+			startupConfig: StartupConfig{
+				Bootstrap: BootstrapConfig{
+					Server:                      "couchbase://host",
+					UseSystemMetadataCollection: base.Ptr(true),
+				},
+			},
+			dbConfig: DbConfig{},
+			expected: bootstrapConnectionOpts{
+				server:                      "couchbase://host",
+				useSystemMetadataCollection: true,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := bootstrapConnectionOptsConfigs(&tc.startupConfig, tc.dbConfig)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process

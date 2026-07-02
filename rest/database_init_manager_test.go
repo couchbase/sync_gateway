@@ -18,8 +18,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 const testUseLegacySyncDocsIndex = false
@@ -109,6 +109,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
 
 	// Start first async index creation, blocks after first collection
@@ -199,6 +200,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	// Start first async index creation, should block after first collection
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
@@ -210,6 +212,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
 	require.NoError(t, modifiedDbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
+	modifiedDbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
 	require.NoError(t, err)
 
@@ -286,10 +289,12 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb.GetName(), db1Name, collection1and2ScopesConfig)
 	require.NoError(t, db1Config.setup(ctx, db1Name, sc.Config.Bootstrap, nil, nil, false))
+	db1Config.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb.GetName(), db2Name, collection3ScopesConfig)
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
+	db2Config.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	// Start first async index creation, should block after first collection
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
@@ -381,10 +386,12 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb1.GetName(), db1Name, collection1and2ScopesConfig)
 	require.NoError(t, db1Config.setup(ctx, db1Name, sc.Config.Bootstrap, nil, nil, false))
+	db1Config.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb2.GetName(), db2Name, collection1and2ScopesConfig)
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil, false))
+	db2Config.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	// Start first async index creation, should block after first collection
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
@@ -456,6 +463,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil, false))
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -511,14 +519,30 @@ func waitForWorkerDone(t *testing.T, manager *DatabaseInitManager, dbName string
 }
 
 func TestBuildCollectionIndexData(t *testing.T) {
+	bootstrapEnabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: base.Ptr(true)}}
+	bootstrapDisabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: base.Ptr(false)}}
+
 	tests := []struct {
 		name                    string
 		config                  *DatabaseConfig
 		defaultCollectionExists bool
 		want                    CollectionInitData
+		startupConfig           *StartupConfig
 	}{
+		// Scope variations — verifies index sets are computed correctly per collection layout.
+		// Uses per-DB opt-in to show the full output including mobile collection.
 		{
 			name: "implicit default collection",
+			config: &DatabaseConfig{DbConfig: DbConfig{
+				UseSystemMobileMetadataCollection: base.Ptr(true),
+			}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			name: "implicit default collection with mobile collection disabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes: nil,
@@ -526,15 +550,15 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 			defaultCollectionExists: true,
 			want: CollectionInitData{
-				base.DefaultScopeAndCollectionName():      db.IndexesAll,
-				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
 			},
 		},
 		{
-			name: "explicit default collection",
+			name: "explicit default collection with mobile collection enabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
-					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -544,10 +568,22 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			},
 		},
 		{
-			name: "one named collection",
+			name: "explicit default collection with mobile collection disabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
-					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
+				},
+			},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+			},
+		},
+		{
+			name: "one named collection with mobile collection enabled",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -559,6 +595,28 @@ func TestBuildCollectionIndexData(t *testing.T) {
 		},
 		{
 			name: "one named and explicit default collection",
+			config: &DatabaseConfig{DbConfig: DbConfig{
+				Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
+				UseSystemMobileMetadataCollection: base.Ptr(true),
+			}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		// Flag interaction cases — verifies resolveUseSystemMetadataCollection precedence.
+		// Uses implicit default collection as a representative scope.
+		{
+			name:   "per-DB enabled, no startup config",
+			config: &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(true)}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			name: "one named and explicit default collection with mobile collection disabled",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
@@ -567,8 +625,35 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
-				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			// per-DB false falls through to the cluster flag, which is true
+			name:          "bootstrap enabled, per-DB explicitly disabled",
+			startupConfig: bootstrapEnabled,
+			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(false)}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			name:          "bootstrap disabled, per-DB unset",
+			startupConfig: bootstrapDisabled,
+			config:        &DatabaseConfig{},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
+			},
+		},
+		{
+			// per-DB true always wins, regardless of cluster flag
+			name:          "bootstrap disabled, per-DB explicitly enabled",
+			startupConfig: bootstrapDisabled,
+			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(true)}},
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesAll,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
 			},
 		},
 		{
@@ -577,7 +662,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			name: "named collection with _default dropped",
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
-					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
 				},
 			},
 			defaultCollectionExists: false,
@@ -589,8 +675,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := buildCollectionIndexData(test.config, test.defaultCollectionExists)
-			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(%v, %v)", test.config, test.defaultCollectionExists)
+			actual := buildCollectionIndexData(test.startupConfig, test.config, test.defaultCollectionExists)
+			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(startup=%v, config=%v, defaultCollectionExists=%v)", test.startupConfig, test.config, test.defaultCollectionExists)
 		})
 	}
 }

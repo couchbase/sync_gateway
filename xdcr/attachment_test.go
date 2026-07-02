@@ -10,14 +10,15 @@ package xdcr
 
 import (
 	"encoding/base64"
+	"maps"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestMultiActorLosingConflictUpdateRemovingAttachments
@@ -133,8 +134,8 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 	docA := rtA.GetDocument(docID)
 	docB := rtB.GetDocument(docID)
 	assert.Equal(t, docA.Attachments(), docB.Attachments())
-	assert.Contains(t, docA.Attachments(), attachmentID)
-	assert.Contains(t, docB.Attachments(), attachmentID)
+	assert.Contains(t, maps.Keys(docA.Attachments()), attachmentID)
+	assert.Contains(t, maps.Keys(docB.Attachments()), attachmentID)
 
 	// check attachment contents are retrievable
 	attAResp = rtA.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"/"+attachmentID, "")

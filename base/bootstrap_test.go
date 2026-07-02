@@ -19,9 +19,9 @@ import (
 
 	"dario.cat/mergo"
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbaselabs/rosmar"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMergeStructPointer(t *testing.T) {

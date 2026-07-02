@@ -116,8 +116,6 @@ type BucketSpec struct {
 	Auth                          AuthHandler
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
 	TLSSkipVerify                 bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
-	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
-	UseXattrs                     bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs          *uint32        // the view query timeout in seconds (default: 75 seconds)
 	MaxConcurrentQueryOps         *int           // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
 	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
@@ -302,16 +300,6 @@ func GetBucket(ctx context.Context, spec BucketSpec) (bucket Bucket, err error) 
 		if err != nil {
 			return nil, err
 		}
-
-		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
-		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
-		if spec.UseXattrs {
-			if !bucket.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
-				WarnfCtx(ctx, "If using XATTRS, Couchbase Server version must be >= 5.0.")
-				return nil, ErrFatalBucketConnection
-			}
-		}
-
 	}
 
 	// TODO: CBG-2529 - LoggingBucket has been removed - pending a new approach to logging all bucket operations

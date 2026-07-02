@@ -1,0 +1,91 @@
+# Copyright 2024-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+repos:
+  - repo: local
+    hooks:
+      - id: addlicense
+        name: addlicense
+        language: system
+        entry: go run github.com/google/addlicense@latest -f licenses/addlicense.tmpl
+        types_or: [go, python]
+
+      - id: goimports
+        name: goimports
+        language: system
+        entry: go run golang.org/x/tools/cmd/goimports@latest
+        args: [-w]
+        types: [go]
+
+      - id: golangci-lint
+        name: golangci-lint
+        language: system
+        # version must match .github/workflows/ci.yml golangci job
+        entry: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+        args: [run, --config=.golangci-strict.yml, --fix=false]
+        types: [go]
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run -- ruff format
+        types: [python]
+
+      - id: mypy
+        name: mypy
+        language: system
+        entry: uv run -- mypy
+        pass_filenames: false
+        files: ^(pyproject\.toml|.*\.py)$
+
+      - id: manifest-product-config-sorted
+        name: manifest/product-config.json keys sorted
+        language: system
+        entry: bash -c 'diff <(jq --sort-keys . manifest/product-config.json) <(jq . manifest/product-config.json)'
+        files: ^manifest/product-config\.json$
+        pass_filenames: false
+
+      - id: redocly-lint
+        name: redocly lint
+        language: system
+        entry: npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
+        files: ^(docs/api/|\.redocly\.yaml$)
+        pass_filenames: false
+
+      - id: yamllint
+        name: yamllint
+        language: system
+        entry: yamllint
+        args: [docs/api]
+        files: ^docs/api/
+        pass_filenames: false
+
+      - id: shellcheck
+        name: shellcheck
+        language: system
+        entry: shellcheck
+        types: [shell]
+        exclude: >-
+          (?x)^(
+            build\.sh|
+            bootstrap\.sh|
+            bench\.sh|
+            build/postinst\.tmpl|
+            build/postrm\.tmpl|
+            integration-test/service-test\.sh|
+            integration-test/service-install-tests\.sh|
+            rewrite-manifest\.sh|
+            snap-manifest\.sh|
+            set-version-stamp\.sh|
+            service/sync_gateway_service_install\.sh|
+            service/sync_gateway_service_uninstall\.sh|
+            service/sync_gateway_service_upgrade\.sh|
+            test-integration-init\.sh|
+            test\.sh
+          )$

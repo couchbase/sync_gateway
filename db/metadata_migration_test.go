@@ -10,12 +10,13 @@ package db
 
 import (
 	"context"
+	"maps"
 	"testing"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func newMigrationTestStore(t *testing.T, bucket *base.TestBucket) *base.MetadataStore {
@@ -794,11 +795,11 @@ func TestSyncFunctionKeysForDB(t *testing.T) {
 	// default collection
 	noGroup := syncFunctionKeysForDB("", collections)
 	require.Len(t, noGroup, 1)
-	assert.Contains(t, noGroup, base.SyncFunctionKeyWithoutGroupID)
+	assert.Contains(t, maps.Keys(noGroup), base.SyncFunctionKeyWithoutGroupID)
 
 	withGroup := syncFunctionKeysForDB("group1", collections)
 	require.Len(t, withGroup, 1)
-	assert.Contains(t, withGroup, base.SyncFunctionKeyWithoutGroupID+":group1")
+	assert.Contains(t, maps.Keys(withGroup), base.SyncFunctionKeyWithoutGroupID+":group1")
 
 	// named collection
 	collections = map[string]map[string]struct{}{
@@ -806,13 +807,13 @@ func TestSyncFunctionKeysForDB(t *testing.T) {
 	}
 	noGroup = syncFunctionKeysForDB("", collections)
 	require.Len(t, noGroup, 2)
-	assert.Contains(t, noGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA")
-	assert.Contains(t, noGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB")
+	assert.Contains(t, maps.Keys(noGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA")
+	assert.Contains(t, maps.Keys(noGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB")
 
 	withGroup = syncFunctionKeysForDB("group1", collections)
 	require.Len(t, withGroup, 2)
-	assert.Contains(t, withGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA:group1")
-	assert.Contains(t, withGroup, base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB:group1")
+	assert.Contains(t, maps.Keys(withGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collA:group1")
+	assert.Contains(t, maps.Keys(withGroup), base.CollectionSyncFunctionKeyWithoutGroupID+":myScope.collB:group1")
 }
 
 // requireSiblingExclusionScan seeds the own + sibling docs on the fallback, runs a full

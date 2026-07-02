@@ -23,9 +23,9 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbase/sync_gateway/xdcr"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // totalWaitTime is the time to wait for a document on a peer. This time is low for rosmar and high for Couchbase Server.
@@ -606,7 +606,7 @@ func TestPeerImplementation(t *testing.T) {
 				require.NoError(t, err)
 				require.NotEmpty(t, xattrs)
 				if tc.peerOption.Type == PeerTypeCouchbaseServer {
-					require.Contains(t, xattrs, dummySystemXattr)
+					require.Contains(t, maps.Keys(xattrs), dummySystemXattr)
 				}
 			}
 

@@ -9,6 +9,7 @@
 package db
 
 import (
+	"maps"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -17,8 +18,8 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestInternalHLVFunctions:
@@ -135,14 +136,14 @@ func TestHLVCompact(t *testing.T) {
 	hlv.compactWithValue(ctx, t.Name(), compactValue)
 	assert.Equal(t, minPVEntriesRetained, len(hlv.PreviousVersions))
 
-	assert.Contains(t, hlv.PreviousVersions, "sourceD")
-	assert.Contains(t, hlv.PreviousVersions, "sourceE") // Was a candidate for compaction but retained 3 PVs
-	assert.Contains(t, hlv.PreviousVersions, "sourceF") // Was a candidate for compaction but retained 3 PVs
-	assert.NotContains(t, hlv.PreviousVersions, "sourceG")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceH")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceI")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceJ")
-	assert.NotContains(t, hlv.PreviousVersions, "sourceK")
+	assert.Contains(t, maps.Keys(hlv.PreviousVersions), "sourceD")
+	assert.Contains(t, maps.Keys(hlv.PreviousVersions), "sourceE") // Was a candidate for compaction but retained 3 PVs
+	assert.Contains(t, maps.Keys(hlv.PreviousVersions), "sourceF") // Was a candidate for compaction but retained 3 PVs
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceG")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceH")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceI")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceJ")
+	assert.NotContains(t, maps.Keys(hlv.PreviousVersions), "sourceK")
 
 	// Ensure Compact didn't touch anything else in the HLV
 	assert.Equal(t, startingHLV.SourceID, hlv.SourceID)
@@ -483,7 +484,7 @@ func TestHLVImport(t *testing.T) {
 			require.NotEqual(t, preImportCas, finalCas)
 
 			// validate _sync.cas was expanded to document cas
-			require.Contains(t, xattrs, base.SyncXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 			var syncData *SyncData
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 			require.Equal(t, finalCas, base.HexCasToUint64(syncData.Cas))
@@ -501,10 +502,10 @@ func TestHLVImport(t *testing.T) {
 			}
 
 			if testCase.expectedMou != nil {
-				require.Contains(t, xattrs, base.MouXattrName)
+				require.Contains(t, maps.Keys(xattrs), base.MouXattrName)
 				var mou *MetadataOnlyUpdate
 				require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
-				require.Contains(t, xattrs, base.MouXattrName)
+				require.Contains(t, maps.Keys(xattrs), base.MouXattrName)
 				require.Equal(t, *testCase.expectedMou(&output), *mou)
 			}
 			var hlv *HybridLogicalVector
@@ -526,8 +527,10 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 
 	t.Run("within max wait is corrected", func(t *testing.T) {
 		// SG clock 100ms ahead of the server: the generated version exceeds the CAS, within the wait bound.
+		// Derive from the same wall-clock source the bucket uses (HLCWallClock) so the only difference is the
+		// injected offset; using time.Now() directly diverges from the bucket's clock on Windows.
 		offset := uint64(100 * time.Millisecond)
-		db.hlc.SetClockForTest(func() uint64 { return uint64(time.Now().UnixNano()) + offset })
+		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
 
 		before := retryCount.Value()
 		_, doc, err := collection.Put(ctx, "skewedWithinBound", Body{"foo": "bar"})
@@ -544,7 +547,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 	t.Run("beyond max wait is left uncorrected", func(t *testing.T) {
 		// SG clock 2s ahead (> maxVersionCASCorrectionWait): correction is skipped with a warning.
 		offset := uint64(2 * time.Second)
-		db.hlc.SetClockForTest(func() uint64 { return uint64(time.Now().UnixNano()) + offset })
+		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
 
 		before := retryCount.Value()
 		_, doc, err := collection.Put(ctx, "skewedBeyondBound", Body{"foo": "bar"})

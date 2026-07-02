@@ -10,32 +10,22 @@ package rest
 
 import (
 	"context"
-	"net/http"
+	"maps"
 	"slices"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
-	var response db.AttachmentManagerResponse
-	err := rt.WaitForConditionWithOptions(func() bool {
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		RequireStatus(t, resp, http.StatusOK)
-
-		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		assert.NoError(t, err)
-
-		return response.State == state
-	}, 90, 1000)
-	assert.NoError(t, err)
-
-	return response
+// WaitForAttachmentCompactionStatus waits for the expectedState of the attachment compaction background job to be
+// reached by polling the REST API until that state
+// is reached. Fails test harness if it is not reached within timeout.
+func (rt *RestTester) WaitForAttachmentCompactionStatus(expectedState db.BackgroundProcessState) db.AttachmentManagerResponse {
+	rt.TB().Helper()
+	return waitForBackgroundManagerState[db.AttachmentManagerResponse](rt, "/{{.db}}/_compact?type=attachment", expectedState)
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
@@ -69,7 +59,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 
 		attachmentSyncDataBytes, err := base.JSONMarshal(attachmentSyncData)
 		require.NoError(t, err)
-		require.Contains(t, xattrs, base.SyncXattrName)
+		require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 		xattr := xattrs[base.SyncXattrName]
 		xattr, err = base.InjectJSONPropertiesFromBytes(xattr, base.KVPairBytes{
 			Key: "attachments",
@@ -88,20 +78,15 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	return attDocID
 }
 
-func (rt *RestTester) WaitForAttachmentMigrationStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
-	var response db.AttachmentMigrationManagerResponse
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_attachment_migration", "")
-		require.Equal(c, http.StatusOK, resp.Code)
-
-		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(c, err)
-		assert.Equal(c, state, response.State)
-	}, time.Second*20, time.Millisecond*100)
+// WaitForAttachmentMigrationStatus waits for the expectedState to be reached for the attachment migration background
+// job by polling the REST API until that state is reached. Fails test harness if it is not reached within timeout.
+func (rt *RestTester) WaitForAttachmentMigrationStatus(state db.BackgroundProcessState) db.AttachmentMigrationManagerResponse {
+	rt.TB().Helper()
+	response := waitForBackgroundManagerState[db.AttachmentMigrationManagerResponse](rt, "/{{.db}}/_attachment_migration", state)
 	// Wait for heartbeat doc removal if the state change will result in its removal. Allows calling start
 	// immediately after db.BackgroundProcessStateStopped without error.
 	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, state) {
-		db.WaitForBackgroundManagerHeartbeatDocRemoval(t, rt.GetDatabase().AttachmentMigrationManager)
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().AttachmentMigrationManager)
 	}
 	return response
 }

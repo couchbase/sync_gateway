@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math/rand"
 	"mime"
 	"mime/multipart"
@@ -36,9 +37,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/robertkrimen/otto/underscore"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -176,12 +177,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	response := rt.SendRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Double-check that even if we provide valid credentials we still won't be let in
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -192,12 +193,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	response = rt.SendUserRequest(http.MethodGet, "/notadb/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
-	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	assert.NotContains(t, maps.Keys(response.Header()), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/{{.db}}/_session", `{"name":"user1","password":"letmein"}`)
@@ -1122,7 +1123,7 @@ func TestOpenRevs(t *testing.T) {
 	assert.NotNil(t, ok)
 	assert.Equal(t, "or1", ok[db.BodyId])
 	assert.Equal(t, "12-abc", ok[db.BodyRev])
-	assert.Equal(t, float64(1), ok["n"])
+	assert.Equal[any](t, float64(1), ok["n"])
 
 	assert.Equal(t, "10-ten", respBody[1]["missing"])
 }
@@ -1231,7 +1232,7 @@ readerLoop:
 			exp = 1
 		case "doc3":
 			// revs_limit of zero should display no revision object at all
-			assert.Equal(t, nil, partJSON[db.BodyRevisions])
+			assert.Nil(t, partJSON[db.BodyRevisions])
 			break readerLoop
 		case "doc4":
 			// revs_limit must be >= 0
@@ -1283,7 +1284,7 @@ func TestLocalDocs(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
 	assert.Equal(t, "0-3", respBody[db.BodyRev])
-	assert.Equal(t, float64(123456789), respBody["big"])
+	assert.Equal[any](t, float64(123456789), respBody["big"])
 
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 409)
@@ -1356,8 +1357,8 @@ func TestResponseEncoding(t *testing.T) {
 	assert.NoError(t, err)
 	unjson := base.JSONDecoder(unzip)
 	var body db.Body
-	assert.Equal(t, nil, unjson.Decode(&body))
-	assert.Equal(t, str, body["long"])
+	assert.Nil(t, unjson.Decode(&body))
+	assert.Equal[any](t, str, body["long"])
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
@@ -1782,7 +1783,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	// Fetch the xattr and make sure it contains the above value
 	xattrs, _, err := rt.GetSingleDataStore().GetXattrs(rt.Context(), "-21SK00U-ujxUO9fU2HezxL", []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var retrievedSyncData db.SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedSyncData))
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedSyncData.GetRevTreeID())
@@ -2061,9 +2062,9 @@ func TestWebhookSpecialProperties(t *testing.T) {
 		var body db.Body
 		d := base.JSONDecoder(r.Body)
 		require.NoError(t, d.Decode(&body))
-		require.Contains(t, body, db.BodyId)
-		require.Contains(t, body, db.BodyRev)
-		require.Contains(t, body, db.BodyDeleted)
+		require.Contains(t, maps.Keys(body), db.BodyId)
+		require.Contains(t, maps.Keys(body), db.BodyRev)
+		require.Contains(t, maps.Keys(body), db.BodyDeleted)
 		assert.True(t, body[db.BodyDeleted].(bool))
 	}
 
@@ -3178,27 +3179,13 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
 	assert.Equal(t, 0, int(tombstoneCompactionStatus.DocsPurged))
 	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value()
-	assert.NotEqual(t, 0, firstStartTimeStat)
+	assert.Zero(t, firstStartTimeStat)
 
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	err = rt.WaitForCondition(func() bool {
-		resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
-		RequireStatus(t, resp, http.StatusOK)
-
-		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
-		assert.NoError(t, err)
-
-		return tombstoneCompactionStatus.State == db.BackgroundProcessStateCompleted
-	})
-	assert.NoError(t, err)
+	tombstoneCompactionStatus = rt.WaitForTombstoneCompactionStatus(db.BackgroundProcessStateCompleted)
 	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionTombstoneStartTime.Value() > firstStartTimeStat)
-
-	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
-	RequireStatus(t, resp, http.StatusOK)
-	err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
-	assert.NoError(t, err)
 
 	assert.Equal(t, db.BackgroundProcessStateCompleted, tombstoneCompactionStatus.State)
 	assert.Empty(t, tombstoneCompactionStatus.LastErrorMessage)
@@ -3955,8 +3942,8 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 	err := base.JSONUnmarshal(resp.Body.Bytes(), &body)
 	require.NoError(t, err)
 	assert.Equal(t, "data", body["test"].(string))
-	assert.Equal(t, docID, body[db.BodyId])
-	assert.Equal(t, createVersion.RevTreeID, body[db.BodyRev])
+	assert.Equal[any](t, docID, body[db.BodyId])
+	assert.Equal[any](t, createVersion.RevTreeID, body[db.BodyRev])
 	assert.Nil(t, body[db.BodyCV])
 }
 

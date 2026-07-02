@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -26,12 +27,12 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/rosmar"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -103,7 +104,7 @@ type BlipTesterClient struct {
 	collectionClients        []*BlipTesterCollectionClient
 	nonCollectionAwareClient *BlipTesterCollectionClient
 
-	hlc *rosmar.HybridLogicalClock
+	hlc *sgbucket.HybridLogicalClock
 }
 
 // getProposeChangesForSeq returns a proposeChangeBatch entry for a document, if there is a document existing at this sequence.
@@ -396,7 +397,7 @@ type BlipTesterCollectionClient struct {
 	attachmentsLock sync.RWMutex      // lock for _attachments map
 	_attachments    map[string][]byte // Client's local store of _attachments - Map of digest to bytes
 
-	hlc *rosmar.HybridLogicalClock
+	hlc *sgbucket.HybridLogicalClock
 }
 
 // GetDoc returns the latest revision of a document stored on the client.
@@ -1033,7 +1034,7 @@ func (btcRunner *BlipTestClientRunner) NewBlipTesterClientOptsWithRTAndContext(c
 		BlipTesterClientOpts:  *opts,
 		rt:                    rt,
 		id:                    id.ID(),
-		hlc:                   rosmar.NewHybridLogicalClock(0),
+		hlc:                   sgbucket.NewHybridLogicalClock(),
 		supportedSubprotocols: btcRunner.supportedSubprotocols,
 	}
 	btcRunner.clients[client.id] = client
@@ -1345,8 +1346,8 @@ func (btcc *BlipTesterCollectionClient) sendProposeChanges(ctx context.Context, 
 	proposeChangesResponse := proposeChangesRequest.Response()
 	rspBody, err := proposeChangesResponse.Body()
 	require.NoError(btcc.TB(), err)
-	require.NotContains(btcc.TB(), proposeChangesResponse.Properties, "Error-Domain", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
-	require.NotContains(btcc.TB(), proposeChangesResponse.Properties, "Error-Code", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
+	require.NotContains(btcc.TB(), maps.Keys(proposeChangesResponse.Properties), "Error-Domain", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
+	require.NotContains(btcc.TB(), maps.Keys(proposeChangesResponse.Properties), "Error-Code", "unexpected error response from proposeChanges: %v, %s", proposeChangesResponse, rspBody)
 
 	base.DebugfCtx(ctx, base.KeySGTest, "proposeChanges response: %s", string(rspBody))
 	return proposeChangesResponse
@@ -1395,7 +1396,7 @@ func (btcc *BlipTesterCollectionClient) sendRev(ctx context.Context, change prop
 		// this is not an error.
 		return
 	}
-	require.NotContains(btcc.TB(), revResp.Properties, "Error-Domain", "unexpected error response from rev %#v", revResp)
+	require.NotContains(btcc.TB(), maps.Keys(revResp.Properties), "Error-Domain", "unexpected error response from rev %#v", revResp)
 	base.DebugfCtx(ctx, base.KeySGTest, "peer acked rev %s / %#v", change.docID, change.version)
 	btcc.updateLastReplicatedRev(change.docID, change.version, revRequest)
 }
@@ -1423,12 +1424,12 @@ func (btcc *BlipTesterCollectionClient) sendRevisions(ctx context.Context, chang
 			case float64:
 				status = int(changeResponse)
 			case map[string]any:
-				require.Contains(btcc.TB(), changeResponse, "status")
+				require.Contains(btcc.TB(), maps.Keys(changeResponse), "status")
 				statusFloat, ok := changeResponse["status"].(float64)
 				require.True(btcc.TB(), ok, "non-float status in proposeChanges response: %#+v", changeResponse)
 				status = int(statusFloat)
 				if status == http.StatusConflict {
-					require.Contains(btcc.TB(), changeResponse, "rev")
+					require.Contains(btcc.TB(), maps.Keys(changeResponse), "rev")
 					latestVersion, ok := changeResponse["rev"].(string)
 					require.True(btcc.TB(), ok, "missing or non-string rev in proposeChanges response map for index %d in response array, %#+v: %#+v", i, response, changeResponse)
 					if base.IsRevTreeID(latestVersion) {
@@ -1655,7 +1656,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 			require.NotNil(btcc.TB(), opts.specificNewVersion, "specificNewVersion must be set when using blipRevTreeEncodedCVRevType")
 			newVersion = opts.specificNewVersion.CV
 		} else {
-			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: uint64(btcc.hlc.Now())}
+			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: btcc.hlc.Now(0)}
 		}
 		require.NoError(btcc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}

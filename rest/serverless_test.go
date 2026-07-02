@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Tests behaviour of CBG-2257 to poll only buckets in BucketCredentials that don't currently have a database

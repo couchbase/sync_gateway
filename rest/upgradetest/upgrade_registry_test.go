@@ -17,8 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestDefaultMetadataID creates an database using the named collections on the default scope, then modifies that database to use
@@ -198,7 +198,7 @@ func TestLegacyMetadataID(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
+	legacyRT.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
@@ -265,7 +265,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 	resp := legacyRT.SendAdminRequest("PUT", "/db/testLegacyMetadataID", `{"test":"test"}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	legacyRT.WaitForAttachmentMigrationStatus(t, db.BackgroundProcessStateCompleted)
+	legacyRT.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 	dbConfigString := getDbConfigFromLegacyConfig(legacyRT)
 	legacyRT.Close()
 

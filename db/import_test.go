@@ -14,17 +14,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestFeedImport(t *testing.T) {
@@ -88,7 +89,7 @@ func TestFeedImport(t *testing.T) {
 		// Expect not found fetching mou xattr
 		require.Error(t, err)
 	}
-	require.Contains(t, xattrs, base.VvXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 	var hlv HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
 	require.Equal(t, db.EncodedSourceID, hlv.SourceID)
@@ -132,7 +133,7 @@ func TestFeedImport(t *testing.T) {
 
 			xattrs, _, err = collection.dataStore.GetXattrs(ctx, docID, []string{base.VvXattrName})
 			require.NoError(t, err)
-			require.Contains(t, xattrs, base.VvXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
 			require.Equal(t, testCase.expectedSourceID, hlv.SourceID)
 		})
@@ -247,7 +248,7 @@ func TestOnDemandImport(t *testing.T) {
 					require.Error(t, err)
 				}
 				var hlv HybridLogicalVector
-				require.Contains(t, xattrs, base.VvXattrName)
+				require.Contains(t, maps.Keys(xattrs), base.VvXattrName)
 				require.NoError(t, base.JSONUnmarshal(xattrs[base.VvXattrName], &hlv))
 				require.Equal(t, db.EncodedSourceID, hlv.SourceID)
 			})
@@ -729,7 +730,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			rawDoc, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, testcase.docname, []string{base.SyncXattrName})
 			assert.NoError(t, err)
 
-			require.Contains(t, xattrs, base.SyncXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 			var xattrOut map[string]any
 			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattrOut))
 			require.NoError(t, base.JSONUnmarshal(rawDoc, &bodyOut))
@@ -793,7 +794,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	// Import a null document
 	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 1, existingDoc, ImportOnDemand)
-	assert.Equal(t, base.ErrEmptyDocument, err)
+	assert.Equal[error](t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
@@ -817,14 +818,14 @@ func TestImportNullDocRaw(t *testing.T) {
 		mode:     ImportFromFeed,
 	}
 	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, importOpts, 1)
-	assert.Equal(t, base.ErrEmptyDocument, err)
+	assert.Equal[error](t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	_, xattrs, _, err := dataStore.GetWithXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr")
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var syncData SyncData
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
 	require.NotEmpty(t, syncData.GetRevTreeID())
@@ -930,7 +931,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 
 	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
-	require.Contains(t, xattrs, base.SyncXattrName)
+	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr map[string]any
 	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &xattr))
 	require.Len(t, xattr["cluster_uuid"].(string), 32)

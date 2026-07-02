@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 func TestGoCBv2SecurityConfig(t *testing.T) {

@@ -24,8 +24,8 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Reproduces issue #2383 by forcing a partial error from the view on the first changes request.
@@ -1208,7 +1208,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	//    receives sequence 6, last seq 13
 	switch len(changes.Results) {
 	case 0:
-		assert.Equal(t, "5::12", changes.Last_Seq)
+		assert.Equal[any](t, "5::12", changes.Last_Seq)
 	case 1:
 		switch changes.Last_Seq.String() {
 		case "5::13":
@@ -3507,10 +3507,7 @@ func TestTombstoneCompaction(t *testing.T) {
 				} else {
 					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 					rest.RequireStatus(t, resp, http.StatusOK)
-					err := rt.WaitForCondition(func() bool {
-						return rt.GetDatabase().TombstoneCompactionManager.GetRunState() == db.BackgroundProcessStateCompleted
-					})
-					assert.NoError(t, err)
+					_ = rt.WaitForTombstoneCompactionStatus(db.BackgroundProcessStateCompleted)
 
 					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())

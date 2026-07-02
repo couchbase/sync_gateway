@@ -32,10 +32,8 @@ import subprocess
 #
 #   ./manifest-helper -r
 #
-ignored_repos = [
-    "build",
-    "sync_gateway"
-]
+ignored_repos = ["build", "sync_gateway"]
+
 
 def parse_args():
     """
@@ -43,108 +41,102 @@ def parse_args():
     """
     parser = optparse.OptionParser()
     parser.add_option(
-        '-d',
-        '--display-deltas',
+        "-d",
+        "--display-deltas",
         default=False,
         action="store_true",
-        help='For all repos in the manifest that are also in the GOPATH, display the delta between what commit it is on versus what is in the manifest'
+        help="For all repos in the manifest that are also in the GOPATH, display the delta between what commit it is on versus what is in the manifest",
     )
     parser.add_option(
-        '-u',
-        '--update-to-manifest-commit',
+        "-u",
+        "--update-to-manifest-commit",
         default=False,
         action="store_true",
-        help='Update any repos in the GOPATH to a DETACHED HEAD that matches the commit specified in the manifest for that repo'
+        help="Update any repos in the GOPATH to a DETACHED HEAD that matches the commit specified in the manifest for that repo",
     )
     parser.add_option(
-        '-r',
-        '--update-to-master-commit',
+        "-r",
+        "--update-to-master-commit",
         default=False,
         action="store_true",
-        help='For all repos in the manifest that are also in the GOPATH, run git checkout master.  May be needed if you want to run go get.'
+        help="For all repos in the manifest that are also in the GOPATH, run git checkout master.  May be needed if you want to run go get.",
     )
     (opts, args) = parser.parse_args()
-    return (parser, opts.update_to_manifest_commit, opts.display_deltas, opts.update_to_master_commit)
+    return (
+        parser,
+        opts.update_to_manifest_commit,
+        opts.display_deltas,
+        opts.update_to_master_commit,
+    )
+
 
 def display_commit_delta(path, manifest_revision, gopath_revision):
     if manifest_revision != gopath_revision:
-        print("{} {}: manifest: {} gopath repo: {}".format(
-            "** DELTA DETECTED **",
-            path,
-            manifest_revision,
-            gopath_revision,
-        ))
+        print(
+            "{} {}: manifest: {} gopath repo: {}".format(
+                "** DELTA DETECTED **",
+                path,
+                manifest_revision,
+                gopath_revision,
+            )
+        )
     else:
-        print("{} {} ({})".format(
-            "Up-to-date",
-            path,
-            manifest_revision,
-        ))
+        print(
+            "{} {} ({})".format(
+                "Up-to-date",
+                path,
+                manifest_revision,
+            )
+        )
+
 
 def git_checkout_manifest_commit(path, manifest_revision, gopath_revision):
-
     # first run a git diff to make sure there are no local changes
-    output = subprocess.check_output(
-        ["git", "diff"],
-        cwd=path
-    )
+    output = subprocess.check_output(["git", "diff"], cwd=path)
     if len(output) > 0:
         print("Git diff output: {}".format(output))
-        raise Exception("It appears you have local changes in {}.  You should stash or reset to HEAD".format(path))
+        raise Exception(
+            "It appears you have local changes in {}.  You should stash or reset to HEAD".format(
+                path
+            )
+        )
 
     # run git fetch to avoid "fatal: reference is not a tree" errors
     print("git fetch in {}".format(path))
-    output = subprocess.check_output(
-        ["git", "fetch"],
-        cwd=path
-    )
+    output = subprocess.check_output(["git", "fetch"], cwd=path)
 
     print("git checkout {} in {}".format(manifest_revision, path))
-    output = subprocess.check_output(
-        ["git", "checkout", manifest_revision],
-        cwd=path
-    )
+    output = subprocess.check_output(["git", "checkout", manifest_revision], cwd=path)
     print("git checkout {} output: {}".format(manifest_revision, output))
 
-def git_checkout_master(path, manifest_revision, gopath_revision):
 
+def git_checkout_master(path, manifest_revision, gopath_revision):
     print("git checkout master in {}".format(path))
-    output = subprocess.check_output(
-        ["git", "checkout", "master"],
-        cwd=path
-    )
+    output = subprocess.check_output(["git", "checkout", "master"], cwd=path)
     print("git checkout master output: {}".format(output))
 
 
 def process_commit_deltas(tree, callback):
-   root = tree.getroot()
-   for element in root:
-       if element.tag != "project":
-           continue
-       project_name = element.get("name")
-       if project_name in ignored_repos:
-           print("Skipping: {}".format(project_name))
-           continue
-       manifest_revision = element.get("revision")
-       path = element.get("path")
-       path = remove_godeps_prefix(path)
-       path = os.path.join(
-           os.environ["GOPATH"],
-           path
-       )
+    root = tree.getroot()
+    for element in root:
+        if element.tag != "project":
+            continue
+        project_name = element.get("name")
+        if project_name in ignored_repos:
+            print("Skipping: {}".format(project_name))
+            continue
+        manifest_revision = element.get("revision")
+        path = element.get("path")
+        path = remove_godeps_prefix(path)
+        path = os.path.join(os.environ["GOPATH"], path)
 
-       gopath_revision = get_gopath_revision(path)
-       if gopath_revision is None:
-           continue
-       callback(
-           path,
-           manifest_revision,
-           gopath_revision
-       )
+        gopath_revision = get_gopath_revision(path)
+        if gopath_revision is None:
+            continue
+        callback(path, manifest_revision, gopath_revision)
 
 
 def get_gopath_revision(path):
-
     """
     Given a path like "godeps/src/github.com/couchbase/cb-heartbeat",
     run 'git rev-parse HEAD' in the corresponding GOPATH directory
@@ -155,22 +147,18 @@ def get_gopath_revision(path):
         print("WARN: Directory does not exist, skipping: {}".format(path))
         return None
 
-    latest_commit = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
-        cwd=path
-    )
+    latest_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=path)
     return latest_commit.strip()
 
 
 def remove_godeps_prefix(path):
-
     """
     Strip the leading "godeps" off the path.
 
     Given "godeps/src/github.com/couchbase/cb-heartbeat"
     Return "src/github.com/couchbase/cb-heartbeat"
     """
-    return os.path.relpath(path, 'godeps')
+    return os.path.relpath(path, "godeps")
 
 
 def path_to_manifest():
@@ -185,7 +173,7 @@ def path_to_manifest():
         "couchbase",
         "sync_gateway",
         "manifest",
-        "default.xml"
+        "default.xml",
     ]
     for path_component in path_components:
         path = os.path.join(path, path_component)
@@ -193,13 +181,14 @@ def path_to_manifest():
     return path
 
 
-if __name__=="__main__":
-
+if __name__ == "__main__":
     if not "GOPATH" in os.environ:
         raise Exception("You must define a GOPATH environment variable")
 
     # get arguments
-    (parser, update_to_manifest_commit, display_deltas, update_to_master_commit) = parse_args()
+    (parser, update_to_manifest_commit, display_deltas, update_to_master_commit) = (
+        parse_args()
+    )
 
     # fetch manifest content and parse xml
     manifest = path_to_manifest()
@@ -207,13 +196,13 @@ if __name__=="__main__":
     tree = ET.ElementTree(file=open(manifest))
 
     if display_deltas:
-        callback_func=display_commit_delta
+        callback_func = display_commit_delta
         process_commit_deltas(tree, callback_func)
 
     if update_to_manifest_commit:
-        callback_func=git_checkout_manifest_commit
+        callback_func = git_checkout_manifest_commit
         process_commit_deltas(tree, callback_func)
 
     if update_to_master_commit:
-        callback_func=git_checkout_master
+        callback_func = git_checkout_master
         process_commit_deltas(tree, callback_func)
