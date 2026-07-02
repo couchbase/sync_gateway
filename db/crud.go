@@ -3291,7 +3291,7 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	// generated version, then re-stamp so cv.ver <= cas holds for XDCR.
 	//
 	// The catch depends on three clocks, not two. The version is stamped from Sync Gateway's HLC;
-	// the CAS is stamped from the HLC of whatever assigns it - a Couchbase Server node or, under Rosmar unit
+	// the CAS is stamped from the HLC of whatever assigns it - a Couchbase Server node Rosmar under unit
 	// tests. Either way the sleep is the third clock: time.Sleep does not
 	// advance a wall clock at all, it waits on the monotonic clock, which is a separate source
 	// (for windows builds). So SGW version and rosmar CAS are reading from different source to time.Since for windows instances.
