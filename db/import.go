@@ -144,20 +144,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 	var newRev string
 	var alreadyImportedDoc *Document
 
-	mutationOptions := &sgbucket.MutateInOptions{}
-	if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
-		mutationOptions.PreserveExpiry = true
-	} else {
-		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
-		if expiry == nil {
-			getExpiry, getExpiryErr := db.dataStore.GetExpiry(ctx, docid)
-			if getExpiryErr != nil {
-				return nil, getExpiryErr
-			}
-			expiry = &getExpiry
-		}
-		existingDoc.Expiry = *expiry
-	}
+	mutationOptions := &sgbucket.MutateInOptions{PreserveExpiry: true}
 
 	docUpdateEvent := Import
 	// do not update rev cache for any imports (CBG-4494 and CBG-4550)

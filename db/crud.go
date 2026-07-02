@@ -2945,7 +2945,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 			// If importing and the sync function has modified the expiry, allow sgbucket.MutateInOptions to modify the expiry
-			if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) && updatedDoc.Expiry != nil {
+			if updatedDoc.Expiry != nil {
 				opts.PreserveExpiry = false
 			}
 			docSequence = doc.Sequence
