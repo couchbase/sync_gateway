@@ -26,10 +26,6 @@ import (
 )
 
 func TestAttachmentMark(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires CBS")
-	}
-
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
@@ -83,11 +79,6 @@ func TestAttachmentMark(t *testing.T) {
 }
 
 func TestAttachmentSweep(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires CBS")
-	}
-
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
@@ -134,9 +125,6 @@ func TestAttachmentSweep(t *testing.T) {
 }
 
 func TestAttachmentCleanup(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires CBS")
-	}
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
@@ -211,7 +199,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	for _, docID := range singleMarkedAttIDs {
 		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
 		assert.Error(t, err)
-		require.ErrorIs(t, err, base.ErrXattrNotFound)
+		base.RequireXattrNotFoundError(t, err)
 	}
 
 	for _, docID := range recentMultiMarkedAttIDs {
@@ -228,7 +216,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	for _, docID := range oldMultiMarkedAttIDs {
 		_, _, err := dataStore.GetXattrs(ctx, docID, []string{CompactionIDKey})
 		assert.Error(t, err)
-		require.ErrorIs(t, err, base.ErrXattrNotFound)
+		base.RequireXattrNotFoundError(t, err)
 	}
 
 	for _, docID := range oneRecentOneOldMultiMarkedAttIDs {
@@ -247,9 +235,7 @@ func TestAttachmentCleanup(t *testing.T) {
 }
 
 func TestAttachmentCleanupRollback(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server since it requires DCP")
-	}
+	base.TestRequiresGocbDCPClient(t)
 	dbcOptions := DatabaseContextOptions{
 		Scopes: GetScopesOptionsDefaultCollectionOnly(t),
 	}
@@ -314,16 +300,12 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	// assert that the marked attachments have been "cleaned up"
 	for _, docID := range singleMarkedAttIDs {
 		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
-		require.ErrorIs(t, err, base.ErrXattrNotFound)
+		base.RequireXattrNotFoundError(t, err)
 	}
 
 }
 
 func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires CBS")
-	}
-
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
@@ -389,7 +371,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		if !strings.Contains(attDocKey, "unmarked") {
 			assert.NoError(t, err)
 			_, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName + "." + CompactionIDKey})
-			require.ErrorIs(t, err, base.ErrXattrNotFound)
+			base.RequireXattrNotFoundError(t, err)
 		}
 	}
 }
@@ -542,10 +524,6 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 }
 
 func TestAttachmentProcessError(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
@@ -566,9 +544,7 @@ func TestAttachmentProcessError(t *testing.T) {
 }
 
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	base.TestRequiresGocbDCPClient(t)
 
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
@@ -830,9 +806,6 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	const docsToCreate = 10_000
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Requires CBS")
-	}
 
 	testDb, ctx := setupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)

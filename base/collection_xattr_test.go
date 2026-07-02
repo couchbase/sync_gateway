@@ -1656,9 +1656,6 @@ func TestMetadataStoreXattrStoreWriteOperations(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
-	if UnitTestUrlIsWalrus() {
-		t.Skipf("rosmar does not support subdoc")
-	}
 
 	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
@@ -1879,10 +1876,6 @@ func TestMetadataStoreSubdocStoreReadOperations(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 
-	if UnitTestUrlIsWalrus() {
-		t.Skipf("rosmar does not support subdoc")
-	}
-
 	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
 
@@ -1920,10 +1913,6 @@ func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
-
-	if UnitTestUrlIsWalrus() {
-		t.Skipf("rosmar does not support subdoc")
-	}
 
 	fallbackStore := bucket.DefaultDataStore(ctx)
 	primaryStore := bucket.GetMobileSystemDataStore()
