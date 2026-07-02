@@ -1525,7 +1525,7 @@ func TestLargeAttachments(t *testing.T) {
 
 // attachmentMigrationCASRetrySetup creates a doc with an attachment, then moves the attachment
 // back to AttachmentsPre4dot0 to simulate a document that has not yet been through the background
-// migration. Returns the doc and the initial Put rev so callers can use both.
+// migration.
 func attachmentMigrationCASRetrySetup(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
 	t.Helper()
 	_, _, err := collection.Put(ctx, docID, Body{
