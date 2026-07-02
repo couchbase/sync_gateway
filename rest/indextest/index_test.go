@@ -770,6 +770,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	databaseConfig := dbConfig.ToDatabaseConfig()
 	databaseConfig.Version = version
 	databaseConfig.MetadataID = metadataID
+	databaseConfig.EnableXattrs = base.Ptr(true) // ToDatabaseConfig will always set EnableXattrs = false for old upgrade scenarios
 
 	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, databaseConfig)
 	require.NoError(t, err)
