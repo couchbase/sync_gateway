@@ -211,6 +211,97 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 	assert.True(t, ms.MigrationComplete(), "clean run must flip MigrationComplete so future reads skip the fallback")
 }
 
+// TestMetadataMigrationCompletesWithCollectionScopedDataInFallback is a regression test for a
+// database whose data lives in the default collection. In that legacy layout the fallback
+// (`bucket.DefaultDataStore`) holds not just metadata but the documents' collection-scoped data
+// docs: attachments (`_sync:att:`/`_sync:att2:`), backup/old revision bodies
+// (`_sync:rev:`/`_sync:rb:`) and local docs such as replication checkpoints (`_sync:local:`). The
+// `_sync:` range scan returns all of these.
+//
+// These are collection data, not database metadata: they must never move to the metadata store,
+// and their presence must NOT prevent the migration from completing. Before the fix they were
+// classified as unknown-prefix and counted toward `remaining`, so the job looped to maxPasses and
+// errored. This test fails if any of them wedges the migration rather than being treated as
+// out-of-scope and left in place.
+//
+// The seeded keys are produced by the real SG key constructors so this exercises genuine
+// SG-written docs rather than synthetic prefixes.
+func TestMetadataMigrationCompletesWithCollectionScopedDataInFallback(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	primary, err := bucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	fallback := bucket.DefaultDataStore(ctx)
+	if _, ok := base.AsRangeScanStore(fallback); !ok {
+		t.Skipf("metadata migration requires KV range scan support on the fallback datastore")
+	}
+	ms := base.NewMetadataStore(primary, fallback)
+
+	const metadataID = "test-mgr-collection-data"
+	metaKeys := base.NewMetadataKeys(metadataID)
+
+	// In-scope metadata that SHOULD migrate — the control that proves the wedge (if any) is caused
+	// by the collection-scoped data docs and not a broken harness.
+	userKey := metaKeys.UserKey("alice")
+
+	// One doc per collection-scoped data-doc type, keyed exactly as SG writes them.
+	const docID = "doc1"
+	dataKeys := []string{
+		MakeAttachmentKey(AttVersion2, docID, "sha1-abc"),               // _sync:att2:<sha256(docID)>:<digest>
+		MakeAttachmentKey(AttVersion1, docID, "sha1-def"),               // _sync:att:<digest>
+		oldRevisionKey(docID, "2-abc"),                                  // _sync:rev:<docid>:<n>:<rev>
+		generateRevBodyKey(docID, "3-def"),                              // _sync:rb:<digest>
+		RealSpecialDocID(DocTypeLocal, CheckpointDocIDPrefix+"client1"), // _sync:local:checkpoint/<id>
+	}
+
+	seeded := map[string][]byte{userKey: []byte(`{"name":"alice"}`)}
+	for _, k := range dataKeys {
+		seeded[k] = []byte(`{"collection":"data"}`)
+	}
+	for k, v := range seeded {
+		_, err := ms.Fallback().AddRaw(ctx, k, 0, v)
+		require.NoError(t, err, "seed fallback %s", k)
+	}
+	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), slices.Collect(maps.Keys(seeded)))
+
+	dbCtx := &DatabaseContext{
+		Name:                           "test",
+		terminator:                     make(chan bool),
+		MetadataStore:                  ms,
+		MetadataKeys:                   metaKeys,
+		Options:                        DatabaseContextOptions{MetadataID: metadataID},
+		MetadataMigrationStatusUpdater: inMemoryMigrationStatusUpdater(),
+	}
+	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
+
+	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
+	// Must complete — the collection-scoped data docs are out-of-scope, not blockers. If any wedges
+	// the job it exhausts maxPasses and lands in Error instead.
+	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
+
+	assert.True(t, ms.MigrationComplete(), "clean run must flip MigrationComplete so future reads skip the fallback")
+
+	rawStatus, err := dbCtx.MetadataMigrationManager.GetStatus(ctx)
+	require.NoError(t, err)
+	var resp MigrationManagerResponse
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &resp))
+	assert.Equal(t, int64(1), resp.DocsProcessed, "only the in-scope user doc should migrate")
+	assert.Zero(t, resp.DocsFailed, "no per-doc errors should occur")
+	assert.Equal(t, int64(len(dataKeys)), resp.DocsOutOfScope, "every collection-scoped data doc classified out-of-scope")
+
+	// The user doc moved to primary; the data docs are left in place on the fallback (non-destructive).
+	_, _, getErr := ms.Primary().GetRaw(ctx, userKey)
+	assert.NoError(t, getErr, "user doc should have migrated to primary")
+	_, _, getErr = ms.Fallback().GetRaw(ctx, userKey)
+	assert.True(t, base.IsDocNotFoundError(getErr), "user doc should be gone from fallback")
+	for _, k := range dataKeys {
+		_, _, getErr := ms.Fallback().GetRaw(ctx, k)
+		assert.NoError(t, getErr, "collection-scoped data doc should be left in place on fallback: %s", k)
+	}
+}
+
 // TestMetadataMigrationManagerErrorsOnUnclearableUnknownPrefix forces the bounded-pass
 // give-up branch: an in-scope unknown-prefix doc is reported as "remaining" every pass
 // (the dispatcher classifies it as DocsUnknownPrefix and leaves it on the fallback), so

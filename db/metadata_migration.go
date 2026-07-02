@@ -298,6 +298,19 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		strings.HasPrefix(key, base.PersistentConfigPrefixWithoutGroupID):
 		stats.DocsOutOfScope.Add(1)
 
+	// collection-scoped data documents — attachments, backup/old revision bodies, and local
+	// docs (e.g. replication checkpoints). These live in the same collection as the documents
+	// they belong to, which in a legacy default-collection deployment is the migration fallback.
+	// They are collection data, not database metadata: never move them to the metadata store,
+	// and never let their presence block completion.
+	case
+		strings.HasPrefix(key, base.Att2Prefix),             // _sync:att2:  (v2 attachments)
+		strings.HasPrefix(key, base.AttPrefix),              // _sync:att:   (v1 attachments)
+		strings.HasPrefix(key, base.RevPrefix),              // _sync:rev:   (old / delta-sync revision bodies)
+		strings.HasPrefix(key, base.RevBodyPrefix),          // _sync:rb:    (conflicting revision bodies)
+		strings.HasPrefix(key, base.SyncDocPrefix+"local:"): // _sync:local: (RealSpecialDocID(DocTypeLocal, …))
+		stats.DocsOutOfScope.Add(1)
+
 	// non-matching sync docs (metadata prefix before sync doc type - formatInvertedMetadataKey)
 	case
 		strings.HasPrefix(key, base.SyncDocMetadataPrefix) &&
