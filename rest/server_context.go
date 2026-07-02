@@ -1072,9 +1072,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// per-DB UseSystemMobileMetadataCollection config field.
 	if resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
 		bucketName := spec.BucketName
+		metadataID := config.MetadataID
 		dbcontext.MetadataMigrationStatusUpdater = func(ctx context.Context, mutator func(*base.MetadataMigrationStatus) error) error {
 			_, err := sc.BootstrapContext.Connection.UpdateMetadataMigrationStatus(ctx, bucketName, mutator)
 			return err
+		}
+		dbcontext.PerDBMetadataMigrationCompleteFunc = func(ctx context.Context) bool {
+			return sc.isPerDBMigrationComplete(ctx, bucketName, metadataID)
 		}
 		dbcontext.PostMetadataMigrationCompleteFunc = func(ctx context.Context) error {
 			return sc.maybeCompleteBucketMetadataMigration(ctx, bucketName)
@@ -2401,6 +2405,34 @@ func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketN
 		return false
 	}
 	return entry.State == base.MigrationStateInProgress
+}
+
+// isPerDBMigrationComplete reports whether the bucket-level metadata-migration status doc records
+// this database's per-DB migration as complete. This is the authoritative, cluster-wide signal —
+// unlike the process-local MetadataStore flag it is also true on a node that never ran the migration
+// itself (e.g. a peer completed it). Used to avoid re-running a finished migration.
+//
+// Returns false when the status doc or per-DB entry is absent or unreadable: a false "complete"
+// would only cause a redundant (idempotent, resumable) migration start, whereas a false-positive
+// "complete" would wrongly skip a needed migration. This is the deliberate opposite bias to
+// isPerDBMigrationInProgress, which errs toward "in progress" to avoid prematurely disabling
+// fallback reads.
+func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, bucketName, metadataID string) bool {
+	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
+		return false
+	}
+	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) {
+			base.WarnfCtx(ctx, "Unable to read %s on bucket %q while checking per-DB migration completion: %v — treating as not complete", base.MD(base.MetadataMigrationStatusDocID), base.MD(bucketName), err)
+		}
+		return false
+	}
+	entry, ok := status.Databases[metadataID]
+	if !ok || entry == nil {
+		return false
+	}
+	return entry.State == base.MigrationStateComplete
 }
 
 // maybeCompleteBucketMetadataMigration is invoked after each per-DB migration reports complete.
