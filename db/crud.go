@@ -3247,9 +3247,10 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	return doc
 }
 
-// maxVersionCASCorrectionWait bounds how long correctVersionAheadOfCAS will sleep waiting for the server
-// clock to catch up to a generated version. A gap larger than this indicates larger clock skew between
-// Sync Gateway and the server, which we log rather than stall a write on.
+// maxVersionCASCorrectionWait bounds the version-ahead gap correctVersionAheadOfCAS will wait out for the
+// server clock to catch up to a generated version. A gap larger than this indicates larger clock skew
+// between Sync Gateway and the server, which we log rather than stall a write on. The actual sleep can be
+// up to maxVersionCASCorrectionWait + versionCASCorrectionSlack, as the slack is added on top of the gap.
 const maxVersionCASCorrectionWait = time.Second
 
 // versionCASCorrectionSlack pads the catch-up sleep in correctVersionAheadOfCAS so the re-stamped CAS
@@ -3291,10 +3292,10 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	// generated version, then re-stamp so cv.ver <= cas holds for XDCR.
 	//
 	// The catch depends on three clocks, not two. The version is stamped from Sync Gateway's HLC;
-	// the CAS is stamped from the HLC of whatever assigns it - a Couchbase Server node Rosmar under unit
-	// tests. Either way the sleep is the third clock: time.Sleep does not
-	// advance a wall clock at all, it waits on the monotonic clock, which is a separate source
-	// (for windows builds). So SGW version and rosmar CAS are reading from different source to time.Since for windows instances.
+	// the CAS is stamped from the HLC of whatever assigns it (a Couchbase Server node, or Rosmar under unit tests).
+	// Either way, the sleep is the third clock: time.Sleep waits on the monotonic clock, which is a separate time
+	// source from the wall clock used by CAS generation on Windows. This means sleeping for the physical gap may
+	// still leave the CAS just short of the next physical-tick boundary.
 	//
 	// That tiny shortfall is amplified because version and CAS are compared after being floored to
 	// physical ticks (the low HLCLogicalBits are cleared). The success margin is already sub-tick, so a
