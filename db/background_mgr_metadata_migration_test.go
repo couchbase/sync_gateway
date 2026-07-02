@@ -60,7 +60,7 @@ func TestShouldRunMetadataMigration(t *testing.T) {
 				},
 				ClusterCompatVersionFunc: test.compatVersion,
 			}
-			assert.Equal(t, test.expectedResult, dbCtx.shouldRunMetadataMigration())
+			assert.Equal(t, test.expectedResult, dbCtx.shouldRunMetadataMigration(base.TestCtx(t)))
 		})
 	}
 }

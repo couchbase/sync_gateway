@@ -227,7 +227,13 @@ func (h *handler) handleMetadataMigration() error {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "cannot start metadata migration until the opted-in database config has been applied on all nodes (waiting on: %v)", missing)
 			}
 		}
-		if err := h.db.MetadataMigrationManager.Start(h.ctx(), map[string]any{
+		// Don't re-run a migration that has already completed. Falling through to the status write
+		// below makes a repeat start idempotent (returns the completed status), which stops the
+		// auto-arming poller and a manual retry from flapping the status doc back through in_progress.
+		// An explicit reset=true is still honored as an operator override to force a fresh run.
+		if h.db.MetadataMigrationComplete(h.ctx()) && !reset {
+			base.InfofCtx(h.ctx(), base.KeyAll, "Metadata migration already complete for database %s, returning current status without restarting", base.MD(h.db.Name))
+		} else if err := h.db.MetadataMigrationManager.Start(h.ctx(), map[string]any{
 			"reset": reset,
 		}); err != nil {
 			return err

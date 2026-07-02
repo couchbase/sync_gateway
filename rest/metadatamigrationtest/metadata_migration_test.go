@@ -208,6 +208,96 @@ func TestMetadataMigrationRESTGetReportsStatus(t *testing.T) {
 	assert.Contains(t, body, "passes")
 }
 
+// TestMetadataMigrationNotRestartedAfterCompletion is the CBG-5475 regression: once a database's
+// metadata migration has completed, a repeat manual start must be an idempotent no-op. It must NOT
+// reset the durable status doc back through in_progress — that flap (triggered when the ~10s
+// auto-arm poller re-fired after a fast REST-triggered completion) is what made status assertions
+// in longer-running tests flaky. reset=true remains an operator override and is exercised separately
+// in unit tests of Init; here we pin the default (reset=false) no-op path, which is fully deterministic
+// because the guard skips Start entirely and leaves the status doc untouched.
+func TestMetadataMigrationNotRestartedAfterCompletion(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+	ctx := rt.Context()
+
+	// Create in legacy mode and write a user so real per-DB metadata (a user doc + the _sync:seq
+	// counter) lands in _default._default. Without legacy data the new-DB fast path would flip the
+	// wrapper straight to MigrationComplete at construction and no migration would actually run.
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice",
+		`{"name":"alice","password":"letmein","admin_channels":["public"]}`), http.StatusCreated)
+
+	// Opt in and drive the migration to completion via the REST endpoint.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", ""), http.StatusOK)
+	completed := rt.WaitForMetadataMigrationStatus(db.BackgroundProcessStateCompleted)
+	require.NotEmpty(t, completed.MigrationID)
+
+	// The completion signal both start paths consult is now true.
+	require.True(t, rt.GetDatabase().MetadataMigrationComplete(ctx), "migration should report complete after finishing")
+
+	// Repeat the manual start (reset defaults to false): the guard skips Start, so the durable status
+	// doc is untouched — same state, same migration ID, same start time. No in_progress flap.
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var after db.MigrationManagerResponse
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &after))
+	assert.Equal(t, db.BackgroundProcessStateCompleted, after.State, "repeat start must leave the migration completed")
+	assert.Equal(t, completed.MigrationID, after.MigrationID, "repeat start must not begin a fresh migration run")
+	assert.True(t, completed.StartTime.Equal(after.StartTime), "repeat start must not reset the migration start time")
+}
+
+// TestMetadataMigrationGuardHonoursPeerCompletion covers the multi-node arm of CBG-5475: a node
+// that never ran the migration itself (its process-local MetadataStore flag is a stale false) must
+// still recognise completion from the authoritative bucket-level status doc — and, on observing it,
+// converge its local flag so fallback reads stop. Mirrors the peer-completion simulation in
+// TestRecheckConvergesLocalCacheOnPeerCompletedMigration.
+func TestMetadataMigrationGuardHonoursPeerCompletion(t *testing.T) {
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+	ctx := rt.Context()
+
+	// Create in legacy mode, then seed the _sync:seq counter in _default._default so the new-DB fast
+	// path can't flip the wrapper to MigrationComplete at construction — the local flag must stay
+	// false to model a peer that ran the migration while this node did not.
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	legacyDB := rt.GetDatabase()
+	_, err := legacyDB.Bucket.DefaultDataStore(ctx).Incr(ctx, legacyDB.MetadataKeys.SyncSeqKey(), 1, 0, 0)
+	require.NoError(t, err)
+
+	// Opt in but deliberately DON'T flush this node's applied-config version, so ConfigFullyAppliedFunc
+	// reports not-applied and the auto-arm never actually starts a local migration.
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+
+	dbCtx := rt.GetDatabase()
+	ms, ok := dbCtx.MetadataStore.(*base.MetadataStore)
+	require.True(t, ok, "opted-in DB with legacy metadata should have a dual MetadataStore")
+	require.False(t, ms.MigrationComplete(), "precondition: local node must not have marked migration complete")
+
+	// Simulate a peer node completing this DB's migration by stamping the per-DB status entry to
+	// complete directly — this writes only the durable doc, not this node's local flag.
+	conn := rt.ServerContext().BootstrapContext.Connection
+	_, err = conn.UpdateMetadataMigrationStatus(ctx, dbCtx.Bucket.GetName(), func(s *base.MetadataMigrationStatus) error {
+		if s.Databases == nil {
+			s.Databases = map[string]*base.DatabaseMigrationStatus{}
+		}
+		s.Databases[dbCtx.Options.MetadataID] = &base.DatabaseMigrationStatus{State: base.MigrationStateComplete}
+		return nil
+	})
+	require.NoError(t, err)
+
+	// The guard reads the authoritative status doc, reports complete, and converges the local flag.
+	require.True(t, dbCtx.MetadataMigrationComplete(ctx), "guard must recognise a peer-completed migration from the status doc")
+	require.True(t, ms.MigrationComplete(), "observing a peer-completed status doc must converge the local migration-complete flag")
+}
+
 // TestMetadataMigrationPreservesJSONDatatypeForUserDocs is a regression test for the
 // AddRaw → SGRawTranscoder datatype regression: prior to the moveFallbackDoc datatype
 // fix, every user/role/session doc migrated to _system._mobile landed with the Binary
