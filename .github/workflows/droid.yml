@@ -1,0 +1,61 @@
+name: Droid
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [opened, edited]
+
+concurrency:
+  # factory-droid[bot] dispatches get a unique per-run suffix so the bot's own status comments cannot cancel an in-flight @droid run.
+  group: >-
+    ${{ github.workflow }}-${{
+    github.event.pull_request.number ||
+    github.event.issue.number ||
+    github.ref
+    }}${{
+    github.actor == 'factory-droid[bot]' &&
+    format('-bot-{0}', github.run_id) || ''
+    }}
+  cancel-in-progress: true
+
+jobs:
+  droid:
+#    if: |
+#      (
+#        (github.event_name == 'issue_comment'
+#          && contains(github.event.comment.body, '@droid')) ||
+#        (github.event_name == 'pull_request_review_comment'
+#          && contains(github.event.comment.body, '@droid')) ||
+#        (github.event_name == 'pull_request_review'
+#          && contains(github.event.review.body, '@droid')) ||
+#        (github.event_name == 'issues'
+#          && (contains(github.event.issue.body, '@droid')
+#            || contains(github.event.issue.title, '@droid'))) #||
+#        (github.event_name == 'pull_request'
+#          && (contains(github.event.pull_request.body, '@#droid')
+#            || contains(github.event.pull_request.title, '@#droid')))
+#      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Run Droid Exec
+        uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4 #v5.0.0
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          review_model: gpt-5.3-codex

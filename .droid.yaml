@@ -1,0 +1,26 @@
+review:
+  # --- Auto-review settings ---
+  auto_review:
+    enabled: false
+    draft: false
+    bot: false
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    ignore_labels:
+      - "droid-skip"
+      - "Abandoned"
+    excluded_base_branches:
+      - "main"
+
+  # --- Output settings ---
+  pr_summary: true
+  file_summaries: true
+  tips: true
+  github_action_repair: true
+  enable_skip_reason_comments: true
+
+  guidelines:
+    - path: "*"
+      guideline: "Follow our copilot-instructions.md style guide."
+      context_document_path: ".github/copilot-instructions.md"
