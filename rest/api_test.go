@@ -1736,9 +1736,6 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 
 // Repro attempt for SG #3307.  Before fix for #3307, fails when SG_TEST_USE_XATTRS=true and run against an actual couchbase server
 func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
-
-	// This doesn't need to specify XATTR's because that is controlled by the test
-	// env variable: SG_TEST_USE_XATTRS
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

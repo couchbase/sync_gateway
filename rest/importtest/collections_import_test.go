@@ -26,7 +26,6 @@ import (
 func TestMultiCollectionImportFilter(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 3)
 
 	ctx := base.TestCtx(t)
@@ -263,7 +262,6 @@ const collectionsDbConfigUpsertScopes = `{
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 2)
 
 	ctx := base.TestCtx(t)
@@ -357,7 +355,6 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SkipImportTestsIfNotEnabled(t)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 
@@ -434,9 +431,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 
 // TestImportVersionWriteVariations - ensure import version is updated for all different APIs that can modify the collection set
 func TestImportVersionWriteVariations(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP)
-	base.SkipImportTestsIfNotEnabled(t)
 	numCollections := 3
 	base.RequireNumTestDataStores(t, numCollections)
 

@@ -134,7 +134,6 @@ func TestFeedImport(t *testing.T) {
 // TestOnDemandImport ensures that _mou is written correctly during an on-demand import
 func TestOnDemandImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	// SetupTestDBWithOptions sets autoImport=false
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
@@ -896,7 +895,6 @@ func TestImportStampClusterUUID(t *testing.T) {
 // TestImporNonZeroStart makes sure docs written before sync gateway start get imported
 func TestImportNonZeroStart(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 
 	doc1 := "doc1"
@@ -925,7 +923,6 @@ func TestImportNonZeroStart(t *testing.T) {
 // TestImportFeedInvalidInlineSyncMetadata tests avoiding an import error if the metadata is unmarshable
 func TestImportFeedInvalidInlineSyncMetadata(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
-	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
 
@@ -960,7 +957,6 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
-	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
 
@@ -1036,7 +1032,6 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 
 func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
 	defer db.Close(ctx)
@@ -1105,7 +1100,6 @@ func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
 
 func TestMigrateMetadataInvalidSyncData(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
-	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
 
@@ -1130,7 +1124,6 @@ func TestMigrateMetadataInvalidSyncData(t *testing.T) {
 
 func TestImportFeedNonJSONNewDoc(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyImport)
-	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
 
@@ -1163,7 +1156,6 @@ func TestImportFeedNonJSONNewDoc(t *testing.T) {
 
 func TestImportFeedNonJSONExistingDoc(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
-	base.SkipImportTestsIfNotEnabled(t)
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close(base.TestCtx(t))
 
@@ -1504,7 +1496,6 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 //  5. importDoc's switch has no return statement in the ErrImportCancelled case, so it
 //     falls through to return docOut, nil with docOut==nil.
 func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
 
 	docID := t.Name()

@@ -329,8 +329,6 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 }
 
 func TestResyncDoesNotWriteDocBody(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t) // test requires import
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 	})

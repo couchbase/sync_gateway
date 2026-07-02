@@ -22,8 +22,6 @@ import (
 )
 
 func TestCollectionsSyncImportFunctions(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 	ctx := base.TestCtx(t)

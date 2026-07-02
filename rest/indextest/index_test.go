@@ -866,15 +866,13 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		}
 	}
 	bucketName := tb.GetName()
-	enableXattrs := true
 
 	dbConfig := rest.DbConfig{
 		BucketConfig: rest.BucketConfig{
 			Bucket: &bucketName,
 		},
-		EnableXattrs: &enableXattrs,
-		Scopes:       scopesConfig,
-		AutoImport:   false, // disable import to streamline index tests and avoid teardown races
+		Scopes:     scopesConfig,
+		AutoImport: false, // disable import to streamline index tests and avoid teardown races
 	}
 	if base.TestsDisableGSI() {
 		dbConfig.UseViews = base.Ptr(true)

@@ -246,7 +246,6 @@ func TestSingleCollectionDCP(t *testing.T) {
 func TestMultiCollectionDCP(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	const numCollections = 2
 
@@ -299,8 +298,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Scopes:       scopesConfig,
-			EnableXattrs: base.Ptr(true),
+			Scopes: scopesConfig,
 		},
 		},
 	}
@@ -787,9 +785,8 @@ func TestCollectionStats(t *testing.T) {
 		GuestEnabled:     true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				Scopes:       scopesConfig,
-				AutoImport:   true,
-				EnableXattrs: base.Ptr(true),
+				Scopes:     scopesConfig,
+				AutoImport: true,
 			},
 		},
 	}

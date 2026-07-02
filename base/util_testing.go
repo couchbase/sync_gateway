@@ -195,24 +195,6 @@ func rosmarUriFromPath(path string) string {
 	return uri + strings.ReplaceAll(path, `\`, `/`)
 }
 
-// Should Sync Gateway use XATTRS functionality when running unit tests?
-func TestUseXattrs() bool {
-	useXattrs, isSet := os.LookupEnv(TestEnvSyncGatewayUseXattrs)
-	if !isSet {
-		return true
-	}
-
-	val, err := strconv.ParseBool(useXattrs)
-	if err != nil {
-		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvSyncGatewayUseXattrs, useXattrs, err))
-	}
-	if !val {
-		panic(fmt.Sprintf("sync gateway %s requires xattrs to be enabled, remove env var %s=%s", ProductVersion, TestEnvSyncGatewayUseXattrs, useXattrs))
-	}
-
-	return val
-}
-
 // Should Sync Gateway skip TLS verification. Default: DefaultTestTLSSkipVerify
 func TestTLSSkipVerify() bool {
 	tlsSkipVerify, isSet := os.LookupEnv(TestEnvTLSSkipVerify)
@@ -277,22 +259,6 @@ func TestSupportsMobileXDCR() bool {
 		return true
 	}
 	return GTestBucketPool.cluster.isServerEnterprise()
-}
-
-// Should tests try to drop GSI indexes before flushing buckets?
-// See SG #3422
-func TestsShouldDropIndexes() bool {
-
-	// First check if the SG_TEST_USE_XATTRS env variable is set
-	dropIndexes := os.Getenv(TestEnvSyncGatewayDropIndexes)
-
-	if strings.EqualFold(dropIndexes, TestEnvSyncGatewayTrue) {
-		return true
-	}
-
-	// Otherwise fallback to hardcoded default
-	return DefaultDropIndexes
-
 }
 
 // TestsDisableGSI returns true if tests should be forced to avoid any GSI-specific code.
@@ -842,14 +808,6 @@ func RequireXattrNotFoundError(t testing.TB, e error) {
 func requireCasMismatchError(t testing.TB, err error) {
 	require.Error(t, err, "Expected an error of type IsCasMismatch %+v\n", err)
 	require.True(t, IsCasMismatch(err), "Expected error of type IsCasMismatch but got %+v\n", err)
-}
-
-// SkipImportTestsIfNotEnabled skips test that exercise import features
-func SkipImportTestsIfNotEnabled(t *testing.T) {
-
-	if !TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
 }
 
 // RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.

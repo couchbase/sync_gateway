@@ -238,14 +238,12 @@ func TestAllDatabaseNames(t *testing.T) {
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
 
-	xattrs := true
 	useViews := base.TestsDisableGSI()
 	dbConfig := DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
 		Name:               "imdb1",
 		AllowEmptyPassword: base.Ptr(true),
 		NumIndexReplicas:   base.Ptr(uint(0)),
-		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
 	_, err := serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -258,7 +256,6 @@ func TestAllDatabaseNames(t *testing.T) {
 		Name:               "imdb2",
 		AllowEmptyPassword: base.Ptr(true),
 		NumIndexReplicas:   base.Ptr(uint(0)),
-		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
 	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -311,14 +308,12 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
-	xattrs := true
 	useViews := base.TestsDisableGSI()
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfig,
 		Name:               databaseName,
 		AllowEmptyPassword: base.Ptr(true),
-		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
 	dbContext, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -843,8 +838,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 						Username: base.TestClusterUsername(),
 						Password: base.TestClusterPassword(),
 					},
-					EnableXattrs: base.Ptr(true),
-					UseViews:     base.Ptr(base.TestsDisableGSI()),
+					UseViews: base.Ptr(base.TestsDisableGSI()),
 				}
 				if scopes {
 					if !base.TestsUseNamedCollections() {
@@ -880,7 +874,6 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 			DbConfig: DbConfig{
 				StartOffline: base.Ptr(true),
 				AutoImport:   true,
-				EnableXattrs: base.Ptr(true),
 			},
 		},
 	})

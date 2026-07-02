@@ -973,7 +973,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	tb1User, tb1Password, _ := tb1.BucketSpec.Auth.GetCredentials()
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
-	xattrs := true
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
 			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
@@ -988,8 +987,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			EnableXattrs: &xattrs,
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
+			UseViews: base.Ptr(base.TestsDisableGSI()),
 		},
 		"db2": {
 			BucketConfig: BucketConfig{
@@ -998,8 +996,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			EnableXattrs: &xattrs,
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
+			UseViews: base.Ptr(base.TestsDisableGSI()),
 		},
 		"db3": {
 			BucketConfig: BucketConfig{
@@ -1008,8 +1005,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb2User,
 				Password: tb2Password,
 			},
-			EnableXattrs: &xattrs,
-			UseViews:     base.Ptr(base.TestsDisableGSI()),
+			UseViews: base.Ptr(base.TestsDisableGSI()),
 		},
 	}
 

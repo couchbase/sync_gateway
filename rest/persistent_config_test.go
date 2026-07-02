@@ -338,7 +338,6 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 
 func TestImportFilterEndpoint(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t) // import tests don't work without xattrs
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -1355,7 +1354,6 @@ func getTestDatabaseConfig(bucketName string, dbName string, scopesConfig Scopes
 }
 
 func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) DbConfig {
-	enableXattrs := true
 	dbConfig := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: &bucketName,
@@ -1363,8 +1361,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 		Index: &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
 		},
-		EnableXattrs: &enableXattrs,
-		Scopes:       scopesConfig,
+		Scopes: scopesConfig,
 	}
 	if scopesConfig != nil {
 		dbConfig.Scopes = scopesConfig

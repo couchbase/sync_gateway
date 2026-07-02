@@ -340,7 +340,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	// tests must create their own databases in persistent mode
 	if !rt.PersistentConfig {
-		useXattrs := base.TestUseXattrs()
 
 		if rt.DatabaseConfig == nil {
 			// If no db config was passed in, create one
@@ -380,7 +379,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.Name == "" {
 			rt.DatabaseConfig.Name = "db"
 		}
-		rt.DatabaseConfig.EnableXattrs = &useXattrs
 		if rt.AllowConflicts {
 			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
 		}
@@ -405,7 +403,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AutoImport = *rt.AutoImport
 		}
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
-		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
+		if rt.DatabaseConfig.ImportPartitions == nil && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
 		}
@@ -2552,7 +2550,6 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 		BucketConfig: BucketConfig{
 			Bucket: base.Ptr(rt.Bucket().GetName()),
 		},
-		EnableXattrs: base.Ptr(base.TestUseXattrs()),
 	}
 	if base.TestsDisableGSI() {
 		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections

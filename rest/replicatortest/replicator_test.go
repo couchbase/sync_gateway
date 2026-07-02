@@ -7287,7 +7287,6 @@ func TestGroupIDReplications(t *testing.T) {
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.Ptr(activeBucket.GetName()),
 			},
-			EnableXattrs: base.Ptr(true),
 		}
 		if !base.UnitTestUrlIsWalrus() {
 			dbConfig.UseViews = base.Ptr(base.TestsDisableGSI())

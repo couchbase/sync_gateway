@@ -52,8 +52,9 @@ func TestBootstrapRefCounting(t *testing.T) {
 		assert.Equal(c, int32(GTestBucketPool.numBuckets), GTestBucketPool.stats.TotalBucketInitCount.Load())
 	}, 2*time.Minute, 5*time.Millisecond) // Wait for bucket pool to be initialized, since GetConfigBuckets requires equal buckets to TestBucketPool.numBuckets
 
+	bootstrapConfigInXattrs := true
 	var perBucketCredentialsConfig map[string]*CredentialsConfig
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), perBucketCredentialsConfig, TestUseXattrs(), false, CachedClusterConnections)
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), perBucketCredentialsConfig, bootstrapConfigInXattrs, false, CachedClusterConnections)
 	require.NoError(t, err)
 	defer cluster.Close()
 	require.NotNil(t, cluster)
@@ -145,7 +146,9 @@ func newTestBootstrapConnection(t *testing.T) BootstrapConnection {
 		t.Cleanup(cluster.Close)
 		return cluster
 	}
-	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), nil, TestUseXattrs(), false, CachedClusterConnections)
+
+	bootstrapConfigInXattrs := true
+	cluster, err := NewCouchbaseCluster(ctx, TestClusterSpec(t), nil, bootstrapConfigInXattrs, false, CachedClusterConnections)
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 	return cluster
