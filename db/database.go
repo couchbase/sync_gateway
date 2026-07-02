@@ -924,7 +924,6 @@ func (dbCtx *DatabaseContext) GetInUseIndexesFromDefs(indexDefs map[SGIndexType]
 		options := InitializeIndexOptions{
 			NumPartitions:       dbCtx.numIndexPartitions(),
 			NumReplicas:         dbCtx.Options.NumIndexReplicas,
-			UseXattrs:           dbCtx.UseXattrs(),
 			LegacySyncDocsIndex: dbCtx.UseLegacySyncDocsIndex(),
 		}
 		if base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {

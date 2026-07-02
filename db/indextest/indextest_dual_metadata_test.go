@@ -42,7 +42,6 @@ func TestDualMetadataStoreIndexes(t *testing.T) {
 	indexOptions := db.InitializeIndexOptions{
 		NumReplicas:                0,
 		LegacySyncDocsIndex:        false,
-		UseXattrs:                  base.TestUseXattrs(),
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 		MetadataIndexes:            db.IndexesAll,
@@ -115,14 +114,12 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 	setupIndexes(t, bucket, testIndexCreationOptions{
 		numPartitions:          db.DefaultNumIndexPartitions,
 		useLegacySyncDocsIndex: false,
-		useXattrs:              true,
 	})
 
 	// Initialise principal indexes on BOTH the primary and fallback metadata stores.
 	indexOptions := db.InitializeIndexOptions{
 		NumReplicas:                0,
 		LegacySyncDocsIndex:        false,
-		UseXattrs:                  true,
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 	}
@@ -237,14 +234,12 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 	setupIndexes(t, bucket, testIndexCreationOptions{
 		numPartitions:          db.DefaultNumIndexPartitions,
 		useLegacySyncDocsIndex: false,
-		useXattrs:              true,
 	})
 
 	// Initialise principal indexes on BOTH the primary and fallback metadata stores.
 	indexOptions := db.InitializeIndexOptions{
 		NumReplicas:                0,
 		LegacySyncDocsIndex:        false,
-		UseXattrs:                  true,
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 	}
@@ -331,14 +326,12 @@ func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
 	setupIndexes(t, bucket, testIndexCreationOptions{
 		numPartitions:          db.DefaultNumIndexPartitions,
 		useLegacySyncDocsIndex: false,
-		useXattrs:              true,
 	})
 
 	// Initialise principal indexes on both the primary and fallback metadata stores.
 	indexOptions := db.InitializeIndexOptions{
 		NumReplicas:                0,
 		LegacySyncDocsIndex:        false,
-		UseXattrs:                  true,
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 	}
@@ -454,13 +447,11 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 	setupIndexes(t, bucket, testIndexCreationOptions{
 		numPartitions:          db.DefaultNumIndexPartitions,
 		useLegacySyncDocsIndex: false,
-		useXattrs:              true,
 	})
 
 	indexOptions := db.InitializeIndexOptions{
 		NumReplicas:                0,
 		LegacySyncDocsIndex:        false,
-		UseXattrs:                  true,
 		NumPartitions:              db.DefaultNumIndexPartitions,
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 	}

@@ -360,7 +360,6 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		}
 		tbp.Logf(ctx, "creating SG bucket indexes")
 		options := InitializeIndexOptions{
-			UseXattrs:                  base.TestUseXattrs(),
 			NumReplicas:                0,
 			WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 			LegacySyncDocsIndex:        false,

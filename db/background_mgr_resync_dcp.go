@@ -850,7 +850,6 @@ func initializePrincipalDocsIndex(ctx context.Context, db *DatabaseContext) erro
 		WaitForIndexesOnlineOption: base.WaitForIndexesDefault,
 		NumReplicas:                db.Options.NumIndexReplicas,
 		MetadataIndexes:            IndexesPrincipalOnly,
-		UseXattrs:                  db.UseXattrs(),
 		NumPartitions:              db.numIndexPartitions(),
 	}
 

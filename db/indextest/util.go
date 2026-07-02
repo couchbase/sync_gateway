@@ -31,7 +31,6 @@ func getDatabaseContextOptions(useLegacySyncDocsIndex bool) db.DatabaseContextOp
 type testIndexCreationOptions struct {
 	numPartitions                uint32
 	useLegacySyncDocsIndex       bool
-	useXattrs                    bool
 	forceSingleDefaultCollection bool
 	numCollections               int // if specified forces the number of collections to be created
 }
@@ -46,7 +45,6 @@ func setupIndexes(t *testing.T, bucket base.Bucket, createOpts testIndexCreation
 	options := db.InitializeIndexOptions{
 		NumReplicas:         0,
 		LegacySyncDocsIndex: createOpts.useLegacySyncDocsIndex,
-		UseXattrs:           createOpts.useXattrs,
 		NumPartitions:       createOpts.numPartitions,
 	}
 	if hasOnlyDefaultDataStore {
@@ -97,6 +95,20 @@ func requireCoveredQuery(t *testing.T, database *db.Database, statement string, 
 	require.Equal(t, isCovered, covered, "query covered by index; expectedToBeCovered: %t, Plan: %s", isCovered, planJSON)
 }
 
+// createOldNonXattrIndexes creates non-xattr SG indexes (e.g. sg_access_1) on each provided datastore,
+// simulating a bucket that was previously used with a non-xattr SG deployment.
+func createOldNonXattrIndexes(t *testing.T, datastores ...base.DataStore) {
+	ctx := base.TestCtx(t)
+	indexNames := []string{"sg_access_1", "sg_allDocs_1", "sg_channels_1", "sg_roleAccess_1"}
+	for _, ds := range datastores {
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		require.True(t, ok)
+		for _, indexName := range indexNames {
+			require.NoError(t, n1qlStore.CreateIndex(ctx, indexName, "val", "val > 3", &base.N1qlIndexOptions{}))
+		}
+	}
+}
+
 // setupIndexAndDB creates the indexes for a database like rest.DatabaseInitManager and creates an online test database. The bucket and database will be cleaned up by testing.T.Cleanup.
 func setupIndexAndDB(t *testing.T, opts testIndexCreationOptions) *db.Database {
 	bucket := base.GetTestBucket(t)
@@ -113,7 +125,7 @@ func setupIndexAndDB(t *testing.T, opts testIndexCreationOptions) *db.Database {
 	} else {
 		dbOptions.Scopes = db.GetScopesOptions(t, bucket, numCollections)
 	}
-	dbOptions.EnableXattr = opts.useXattrs
+	dbOptions.EnableXattr = base.TestUseXattrs()
 
 	database, ctx := db.CreateTestDatabase(t, bucket, dbOptions)
 

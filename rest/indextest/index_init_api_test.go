@@ -36,9 +36,6 @@ func TestChangeIndexPartitions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test only works against Couchbase Server with GSI enabled")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("To simplify testing to allow for exact string matching on indexes, skip for xattrs")
-	}
 
 	// requires index init for many subtests
 
@@ -353,15 +350,11 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 		db.InitializeIndexOptions{
 			NumReplicas:         0,
 			LegacySyncDocsIndex: true, // force use of legacy sync docs index
-			UseXattrs:           base.TestUseXattrs(),
 			MetadataIndexes:     db.IndexesMetadataOnly,
 			NumPartitions:       1,
 		}))
 
-	indexNameSuffix := "_1"
-	if base.TestUseXattrs() {
-		indexNameSuffix = "_x1"
-	}
+	indexNameSuffix := "_x1"
 	userIdx := "sg_users" + indexNameSuffix
 	roleIdx := "sg_roles" + indexNameSuffix
 	syncDocsIdx := "sg_syncDocs" + indexNameSuffix
