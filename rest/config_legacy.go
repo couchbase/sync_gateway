@@ -413,7 +413,7 @@ func setupServerConfig(ctx context.Context, args []string) (config *LegacyServer
 
 func SetupAndValidateDatabases(ctx context.Context, databases DbConfigMap) error {
 	for name, dbConfig := range databases {
-		if err := dbConfig.setup(ctx, name, BootstrapConfig{}, nil, nil, false); err != nil {
+		if err := dbConfig.setup(ctx, name, BootstrapConfig{}, nil, nil); err != nil {
 			return err
 		}
 		validateOIDC := false

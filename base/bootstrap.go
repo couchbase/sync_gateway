@@ -110,7 +110,6 @@ type CouchbaseClusterSpec struct {
 type CouchbaseCluster struct {
 	server                      string
 	clusterOptions              gocb.ClusterOptions
-	forcePerBucketAuth          bool // Forces perBucketAuth authenticators to be used to connect to the bucket
 	perBucketAuth               map[string]*gocb.Authenticator
 	bucketConnectionMode        BucketConnectionMode    // Whether to cache cluster connections
 	cachedClusterConnection     *gocb.Cluster           // Cached cluster connection, should only be used by GetConfigBuckets
@@ -236,7 +235,7 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 // _system._mobile is the source of truth and reads transparently fall back to _default._default
 // for any keys that have not yet been migrated; when false, _default._default is used unconditionally.
 func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
-	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
+	perBucketCreds PerBucketCredentialsConfig,
 	useXattrConfig bool, useSystemMetadataCollection bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
 	securityConfig, err := GoCBv2SecurityConfig(ctx, Ptr(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
 	if err != nil {
@@ -273,7 +272,6 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 
 	cbCluster := &CouchbaseCluster{
 		server:                      clusterSpec.Server,
-		forcePerBucketAuth:          forcePerBucketAuth,
 		perBucketAuth:               perBucketAuth,
 		clusterOptions:              clusterOptions,
 		bucketConnectionMode:        bucketMode,
@@ -1115,8 +1113,6 @@ func defaultCollectionExists(b *gocb.Bucket) (bool, error) {
 func (cc *CouchbaseCluster) GetClusterConnectionForBucket(ctx context.Context, bucketName string) (connection *gocb.Cluster, teardownFn func(), err error) {
 	if bucketAuth, set := cc.perBucketAuth[bucketName]; set {
 		connection, err = cc.connect(bucketAuth)
-	} else if cc.forcePerBucketAuth {
-		return nil, nil, fmt.Errorf("unable to get bucket %q since credentials are not defined in bucket_credentials", MD(bucketName).Redact())
 	} else {
 		connection, err = cc.connect(nil)
 	}

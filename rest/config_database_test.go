@@ -61,6 +61,7 @@ func TestDefaultDbConfigFieldCoverage(t *testing.T) {
 		"DeprecatedRevCacheSize": "deprecated",
 		"NumIndexReplicas":       "deprecated",
 		"FeedType":               "deprecated",
+		"Suspendable":            "deprecated",
 		"Users":                  "legacy config",
 		"Roles":                  "legacy config",
 	}
