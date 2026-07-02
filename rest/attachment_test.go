@@ -2841,7 +2841,7 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 // The "CAS failure" subtest deterministically injects a CAS mismatch by running MigrateAttachmentMetadata
 // inside the LeakyBucket UpdateCallback — which fires after the SG write callback builds its stubs but
 // before the actual write to the datastore. This changes the document CAS, causing WriteUpdateWithXattrs
-// to retry. The fix in storeAttachments (ver-field guard) must preserve revpos=2 on that retry.
+// to retry. The maps.Clone reset in the relevant Put/PutExisting* codepaths must preserve revpos=2 on that retry.
 func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		AutoImport:        base.Ptr(false),
