@@ -307,7 +307,7 @@ func newMigrationPauser(rt *rest.RestTester, docID string) *migrationPauser {
 			return
 		}
 		close(p.blocked)
-		<-p.blockCh
+		base.RequireChanClosed(p.t, p.blockCh)
 	})
 	return p
 }

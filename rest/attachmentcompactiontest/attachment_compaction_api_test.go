@@ -497,7 +497,7 @@ func newCompactionPauser(rt *rest.RestTester) *compactionPauser {
 			return nil
 		}
 		close(p.blocked)
-		<-p.blockCh
+		base.RequireChanClosed(p.t, p.blockCh)
 		return nil
 	})
 	return p

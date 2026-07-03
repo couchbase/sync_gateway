@@ -4298,7 +4298,7 @@ func newResyncPauser(rt *rest.RestTester) *resyncPauser {
 			return
 		}
 		close(p.blocked)
-		<-p.blockCh
+		base.RequireChanClosed(p.t, p.blockCh)
 	})
 	return p
 }

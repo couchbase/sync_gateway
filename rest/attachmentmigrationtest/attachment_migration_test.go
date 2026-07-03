@@ -346,7 +346,7 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 			return
 		}
 		close(blocked)
-		<-blockCh
+		base.RequireChanClosed(t, blockCh)
 	})
 
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
@@ -357,7 +357,7 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Wait until migration is blocked mid-UpdateXattrs, guaranteeing Running state.
-	<-blocked
+	base.RequireChanClosed(t, blocked)
 
 	err = rt.GetDatabase().AttachmentMigrationManager.Start(ctx, nil)
 	assert.Error(t, err)
