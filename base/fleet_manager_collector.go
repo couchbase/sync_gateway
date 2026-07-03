@@ -11,10 +11,13 @@ licenses/APL2.txt.
 package base
 
 import (
+	"context"
+	"os"
 	"runtime"
 	"strconv"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
+	"github.com/elastic/gosigar"
 )
 
 const ProductInfoName = "sync_gateway"
@@ -37,11 +40,11 @@ type FleetManagerProductInfo struct {
 }
 
 type FleetManagerCollectorSettings struct {
-	IntervalSeconds int  `json:"reportIntervalHours"`
-	Enabled         bool `json:"enabled"`
+	ReportingInterval int  `json:"reportIntervalHours"`
+	Enabled           bool `json:"enabled"`
 }
 
-func CollectSGWFleetManagerMetrics(nodeUID, hostname string) SyncGatewayFleetManagerMetrics {
+func CollectSGWFleetManagerMetrics(ctx context.Context, nodeUID, hostname string) SyncGatewayFleetManagerMetrics {
 	edition := "Enterprise"
 	if !IsEnterpriseEdition() {
 		edition = "Community"
@@ -49,10 +52,10 @@ func CollectSGWFleetManagerMetrics(nodeUID, hostname string) SyncGatewayFleetMan
 	productInfo := FleetManagerProductInfo{
 		Edition: edition,
 		Version: ProductVersion.ReleaseVersionString(),
-		Name:    "sync_gateway",
+		Name:    ProductInfoName,
 	}
 
-	sysInfo := getSystemInfo()
+	sysInfo := getSystemInfo(ctx)
 
 	return SyncGatewayFleetManagerMetrics{
 		InstanceID:    nodeUID,
@@ -74,22 +77,37 @@ type systemInfo struct {
 	uptimeSeconds int64
 }
 
-func getSystemInfo() systemInfo {
-	totalRam := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().SystemMemoryTotal.Value()
-	cgroupLimit, err := memlimit.FromCgroup()
-	if err == nil {
-		// cgroup in place report this instead
-		totalRam = int64(cgroupLimit)
+func getSystemInfo(ctx context.Context) systemInfo {
+	var residentBytes, totalRam int64
+
+	// Sample process/system memory directly here rather than reading the ResourceUtilizationStats
+	// expvars: those are only populated by the stats-logger ticker, so at startup (before its first
+	// tick) and whenever the stats logger is disabled they would still read zero when this report is
+	// sent, yielding a phone-home record with ramBytesUsed/ramBytesTotal of 0.
+	procMem := gosigar.ProcMem{}
+	if err := procMem.Get(os.Getpid()); err != nil {
+		WarnfCtx(ctx, "Could not read process memory for fleet manager metrics: %v", err)
+	} else {
+		residentBytes = int64(procMem.Resident)
 	}
-	goArch := runtime.GOARCH
-	goOS := runtime.GOOS
-	osVersion := goOS + "-" + goArch
+
+	if cgroupLimit, err := memlimit.FromCgroup(); err == nil {
+		// A cgroup memory limit, when present, is the meaningful "total" for this instance.
+		totalRam = int64(cgroupLimit)
+	} else {
+		sysMem := gosigar.Mem{}
+		if err := sysMem.Get(); err != nil {
+			WarnfCtx(ctx, "Could not read system memory for fleet manager metrics: %v", err)
+		} else {
+			totalRam = int64(sysMem.Total)
+		}
+	}
 
 	return systemInfo{
 		uptimeSeconds: SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.ToSeconds(),
 		cpuCores:      runtime.NumCPU(),
-		ramBytesUsed:  strconv.FormatInt(SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ProcessMemoryResident.Value(), 10),
+		ramBytesUsed:  strconv.FormatInt(residentBytes, 10),
 		ramBytesTotal: strconv.FormatInt(totalRam, 10),
-		osVersion:     osVersion,
+		osVersion:     runtime.GOOS + "-" + runtime.GOARCH,
 	}
 }

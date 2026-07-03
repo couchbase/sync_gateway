@@ -173,11 +173,11 @@ const fleetManagerMetricsInterval = 1 * time.Hour // todo: CBG-5525 make this co
 func (sc *ServerContext) reportFleetManagerMetrics(ctx context.Context) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		base.WarnfCtx(ctx, "Could not read hostname for node UID fingerprint: %v", err)
+		base.WarnfCtx(ctx, "Could not read hostname for fleet manager metrics: %v", err)
 	}
 
 	report := func() {
-		metrics := base.CollectSGWFleetManagerMetrics(sc.NodeUID, hostname)
+		metrics := base.CollectSGWFleetManagerMetrics(ctx, sc.NodeUID, hostname)
 		if err := sc.sendFleetManagerMetrics(ctx, metrics); err != nil {
 			base.WarnfCtx(ctx, "Could not report fleet manager metrics: %v", err)
 		}
@@ -223,6 +223,7 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 	}
 	switch statusCode {
 	case http.StatusNoContent:
+		// success
 		return nil
 	case http.StatusNotFound:
 		// Server doesn't expose the collector endpoint (too old, or collector removed). Skip quietly
