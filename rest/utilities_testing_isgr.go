@@ -88,12 +88,14 @@ func (runner *SGRTestRunner) Run(test func(t *testing.T)) {
 
 	if !runner.SkipSubtest[RevtreeSubtestName] {
 		runner.t.Run(RevtreeSubtestName, func(t *testing.T) {
+			t.Helper()
 			runner.SupportedSubprotocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
 			test(t)
 		})
 	}
 	if !runner.SkipSubtest[VersionVectorSubtestName] {
 		runner.t.Run(VersionVectorSubtestName, func(t *testing.T) {
+			t.Helper()
 			runner.SupportedSubprotocols = []string{db.CBMobileReplicationV4.SubprotocolString()}
 			test(t)
 		})
@@ -111,6 +113,7 @@ func (runner *SGRTestRunner) RunSubprotocolV3(test func(t *testing.T)) {
 	}()
 	if !runner.SkipSubtest[RevtreeSubtestName] {
 		runner.t.Run(RevtreeSubtestName, func(t *testing.T) {
+			t.Helper()
 			runner.SupportedSubprotocols = []string{db.CBMobileReplicationV3.SubprotocolString()}
 			test(t)
 		})
@@ -130,6 +133,7 @@ func (runner *SGRTestRunner) RunSubprotocolV4(test func(t *testing.T)) {
 
 	if !runner.SkipSubtest[VersionVectorSubtestName] {
 		runner.t.Run(VersionVectorSubtestName, func(t *testing.T) {
+			t.Helper()
 			runner.SupportedSubprotocols = []string{db.CBMobileReplicationV4.SubprotocolString()}
 			test(t)
 		})
