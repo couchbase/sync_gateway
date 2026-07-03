@@ -1286,12 +1286,11 @@ func TestCollectStackTraceFile(t *testing.T) {
 	require.ElementsMatch(t, files, expectedFiles)
 }
 
-/// need ot get these test behind server versiosn that support light house (may get 401 on endpioints that don;t exist on server versions)
-
 func TestSendingMetricsToNsServerCollector(t *testing.T) {
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -1330,6 +1329,7 @@ func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()

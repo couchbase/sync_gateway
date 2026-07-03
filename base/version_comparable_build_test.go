@@ -258,6 +258,43 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 	}
 }
 
+func TestAtLeastReleaseVersion(t *testing.T) {
+	// Feature shipped across three release trains at different patch levels.
+	minVersions := []string{"7.6.12", "8.0.3", "8.1.0"}
+	testCases := []struct {
+		version   string
+		qualifies bool
+	}{
+		{version: "7.6.11", qualifies: false},
+		{version: "7.6.12", qualifies: true},
+		{version: "7.6.13", qualifies: true},
+		{version: "8.0.2", qualifies: false},
+		{version: "8.0.3", qualifies: true},
+		{version: "8.0.4", qualifies: true},
+		{version: "8.1.0", qualifies: true},
+		{version: "8.1.5", qualifies: true},
+		{version: "8.2.0", qualifies: true},
+		{version: "9.0.0", qualifies: true},
+		{version: "7.6.0", qualifies: false},
+		{version: "7.2.0", qualifies: false},
+	}
+
+	mins := make([]*ComparableBuildVersion, 0, len(minVersions))
+	for _, v := range minVersions {
+		parsed, err := NewComparableBuildVersionFromString(v)
+		require.NoError(t, err)
+		mins = append(mins, parsed)
+	}
+
+	for _, test := range testCases {
+		t.Run(test.version, func(t *testing.T) {
+			version, err := NewComparableBuildVersionFromString(test.version)
+			require.NoError(t, err)
+			require.Equal(t, test.qualifies, version.AtLeastReleaseVersion(mins...))
+		})
+	}
+}
+
 func BenchmarkComparableBuildVersion(b *testing.B) {
 	const str = "8:7.6.5.4@3-EE"
 
