@@ -534,22 +534,20 @@ func TestDistributedResync(t *testing.T) {
 
 	t.Skip("Long-running dev-time test used to test multi-node cbgt rebalance during resync")
 
-	// Create first rest tester with persistent config
-	rt1 := rest.NewRestTesterPersistentConfig(t)
-	defer rt1.Close()
-
-	// Create second RT targeting the same bucket, with matching groupID and config polling enabled
-	rt2Config := &rest.RestTesterConfig{
-		GroupID: &rt1.ServerContext().Config.Bootstrap.ConfigGroupID,
+	ctx := base.TestCtx(t)
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{
+		NumNodes: 2,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
 			// enable config polling
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
 		},
-		CustomTestBucket: rt1.TestBucket.NoCloseClone(),
-		PersistentConfig: true,
-	}
-	rt2 := rest.NewRestTester(t, rt2Config)
-	defer rt2.Close()
+	})
+	defer rtc.Close(ctx)
+
+	rt1 := rtc.Node(0)
+	rt2 := rtc.Node(1)
+
+	rest.RequireStatus(t, rt1.CreateDatabase("db", rt1.NewDbConfig()), http.StatusCreated)
 
 	// wait for db to be online on rt1
 	rt1.WaitForDBState(db.RunStateString[db.DBOnline])
