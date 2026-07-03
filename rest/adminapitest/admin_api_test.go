@@ -814,14 +814,24 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 
+	// Set up a pauser for the reset run so we can observe "running" before it completes.
+	// The reset resync calls WriteUpdateWithXattrs for every user doc (even when unchanged),
+	// so the pauser fires. All docs are on vBucket 0, ensuring only one DCP worker fires the callback.
+	pauser2 := newResyncPauser(rt)
+
 	// reset the resync process through the endpoint
 	response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
 	rest.RequireStatus(t, response, http.StatusOK)
+
+	// Block until the reset resync is genuinely in-flight, then verify running state.
+	pauser2.WaitUntilBlocked()
 
 	// grab new resync status from reset run, assert the resync id is not the same as the first
 	// run and that the docs processed is equal to number of docs we have created
 	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
+
+	pauser2.Release()
 
 	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
