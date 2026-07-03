@@ -410,6 +410,12 @@ func (b *LeakyBucket) getSetXattrCallback() func(string) error {
 	return b._config.SetXattrCallback
 }
 
+func (b *LeakyBucket) setSetXattrCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.SetXattrCallback = fn
+}
+
 func (b *LeakyBucket) getN1QLQueryCallback() func(context.Context, string, map[string]any, ConsistencyMode, bool) error {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()

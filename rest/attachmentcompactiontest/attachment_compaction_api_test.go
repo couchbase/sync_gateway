@@ -11,9 +11,9 @@ package attachmentcompactiontest
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
@@ -57,14 +57,15 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	// Create some legacy attachments to be marked but not compacted
-	for i := range 3 {
+	// Create some legacy attachments to be marked but not compacted.
+	// Bodies are chosen so their _sync:att:sha1-<digest> keys all land on vBucket 0, ensuring
+	// the mark phase processes them serially on a single DCP worker (CBS). This prevents
+	// concurrent SetXattr calls from different workers from racing to close the pauser channel.
+	attBodies := base.VBucket0AttachmentBodies(t, rt.Bucket(), 3)
+	for i, attBody := range attBodies {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
-		attBody := map[string]any{"value": strconv.Itoa(i)}
-		attJSONBody, err := base.JSONMarshal(attBody)
-		require.NoError(t, err)
-		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attJSONBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attBody)
 	}
 
 	// Create some 'unmarked' attachments
@@ -125,10 +126,11 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+	// Attachment Compaction only runs on _default._default
+	rt1 := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		CustomTestBucket: noCloseTB,
 	})
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+	rt2 := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 	})
 	defer rt2.Close()
@@ -249,7 +251,8 @@ func TestAttachmentCompactionReset(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+	// Attachment Compaction only runs on _default._default
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
@@ -343,7 +346,7 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 
 	// Create attachment with no doc reference
@@ -364,6 +367,10 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 	assert.NotEqual(t, 0, firstStartTimeStat)
 	assert.Equal(t, int64(1), databaseStats.NumAttachmentsCompacted.Value())
 
+	// CompactionAttachmentStartTime has second granularity; sleep to ensure the second run starts
+	// in a different second so the stat value strictly increases.
+	time.Sleep(time.Second)
+
 	// Start compaction again
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -380,7 +387,8 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+	// Attachment Compaction only runs on _default._default
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
@@ -465,6 +473,9 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 
 // compactionPauser blocks the attachment compaction mark phase at the first attachment it encounters,
 // letting tests assert compaction is genuinely in-flight before issuing stop or reset commands.
+// Tests using this pauser must ensure all legacy attachment bodies are chosen via
+// base.VBucket0AttachmentBodies so their _sync:att: keys land on vBucket 0, keeping the mark
+// phase serial on a single DCP worker.
 type compactionPauser struct {
 	t       testing.TB
 	blocked chan struct{}

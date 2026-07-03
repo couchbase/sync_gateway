@@ -390,9 +390,7 @@ func (lds *LeakyDataStore) SetUpdateXattrsCallback(callback func(key string)) {
 }
 
 func (lds *LeakyDataStore) SetXattrCallback(callback func(key string) error) {
-	lds.bucket.configLock.Lock()
-	defer lds.bucket.configLock.Unlock()
-	lds.bucket._config.SetXattrCallback = callback
+	lds.bucket.setSetXattrCallback(callback)
 }
 
 func (lds *LeakyDataStore) SetWriteUpdateWithXattrsCallback(callback func(key string)) {

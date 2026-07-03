@@ -13,6 +13,8 @@ package base
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -913,14 +915,18 @@ func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (vbNo uint
 	return sgbucket.VBHash(key, maxVbNo), nil
 }
 
-// VBucket0DocIDs returns 5 doc IDs that all hash to vBucket 0 for every supported vBucket count
+// VBucket0DocIDs returns count doc IDs that all hash to vBucket 0 for every supported vBucket count
 // (64, 100, 128, 1024). Placing multiple test docs on the same vBucket ensures they are processed
 // sequentially by a single DCP worker on CBS, which is required when a test pauses one doc and
 // needs the remaining docs to stay unprocessed until the pause is released.
 //
 // Keys were pre-computed using sgbucket.VBHash. On CBS, each key is verified at runtime.
-func VBucket0DocIDs(t testing.TB, bucket Bucket) []string {
-	keys := []string{"abbacomes", "baba", "ob", "rz", "aex"}
+// count must be between 1 and 5 inclusive.
+func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
+	all := []string{"abbacomes", "baba", "ob", "rz", "aex"}
+	require.GreaterOrEqual(t, count, 1, "VBucket0DocIDs: count must be at least 1")
+	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
+	keys := all[:count]
 	ctx := TestCtx(t)
 	for _, key := range keys {
 		vbNo, err := GetVbucketForKey(ctx, bucket, key)
@@ -931,6 +937,39 @@ func VBucket0DocIDs(t testing.TB, bucket Bucket) []string {
 		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
 	}
 	return keys
+}
+
+// VBucket0AttachmentBodies returns count attachment body byte slices whose v1 attachment data
+// keys (_sync:att:sha1-<digest>) all hash to vBucket 0 for every supported vBucket count
+// (64, 100, 128, 1024). Using these bodies with CreateLegacyAttachmentDoc ensures the
+// SetXattrs calls made by the compaction mark phase are processed by a single DCP worker
+// on CBS, preventing concurrent double-close of test synchronisation channels.
+//
+// Bodies were pre-computed by brute-force search. On CBS, each derived key is verified at runtime.
+// count must be between 1 and 5 inclusive.
+func VBucket0AttachmentBodies(t testing.TB, bucket Bucket, count int) [][]byte {
+	all := [][]byte{
+		[]byte("att1224"),
+		[]byte("att1231"),
+		[]byte("att1763"),
+		[]byte("att1906"),
+		[]byte("att2328"),
+	}
+	require.GreaterOrEqual(t, count, 1, "VBucket0AttachmentBodies: count must be at least 1")
+	require.LessOrEqual(t, count, len(all), "VBucket0AttachmentBodies: count %d exceeds the %d pre-computed bodies", count, len(all))
+	bodies := all[:count]
+	ctx := TestCtx(t)
+	for _, body := range bodies {
+		h := sha1.Sum(body)
+		attKey := AttPrefix + "sha1-" + base64.StdEncoding.EncodeToString(h[:])
+		vbNo, err := GetVbucketForKey(ctx, bucket, attKey)
+		if err != nil {
+			// Not a CBS bucket (e.g. Rosmar); static list was verified at generation time.
+			break
+		}
+		require.Equal(t, uint32(0), vbNo, "attachment key %q should map to vBucket 0 (got %d)", attKey, vbNo)
+	}
+	return bodies
 }
 
 // MoveDocument moves the document from src to dst

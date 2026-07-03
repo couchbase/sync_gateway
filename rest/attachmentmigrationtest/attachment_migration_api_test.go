@@ -186,13 +186,17 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	_ = rt1.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 	_ = rt2.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
-	// add some docs for migration
-	addDocsForMigrationProcess(t, ctx, collection)
+	// Create legacy attachment docs all on vBucket 0. This ensures the DCP worker for vBucket 0
+	// processes them sequentially: blocking the first doc keeps the rest queued, so doneChan
+	// cannot close before the terminator fires and the select can reliably pick "stopped".
+	vb0IDs := base.VBucket0DocIDs(t, rt1.Bucket(), 5)
+	for _, id := range vb0IDs {
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, id, []byte(`{}`), "att", []byte("att body"))
+	}
 
-	// Pause migration at the first legacy doc so stop arrives while it is genuinely in-flight.
+	// Pause migration at the first vBucket 0 doc so stop arrives while it is genuinely in-flight.
 	// noCloseTB is already a LeakyBucket so its datastore satisfies the LeakyDataStore check.
-	docID := fmt.Sprintf("%s_0", t.Name())
-	pauser := newMigrationPauser(rt1, docID)
+	pauser := newMigrationPauser(rt1, vb0IDs[0])
 
 	// kick off migration on node 1
 	resp := rt1.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
