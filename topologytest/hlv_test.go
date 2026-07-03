@@ -198,34 +198,95 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, d
 	base.InfofCtx(ctx, base.KeySGTest, "found matching tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 }
 
+// conflictingWrite pairs a document version with the peer that wrote it, so that the expected winner of
+// conflict resolution can be determined even when two peers generate colliding HLC values.
+type conflictingWrite struct {
+	peer    Peer
+	version BodyAndVersion
+}
+
+// expectedConflictWinner returns the document version expected to win conflict resolution across a set of
+// conflicting writes, provided in the order they were written.
+//
+// Each peer generates its current-version value from its own Hybrid Logical Clock. The HLC tracks the wall
+// clock but only to ~65µs resolution (sgbucket.HybridLogicalClock.Now masks off the low 16 bits), so although
+// the writes are issued sequentially - and the last writer therefore normally has the strictly-greatest value
+// and wins - two peers that write within the same clock window generate the identical value, differing only by
+// source ID. That is a genuine conflict whose winner is decided by conflict resolution rather than by write
+// order.
+//
+// Only Couchbase Lite (v4) peers can flip the winner on a collision, and this function only adjusts for them:
+//   - Sync Gateway peers reject conflicting writes rather than resolving them.
+//   - Couchbase Server peers under rosmar draw their CAS from a process-global Hybrid Logical Clock
+//     (rosmar's package-level hlc), so it is strictly unique across buckets and two CBS peers never generate a
+//     colliding value in the first place. (Against a real Couchbase Server the clusters have independent
+//     clocks and CAS can collide, but that genuine conflict is then resolved by XDCR, not here.)
+//
+// On a value tie the CBL peer keeps its local version during last-write-wins resolution, so if the last writer
+// is not a CBL peer but a CBL peer generated the same winning value, that CBL peer is the expected winner.
+func expectedConflictWinner(t *testing.T, writes []conflictingWrite) BodyAndVersion {
+	winnerIdx := len(writes) - 1
+	winner := writes[winnerIdx]
+	winningValue := winner.version.docMeta.CV(t).Value
+
+	// On an HLC value collision a CBL peer's local-wins resolution beats a non-CBL last writer that shares
+	// the winning value.
+	if winner.peer.Type() != PeerTypeCouchbaseLite {
+		for i, w := range writes {
+			if w.peer.Type() == PeerTypeCouchbaseLite && w.version.docMeta.CV(t).Value == winningValue {
+				base.InfofCtx(base.TestCtx(t), base.KeySGTest, "HLC value collision on doc %s: last writer %s and CBL peer %s share CV value %d; expecting CBL peer to win conflict resolution", winner.version.docMeta.DocID, winner.version.updatePeer, w.version.updatePeer, winningValue)
+				winnerIdx, winner = i, w
+				break
+			}
+		}
+	}
+
+	// A non-CBL winner keeps its creation-time HLV: the CBL peer adopts the remote version during resolution,
+	// so the winner's HLV is never rewritten and its previous versions stay empty.
+	if winner.peer.Type() != PeerTypeCouchbaseLite {
+		return winner.version
+	}
+
+	// A CBL winner performs the conflict resolution itself (local wins), folding every other conflicting
+	// version into its previous versions. The winner's creation-time snapshot predates that resolution and
+	// has empty previous versions, so reconstruct the converged HLV (cv = winner, pv = the losing versions)
+	// for the full-HLV assertions made on non-CBL peers. CBL peers only assert on CV, which is unchanged.
+	mergedHLV := db.NewHybridLogicalVector()
+	require.NoError(t, mergedHLV.AddVersion(winner.version.docMeta.CV(t)))
+	for i, w := range writes {
+		if i == winnerIdx {
+			continue
+		}
+		losingCV := w.version.docMeta.CV(t)
+		mergedHLV.SetPreviousVersion(losingCV.SourceID, losingCV.Value)
+	}
+	converged := winner.version
+	converged.docMeta = DocMetadata{DocID: winner.version.docMeta.DocID, HLV: mergedHLV}
+	return converged
+}
+
 // createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
-// returns the last peer to have a doc created on it
-func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
-	var documentVersion []BodyAndVersion
+// returns the document version expected to win conflict resolution (see expectedConflictWinner).
+func createConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (winner BodyAndVersion) {
+	var writes []conflictingWrite
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
 		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
-		documentVersion = append(documentVersion, docVersion)
+		writes = append(writes, conflictingWrite{peer: peer, version: docVersion})
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
-
-	return lastWrite
+	return expectedConflictWinner(t, writes)
 }
 
 // updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations, then
-// returns the last peer to have a doc updated on it.
-func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
-	var documentVersion []BodyAndVersion
+// returns the document version expected to win conflict resolution (see expectedConflictWinner).
+func updateConflictingDocs(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) (winner BodyAndVersion) {
+	var writes []conflictingWrite
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
 		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
-		documentVersion = append(documentVersion, docVersion)
+		writes = append(writes, conflictingWrite{peer: peer, version: docVersion})
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
-
-	return lastWrite
+	return expectedConflictWinner(t, writes)
 }
 
 // deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions, then

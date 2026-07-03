@@ -26,7 +26,7 @@ func TestMultiActorConflictCreate(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+			docVersion := createConflictingDocs(t, collectionName, docID, topology)
 			topology.StartReplications()
 			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 		})
@@ -51,14 +51,14 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+			docVersion := createConflictingDocs(t, collectionName, docID, topology)
 
 			topology.StartReplications()
 			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
 			topology.StopReplications()
 
-			docVersion = updateConflictingDocs(collectionName, docID, topology)
+			docVersion = updateConflictingDocs(t, collectionName, docID, topology)
 			topology.StartReplications()
 			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 		})
@@ -80,7 +80,7 @@ func TestMultiActorConflictDelete(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+			docVersion := createConflictingDocs(t, collectionName, docID, topology)
 
 			topology.StartReplications()
 			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
@@ -118,7 +118,7 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 			collectionName, topology := setupTests(t, topologySpec)
 
 			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+			docVersion := createConflictingDocs(t, collectionName, docID, topology)
 
 			topology.StartReplications()
 			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
@@ -131,7 +131,7 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 			waitForConvergingTombstones(t, collectionName, docID, topology)
 			topology.StopReplications()
 
-			resurrectVersion := updateConflictingDocs(collectionName, docID, topology)
+			resurrectVersion := updateConflictingDocs(t, collectionName, docID, topology)
 			topology.StartReplications()
 
 			waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
