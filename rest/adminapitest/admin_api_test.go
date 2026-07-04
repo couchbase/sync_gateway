@@ -4319,7 +4319,13 @@ func (p *resyncPauser) WaitUntilBlocked() {
 }
 
 // Release clears the callback so subsequent documents pass through, then unblocks the paused doc.
+// It asserts that the callback was actually triggered before releasing.
 func (p *resyncPauser) Release() {
+	select {
+	case <-p.blocked:
+	default:
+		require.FailNow(p.t, "resyncPauser.Release called before callback was triggered; call WaitUntilBlocked first")
+	}
 	p.ds.SetWriteUpdateWithXattrsCallback(nil)
 	close(p.blockCh)
 }
