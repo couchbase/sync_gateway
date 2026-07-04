@@ -4295,7 +4295,7 @@ type resyncPauser struct {
 }
 
 func newResyncPauser(rt *rest.RestTester) *resyncPauser {
-	leakyDS, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
+	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
 	p := &resyncPauser{
 		t:       rt.TB(),

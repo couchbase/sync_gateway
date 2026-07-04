@@ -928,13 +928,12 @@ func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
 	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
 	keys := all[:count]
 	ctx := TestCtx(t)
-	for _, key := range keys {
-		vbNo, err := GetVbucketForKey(ctx, bucket, key)
-		if err != nil {
-			// Not a CBS bucket (e.g. Rosmar); static list was verified at generation time.
-			break
+	if _, ok := AsCouchbaseBucketStore(bucket); ok {
+		for _, key := range keys {
+			vbNo, err := GetVbucketForKey(ctx, bucket, key)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
 		}
-		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
 	}
 	return keys
 }
@@ -959,15 +958,14 @@ func VBucket0AttachmentBodies(t testing.TB, bucket Bucket, count int) [][]byte {
 	require.LessOrEqual(t, count, len(all), "VBucket0AttachmentBodies: count %d exceeds the %d pre-computed bodies", count, len(all))
 	bodies := all[:count]
 	ctx := TestCtx(t)
-	for _, body := range bodies {
-		h := sha1.Sum(body)
-		attKey := AttPrefix + "sha1-" + base64.StdEncoding.EncodeToString(h[:])
-		vbNo, err := GetVbucketForKey(ctx, bucket, attKey)
-		if err != nil {
-			// Not a CBS bucket (e.g. Rosmar); static list was verified at generation time.
-			break
+	if _, ok := AsCouchbaseBucketStore(bucket); ok {
+		for _, body := range bodies {
+			h := sha1.Sum(body)
+			attKey := AttPrefix + "sha1-" + base64.StdEncoding.EncodeToString(h[:])
+			vbNo, err := GetVbucketForKey(ctx, bucket, attKey)
+			require.NoError(t, err)
+			require.Equal(t, uint32(0), vbNo, "attachment key %q should map to vBucket 0 (got %d)", attKey, vbNo)
 		}
-		require.Equal(t, uint32(0), vbNo, "attachment key %q should map to vBucket 0 (got %d)", attKey, vbNo)
 	}
 	return bodies
 }

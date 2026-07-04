@@ -294,7 +294,7 @@ type migrationPauser struct {
 }
 
 func newMigrationPauser(rt *rest.RestTester, docID string) *migrationPauser {
-	leakyDS, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
+	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
 	p := &migrationPauser{
 		t:       rt.TB(),
