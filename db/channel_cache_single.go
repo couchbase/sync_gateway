@@ -439,27 +439,29 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 	}
 
 	result := resultFromQuery
-	room := options.Limit - len(result)
-	// For activeOnly+limit, only append cache when the query reached the cache boundary
-	// (queryReachedEnd, reported by the query itself - not inferred from sequence numbers, since
-	// this channel's entries are sparse across the global sequence space and the last entry's
-	// sequence is often below endSeq even when the query fully scanned through to endSeq).
-	// If the query stopped early (gap exists before cacheValidFrom), the changesFeed pagination
-	// loop must fetch that range before cache results are valid.
-	// The overlap entry at cacheValidFrom is deduplicated below when cache is appended.
-	if (options.Limit == 0 || room > 0 || (options.ActiveOnly && queryReachedEnd)) && len(resultFromCache) > 0 {
-		// Concatenate the view & cache results:
-		if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
-			resultFromCache = resultFromCache[1:]
+	if options.ActiveOnly {
+		// The query's row limit doesn't correspond to a count of active entries, so cache is only
+		// safe to append once the query itself confirms (via queryReachedEnd) that it scanned all
+		// the way to the cache boundary - otherwise there may be unscanned active entries in between.
+		if queryReachedEnd && len(resultFromCache) > 0 {
+			if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
+				resultFromCache = resultFromCache[1:]
+			}
+			result = append(result, resultFromCache...)
 		}
-		n := len(resultFromCache)
-		// Limit evaluation only valid when not activeOnly, since view and cache results don't apply activeOnly filtering
-		if !options.ActiveOnly {
+	} else {
+		room := options.Limit - len(result)
+		if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
+			// Concatenate the view & cache results:
+			if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
+				resultFromCache = resultFromCache[1:]
+			}
+			n := len(resultFromCache)
 			if options.Limit > 0 && room > 0 && room < n {
 				n = room
 			}
+			result = append(result, resultFromCache[0:n]...)
 		}
-		result = append(result, resultFromCache[0:n]...)
 	}
 	base.InfofCtx(ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
 

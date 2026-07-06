@@ -91,9 +91,7 @@ func (dbc *DatabaseContext) getQueryHandlerForCollection(collectionID uint32) (C
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 // The second return value, reachedEnd, is true if the query scanned all the way through to endSeq
-// without stopping early due to the activeOnly+limit active-entry count being satisfied first. When
-// reachedEnd is false, there may be additional matching entries between the last returned entry and
-// endSeq that were never scanned - it is unsafe to assume the range up to endSeq is fully covered.
+// rather than stopping early once an activeOnly+limit active-entry count was satisfied.
 func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (entries LogEntries, reachedEnd bool, err error) {
 	if c.dataStore == nil {
 		return nil, false, errors.New("No data store available for channel query")
@@ -164,14 +162,11 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 		// If active-only, loop until either retrieve (limit) active entries, or reach endSeq.  Non-active entries are still
 		// included in the result set for potential cache prepend
 		if activeOnly {
-			// If we've reached limit before exhausting the range up to endSeq, we're done.  Whether
-			// the range beyond the last returned entry has been fully scanned can't be determined by
-			// comparing highSeq to endSeq alone - channels are often sparse, so the last real entry
-			// is frequently well below endSeq even when nothing was missed.  Instead, check whether
-			// this query call itself returned fewer rows than requested: if so, the store had no more
-			// matching entries anywhere in [startSeq, endSeq], regardless of where highSeq landed. If
-			// the call returned exactly `limit` rows, the LIMIT clause may have truncated further
-			// matches, so fall back to the highSeq/endSeq comparison.
+			// If we've reached limit before exhausting the range up to endSeq, we're done. highSeq
+			// alone can't tell us whether the range was fully scanned - channels are often sparse,
+			// so the last entry is frequently well below endSeq even when nothing was missed. But a
+			// query call returning fewer than `limit` rows means the store had no more matching
+			// entries in range, regardless of highSeq; otherwise fall back to the highSeq comparison.
 			if limit != 0 && activeEntryCount >= limit {
 				reachedEnd = queryRowCount < limit || (endSeq > 0 && highSeq >= endSeq)
 				break
