@@ -118,6 +118,21 @@ func runRangeScanSubtests(t *testing.T, ctx context.Context, writeDS sgbucket.Da
 		assert.Empty(t, ids)
 	})
 
+	t.Run("CloseCancellation", func(t *testing.T) {
+		iter, err := scanStore.Scan(ctx, sgbucket.NewRangeScanForPrefix("doc_"), sgbucket.ScanOptions{IDsOnly: true})
+		require.NoError(t, err)
+		for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
+			require.NotEmpty(t, item.ID)
+		}
+		// Clean end-of-stream: no error is reported until Close is called.
+		require.NoError(t, iter.Err())
+		// A clean Close returns nil...
+		require.NoError(t, iter.Close(ctx))
+		// ...but records a cancellation, surfaced by a later Err (gocb parity),
+		// identically on the Rosmar and gocb-backed implementations.
+		require.ErrorIs(t, iter.Err(), sgbucket.ErrScanCancelled)
+	})
+
 	t.Run("PrefixScan", func(t *testing.T) {
 		ids := collectScanIDs(t, ctx, scanStore, sgbucket.NewRangeScanForPrefix("doc_c"), sgbucket.ScanOptions{})
 		require.Equal(t, []string{"doc_c"}, ids)

@@ -92,9 +92,20 @@ func (it *gocbScanResultIterator) Err() error {
 }
 
 func (it *gocbScanResultIterator) Close(_ context.Context) error {
-	closeErr := it.result.Close()
-	if it.err == nil {
-		it.err = closeErr
+	if it.err != nil {
+		// A real error is already recorded (e.g. a content-decode failure);
+		// release the stream but keep the first error.
+		_ = it.result.Close()
+		return it.err
 	}
-	return it.err
+	// gocb's Close returns the first recorded stream error, or nil after
+	// cancelling a clean scan.
+	if closeErr := it.result.Close(); closeErr != nil {
+		it.err = closeErr
+		return it.err
+	}
+	// Clean end-of-stream: record ErrScanCancelled so a later Err reports it
+	// (matching Rosmar) rather than leaking gocb's internal ErrRequestCanceled.
+	it.err = sgbucket.ErrScanCancelled
+	return nil
 }
