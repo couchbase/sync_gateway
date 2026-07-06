@@ -13,6 +13,7 @@ package rest
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +25,31 @@ import (
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
+
+// TestProcessCpuPercentageZeroTotalDelta is a regression test for CBG-3658: when two CPU snapshots
+// report the same total system jiffies (which happens when stats are sampled very frequently, or on
+// platforms with coarse CPU accounting) the percentage calculation must not divide by zero and
+// produce +Inf/NaN - which then breaks stats JSON serialization. It must report 0 instead.
+func TestProcessCpuPercentageZeroTotalDelta(t *testing.T) {
+	previous := &cpuStatsSnapshot{totalTimeJiffies: 1000, procUserTimeJiffies: 10, procSystemTimeJiffies: 5}
+	// Same total jiffies as previous, but the process consumed some time: without a guard this is
+	// 100 * positiveDelta / 0 = +Inf.
+	current := &cpuStatsSnapshot{totalTimeJiffies: 1000, procUserTimeJiffies: 20, procSystemTimeJiffies: 8}
+
+	got := current.cpuPercentageSince(previous)
+	require.False(t, math.IsInf(got, 0), "expected a finite percentage, got +/-Inf")
+	require.False(t, math.IsNaN(got), "expected a finite percentage, got NaN")
+	require.Equal(t, 0.0, got)
+}
+
+// TestProcessCpuPercentageNormal verifies the CPU percentage math over a normal (non-degenerate)
+// sampling interval is unaffected by the CBG-3658 divide-by-zero guard.
+func TestProcessCpuPercentageNormal(t *testing.T) {
+	previous := &cpuStatsSnapshot{totalTimeJiffies: 1000, procUserTimeJiffies: 10, procSystemTimeJiffies: 5}
+	current := &cpuStatsSnapshot{totalTimeJiffies: 1200, procUserTimeJiffies: 40, procSystemTimeJiffies: 15}
+	// deltaProcess = (40-10) + (15-5) = 40, deltaTotal = 200 -> 100 * 40 / 200 = 20.0
+	require.Equal(t, 20.0, current.cpuPercentageSince(previous))
+}
 
 func TestNetworkInterfaceStatsForHostnamePort(t *testing.T) {
 

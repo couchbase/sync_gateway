@@ -114,28 +114,33 @@ func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUti
 	}
 
 	// Otherwise calculate the cpu percentage based on current vs previous
-	prevSnapshot := statsContext.cpuStatsSnapshot
-
-	// The delta in user time for the process
-	deltaUserTimeJiffies := float64(currentSnapshot.procUserTimeJiffies - prevSnapshot.procUserTimeJiffies)
-
-	// The delta in system time for the process
-	deltaSystemTimeJiffies := float64(currentSnapshot.procSystemTimeJiffies - prevSnapshot.procSystemTimeJiffies)
-
-	// The combined delta of user + system time for the process
-	deltaSgProcessTimeJiffies := deltaUserTimeJiffies + deltaSystemTimeJiffies
-
-	// The delta in total time for the machine
-	deltaTotalTimeJiffies := float64(currentSnapshot.totalTimeJiffies - prevSnapshot.totalTimeJiffies)
-
-	// Calculate the CPU usage percentage for the SG process
-	cpuPercentUtilization = 100 * deltaSgProcessTimeJiffies / deltaTotalTimeJiffies
+	cpuPercentUtilization = currentSnapshot.cpuPercentageSince(statsContext.cpuStatsSnapshot)
 
 	// Store the current values as the previous values for the next time this function is called
 	statsContext.cpuStatsSnapshot = currentSnapshot
 
 	return cpuPercentUtilization, nil
 
+}
+
+// cpuPercentageSince returns the process CPU utilization percentage between the previous snapshot and
+// the receiver (current) snapshot. It returns 0 when no measurable system time has elapsed between
+// the two snapshots: without that guard the divide-by-zero yields +Inf/NaN, which then breaks stats
+// JSON serialization (CBG-3658). A zero total delta happens when stats are sampled very frequently,
+// or on platforms whose CPU accounting has coarse granularity.
+func (current *cpuStatsSnapshot) cpuPercentageSince(previous *cpuStatsSnapshot) float64 {
+	// The combined delta of user + system time for the process
+	deltaSgProcessTimeJiffies := float64(current.procUserTimeJiffies-previous.procUserTimeJiffies) +
+		float64(current.procSystemTimeJiffies-previous.procSystemTimeJiffies)
+
+	// The delta in total time for the machine
+	deltaTotalTimeJiffies := float64(current.totalTimeJiffies - previous.totalTimeJiffies)
+	if deltaTotalTimeJiffies <= 0 {
+		return 0
+	}
+
+	// Calculate the CPU usage percentage for the SG process
+	return 100 * deltaSgProcessTimeJiffies / deltaTotalTimeJiffies
 }
 
 func (statsContext *statsContext) addProcessCpuPercentage() error {

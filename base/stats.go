@@ -1263,12 +1263,24 @@ func (s *SgwFloatStat) Add(delta float64) {
 	}
 }
 
+// formatValue renders the stat's current value as a JSON-safe string. JSON has no representation for
+// non-finite floats (+Inf/-Inf/NaN); emitting them as raw bytes ("+Inf" etc.) produces invalid JSON
+// that aborts the entire stats marshal (and the expvar output), so a single degenerate stat could
+// otherwise corrupt the whole serialized blob. Fall back to "0" in that case (CBG-3658).
+func (s *SgwFloatStat) formatValue() string {
+	val := math.Float64frombits(atomic.LoadUint64(&s.Val))
+	if math.IsInf(val, 0) || math.IsNaN(val) {
+		return "0"
+	}
+	return strconv.FormatFloat(val, 'g', -1, 64)
+}
+
 func (s *SgwFloatStat) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.FormatFloat(math.Float64frombits(atomic.LoadUint64(&s.Val)), 'g', -1, 64)), nil
+	return []byte(s.formatValue()), nil
 }
 
 func (s *SgwFloatStat) String() string {
-	return strconv.FormatFloat(math.Float64frombits(atomic.LoadUint64(&s.Val)), 'g', -1, 64)
+	return s.formatValue()
 }
 
 func (s *SgwFloatStat) Value() float64 {
