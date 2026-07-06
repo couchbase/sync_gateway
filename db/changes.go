@@ -486,7 +486,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 				return
 			}
 			// Calculate limit for this iteration
-			if requestLimit == 0 {
+			if requestLimit == 0 || options.ActiveOnly {
 				paginationOptions.Limit = queryLimit
 			} else {
 				remainingLimit := requestLimit - itemsSent
@@ -534,9 +534,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
 					return
 				case feed <- &change:
-					if !options.ActiveOnly || logEntry.IsActive() {
-						sentChanges++
-					}
+					sentChanges++
 				}
 			}
 
@@ -545,12 +543,14 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 				return
 			}
 
-			// If we've reached the request limit, we're done
+			// If we've reached the request limit we're done.  If this is an ActiveOnly changes feed there
+			// is additional filtering in the main changes loop, so we can't apply the requestLimit here.
 			itemsSent += sentChanges
-			if requestLimit > 0 && itemsSent >= requestLimit {
-				return
+			if !options.ActiveOnly {
+				if requestLimit > 0 && itemsSent >= requestLimit {
+					return
+				}
 			}
-
 			paginationOptions.Since.Seq = lastSeq
 		}
 	}()

@@ -635,16 +635,18 @@ func drainChangesFeed(t *testing.T, feed <-chan *ChangeEntry) []*ChangeEntry {
 }
 
 // TestChangesFeedActiveOnlyContinuesPastInactiveBatch reproduces the CBG-5555 bug directly against
-// changesFeed, bypassing the cache/query layer entirely: a changesFeed that counts every entry it
-// forwards (active or not) against the caller's requested Limit will believe it's done as soon as
-// it has forwarded `Limit` raw entries - even if none of them were active. Here the first batch is
-// two channel-removal entries (exactly Limit=2 raw rows, zero active), and the second batch holds
-// the two active entries the caller actually asked for. A correct changesFeed must call GetChanges
-// a second time to find them.
+// changesFeed, bypassing the cache/query layer entirely. For ActiveOnly feeds, changesFeed pages by
+// ChannelQueryLimit rather than the caller's requested Limit (the caller's Limit is enforced further
+// upstream, in SimpleMultiChangesFeed, since raw entries and active entries aren't the same count) -
+// so a changesFeed that mistook a full-sized batch of inactive rows for exhaustion would stop before
+// ever finding an active entry. Here ChannelQueryLimit is set to 3: the first batch is three
+// channel-removal entries (a full page, zero active), and the second batch - shorter than the page
+// size - holds the active entries and signals the channel is exhausted. A correct changesFeed must
+// call GetChanges a second time to find them.
 func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.ChannelQueryLimit = 3
+	ctx, _, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
 	collectionID := collection.GetCollectionID()
 	channelID := channels.NewID("active", collectionID)
 
@@ -654,10 +656,11 @@ func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 			{
 				{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
 				{DocID: "removed2", RevID: "1-a", Sequence: 2, Flags: channels.Removed, CollectionID: collectionID},
+				{DocID: "removed3", RevID: "1-a", Sequence: 3, Flags: channels.Removed, CollectionID: collectionID},
 			},
 			{
-				{DocID: "active1", RevID: "1-a", Sequence: 3, CollectionID: collectionID},
-				{DocID: "active2", RevID: "1-a", Sequence: 4, CollectionID: collectionID},
+				{DocID: "active1", RevID: "1-a", Sequence: 4, CollectionID: collectionID},
+				{DocID: "active2", RevID: "1-a", Sequence: 5, CollectionID: collectionID},
 			},
 		},
 	}
@@ -672,24 +675,25 @@ func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
 
 	// changesFeed forwards every entry it sees, active or not - ActiveOnly filtering happens
-	// upstream in SimpleMultiChangesFeed. What matters here is that all 4 entries were retrieved at
+	// upstream in SimpleMultiChangesFeed. What matters here is that all 5 entries were retrieved at
 	// all, which requires a second call to GetChanges.
-	require.Len(t, received, 4)
+	require.Len(t, received, 5)
 	assert.Equal(t, "removed1", received[0].ID)
 	assert.Equal(t, "removed2", received[1].ID)
-	assert.Equal(t, "active1", received[2].ID)
-	assert.Equal(t, "active2", received[3].ID)
-	assert.Equal(t, 2, stub.calls, "changesFeed should have called GetChanges a second time to find the requested 2 active entries")
+	assert.Equal(t, "removed3", received[2].ID)
+	assert.Equal(t, "active1", received[3].ID)
+	assert.Equal(t, "active2", received[4].ID)
+	assert.Equal(t, 2, stub.calls, "changesFeed should have called GetChanges a second time to find the active entries")
 }
 
 // TestChangesFeedActiveOnlyMultipleInactiveBatches is the same shape as
-// TestChangesFeedActiveOnlyContinuesPastInactiveBatch but spans three all-inactive batches before
-// the active entries appear, verifying pagination genuinely continues round after round rather than
-// tolerating a single extra retry.
+// TestChangesFeedActiveOnlyContinuesPastInactiveBatch but spans three all-inactive, full-page batches
+// before the active entries appear, verifying pagination genuinely continues round after round rather
+// than tolerating a single extra retry.
 func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.ChannelQueryLimit = 3
+	ctx, _, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
 	collectionID := collection.GetCollectionID()
 	channelID := channels.NewID("active", collectionID)
 
@@ -697,6 +701,7 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 		return []*LogEntry{
 			{DocID: fmt.Sprintf("removed%d", seqStart), RevID: "1-a", Sequence: seqStart, Flags: channels.Removed, CollectionID: collectionID},
 			{DocID: fmt.Sprintf("removed%d", seqStart+1), RevID: "1-a", Sequence: seqStart + 1, Flags: channels.Removed, CollectionID: collectionID},
+			{DocID: fmt.Sprintf("removed%d", seqStart+2), RevID: "1-a", Sequence: seqStart + 2, Flags: channels.Removed, CollectionID: collectionID},
 		}
 	}
 
@@ -704,11 +709,11 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 		channelID: channelID,
 		batches: [][]*LogEntry{
 			inactiveBatch(1),
-			inactiveBatch(3),
-			inactiveBatch(5),
+			inactiveBatch(4),
+			inactiveBatch(7),
 			{
-				{DocID: "active1", RevID: "1-a", Sequence: 7, CollectionID: collectionID},
-				{DocID: "active2", RevID: "1-a", Sequence: 8, CollectionID: collectionID},
+				{DocID: "active1", RevID: "1-a", Sequence: 10, CollectionID: collectionID},
+				{DocID: "active2", RevID: "1-a", Sequence: 11, CollectionID: collectionID},
 			},
 		},
 	}
@@ -722,10 +727,10 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 
 	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
 
-	require.Len(t, received, 8)
-	assert.Equal(t, "active1", received[6].ID)
-	assert.Equal(t, "active2", received[7].ID)
-	assert.Equal(t, 4, stub.calls, "changesFeed should have paged through all three inactive batches to find the requested 2 active entries")
+	require.Len(t, received, 11)
+	assert.Equal(t, "active1", received[9].ID)
+	assert.Equal(t, "active2", received[10].ID)
+	assert.Equal(t, 4, stub.calls, "changesFeed should have paged through all three inactive batches to find the active entries")
 }
 
 // TestChangesFeedActiveOnlyStopsWhenChannelExhausted verifies changesFeed terminates (rather than
