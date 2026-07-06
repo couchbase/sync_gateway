@@ -196,9 +196,7 @@ func getChangesOptionsWithCtxOnly(t *testing.T) ChangesOptions {
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
-	if base.TestUseXattrs() {
-		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
-	}
+	t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -316,9 +314,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 }
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
-	if base.TestUseXattrs() {
-		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
-	}
+	t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

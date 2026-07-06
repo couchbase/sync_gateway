@@ -531,9 +531,7 @@ func IsCovered(plan map[string]any) bool {
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
+	dbcOptions.EnableXattr = true
 
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
@@ -547,14 +545,14 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	}
 }
 
-// SetupTestDBWithOptions creates an online test db with the specified database context options. Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).
+// SetupTestDBWithOptions creates an online test db with the specified database context options. Note that environment variables will override values (SG_TEST_USE_DEFAULT_COLLECTION).
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
 	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
-// SetupTestDBForBucketWithOptions sets up a test database with the specified database context options.  Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).
+// SetupTestDBForBucketWithOptions sets up a test database with the specified database context options.  Note that environment variables will override values (SG_TEST_USE_DEFAULT_COLLECTION).
 func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.Scopes == nil {
@@ -720,18 +718,12 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		History:   revTree,
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
-	if base.TestUseXattrs() {
-
-		opts := &sgbucket.MutateInOptions{
-			MacroExpansion: macroExpandSpec(base.SyncXattrName),
-		}
-		ctx := base.TestCtx(t)
-		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
-		require.NoError(t, err)
-	} else {
-		_, err := collection.dataStore.Add(base.TestCtx(t), key, 0, base.MustJSONMarshal(t, Body{base.SyncPropertyName: syncData, "key": key}))
-		require.NoError(t, err)
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
+	ctx := base.TestCtx(t)
+	_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
+	require.NoError(t, err)
 }
 
 // GetIndexPartitionCount returns the number of partitions for a given index. This function queries index nodes directly and would not be suitable for production use, since this port is not generally accessible.

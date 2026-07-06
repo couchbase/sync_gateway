@@ -46,10 +46,6 @@ const (
 
 	TestEnvUseExistingBucket = "SG_TEST_USE_EXISTING_BUCKET"
 
-	// Don't use Xattrs by default, but provide the test runner a way to specify Xattr usage
-	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
-	TestEnvSyncGatewayTrue      = "True"
-
 	// TestEnvDisableRevCache if set to true will disable the revision cache for tests
 	TestEnvDisableRevCache = "SG_TEST_DISABLE_REV_CACHE"
 

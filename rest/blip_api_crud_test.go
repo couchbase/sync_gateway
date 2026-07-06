@@ -3039,9 +3039,6 @@ func TestBlipRefreshUser(t *testing.T) {
 func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 	base.LongRunningTest(t)
 
-	if !base.TestUseXattrs() {
-		t.Skip("Test performs import, not valid for non-xattr mode")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyMigrate, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 	docID := "doc" + t.Name()
@@ -3102,9 +3099,6 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
-	if !base.TestUseXattrs() {
-		t.Skip("Test performs import, not valid for non-xattr mode")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyChanges, base.KeySGTest)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
