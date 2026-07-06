@@ -220,7 +220,7 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 	}
 
 	uri := fmt.Sprintf("/_telemetryCollector/ingest?product_name=%s&instance_id=%s", base.ProductInfoName, url.QueryEscape(metrics.InstanceID))
-	statusCode, respBytes, err := doHTTPAuthRequest(ctx, httpClient, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodPost, uri, "application/json", endpoints, metricsJSON)
+	statusCode, _, err := doHTTPAuthRequest(ctx, httpClient, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodPost, uri, "application/json", endpoints, metricsJSON)
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 		base.DebugfCtx(ctx, base.KeyAll, "Fleet manager collector endpoint unavailable (status %d); will retry next interval", statusCode)
 		return nil
 	default:
-		return fmt.Errorf("unexpected status %d from fleet manager collector: %s", statusCode, respBytes)
+		return fmt.Errorf("unexpected status %d from fleet manager collector", statusCode)
 	}
 }
 
@@ -2245,7 +2245,7 @@ func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, p
 
 	worker := func() (shouldRetry bool, err error, value any) {
 		endpointIdx := retryCount % len(endpoints)
-		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, contentType, username, password, bytes.NewBuffer(requestBody))
+		responseBody, statusCode, err = base.MgmtRequest(ctx, httpClient, endpoints[endpointIdx], method, path, contentType, username, password, bytes.NewBuffer(requestBody))
 
 		if err, ok := err.(net.Error); ok && err.Timeout() {
 			retryCount++
