@@ -443,7 +443,8 @@ func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string
 }
 
 func (dbc *DatabaseContext) CollectionChannelViewForTest(tb testing.TB, collection *DatabaseCollection, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
-	return collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
+	entries, _, err := collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
+	return entries, err
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation

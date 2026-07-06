@@ -517,3 +517,58 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	assert.Equal(t, doc.HLV.SourceID, entries[0].SourceID)
 	assert.Equal(t, doc.HLV.Version, entries[0].Version)
 }
+
+// TestActiveOnlyWithLimit verifies that when querying with ActiveOnly: true and a Limit,
+// the pagination inside changesFeed does not terminate prematurely due to counting inactive/deleted
+// entries as "sent", ensuring the client receives the requested number of active changes when available.
+func TestActiveOnlyWithLimit(t *testing.T) {
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.ChannelQueryLimit = 3
+	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	// 1. Create 6 documents that we will subsequently delete
+	revs := make(map[string]string)
+	for i := 1; i <= 6; i++ {
+		key := fmt.Sprintf("doc_del_%d", i)
+		body := Body{"foo": "bar"}
+		revId, _, err := collection.Put(ctx, key, body)
+		require.NoError(t, err)
+		revs[key] = revId
+	}
+
+	// 2. Delete those 6 documents so we have 6 deleted sequences at the start of the feed
+	for i := 1; i <= 6; i++ {
+		key := fmt.Sprintf("doc_del_%d", i)
+		_, _, err := collection.DeleteDoc(ctx, key, DocVersion{RevTreeID: revs[key]})
+		require.NoError(t, err)
+	}
+
+	// 3. Create 4 active documents
+	for i := 1; i <= 4; i++ {
+		key := fmt.Sprintf("doc_act_%d", i)
+		body := Body{"foo": "bar"}
+		_, _, err := collection.Put(ctx, key, body)
+		require.NoError(t, err)
+	}
+
+	db.WaitForPendingChanges(t)
+
+	// Get changes with active_only=true and Limit=3
+	changesOptions := ChangesOptions{
+		Since:      SequenceID{Seq: 0},
+		ActiveOnly: true,
+		Limit:      3,
+		ChangesCtx: base.TestCtx(t),
+	}
+
+	changes := getChanges(t, collection, base.SetOf("*"), changesOptions)
+	// We should receive exactly 3 active changes ("doc_act_1", "doc_act_2", "doc_act_3")
+	require.Len(t, changes, 3)
+	assert.Equal(t, "doc_act_1", changes[0].ID)
+	assert.Equal(t, "doc_act_2", changes[1].ID)
+	assert.Equal(t, "doc_act_3", changes[2].ID)
+}

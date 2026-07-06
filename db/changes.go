@@ -534,7 +534,9 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
 					return
 				case feed <- &change:
-					sentChanges++
+					if !options.ActiveOnly || (!change.Deleted && len(change.Removed) == 0) {
+						sentChanges++
+					}
 				}
 			}
 

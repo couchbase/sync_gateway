@@ -90,14 +90,19 @@ func (dbc *DatabaseContext) getQueryHandlerForCollection(collectionID uint32) (C
 }
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
-func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+// The second return value, reachedEnd, is true if the query scanned all the way through to endSeq
+// without stopping early due to the activeOnly+limit active-entry count being satisfied first. When
+// reachedEnd is false, there may be additional matching entries between the last returned entry and
+// endSeq that were never scanned - it is unsafe to assume the range up to endSeq is fully covered.
+func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (entries LogEntries, reachedEnd bool, err error) {
 	if c.dataStore == nil {
-		return nil, errors.New("No data store available for channel query")
+		return nil, false, errors.New("No data store available for channel query")
 	}
 	start := time.Now()
 	usingViews := c.useViews()
-	entries := make(LogEntries, 0)
+	entries = make(LogEntries, 0)
 	activeEntryCount := 0
+	reachedEnd = true
 
 	base.InfofCtx(ctx, base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), startSeq, endSeq, limit)
 
@@ -110,7 +115,7 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 		// Query the view or index
 		queryResults, err := c.QueryChannels(ctx, channelName, startSeq, endSeq, limit, activeOnly)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		queryRowCount := 0
 
@@ -145,7 +150,7 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 		// Close query results
 		closeErr := queryResults.Close(ctx)
 		if closeErr != nil {
-			return nil, closeErr
+			return nil, false, closeErr
 		}
 
 		if queryRowCount == 0 {
@@ -153,14 +158,16 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 				break
 			}
 			base.InfofCtx(ctx, base.KeyCache, "    Got no rows from query for channel:%q", base.UD(channelName))
-			return nil, nil
+			return nil, true, nil
 		}
 
 		// If active-only, loop until either retrieve (limit) active entries, or reach endSeq.  Non-active entries are still
 		// included in the result set for potential cache prepend
 		if activeOnly {
-			// If we've reached limit, we're done
-			if activeEntryCount >= limit || limit == 0 {
+			// If we've reached limit before exhausting the range up to endSeq, we're done, but the
+			// range beyond the last returned entry hasn't been fully scanned.
+			if limit != 0 && activeEntryCount >= limit {
+				reachedEnd = endSeq > 0 && highSeq >= endSeq
 				break
 			}
 			// If we've reached endSeq, we're done
@@ -186,5 +193,5 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, limit)
 	}
 	c.dbStats().Cache().ViewQueries.Add(1)
-	return entries, nil
+	return entries, reachedEnd, nil
 }

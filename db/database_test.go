@@ -2975,7 +2975,7 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := range 10 {
 		var err error
-		entries, err = collection.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
+		entries, _, err = collection.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
 
 		assert.NoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
@@ -3048,7 +3048,7 @@ func TestChannelQuery(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.testName, func(t *testing.T) {
-			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+			entries, _, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
 			require.NoError(t, err)
 
 			for i, entry := range entries {
@@ -3132,7 +3132,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.testName, func(t *testing.T) {
-			entries, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
+			entries, _, err = collection.getChangesInChannelFromQuery(ctx, testCase.channelName, 0, 100, 0, false)
 			require.NoError(t, err)
 
 			for i, entry := range entries {

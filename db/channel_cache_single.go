@@ -419,7 +419,7 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(ctx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, queryReachedEnd, err := c.queryHandler.getChangesInChannelFromQuery(ctx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -440,12 +440,14 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 
 	result := resultFromQuery
 	room := options.Limit - len(result)
-	// For activeOnly+limit, only append cache when the query reached the cache boundary.
+	// For activeOnly+limit, only append cache when the query reached the cache boundary
+	// (queryReachedEnd, reported by the query itself - not inferred from sequence numbers, since
+	// this channel's entries are sparse across the global sequence space and the last entry's
+	// sequence is often below endSeq even when the query fully scanned through to endSeq).
 	// If the query stopped early (gap exists before cacheValidFrom), the changesFeed pagination
 	// loop must fetch that range before cache results are valid.
 	// The overlap entry at cacheValidFrom is deduplicated below when cache is appended.
-	queryReachedCache := len(resultFromQuery) == 0 || resultFromQuery[len(resultFromQuery)-1].Sequence >= endSeq
-	if (options.Limit == 0 || room > 0 || (options.ActiveOnly && queryReachedCache)) && len(resultFromCache) > 0 {
+	if (options.Limit == 0 || room > 0 || (options.ActiveOnly && queryReachedEnd)) && len(resultFromCache) > 0 {
 		// Concatenate the view & cache results:
 		if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
 			resultFromCache = resultFromCache[1:]
@@ -849,7 +851,8 @@ type bypassChannelCache struct {
 func (b *bypassChannelCache) GetChanges(ctx context.Context, options ChangesOptions) ([]*LogEntry, error) {
 	startSeq := options.Since.SafeSequence() + 1
 	endSeq := uint64(math.MaxUint64)
-	return b.queryHandler.getChangesInChannelFromQuery(ctx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	entries, _, err := b.queryHandler.getChangesInChannelFromQuery(ctx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	return entries, err
 }
 
 // No cached changes for bypassChannelCache

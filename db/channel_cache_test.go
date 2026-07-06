@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -544,8 +545,9 @@ func (qh *testQueryHandler) asFactory(collectionID uint32) (ChannelQueryHandler,
 	return qh, nil
 }
 
-func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, bool, error) {
 	queryEntries := make(LogEntries, 0)
+	reachedEnd := true
 	qh.lock.RLock()
 	for _, entry := range qh.entries {
 		_, ok := entry.Channels[channel]
@@ -555,6 +557,7 @@ func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, ch
 			}
 			queryEntries = append(queryEntries, entry)
 			if limit > 0 && len(queryEntries) >= limit {
+				reachedEnd = endSeq > 0 && entry.Sequence >= endSeq
 				break
 			}
 		}
@@ -564,7 +567,7 @@ func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, ch
 	qh.lock.Lock()
 	qh.queryCount++
 	qh.lock.Unlock()
-	return queryEntries, nil
+	return queryEntries, reachedEnd, nil
 }
 
 func (qh *testQueryHandler) seedEntries(seededEntries LogEntries) {
@@ -820,12 +823,37 @@ func setupDBWithChannelCacheSettings(t *testing.T, cacheOptions CacheOptions) (c
 // exactly once, in sequence order, regardless of how results are split between backing-store query
 // batches and the in-memory cache.
 func FuzzChannelCacheActiveOnly(f *testing.F) {
-	f.Add(uint8(20), uint8(5), uint8(5), uint8(10)) // query + cache, limit spans two batches
-	f.Add(uint8(5), uint8(5), uint8(5), uint8(0))   // all docs fit in cache, no limit
-	f.Add(uint8(1), uint8(5), uint8(5), uint8(1))   // single doc, limit=1
-	f.Add(uint8(0), uint8(5), uint8(5), uint8(5))   // no docs
-	f.Add(uint8(10), uint8(2), uint8(2), uint8(5))  // tiny cache + single-entry query batches
-	f.Add(uint8(15), uint8(5), uint8(5), uint8(5))  // limit < cache boundary
+	// --- SEED CORPUS FOR EXPLICIT BOUNDARY CASES ---
+
+	// 1. request limit (R) aligns exactly with query pagination limit (Q) (R == Q, or R == k * Q)
+	f.Add(uint8(15), uint8(5), uint8(5), uint8(5))  // R == Q (both 5)
+	f.Add(uint8(20), uint8(5), uint8(5), uint8(10)) // R == 2 * Q (request 10, page size 5)
+	f.Add(uint8(10), uint8(2), uint8(2), uint8(4))  // R == 2 * Q with tiny limits (request 4, page size 2, cache size 2)
+
+	// 2. single query, no cache (cache validFrom is high, so all historical entries must be fetched from DB)
+	// (cacheMaxLength=1 means cache is effectively empty for other sequences; query limit is large enough to fetch all in one page)
+	f.Add(uint8(20), uint8(1), uint8(15), uint8(5))
+
+	// 3. Query gap before boundary, cache at boundary (query limit restricts DB page size, cacheMaxLength=1 keeps cache minimal)
+	f.Add(uint8(15), uint8(1), uint8(2), uint8(10)) // request limit 10, database page size 2, no cache
+
+	// 4. single query + partial cache (cacheMaxLength is large enough to hold some but not all docs, single DB query)
+	f.Add(uint8(10), uint8(5), uint8(10), uint8(8))
+
+	// 5. multiple queries + partial cache (cache holds part, DB pagination requested to get the rest over multiple pages)
+	f.Add(uint8(12), uint8(4), uint8(3), uint8(10))
+
+	// 6. single query + full cache (cacheMaxLength is large enough to hold all doc sequences, query limit is large)
+	f.Add(uint8(10), uint8(10), uint8(15), uint8(10))
+
+	// 7. multiple queries + full cache (cacheMaxLength is large, but query limit is small)
+	f.Add(uint8(15), uint8(10), uint8(3), uint8(12))
+
+	// 8. Other general permutations
+	f.Add(uint8(5), uint8(5), uint8(5), uint8(0))  // all docs fit in cache, no request limit
+	f.Add(uint8(1), uint8(5), uint8(5), uint8(1))  // single doc, limit=1
+	f.Add(uint8(0), uint8(5), uint8(5), uint8(5))  // no docs
+	f.Add(uint8(15), uint8(5), uint8(5), uint8(5)) // request limit < cache boundary
 
 	f.Fuzz(func(t *testing.T, numDocs, cacheMaxLength, queryLimit, requestLimit uint8) {
 		if cacheMaxLength == 0 {
@@ -850,9 +878,82 @@ func FuzzChannelCacheActiveOnly(f *testing.F) {
 		_ = getChanges(t, collection, base.SetOf("active"), ChangesOptions{
 			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
 		})
-		for i := 1; i <= n; i++ {
-			_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"channels": "active"})
+
+		type docState struct {
+			id     string
+			revID  string
+			seq    uint64
+			active bool
 		}
+
+		docsMap := make(map[string]*docState)
+		var docIDs []string
+
+		// Deterministic random generator based on inputs to ensure reproducibility
+		rng := rand.New(rand.NewSource(int64(numDocs) + int64(cacheMaxLength)*100 + int64(queryLimit)*10000 + int64(requestLimit)*1000000))
+
+		nextDocID := 1
+		for i := 1; i <= n; i++ {
+			// Choose action:
+			// 0: Create new active doc
+			// 1: Create new other (inactive) doc
+			// 2: Update existing to active
+			// 3: Update existing to other (inactive)
+			action := rng.Intn(4)
+			if len(docIDs) == 0 {
+				action = rng.Intn(2) // Only create actions are possible initially
+			}
+
+			var docID string
+			var body Body
+			var active bool
+
+			switch action {
+			case 0:
+				docID = fmt.Sprintf("doc_act_%d", nextDocID)
+				nextDocID++
+				body = Body{"channels": "active"}
+				active = true
+			case 1:
+				docID = fmt.Sprintf("doc_oth_%d", nextDocID)
+				nextDocID++
+				body = Body{"channels": "other"}
+				active = false
+			case 2:
+				// Update existing to active
+				idx := rng.Intn(len(docIDs))
+				docID = docIDs[idx]
+				state := docsMap[docID]
+				body = Body{"channels": "active", "_rev": state.revID}
+				active = true
+			case 3:
+				// Update existing to other
+				idx := rng.Intn(len(docIDs))
+				docID = docIDs[idx]
+				state := docsMap[docID]
+				body = Body{"channels": "other", "_rev": state.revID}
+				active = false
+			}
+
+			newRevID, doc, err := collection.Put(ctx, docID, body)
+			require.NoError(t, err)
+
+			if state, exists := docsMap[docID]; exists {
+				state.revID = newRevID
+				state.seq = doc.Sequence
+				state.active = active
+			} else {
+				docsMap[docID] = &docState{
+					id:     docID,
+					revID:  newRevID,
+					seq:    doc.Sequence,
+					active: active,
+				}
+				docIDs = append(docIDs, docID)
+				sort.Strings(docIDs) // maintain sorted order for deterministic selection
+			}
+		}
+
 		db.WaitForPendingChanges(t)
 
 		changes := getChanges(t, collection, base.SetOf("active"), ChangesOptions{
@@ -862,24 +963,269 @@ func FuzzChannelCacheActiveOnly(f *testing.F) {
 			ChangesCtx: base.TestCtx(t),
 		})
 
-		// No duplicates.
+		// Collect the expected active docs at their final sequence numbers
+		var activeDocs []*docState
+		for _, state := range docsMap {
+			if state.active {
+				activeDocs = append(activeDocs, state)
+			}
+		}
+		sort.Slice(activeDocs, func(i, j int) bool {
+			return activeDocs[i].seq < activeDocs[j].seq
+		})
+
+		// Correct count: all active docs, or exactly requestLimit if that is smaller
+		limit := int(requestLimit)
+		expectedCount := len(activeDocs)
+		if limit > 0 && limit < len(activeDocs) {
+			expectedCount = limit
+		}
+
+		// No duplicates in the returned changes
 		seen := make(map[string]bool, len(changes))
 		for _, c := range changes {
 			require.False(t, seen[c.ID], "duplicate entry %s", c.ID)
 			seen[c.ID] = true
 		}
-
-		// Correct count: all docs, or exactly requestLimit if that's the smaller constraint.
-		limit := int(requestLimit)
-		expectedCount := n
-		if limit > 0 && limit < n {
-			expectedCount = limit
-		}
 		require.Len(t, changes, expectedCount)
 
-		// Entries must be the first expectedCount docs in insertion order.
+		// Entries must be the first expectedCount active docs in final sequence order
 		for i, c := range changes {
-			require.Equal(t, fmt.Sprintf("doc%d", i+1), c.ID, "wrong doc at index %d", i)
+			require.Equal(t, activeDocs[i].id, c.ID, "wrong doc ID at index %d", i)
+			require.Equal(t, activeDocs[i].seq, c.Seq.Seq, "wrong sequence at index %d", i)
 		}
+	})
+}
+
+// TestChannelCacheActiveOnlyLimitWithCrossChannelGap reproduces a scenario where the cache's
+// validFrom sequence doesn't correspond to any entry in the queried channel, because the
+// intervening sequence(s) belong to a *different* channel. The query's last returned entry can
+// then be well below cacheValidFrom (e.g. N), while the cache's first entry starts above it
+// (e.g. N+2), even though the query fully scanned through to the cache boundary with no gap.
+func TestChannelCacheActiveOnlyLimitWithCrossChannelGap(t *testing.T) {
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.ChannelCacheMaxLength = 2
+	ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+	const activeChannel = "active"
+	const otherChannel = "other"
+
+	// Prime the cache *before* any writes so subsequent docs are appended live (and pruned
+	// live via _pruneCacheLength), which is the path where validFrom can land on a sequence
+	// that isn't an entry in this channel at all (see _pruneCacheLength).
+	primingOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
+	_ = getChanges(t, collection, base.SetOf(activeChannel), primingOptions)
+
+	// doc1: active (seq1) -> removed from channel (seq2)
+	revID, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, "doc1", Body{"channels": otherChannel, "_rev": revID})
+	require.NoError(t, err)
+
+	// doc2: active (seq3) -> removed from channel (seq4)
+	revID, _, err = collection.Put(ctx, "doc2", Body{"channels": activeChannel})
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, "doc2", Body{"channels": otherChannel, "_rev": revID})
+	require.NoError(t, err)
+
+	// docGap: seq5, entirely in a different channel - creates a sequence gap for activeChannel.
+	_, _, err = collection.Put(ctx, "docGap", Body{"channels": otherChannel})
+	require.NoError(t, err)
+
+	// doc3, doc4: active (seq6, seq7) - stay active. With ChannelCacheMaxLength=2 these live
+	// appends prune doc1/doc2's entries out of the cache, pushing validFrom to 5 (docGap's
+	// sequence), which isn't an entry in activeChannel at all.
+	_, _, err = collection.Put(ctx, "doc3", Body{"channels": activeChannel})
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, "doc4", Body{"channels": activeChannel})
+	require.NoError(t, err)
+
+	db.WaitForPendingChanges(t)
+
+	changesOptions := ChangesOptions{
+		Since:      SequenceID{Seq: 0},
+		ActiveOnly: true,
+		Limit:      1,
+		ChangesCtx: base.TestCtx(t),
+	}
+	changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+	require.Len(t, changes, 1)
+	assert.Equal(t, "doc3", changes[0].ID)
+}
+
+func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
+	const activeChannel = "active"
+	const otherChannel = "other"
+
+	t.Run("Query and cache both exactly at boundary (No Gap)", func(t *testing.T) {
+		cacheOptions := DefaultCacheOptions()
+		cacheOptions.ChannelCacheMaxLength = 2
+		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+		// Prime cache
+		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
+		})
+
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc3", Body{"channels": activeChannel})
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(t)
+
+		// Since doc1 is pruned (cache length 2), validFrom is 2 (doc2's sequence is 2).
+		// Querying with Limit=10 should return all 3 docs: doc1 (Seq 1), doc2 (Seq 2), and doc3 (Seq 3).
+		// Since query reached boundary (Seq 2 >= 2), the cache should be appended, deduplicating doc2.
+		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since:      SequenceID{Seq: 0},
+			ActiveOnly: true,
+			Limit:      10,
+			ChangesCtx: base.TestCtx(t),
+		})
+		require.Len(t, changes, 3)
+		assert.Equal(t, "doc1", changes[0].ID)
+		assert.Equal(t, "doc2", changes[1].ID)
+		assert.Equal(t, "doc3", changes[2].ID)
+	})
+
+	t.Run("Query gap before boundary, cache at boundary", func(t *testing.T) {
+		cacheOptions := DefaultCacheOptions()
+		cacheOptions.ChannelCacheMaxLength = 2
+		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+		// Prime cache
+		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
+		})
+
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel}) // Seq 1
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "docGap", Body{"channels": otherChannel}) // Seq 2
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": activeChannel}) // Seq 3
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc3", Body{"channels": activeChannel}) // Seq 4
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(t)
+
+		// doc1 is pruned, cache contains doc2 and doc3. validFrom is 2 (doc1.Seq + 1 = 2).
+		// Querying with Limit=1 should get doc1 (Seq 1) and stop early because limit=1 is met before Seq 2 (validFrom).
+		// Therefore reachedEnd is false, cache is not appended, only doc1 is returned.
+		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since:      SequenceID{Seq: 0},
+			ActiveOnly: true,
+			Limit:      1,
+			ChangesCtx: base.TestCtx(t),
+		})
+		require.Len(t, changes, 1)
+		assert.Equal(t, "doc1", changes[0].ID)
+	})
+
+	t.Run("Query at boundary, cache gap after boundary", func(t *testing.T) {
+		cacheOptions := DefaultCacheOptions()
+		cacheOptions.ChannelCacheMaxLength = 2
+		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+		// Prime cache
+		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
+		})
+
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel}) // Seq 1
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": activeChannel}) // Seq 2
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "docGap", Body{"channels": otherChannel}) // Seq 3
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc3", Body{"channels": activeChannel}) // Seq 4
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc4", Body{"channels": activeChannel}) // Seq 5
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(t)
+
+		// doc1 and doc2 are pruned. Cache contains doc3 and doc4. validFrom is 3 (doc2.Seq + 1 = 3).
+		// Querying with Limit=2 gets doc1 (Seq 1) and doc2 (Seq 2) and stops early (highSeq = 2 < 3).
+		// Therefore reachedEnd is false, cache is not appended.
+		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since:      SequenceID{Seq: 0},
+			ActiveOnly: true,
+			Limit:      2,
+			ChangesCtx: base.TestCtx(t),
+		})
+		require.Len(t, changes, 2)
+		assert.Equal(t, "doc1", changes[0].ID)
+		assert.Equal(t, "doc2", changes[1].ID)
+
+		// Querying with Limit=10 gets doc1, doc2, and the query iterator finishes normally at Seq 3 (no other active).
+		// Thus reachedEnd is true, cache is appended, and limit=10 allows all 4 to be returned.
+		changes10 := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since:      SequenceID{Seq: 0},
+			ActiveOnly: true,
+			Limit:      10,
+			ChangesCtx: base.TestCtx(t),
+		})
+		require.Len(t, changes10, 4)
+		assert.Equal(t, "doc1", changes10[0].ID)
+		assert.Equal(t, "doc2", changes10[1].ID)
+		assert.Equal(t, "doc3", changes10[2].ID)
+		assert.Equal(t, "doc4", changes10[3].ID)
+	})
+
+	t.Run("Gaps in both directions", func(t *testing.T) {
+		cacheOptions := DefaultCacheOptions()
+		cacheOptions.ChannelCacheMaxLength = 2
+		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+		// Prime cache
+		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
+		})
+
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel}) // Seq 1
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "docGap1", Body{"channels": otherChannel}) // Seq 2
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": activeChannel}) // Seq 3
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "docGap2", Body{"channels": otherChannel}) // Seq 4
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc3", Body{"channels": activeChannel}) // Seq 5
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc4", Body{"channels": activeChannel}) // Seq 6
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(t)
+
+		// doc1 and doc2 are pruned. Cache contains doc3 and doc4. validFrom is 4 (doc2.Seq + 1 = 4).
+		// Querying with Limit=2 gets doc1 (Seq 1) and doc2 (Seq 3) and stops early (highSeq = 3 < 4).
+		// Thus reachedEnd is false, cache is not appended.
+		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since:      SequenceID{Seq: 0},
+			ActiveOnly: true,
+			Limit:      2,
+			ChangesCtx: base.TestCtx(t),
+		})
+		require.Len(t, changes, 2)
+		assert.Equal(t, "doc1", changes[0].ID)
+		assert.Equal(t, "doc2", changes[1].ID)
+
+		// Querying with Limit=10 gets doc1, doc2, and query iterator reaches endSeq normally (Seq 4 reached).
+		// Thus reachedEnd is true, cache is appended, and limit=10 allows all 4 to be returned.
+		changes10 := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+			Since:      SequenceID{Seq: 0},
+			ActiveOnly: true,
+			Limit:      10,
+			ChangesCtx: base.TestCtx(t),
+		})
+		require.Len(t, changes10, 4)
+		assert.Equal(t, "doc1", changes10[0].ID)
+		assert.Equal(t, "doc2", changes10[1].ID)
+		assert.Equal(t, "doc3", changes10[2].ID)
+		assert.Equal(t, "doc4", changes10[3].ID)
 	})
 }
