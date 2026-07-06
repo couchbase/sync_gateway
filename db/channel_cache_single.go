@@ -440,14 +440,22 @@ func (c *singleChannelCacheImpl) GetChanges(ctx context.Context, options Changes
 
 	result := resultFromQuery
 	room := options.Limit - len(result)
-	if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
+	// For activeOnly+limit, only append cache when the query reached the cache boundary.
+	// If the query stopped early (gap exists before cacheValidFrom), the changesFeed pagination
+	// loop must fetch that range before cache results are valid.
+	// The overlap entry at cacheValidFrom is deduplicated below when cache is appended.
+	queryReachedCache := len(resultFromQuery) == 0 || resultFromQuery[len(resultFromQuery)-1].Sequence >= endSeq
+	if (options.Limit == 0 || room > 0 || (options.ActiveOnly && queryReachedCache)) && len(resultFromCache) > 0 {
 		// Concatenate the view & cache results:
 		if len(result) > 0 && resultFromCache[0].Sequence == result[len(result)-1].Sequence {
 			resultFromCache = resultFromCache[1:]
 		}
 		n := len(resultFromCache)
-		if options.Limit > 0 && room > 0 && room < n {
-			n = room
+		// Limit evaluation only valid when not activeOnly, since view and cache results don't apply activeOnly filtering
+		if !options.ActiveOnly {
+			if options.Limit > 0 && room > 0 && room < n {
+				n = room
+			}
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
