@@ -41,7 +41,6 @@ func TestRoleQuery(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
 				numPartitions:          db.DefaultNumIndexPartitions,
-				useXattrs:              base.TestUseXattrs(),
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
@@ -121,14 +120,13 @@ func TestAllPrincipalIDs(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
 				numPartitions:          db.DefaultNumIndexPartitions,
-				useXattrs:              base.TestUseXattrs(),
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
 
 			n1qlStore, ok := database.MetadataStore.(base.N1QLStore)
 			require.True(t, ok)
-			onlineMetadataIndexes, err := db.GetOnlinePrincipalIndexes(ctx, n1qlStore, database.UseXattrs())
+			onlineMetadataIndexes, err := db.GetOnlinePrincipalIndexes(ctx, n1qlStore)
 			require.NoError(t, err)
 			if testCase.useLegacySyncDocsIndex {
 				require.Equal(t, []db.SGIndexType{db.IndexSyncDocs}, onlineMetadataIndexes)
@@ -203,7 +201,6 @@ func TestGetRoleIDs(t *testing.T) {
 			database := setupIndexAndDB(t, testIndexCreationOptions{
 				useLegacySyncDocsIndex: testCase.useLegacySyncDocsIndex,
 				numPartitions:          db.DefaultNumIndexPartitions,
-				useXattrs:              base.TestUseXattrs(),
 			})
 
 			ctx := database.AddDatabaseLogContext(base.TestCtx(t))
@@ -246,7 +243,7 @@ func TestGetRoleIDs(t *testing.T) {
 	}
 }
 
-// TestInitializeIndexes ensures all of SG's indexes can be built using both values of xattrs, with all N1QLStore implementations
+// TestInitializeIndexes ensures all of SG's indexes can be built with all N1QLStore implementations
 func TestInitializeIndexes(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -255,12 +252,10 @@ func TestInitializeIndexes(t *testing.T) {
 	defaultCollection := base.DefaultScopeAndCollectionName()
 	namedCollection := base.ScopeAndCollectionName{Scope: "placeHolderScope", Collection: "placeHolderCollection"}
 	tests := []struct {
-		xattrs          bool
 		collections     bool
 		expectedIndexes db.CollectionIndexes
 	}{
 		{
-			xattrs:      true,
 			collections: false,
 			expectedIndexes: db.CollectionIndexes{
 				defaultCollection: map[string]struct{}{
@@ -275,21 +270,6 @@ func TestInitializeIndexes(t *testing.T) {
 			},
 		},
 		{
-			xattrs:      false,
-			collections: false,
-			expectedIndexes: db.CollectionIndexes{
-				defaultCollection: map[string]struct{}{
-					"sg_access_1":     struct{}{},
-					"sg_allDocs_1":    struct{}{},
-					"sg_channels_1":   struct{}{},
-					"sg_roleAccess_1": struct{}{},
-					"sg_roles_1":      struct{}{},
-					"sg_users_1":      struct{}{},
-				},
-			},
-		},
-		{
-			xattrs:      true,
 			collections: true,
 			expectedIndexes: db.CollectionIndexes{
 				defaultCollection: map[string]struct{}{
@@ -305,32 +285,16 @@ func TestInitializeIndexes(t *testing.T) {
 				},
 			},
 		},
-		{
-			xattrs:      false,
-			collections: true,
-			expectedIndexes: db.CollectionIndexes{
-				defaultCollection: map[string]struct{}{
-					"sg_roles_1": struct{}{},
-					"sg_users_1": struct{}{},
-				},
-				namedCollection: map[string]struct{}{
-					"sg_access_1":     struct{}{},
-					"sg_allDocs_1":    struct{}{},
-					"sg_channels_1":   struct{}{},
-					"sg_roleAccess_1": struct{}{},
-				},
-			},
-		},
 	}
 
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("xattrs=%v collections=%v", test.xattrs, test.collections), func(t *testing.T) {
+		t.Run(fmt.Sprintf("collections=%v", test.collections), func(t *testing.T) {
 			ctx := base.TestCtx(t)
 			bucket := base.GetTestBucket(t)
 			defer bucket.Close(ctx)
 
 			options := db.DatabaseContextOptions{
-				EnableXattr: test.xattrs,
+				EnableXattr: true,
 			}
 			if test.collections {
 				base.TestRequiresCollections(t)
@@ -362,7 +326,6 @@ func TestInitializeIndexes(t *testing.T) {
 			xattrSpecificIndexOptions := db.InitializeIndexOptions{
 				NumReplicas:         0,
 				LegacySyncDocsIndex: database.UseLegacySyncDocsIndex(),
-				UseXattrs:           test.xattrs,
 				NumPartitions:       db.DefaultNumIndexPartitions,
 			}
 			if database.OnlyDefaultCollection() {
@@ -390,9 +353,6 @@ func TestInitializeIndexes(t *testing.T) {
 
 func testGetIndexesMeta(t *testing.T, database *db.Database, indexInitOptions db.InitializeIndexOptions) {
 	suffix := "x1"
-	if !indexInitOptions.UseXattrs {
-		suffix = "1"
-	}
 	accessIndexName := fmt.Sprintf("sg_access_%s", suffix)
 	roleAccessIndexName := fmt.Sprintf("sg_roleAccess_%s", suffix)
 	nonExistentIndexName := "notanindex"
@@ -439,7 +399,6 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 			setupIndexes(t, bucket, testIndexCreationOptions{
 				numPartitions:          db.DefaultNumIndexPartitions,
 				useLegacySyncDocsIndex: false,
-				useXattrs:              base.TestUseXattrs(),
 			})
 		}()
 	}
@@ -447,15 +406,10 @@ func TestInitializeIndexesConcurrentMultiNode(t *testing.T) {
 }
 
 func TestPartitionedIndexes(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("TestPartitionedIndexes only works with UseXattrs=true")
-	}
-
 	numPartitions := uint32(13)
 	database := setupIndexAndDB(t, testIndexCreationOptions{
 		useLegacySyncDocsIndex: true,
 		numPartitions:          numPartitions,
-		useXattrs:              base.TestUseXattrs(),
 	})
 
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)

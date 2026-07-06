@@ -171,7 +171,6 @@ func (m *DatabaseInitManager) buildIndexOptions(dbConfig *DatabaseConfig, useLeg
 		WaitForIndexesOnlineOption: base.WaitForIndexesInfinite,
 		NumReplicas:                dbConfig.numIndexReplicas(),
 		LegacySyncDocsIndex:        useLegacySyncDocsIndex,
-		UseXattrs:                  dbConfig.UseXattrs(),
 		NumPartitions:              dbConfig.NumIndexPartitions(),
 	}
 }
