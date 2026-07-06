@@ -575,24 +575,32 @@ func TestActiveOnlyWithLimit(t *testing.T) {
 	assert.Equal(t, "doc_act_3", changes[2].ID)
 }
 
-// stubSingleChannelCache is a minimal SingleChannelCache test double that returns a scripted
-// sequence of batches from GetChanges, one per call, in call order. It lets tests drive
-// changesFeed's own pagination bookkeeping directly, without needing real documents, DCP, or a
-// backing query/view implementation. Only GetChanges and ChannelID are exercised by changesFeed;
-// the remaining methods are unused stubs to satisfy the interface.
+// stubSingleChannelCache is a minimal SingleChannelCache test double that serves entries from a
+// fixed, sequence-ordered list, honoring Since and Limit the way a real channel cache would. This
+// lets tests drive changesFeed's own pagination bookkeeping directly, without needing real
+// documents, DCP, or a backing query/view implementation, while still having changesFeed's actual
+// Since/Limit choices (not a pre-scripted call count) determine what gets returned. Only GetChanges
+// and ChannelID are exercised by changesFeed; the remaining methods are unused stubs to satisfy the
+// interface.
 type stubSingleChannelCache struct {
 	channelID channels.ID
-	batches   [][]*LogEntry // one slice per call to GetChanges; calls past the end return empty
+	entries   []*LogEntry // full ordered set of entries in the channel, by sequence
 	calls     int
 }
 
-func (s *stubSingleChannelCache) GetChanges(_ context.Context, _ ChangesOptions) ([]*LogEntry, error) {
-	if s.calls >= len(s.batches) {
-		return nil, nil
-	}
-	batch := s.batches[s.calls]
+func (s *stubSingleChannelCache) GetChanges(_ context.Context, options ChangesOptions) ([]*LogEntry, error) {
 	s.calls++
-	return batch, nil
+	var result []*LogEntry
+	for _, entry := range s.entries {
+		if entry.Sequence <= options.Since.Seq {
+			continue
+		}
+		result = append(result, entry)
+		if options.Limit > 0 && len(result) >= options.Limit {
+			break
+		}
+	}
+	return result, nil
 }
 
 func (s *stubSingleChannelCache) GetCachedChanges(_ ChangesOptions) (uint64, []*LogEntry) {
@@ -635,14 +643,16 @@ func drainChangesFeed(t *testing.T, feed <-chan *ChangeEntry) []*ChangeEntry {
 }
 
 // TestChangesFeedActiveOnlyContinuesPastInactiveBatch reproduces the CBG-5555 bug directly against
-// changesFeed, bypassing the cache/query layer entirely. For ActiveOnly feeds, changesFeed pages by
-// ChannelQueryLimit rather than the caller's requested Limit (the caller's Limit is enforced further
-// upstream, in SimpleMultiChangesFeed, since raw entries and active entries aren't the same count) -
-// so a changesFeed that mistook a full-sized batch of inactive rows for exhaustion would stop before
-// ever finding an active entry. Here ChannelQueryLimit is set to 3: the first batch is three
-// channel-removal entries (a full page, zero active), and the second batch - shorter than the page
-// size - holds the active entries and signals the channel is exhausted. A correct changesFeed must
-// call GetChanges a second time to find them.
+// changesFeed, bypassing the cache/query layer entirely. For ActiveOnly feeds, changesFeed must page
+// by ChannelQueryLimit rather than the caller's requested Limit (the caller's Limit is enforced
+// further upstream, in SimpleMultiChangesFeed, since raw entries and active entries aren't the same
+// count). The buggy version instead kept shrinking its per-call Limit toward the small requested
+// Limit and stopped as soon as it had sent that many *active* entries - so with Limit=1 here, it
+// would give up after finding a single active entry even though the channel has a second one still
+// to come. ChannelQueryLimit is set to 3: the channel has three channel-removal entries (a full page,
+// zero active) followed by two active entries. The stub honors Since/Limit like a real channel
+// cache, so this only passes if changesFeed's actual pagination choices - not a pre-scripted call
+// count - are what produce the full result.
 func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 3
@@ -652,44 +662,41 @@ func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 
 	stub := &stubSingleChannelCache{
 		channelID: channelID,
-		batches: [][]*LogEntry{
-			{
-				{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
-				{DocID: "removed2", RevID: "1-a", Sequence: 2, Flags: channels.Removed, CollectionID: collectionID},
-				{DocID: "removed3", RevID: "1-a", Sequence: 3, Flags: channels.Removed, CollectionID: collectionID},
-			},
-			{
-				{DocID: "active1", RevID: "1-a", Sequence: 4, CollectionID: collectionID},
-				{DocID: "active2", RevID: "1-a", Sequence: 5, CollectionID: collectionID},
-			},
+		entries: []*LogEntry{
+			{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
+			{DocID: "removed2", RevID: "1-a", Sequence: 2, Flags: channels.Removed, CollectionID: collectionID},
+			{DocID: "removed3", RevID: "1-a", Sequence: 3, Flags: channels.Removed, CollectionID: collectionID},
+			{DocID: "active1", RevID: "1-a", Sequence: 4, CollectionID: collectionID},
+			{DocID: "active2", RevID: "1-a", Sequence: 5, CollectionID: collectionID},
 		},
 	}
 
 	options := ChangesOptions{
 		Since:      SequenceID{Seq: 0},
 		ActiveOnly: true,
-		Limit:      2,
+		Limit:      1,
 		ChangesCtx: base.TestCtx(t),
 	}
 
 	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
 
 	// changesFeed forwards every entry it sees, active or not - ActiveOnly filtering happens
-	// upstream in SimpleMultiChangesFeed. What matters here is that all 5 entries were retrieved at
-	// all, which requires a second call to GetChanges.
+	// upstream in SimpleMultiChangesFeed. What matters here is that all 5 entries were retrieved,
+	// including active2, which the buggy version dropped.
 	require.Len(t, received, 5)
 	assert.Equal(t, "removed1", received[0].ID)
 	assert.Equal(t, "removed2", received[1].ID)
 	assert.Equal(t, "removed3", received[2].ID)
 	assert.Equal(t, "active1", received[3].ID)
 	assert.Equal(t, "active2", received[4].ID)
-	assert.Equal(t, 2, stub.calls, "changesFeed should have called GetChanges a second time to find the active entries")
+	assert.Equal(t, 2, stub.calls, "changesFeed should page by ChannelQueryLimit, not the much smaller requested Limit, for ActiveOnly feeds")
 }
 
 // TestChangesFeedActiveOnlyMultipleInactiveBatches is the same shape as
 // TestChangesFeedActiveOnlyContinuesPastInactiveBatch but spans three all-inactive, full-page batches
-// before the active entries appear, verifying pagination genuinely continues round after round rather
-// than tolerating a single extra retry.
+// before four active entries appear - more than the requested Limit of 2. The buggy version stopped
+// as soon as it had sent Limit-many active entries, so it would give up after active2 and never see
+// active3 or active4, even though the channel has more data.
 func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 3
@@ -697,25 +704,17 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 	channelID := channels.NewID("active", collectionID)
 
-	inactiveBatch := func(seqStart uint64) []*LogEntry {
-		return []*LogEntry{
-			{DocID: fmt.Sprintf("removed%d", seqStart), RevID: "1-a", Sequence: seqStart, Flags: channels.Removed, CollectionID: collectionID},
-			{DocID: fmt.Sprintf("removed%d", seqStart+1), RevID: "1-a", Sequence: seqStart + 1, Flags: channels.Removed, CollectionID: collectionID},
-			{DocID: fmt.Sprintf("removed%d", seqStart+2), RevID: "1-a", Sequence: seqStart + 2, Flags: channels.Removed, CollectionID: collectionID},
-		}
+	var entries []*LogEntry
+	for seq := uint64(1); seq <= 9; seq++ {
+		entries = append(entries, &LogEntry{DocID: fmt.Sprintf("removed%d", seq), RevID: "1-a", Sequence: seq, Flags: channels.Removed, CollectionID: collectionID})
+	}
+	for i, seq := 1, uint64(10); seq <= 13; i, seq = i+1, seq+1 {
+		entries = append(entries, &LogEntry{DocID: fmt.Sprintf("active%d", i), RevID: "1-a", Sequence: seq, CollectionID: collectionID})
 	}
 
 	stub := &stubSingleChannelCache{
 		channelID: channelID,
-		batches: [][]*LogEntry{
-			inactiveBatch(1),
-			inactiveBatch(4),
-			inactiveBatch(7),
-			{
-				{DocID: "active1", RevID: "1-a", Sequence: 10, CollectionID: collectionID},
-				{DocID: "active2", RevID: "1-a", Sequence: 11, CollectionID: collectionID},
-			},
-		},
+		entries:   entries,
 	}
 
 	options := ChangesOptions{
@@ -727,10 +726,12 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 
 	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
 
-	require.Len(t, received, 11)
+	require.Len(t, received, 13)
 	assert.Equal(t, "active1", received[9].ID)
 	assert.Equal(t, "active2", received[10].ID)
-	assert.Equal(t, 4, stub.calls, "changesFeed should have paged through all three inactive batches to find the active entries")
+	assert.Equal(t, "active3", received[11].ID)
+	assert.Equal(t, "active4", received[12].ID)
+	assert.Equal(t, 5, stub.calls, "changesFeed should have paged through all three inactive batches and kept going to find all four active entries")
 }
 
 // TestChangesFeedActiveOnlyStopsWhenChannelExhausted verifies changesFeed terminates (rather than
@@ -746,10 +747,8 @@ func TestChangesFeedActiveOnlyStopsWhenChannelExhausted(t *testing.T) {
 
 	stub := &stubSingleChannelCache{
 		channelID: channelID,
-		batches: [][]*LogEntry{
-			{
-				{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
-			},
+		entries: []*LogEntry{
+			{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
 		},
 	}
 
