@@ -3844,9 +3844,13 @@ func TestMultiChannelChangesWithTriggeredSequence(t *testing.T) {
 	// LowSeq advances to 7. The late-sequence feeds for this changes iteration will
 	// deliver seq 7 even though it arrived after the initial feed was established.
 	db.WriteDirect(t, collection, []string{"DEF"}, 7)
-	// WaitForSequence(7) confirms the cache has processed past seq 7. Because seq 9 was
-	// already processed earlier (nextSequence=10), this returns immediately.
-	rt.WaitForSequence(7)
+	// WaitForSequenceNotSkipped(7) blocks until seq 7 has been removed from the skipped queue,
+	// which happens inside processEntry (change_cache.go) after _addToCache completes. This is
+	// the correct gate here: WaitForSequence(7) would return immediately because nextSequence is
+	// already 10 (advanced when seq 9 was processed), so it would not wait for seq 7's DCP event
+	// to actually be received and cached — causing a race on CI where the subsequent PostChanges
+	// request returns 0 results instead of 1.
+	rt.WaitForSequenceNotSkipped(7)
 
 	// With seq 7 now in the cache, the changes feed should deliver it via the late-sequence
 	// path. The user still has no DEF access, but the LowSeq advancement itself produces a
