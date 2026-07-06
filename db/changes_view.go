@@ -164,10 +164,16 @@ func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, c
 		// If active-only, loop until either retrieve (limit) active entries, or reach endSeq.  Non-active entries are still
 		// included in the result set for potential cache prepend
 		if activeOnly {
-			// If we've reached limit before exhausting the range up to endSeq, we're done, but the
-			// range beyond the last returned entry hasn't been fully scanned.
+			// If we've reached limit before exhausting the range up to endSeq, we're done.  Whether
+			// the range beyond the last returned entry has been fully scanned can't be determined by
+			// comparing highSeq to endSeq alone - channels are often sparse, so the last real entry
+			// is frequently well below endSeq even when nothing was missed.  Instead, check whether
+			// this query call itself returned fewer rows than requested: if so, the store had no more
+			// matching entries anywhere in [startSeq, endSeq], regardless of where highSeq landed. If
+			// the call returned exactly `limit` rows, the LIMIT clause may have truncated further
+			// matches, so fall back to the highSeq/endSeq comparison.
 			if limit != 0 && activeEntryCount >= limit {
-				reachedEnd = endSeq > 0 && highSeq >= endSeq
+				reachedEnd = queryRowCount < limit || (endSeq > 0 && highSeq >= endSeq)
 				break
 			}
 			// If we've reached endSeq, we're done

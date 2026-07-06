@@ -802,6 +802,59 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("doc%d", i+1), change.ID, "change at index %d", i)
 		}
 	})
+	t.Run("query exhausts channel before endSeq, reachedEnd must be true", func(t *testing.T) {
+		// doc1: active - contributes a single active row to the channel log.
+		// docA: active, then removed from the channel - the add is superseded by the removal,
+		// so it contributes a single non-active (removal) row, not two rows.
+		// docB: active - the only entry remaining in the channel after docA's removal.
+		// Nothing else exists in the channel all the way out to endSeq, so a query that reaches
+		// docB should report reachedEnd=true even though docB's sequence is far below endSeq -
+		// the gap up to endSeq was fully (if implicitly) scanned, not skipped.
+		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
+
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		revID, _, err := collection.Put(ctx, "docA", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "docA", Body{"channels": "other", "_rev": revID})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "docB", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		db.WaitForPendingChanges(t)
+
+		// limit=2 forces pagination: the first query call returns doc1's active row and docA's
+		// removal row (2 rows, hitting the row cap) with only 1 active entry seen so far; the
+		// second call returns just docB's active row (1 row, under the row cap), pushing
+		// activeEntryCount to the limit. endSeq is set far beyond any real sequence to exercise
+		// the sparse-channel case.
+		entries, reachedEnd, err := collection.getChangesInChannelFromQuery(ctx, activeChannel, 0, 1000, 2, true)
+		require.NoError(t, err)
+		require.Len(t, entries, 3)
+		assert.True(t, reachedEnd, "query fully exhausted the channel and should report reachedEnd=true")
+	})
+	t.Run("query call lands exactly on limit at the true end of channel, reachedEnd stays conservatively false", func(t *testing.T) {
+		// This pins a deliberate, documented limitation rather than a bug: a single active doc is
+		// the only entry in the channel, and limit=1 exactly matches the row count that call
+		// returns. From the row count alone there's no way to distinguish "the LIMIT clause
+		// truncated a real remaining entry" from "the store coincidentally had exactly `limit`
+		// matching rows" - so reachedEnd must stay conservatively false here, per
+		// getChangesInChannelFromQuery's doc comment ("false" means unknown/maybe, not "definitely
+		// more"). The CBG-5555 fix only resolves the *unambiguous* case, where a query call returns
+		// fewer rows than requested (see the sibling subtest above) - it does not, and cannot
+		// without an extra probe query, resolve this exact-match ambiguity. If this test ever
+		// starts asserting reachedEnd=true here, it means the row-count heuristic changed in a way
+		// that may no longer be safe - verify it can't produce false positives before updating it.
+		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
+
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		db.WaitForPendingChanges(t)
+
+		entries, reachedEnd, err := collection.getChangesInChannelFromQuery(ctx, activeChannel, 0, 1000, 1, true)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.False(t, reachedEnd, "query call was row-capped exactly at limit; reachedEnd must stay conservatively false")
+	})
 }
 
 func setupDBWithChannelCacheSize(t *testing.T, maxLength int) (context.Context, *Database, *DatabaseCollectionWithUser) {
