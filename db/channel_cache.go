@@ -80,10 +80,7 @@ var _ ChannelCache = &channelCacheImpl{}
 
 // ChannelQueryHandler interface is implemented by databaseContext and databaseCollection.
 type ChannelQueryHandler interface {
-	// getChangesInChannelFromQuery returns the LogEntries for a channel within [startSeq, endSeq], and
-	// reachedEnd, which is true if the query scanned all the way through to endSeq without stopping
-	// early due to satisfying an activeOnly+limit active-entry count first.
-	getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (entries LogEntries, reachedEnd bool, err error)
+	getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
 }
 
 // Function that returns a ChannelQueryHandlerFunc for the specified collectionID

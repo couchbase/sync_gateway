@@ -13,8 +13,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"sort"
 	"strconv"
 	"testing"
 
@@ -488,207 +486,52 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 
 	// Get changes from channel "ABC" with limit and activeOnly true
 
-	entries, _, err := collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 25, true)
+	entries, err := collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 25, true)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 25)
 	checkFlags(entries)
 
 	// Get changes from channel "*" with limit and activeOnly true
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 25, true)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 25, true)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 25)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" without limit and activeOnly true
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, true)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, true)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 30)
 	checkFlags(entries)
 
 	// Get changes from channel "*" without limit and activeOnly true
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, true)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, true)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 30)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" with limit and activeOnly false
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 45, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 45, false)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 45)
 	checkFlags(entries)
 
 	// Get changes from channel "*" with limit and activeOnly false
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 45, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 45, false)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 45)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" without limit and activeOnly false
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, false)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 50)
 	checkFlags(entries)
 
 	// Get changes from channel "*" without limit and activeOnly true
-	entries, _, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, false)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 50)
 	checkFlags(entries)
-}
-
-// FuzzGetChangesInChannelFromQueryActiveOnly exercises getChangesInChannelFromQuery's activeOnly+limit
-// pagination directly (the layer TestQueryChannelsActiveOnlyWithLimit covers, but only against
-// Couchbase Server/N1QL) against the default Rosmar/views backing store. It checks that the returned
-// active entries form a correctly ordered, duplicate-free prefix of the true active set, and that
-// reachedEnd never falsely claims the range was fully scanned (reachedEnd=false is allowed to be
-// conservative - see the doc comment on getChangesInChannelFromQuery - but reachedEnd=true is a hard
-// promise that guards a consumer from silently dropping entries it assumes were already covered).
-// This doesn't pin down the specific reachedEnd fix from CBG-5555 (an unnecessary but safe false
-// negative) - see TestChannelCacheActiveOnlyScenarios's "query exhausts channel before endSeq"
-// subtest in channel_cache_test.go for that regression coverage, engineered to land in the
-// unambiguous case; a black-box fuzz property can't reliably distinguish that from the inherent,
-// accepted ambiguity when a query call happens to return exactly `limit` rows.
-func FuzzGetChangesInChannelFromQueryActiveOnly(f *testing.F) {
-	f.Add(uint8(0), uint8(5))
-	f.Add(uint8(1), uint8(1))
-	f.Add(uint8(5), uint8(0)) // no limit
-	f.Add(uint8(10), uint8(3))
-	f.Add(uint8(20), uint8(7))
-	f.Add(uint8(30), uint8(25))
-	f.Add(uint8(30), uint8(2))
-
-	f.Fuzz(func(t *testing.T, numDocs, limit uint8) {
-		const maxDocs = 30
-		n := min(int(numDocs), maxDocs)
-
-		db, ctx := setupTestDBAllowConflicts(t)
-		defer db.Close(ctx)
-		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
-
-		const channelName = "ABC"
-
-		type docState struct {
-			id     string
-			revID  string
-			seq    uint64
-			active bool
-		}
-		docsMap := make(map[string]*docState)
-		var docIDs []string
-		nextDocID := 1
-
-		// Deterministic random generator based on inputs to ensure reproducibility
-		rng := rand.New(rand.NewSource(int64(numDocs)*1000 + int64(limit)))
-
-		var endSeq uint64
-		for i := 1; i <= n; i++ {
-			// Choose action:
-			// 0: Create new active doc
-			// 1: Create new other (inactive) doc
-			// 2: Update existing to active
-			// 3: Update existing to other (inactive)
-			action := rng.Intn(4)
-			if len(docIDs) == 0 {
-				action = rng.Intn(2) // Only create actions are possible initially
-			}
-
-			var docID string
-			var body Body
-			var active bool
-			switch action {
-			case 0:
-				docID = fmt.Sprintf("doc_act_%d", nextDocID)
-				nextDocID++
-				body = Body{"channels": channelName}
-				active = true
-			case 1:
-				docID = fmt.Sprintf("doc_oth_%d", nextDocID)
-				nextDocID++
-				body = Body{"channels": "other"}
-				active = false
-			case 2:
-				idx := rng.Intn(len(docIDs))
-				docID = docIDs[idx]
-				body = Body{"channels": channelName, "_rev": docsMap[docID].revID}
-				active = true
-			case 3:
-				idx := rng.Intn(len(docIDs))
-				docID = docIDs[idx]
-				body = Body{"channels": "other", "_rev": docsMap[docID].revID}
-				active = false
-			}
-
-			newRevID, doc, err := collection.Put(ctx, docID, body)
-			require.NoError(t, err)
-			endSeq = doc.Sequence
-
-			if state, exists := docsMap[docID]; exists {
-				state.revID = newRevID
-				state.seq = doc.Sequence
-				state.active = active
-			} else {
-				docsMap[docID] = &docState{id: docID, revID: newRevID, seq: doc.Sequence, active: active}
-				docIDs = append(docIDs, docID)
-			}
-		}
-
-		if n == 0 {
-			return
-		}
-
-		entries, reachedEnd, err := collection.getChangesInChannelFromQuery(ctx, channelName, 0, endSeq, int(limit), true)
-		require.NoError(t, err)
-
-		// Ground truth: active docs at their final sequence, in sequence order.
-		var activeDocs []*docState
-		for _, state := range docsMap {
-			if state.active {
-				activeDocs = append(activeDocs, state)
-			}
-		}
-		sort.Slice(activeDocs, func(i, j int) bool { return activeDocs[i].seq < activeDocs[j].seq })
-
-		// entries may include non-active rows (kept for potential cache prepend) - filter to active
-		// entries for comparison against the true active list, and separately check overall ordering.
-		var highSeq uint64
-		seen := make(map[string]bool, len(entries))
-		var activeReturned []*LogEntry
-		for _, e := range entries {
-			require.False(t, seen[e.DocID], "duplicate entry %s", e.DocID)
-			seen[e.DocID] = true
-			require.GreaterOrEqual(t, e.Sequence, highSeq, "entries must be returned in ascending sequence order")
-			highSeq = e.Sequence
-			if e.IsActive() {
-				activeReturned = append(activeReturned, e)
-			}
-		}
-
-		expectedMin := len(activeDocs)
-		if int(limit) > 0 && int(limit) < expectedMin {
-			expectedMin = int(limit)
-		}
-		require.GreaterOrEqual(t, len(activeReturned), expectedMin,
-			"expected at least %d active entries (limit=%d, total active=%d)", expectedMin, limit, len(activeDocs))
-
-		for i, e := range activeReturned {
-			require.Equal(t, activeDocs[i].id, e.DocID, "wrong doc ID at active index %d", i)
-			require.Equal(t, activeDocs[i].seq, e.Sequence, "wrong sequence at active index %d", i)
-		}
-
-		// reachedEnd's contract (see getChangesInChannelFromQuery's doc comment) is one-directional:
-		// false means "unknown, there might be more" (a query call landing exactly on `limit` rows
-		// can't tell a coincidental match from LIMIT truncation, so a conservative false is expected
-		// and not a bug) - but true is a hard promise that nothing remains. Verify that promise: it's
-		// the direction that matters for correctness, since a false positive here would mean a
-		// consumer trusts the range as fully scanned when it isn't, silently dropping entries.
-		if reachedEnd {
-			followUp, _, err := collection.getChangesInChannelFromQuery(ctx, channelName, highSeq+1, endSeq, 0, false)
-			require.NoError(t, err)
-			require.Len(t, followUp, 0,
-				"reachedEnd=true but remaining range [%d,%d] still has entries", highSeq+1, endSeq)
-		}
-	})
 }
 
 func TestCountAllDocs(t *testing.T) {

@@ -545,9 +545,8 @@ func (qh *testQueryHandler) asFactory(collectionID uint32) (ChannelQueryHandler,
 	return qh, nil
 }
 
-func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, bool, error) {
+func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	queryEntries := make(LogEntries, 0)
-	reachedEnd := true
 	qh.lock.RLock()
 	for _, entry := range qh.entries {
 		_, ok := entry.Channels[channel]
@@ -557,7 +556,6 @@ func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, ch
 			}
 			queryEntries = append(queryEntries, entry)
 			if limit > 0 && len(queryEntries) >= limit {
-				reachedEnd = endSeq > 0 && entry.Sequence >= endSeq
 				break
 			}
 		}
@@ -567,7 +565,7 @@ func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, ch
 	qh.lock.Lock()
 	qh.queryCount++
 	qh.lock.Unlock()
-	return queryEntries, reachedEnd, nil
+	return queryEntries, nil
 }
 
 func (qh *testQueryHandler) seedEntries(seededEntries LogEntries) {
@@ -781,8 +779,8 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 	})
 	t.Run("cache populated, query requires pagination with limit", func(t *testing.T) {
 		// With ChannelQueryLimit=5 and Limit=10, each GetChanges call returns 5 entries from the
-		// query range.  Without the queryHitActiveLimit guard, the first call would append the
-		// cache (docs 16-20) immediately and skip docs 6-15.
+		// query range, which equals the requested limit, so there's no room to also append the
+		// cache (docs 16-20) - if there were, the first call would skip docs 6-15.
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 5
 		cacheOptions.ChannelQueryLimit = 5
@@ -801,59 +799,6 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		for i, change := range changes {
 			assert.Equal(t, fmt.Sprintf("doc%d", i+1), change.ID, "change at index %d", i)
 		}
-	})
-	t.Run("query exhausts channel before endSeq, reachedEnd must be true", func(t *testing.T) {
-		// doc1: active - contributes a single active row to the channel log.
-		// docA: active, then removed from the channel - the add is superseded by the removal,
-		// so it contributes a single non-active (removal) row, not two rows.
-		// docB: active - the only entry remaining in the channel after docA's removal.
-		// Nothing else exists in the channel all the way out to endSeq, so a query that reaches
-		// docB should report reachedEnd=true even though docB's sequence is far below endSeq -
-		// the gap up to endSeq was fully (if implicitly) scanned, not skipped.
-		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
-
-		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
-		require.NoError(t, err)
-		revID, _, err := collection.Put(ctx, "docA", Body{"channels": activeChannel})
-		require.NoError(t, err)
-		_, _, err = collection.Put(ctx, "docA", Body{"channels": "other", "_rev": revID})
-		require.NoError(t, err)
-		_, _, err = collection.Put(ctx, "docB", Body{"channels": activeChannel})
-		require.NoError(t, err)
-		db.WaitForPendingChanges(t)
-
-		// limit=2 forces pagination: the first query call returns doc1's active row and docA's
-		// removal row (2 rows, hitting the row cap) with only 1 active entry seen so far; the
-		// second call returns just docB's active row (1 row, under the row cap), pushing
-		// activeEntryCount to the limit. endSeq is set far beyond any real sequence to exercise
-		// the sparse-channel case.
-		entries, reachedEnd, err := collection.getChangesInChannelFromQuery(ctx, activeChannel, 0, 1000, 2, true)
-		require.NoError(t, err)
-		require.Len(t, entries, 3)
-		assert.True(t, reachedEnd, "query fully exhausted the channel and should report reachedEnd=true")
-	})
-	t.Run("query call lands exactly on limit at the true end of channel, reachedEnd stays conservatively false", func(t *testing.T) {
-		// This pins a deliberate, documented limitation rather than a bug: a single active doc is
-		// the only entry in the channel, and limit=1 exactly matches the row count that call
-		// returns. From the row count alone there's no way to distinguish "the LIMIT clause
-		// truncated a real remaining entry" from "the store coincidentally had exactly `limit`
-		// matching rows" - so reachedEnd must stay conservatively false here, per
-		// getChangesInChannelFromQuery's doc comment ("false" means unknown/maybe, not "definitely
-		// more"). The CBG-5555 fix only resolves the *unambiguous* case, where a query call returns
-		// fewer rows than requested (see the sibling subtest above) - it does not, and cannot
-		// without an extra probe query, resolve this exact-match ambiguity. If this test ever
-		// starts asserting reachedEnd=true here, it means the row-count heuristic changed in a way
-		// that may no longer be safe - verify it can't produce false positives before updating it.
-		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
-
-		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
-		require.NoError(t, err)
-		db.WaitForPendingChanges(t)
-
-		entries, reachedEnd, err := collection.getChangesInChannelFromQuery(ctx, activeChannel, 0, 1000, 1, true)
-		require.NoError(t, err)
-		require.Len(t, entries, 1)
-		assert.False(t, reachedEnd, "query call was row-capped exactly at limit; reachedEnd must stay conservatively false")
 	})
 }
 
@@ -1167,7 +1112,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 
 		// doc1 is pruned, cache contains doc2 and doc3. validFrom is 2 (doc1.Seq + 1 = 2).
 		// Querying with Limit=1 should get doc1 (Seq 1) and stop early because limit=1 is met before Seq 2 (validFrom).
-		// Therefore reachedEnd is false, cache is not appended, only doc1 is returned.
+		// The query returns exactly `limit` (1) row, so there's no room left to append the cache; only doc1 is returned.
 		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
@@ -1203,7 +1148,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 
 		// doc1 and doc2 are pruned. Cache contains doc3 and doc4. validFrom is 3 (doc2.Seq + 1 = 3).
 		// Querying with Limit=2 gets doc1 (Seq 1) and doc2 (Seq 2) and stops early (highSeq = 2 < 3).
-		// Therefore reachedEnd is false, cache is not appended.
+		// The query returns exactly `limit` (2) rows, so there's no room left to append the cache.
 		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
@@ -1214,8 +1159,8 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		assert.Equal(t, "doc1", changes[0].ID)
 		assert.Equal(t, "doc2", changes[1].ID)
 
-		// Querying with Limit=10 gets doc1, doc2, and the query iterator finishes normally at Seq 3 (no other active).
-		// Thus reachedEnd is true, cache is appended, and limit=10 allows all 4 to be returned.
+		// Querying with Limit=10 gets doc1, doc2 (2 rows, under the limit), leaving room to append
+		// the cache (doc3, doc4), so all 4 are returned.
 		changes10 := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
@@ -1256,7 +1201,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 
 		// doc1 and doc2 are pruned. Cache contains doc3 and doc4. validFrom is 4 (doc2.Seq + 1 = 4).
 		// Querying with Limit=2 gets doc1 (Seq 1) and doc2 (Seq 3) and stops early (highSeq = 3 < 4).
-		// Thus reachedEnd is false, cache is not appended.
+		// The query returns exactly `limit` (2) rows, so there's no room left to append the cache.
 		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
@@ -1267,8 +1212,8 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		assert.Equal(t, "doc1", changes[0].ID)
 		assert.Equal(t, "doc2", changes[1].ID)
 
-		// Querying with Limit=10 gets doc1, doc2, and query iterator reaches endSeq normally (Seq 4 reached).
-		// Thus reachedEnd is true, cache is appended, and limit=10 allows all 4 to be returned.
+		// Querying with Limit=10 gets doc1, doc2 (2 rows, under the limit), leaving room to append
+		// the cache (doc3, doc4), so all 4 are returned.
 		changes10 := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
