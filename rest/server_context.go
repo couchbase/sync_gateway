@@ -210,13 +210,16 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 	if err != nil {
 		return fmt.Errorf("could not obtain management endpoints: %w", err)
 	}
+	if len(endpoints) == 0 {
+		return fmt.Errorf("no management endpoints available")
+	}
 
 	metricsJSON, err := base.JSONMarshal(metrics)
 	if err != nil {
 		return fmt.Errorf("could not marshal fleet manager metrics: %w", err)
 	}
 
-	uri := fmt.Sprintf("/_lighthouseCollector/ingest?product_name=%s&instance_id=%s", base.ProductInfoName, url.QueryEscape(metrics.InstanceID))
+	uri := fmt.Sprintf("/_telemetryCollector/ingest?product_name=%s&instance_id=%s", base.ProductInfoName, url.QueryEscape(metrics.InstanceID))
 	statusCode, respBytes, err := doHTTPAuthRequest(ctx, httpClient, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodPost, uri, "application/json", endpoints, metricsJSON)
 	if err != nil {
 		return err
