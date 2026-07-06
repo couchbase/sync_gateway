@@ -58,6 +58,9 @@ func TestDatabaseSurvivesDefaultCollectionDropAfterMetadataMigration(t *testing.
 	namedDataStore, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
 	namedCollection := base.ScopeAndCollectionName{Scope: namedDataStore.ScopeName(), Collection: namedDataStore.CollectionName()}
+	namedDatastore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+	namedCollection2 := base.ScopeAndCollectionName{Scope: namedDatastore2.ScopeName(), Collection: namedDatastore2.CollectionName()}
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -158,4 +161,19 @@ func TestDatabaseSurvivesDefaultCollectionDropAfterMetadataMigration(t *testing.
 	resp = rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/doc1", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), `"value":"hello"`)
+
+	// Try create a new db against the bucket with no _default without opting into the system metadata collection.
+	// This should fail because the legacy metadata store is gone.
+	newDbConfig := rt.NewDbConfig()
+	newDbConfig.Scopes = rest.ScopesConfig{
+		namedCollection2.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{
+				namedCollection2.CollectionName(): {},
+			},
+		},
+	}
+	newDbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	resp = rt.CreateDatabase("newdb", newDbConfig)
+	rest.RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.Body.String(), "_default._default does not exist on bucket")
 }
