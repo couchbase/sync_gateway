@@ -19,6 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
+	"github.com/couchbaselabs/rosmar"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -1877,4 +1879,59 @@ func TestMergeRegistryIntoCache_PreCCVAwarePeerLowerWins(t *testing.T) {
 		assert.Equal(t, v33, m.cachedPreCCVAwareNodes[peerUUID].Version, "lower reading must remain after a higher second observation")
 		assert.Equal(t, later, m.cachedPreCCVAwareNodes[peerUUID].LastObservedAt, "LastObservedAt must advance even when the higher reading is discarded")
 	})
+}
+
+func TestClusterCompatRefreshAndStopUntrackVanishedBucket(t *testing.T) {
+	ctx := base.TestCtx(t)
+	fakeBucket := "non_existent_fake_bucket_123"
+
+	if base.UnitTestUrlIsWalrus() {
+		defer func() {
+			// Under Rosmar, any read against fakeBucket auto-creates it.
+			// Make sure to delete it regardless of what happened in the test.
+			bucket, err := rosmar.OpenBucketIn(sgtest.UnitTestUrl(), fakeBucket, rosmar.CreateOrOpen)
+			require.NoError(t, err)
+			require.NoError(t, bucket.CloseAndDelete(ctx))
+		}()
+	}
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	clusterCompat := sc.ClusterCompat
+	require.NotNil(t, clusterCompat)
+	defer clusterCompat.Stop(ctx)
+
+	bucketName := rt.Bucket().GetName()
+
+	// Verify bucket is currently tracked and exists
+	require.Contains(t, clusterCompat.trackedBucketList(), bucketName)
+	exists, err := sc.BootstrapContext.bucketExists(ctx, bucketName)
+	require.NoError(t, err)
+	require.True(t, exists, "active bucket should exist")
+
+	// Verify non-existent bucket doesn't exist
+	exists, err = sc.BootstrapContext.bucketExists(ctx, fakeBucket)
+	require.NoError(t, err)
+	require.False(t, exists, "non-existent bucket should not exist")
+
+	// Track the fake bucket and confirm refreshNodeRegistrations doesn't hang or panic on a tracked
+	// bucket that no longer exists. Under Rosmar the read auto-creates fakeBucket (see above), so
+	// it's never classified as vanished and stays tracked. Under Couchbase Server the read fails
+	// for real, so it's classified as errBucketDoesNotExist and gets untracked.
+	clusterCompat.mu.Lock()
+	clusterCompat.trackedBuckets[fakeBucket] = struct{}{}
+	clusterCompat.mu.Unlock()
+	require.Contains(t, clusterCompat.trackedBucketList(), fakeBucket, "fake bucket should be tracked")
+
+	_, _, _, _, err = clusterCompat.refreshNodeRegistrations(ctx)
+	require.NoError(t, err)
+	require.Contains(t, clusterCompat.trackedBucketList(), bucketName, "real bucket should remain tracked")
+
+	if base.UnitTestUrlIsWalrus() {
+		require.Contains(t, clusterCompat.trackedBucketList(), fakeBucket, "Rosmar auto-creates buckets on read, so the fake bucket is never classified as vanished")
+	} else {
+		require.NotContains(t, clusterCompat.trackedBucketList(), fakeBucket, "vanished bucket should be untracked")
+	}
 }

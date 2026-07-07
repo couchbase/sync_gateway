@@ -489,6 +489,11 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 			RatchetHWM:       ratchet,
 		})
 		if err != nil {
+			if errors.Is(err, errBucketDoesNotExist) {
+				base.InfofCtx(ctx, base.KeyConfig, "Bucket %s no longer exists in cluster, removing from cluster compatibility manager %v", base.MD(bucket), err)
+				m.releaseBucket(bucket)
+				continue
+			}
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
 		}
