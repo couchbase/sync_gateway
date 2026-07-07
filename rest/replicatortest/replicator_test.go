@@ -736,6 +736,11 @@ func TestReplicationStatusActions(t *testing.T) {
 			status := rt1.GetReplicationStatus(replicationID)
 			assert.Equal(c, db.ReplicationStateStopped, status.Status)
 			assert.Equal(c, "", status.LastSeqPull)
+			replications := rt1.GetReplications()
+			cfg, ok := replications[replicationID]
+			if assert.True(c, ok, "replication %q not found", replicationID) {
+				assert.Equal(c, db.ReplicationStateStopped, cfg.TargetState)
+			}
 		}, 10*time.Second, 100*time.Millisecond)
 
 		// Restart the replication
