@@ -937,8 +937,7 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	foundDocs := make(chan string, len(dataStores))
 	callback := func(event sgbucket.FeedEvent) bool {
 		if strings.HasSuffix(string(event.Key), "_doc") {
-			mutationCount.Add(1)
-			if mutationCount.Load() == uint64(len(dataStores)) {
+			if mutationCount.Add(1) == uint64(len(dataStores)) {
 				close(foundDocs)
 			}
 		}
