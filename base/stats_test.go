@@ -187,13 +187,15 @@ func TestSgwFloatStatMarshalNonFinite(t *testing.T) {
 			marshalled, err := JSONMarshalCanonical(map[string]*SgwFloatStat{"stat": stat})
 			require.NoError(t, err)
 
-			// The output must be valid, parseable JSON.
+			// The output must be valid, parseable JSON, and non-finite values must fall back to 0.
 			var roundTripped map[string]float64
 			require.NoError(t, JSONUnmarshal(marshalled, &roundTripped))
+			require.Equal(t, 0.0, roundTripped["stat"])
 
 			// String() satisfies expvar.Var, which likewise requires a valid JSON value.
 			var viaString float64
 			require.NoError(t, JSONUnmarshal([]byte(stat.String()), &viaString))
+			require.Equal(t, 0.0, viaString)
 		})
 	}
 }

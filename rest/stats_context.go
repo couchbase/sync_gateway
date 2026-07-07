@@ -124,9 +124,7 @@ func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUti
 }
 
 // cpuPercentageSince returns the process CPU utilization percentage between the previous snapshot and
-// the receiver (current) snapshot. It returns 0 when no measurable system time has elapsed between
-// the two snapshots: without that guard the divide-by-zero yields +Inf/NaN, which then breaks stats
-// JSON serialization (CBG-3658). A zero total delta happens when stats are sampled very frequently,
+// the receiver (current) snapshot. A zero total delta happens when stats are sampled very frequently,
 // or on platforms whose CPU accounting has coarse granularity.
 func (current *cpuStatsSnapshot) cpuPercentageSince(previous *cpuStatsSnapshot) float64 {
 	// The combined delta of user + system time for the process
