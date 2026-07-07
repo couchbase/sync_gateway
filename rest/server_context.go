@@ -1402,7 +1402,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	// In sync gateway version 4.0+ we do not support the disabling of use of xattrs
-	if !config.UseXattrs() {
+	if config.EnableXattrs != nil && !*config.EnableXattrs {
 		return db.DatabaseContextOptions{}, fmt.Errorf("sync gateway requires enable_shared_bucket_access=true")
 	}
 
@@ -1490,10 +1490,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	if config.UserXattrKey != nil && *config.UserXattrKey != "" {
 		if !base.IsEnterpriseEdition() {
 			return db.DatabaseContextOptions{}, fmt.Errorf("user_xattr_key is only supported in enterpise edition")
-		}
-
-		if !config.UseXattrs() {
-			return db.DatabaseContextOptions{}, fmt.Errorf("use of user_xattr_key requires shared_bucket_access to be enabled")
 		}
 
 		userXattrKey = *config.UserXattrKey
@@ -1599,7 +1595,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		OIDCOptions:                   config.OIDCConfig,
 		LocalJWTConfig:                config.LocalJWTConfig,
 		ImportOptions:                 *importOptions,
-		EnableXattr:                   config.UseXattrs(),
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
 		SessionCookieHttpOnly:         base.ValDefault(config.SessionCookieHTTPOnly, false),

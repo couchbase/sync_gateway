@@ -3180,8 +3180,7 @@ func BenchmarkDatabase(b *testing.B) {
 		bucket := base.GetTestBucket(b)
 		defer bucket.Close(ctx)
 		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-			EnableXattr: true,
-			Scopes:      GetScopesOptions(b, bucket, 1),
+			Scopes: GetScopesOptions(b, bucket, 1),
 		})
 		if err != nil {
 			b.Fatalf("Error creating database context: %v", err)
@@ -3210,8 +3209,7 @@ func BenchmarkPut(b *testing.B) {
 	bucket := base.GetTestBucket(b)
 	defer bucket.Close(ctx)
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		Scopes:      GetScopesOptions(b, bucket, 1),
-		EnableXattr: true,
+		Scopes: GetScopesOptions(b, bucket, 1),
 	})
 	db, err := CreateDatabase(context)
 	if err != nil {
@@ -4069,7 +4067,6 @@ func Test_resyncDocument(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.Options.EnableXattr = true
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	testCases := []struct {
@@ -4411,7 +4408,7 @@ func TestUpdateCalculatedStatsPanic(t *testing.T) {
 	dbc.UpdateCalculatedStats(ctx)
 
 	// non-nil DatabaseContext and stats, nil channel cache
-	dbStats, statsError := initDatabaseStats(ctx, "db", false, DatabaseContextOptions{})
+	dbStats, statsError := initDatabaseStats(ctx, "db", DatabaseContextOptions{})
 	require.NoError(t, statsError)
 	dbc.DbStats = dbStats
 	dbc.UpdateCalculatedStats(ctx)

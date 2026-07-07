@@ -141,79 +141,61 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		return emptySyncData, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	if c.UseXattrs() {
-		// Retrieve doc and xattr from bucket, unmarshal only xattr.
-		// Triggers on-demand import when document xattr doesn't match cas.
-		rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
+	// Retrieve doc and xattr from bucket, unmarshal only xattr.
+	// Triggers on-demand import when document xattr doesn't match cas.
+	rawDoc, xattrs, cas, getErr := c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncAndUserXattrKeys())
+	if getErr != nil {
+		return emptySyncData, getErr
+	}
+
+	// Unmarshal xattr only
+	doc, unmarshalErr := c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+	if unmarshalErr != nil {
+		return emptySyncData, unmarshalErr
+	}
+
+	isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+	if crc32Match {
+		c.dbStats().Database().Crc32MatchCount.Add(1)
+	}
+
+	// If existing doc wasn't an SG Write, import the doc.
+	if !isSgWrite {
+		var importErr error
+
+		rawDoc, xattrs, cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
 
-		// Unmarshal xattr only
-		doc, unmarshalErr := c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
+		// Re-unmarshal with the full xattr set so doc.RevSeqNo and doc.MetadataOnlyUpdate
+		// are populated for use by OnDemandImportForGet.
+		doc, unmarshalErr = c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
 		if unmarshalErr != nil {
 			return emptySyncData, unmarshalErr
 		}
 
-		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
+		isSgWriteAfterReload, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
 		if crc32Match {
 			c.dbStats().Database().Crc32MatchCount.Add(1)
 		}
 
-		// If existing doc wasn't an SG Write, import the doc.
-		if !isSgWrite {
-			var importErr error
-
-			rawDoc, xattrs, cas, getErr = c.dataStore.GetWithXattrs(ctx, key, c.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
-			if getErr != nil {
-				return emptySyncData, getErr
-			}
-
-			// Re-unmarshal with the full xattr set so doc.RevSeqNo and doc.MetadataOnlyUpdate
-			// are populated for use by OnDemandImportForGet.
-			doc, unmarshalErr = c.unmarshalDocumentWithXattrs(ctx, docid, nil, xattrs, cas, DocUnmarshalSync)
-			if unmarshalErr != nil {
-				return emptySyncData, unmarshalErr
-			}
-
-			isSgWriteAfterReload, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
-			if crc32Match {
-				c.dbStats().Database().Crc32MatchCount.Add(1)
-			}
-
-			if isSgWriteAfterReload {
-				return doc.SyncData, nil
-			}
-
-			doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
-			if importErr != nil {
-				return emptySyncData, importErr
-			}
-			// importDoc swallows ErrImportCancelled (e.g. SG purge race), returning
-			// (nil, nil). Treat that the same as not found.
-			if doc == nil {
-				return emptySyncData, base.ErrNotFound
-			}
+		if isSgWriteAfterReload {
+			return doc.SyncData, nil
 		}
 
-		return doc.SyncData, nil
-
-	} else {
-		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := c.dataStore.GetRaw(ctx, key)
-		if err != nil {
-			return emptySyncData, err
+		doc, importErr = c.OnDemandImportForGet(ctx, docid, doc, rawDoc, xattrs, cas)
+		if importErr != nil {
+			return emptySyncData, importErr
 		}
-
-		docRoot := documentRoot{
-			SyncData: &SyncData{History: make(RevTree)},
+		// importDoc swallows ErrImportCancelled (e.g. SG purge race), returning
+		// (nil, nil). Treat that the same as not found.
+		if doc == nil {
+			return emptySyncData, base.ErrNotFound
 		}
-		if err := base.JSONUnmarshal(rawDocBytes, &docRoot); err != nil {
-			return emptySyncData, err
-		}
-
-		return *docRoot.SyncData, nil
 	}
+
+	return doc.SyncData, nil
 
 }
 
@@ -1346,7 +1328,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	docUpdateEvent := NewVersion
-	allowImport := db.UseXattrs()
+	allowImport := true
 	updateRevCache := true
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, docUpdateEvent, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
 		var isSgWrite bool
@@ -1366,7 +1348,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		}
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
+		if doc != nil && !isSgWrite {
 			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, deleted)
 			if err != nil {
 				if db.ForceAPIForbiddenErrors() {
@@ -1509,7 +1491,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		}
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
+		if doc != nil && !isSgWrite {
 			err := db.OnDemandImportForWrite(ctx, opts.NewDoc.ID, doc, opts.NewDoc.Deleted)
 			if err != nil {
 				return nil, nil, false, nil, err
@@ -1753,7 +1735,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 	newDoc := opts.NewDoc
 	docHistory := opts.RevTreeHistory
-	allowImport := db.UseXattrs()
+	allowImport := true
 	updateRevCache := true
 	originalNewDocAtts := maps.Clone(newDoc.Attachments())
 	doc, _, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &newDoc.DocExpiry, nil, opts.DocUpdateEvent, opts.ExistingDoc, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
@@ -1772,7 +1754,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		}
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
+		if doc != nil && !isSgWrite {
 			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, newDoc.Deleted)
 			if err != nil {
 				return nil, nil, false, nil, err
@@ -2424,10 +2406,10 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		if marshalErr != nil {
 			base.WarnfCtx(ctx, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
-		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage(), oldDocHasAttachments)
+		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, oldDocHasAttachments)
 	}
 	// Store the new revision body into the doc:
-	doc.setRevisionBody(ctx, newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
+	doc.setRevisionBody(ctx, newRevID, newDoc, newDocHasAttachments)
 	doc.SetAttachments(newDoc.Attachments())
 	doc.MetadataOnlyUpdate = newDoc.MetadataOnlyUpdate
 
@@ -2884,7 +2866,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	// Update the document
 	inConflict := false
-	upgradeInProgress := false
 	docBytes := 0   // Track size of document written, for write stats
 	xattrBytes := 0 // Track size of xattr written, for write stats
 	skipObsoleteAttachmentsRemoval := false
@@ -2895,7 +2876,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		skipObsoleteAttachmentsRemoval = true
 	}
 
-	if db.UseXattrs() || upgradeInProgress {
+	{
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
 		if opts == nil {
@@ -3211,7 +3192,7 @@ func (db *DatabaseCollectionWithUser) postWriteUpdateHLV(ctx context.Context, do
 	// backup new revision to the bucket now we have a doc assigned a CV (post macro expansion) for future deltaSrc purposes
 	// we don't need to store revision body backups without delta sync in 4.0, since all clients know how to use the sendReplacementRevs feature
 	backupRev := db.deltaSyncEnabled() && db.deltaSyncRevMaxAgeSeconds() != 0
-	if db.UseXattrs() && backupRev {
+	if backupRev {
 		var newBodyWithAtts = doc._rawBody
 		if len(doc.Attachments()) > 0 {
 			var err error
@@ -3538,23 +3519,16 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string, nee
 
 	}
 
-	if db.UseXattrs() {
-		// Clean up _sync and _globalSync (if present). Leave _vv and _mou since they are also shared by XDCR/Eventing.
-		xattrsToDelete := []string{base.SyncXattrName, base.GlobalXattrName}
-		// TODO: CBG-4796 - we currently need to determine a list of present xattrs before we delete to avoid differences
-		// between Rosmar and Couchbase Server implementations of DeleteWithXattrs and GetWithXattrs.
-		var presentXattrsToDelete []string
-		if rawBucketDoc != nil && rawBucketDoc.Xattrs != nil {
-			presentXattrsToDelete = base.KeysPresent(rawBucketDoc.Xattrs, xattrsToDelete)
-		}
-		if err := db.dataStore.DeleteWithXattrs(ctx, key, presentXattrsToDelete); err != nil {
-			return err
-		}
-	} else {
-		err := db.dataStore.Delete(ctx, key)
-		if err != nil {
-			return err
-		}
+	// Clean up _sync and _globalSync (if present). Leave _vv and _mou since they are also shared by XDCR/Eventing.
+	xattrsToDelete := []string{base.SyncXattrName, base.GlobalXattrName}
+	// TODO: CBG-4796 - we currently need to determine a list of present xattrs before we delete to avoid differences
+	// between Rosmar and Couchbase Server implementations of DeleteWithXattrs and GetWithXattrs.
+	var presentXattrsToDelete []string
+	if rawBucketDoc != nil && rawBucketDoc.Xattrs != nil {
+		presentXattrsToDelete = base.KeysPresent(rawBucketDoc.Xattrs, xattrsToDelete)
+	}
+	if err := db.dataStore.DeleteWithXattrs(ctx, key, presentXattrsToDelete); err != nil {
+		return err
 	}
 	if needsAudit {
 		base.Audit(ctx, base.AuditIDDocumentDelete, base.AuditFields{

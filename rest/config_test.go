@@ -256,16 +256,6 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 		err    string
 	}{
 		{
-			name:   "Import enabled, shared bucket disabled",
-			config: `{"databases": {"db": {"import_docs":true, "enable_shared_bucket_access":false}}}`,
-			err:    "Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled",
-		},
-		{
-			name:   "Import partitions set, shared bucket disabled",
-			config: `{"databases": {"db": {"import_partitions":32, "enable_shared_bucket_access":false}}}`,
-			err:    "Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled",
-		},
-		{
 			name:   "Import disabled, but partitions set",
 			config: `{"databases": {"db": {"enable_shared_bucket_access":true,"import_docs":false,"import_partitions":32}}}`,
 			err:    "Invalid configuration - import_partitions set, but import_docs disabled",
@@ -2234,37 +2224,6 @@ func TestJSLoadTypeString(t *testing.T) {
 
 	// Test out of bounds JSLoadType
 	assert.Equal(t, "JSLoadType(4294967295)", JSLoadType(math.MaxUint32).String())
-}
-
-func TestUseXattrs(t *testing.T) {
-	testCases := []struct {
-		name           string
-		enableXattrs   *bool
-		expectedXattrs bool
-	}{
-		{
-			name:           "Nil Xattrs",
-			enableXattrs:   nil,
-			expectedXattrs: true, // Expects base.DefaultUseXattrs
-		},
-		{
-			name:           "False Xattrs",
-			enableXattrs:   base.Ptr(false),
-			expectedXattrs: false,
-		},
-		{
-			name:           "True Xattrs",
-			enableXattrs:   base.Ptr(true),
-			expectedXattrs: true,
-		},
-	}
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
-			dbc := &DbConfig{EnableXattrs: test.enableXattrs}
-			result := dbc.UseXattrs()
-			assert.Equal(t, test.expectedXattrs, result)
-		})
-	}
 }
 
 func TestInvalidJavascriptFunctions(t *testing.T) {

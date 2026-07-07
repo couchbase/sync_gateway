@@ -24,9 +24,8 @@ import (
 )
 
 func TestDefaultDbConfig(t *testing.T) {
-	useXattrs := true
 	sc := DefaultStartupConfig("")
-	compactIntervalDays := *(DefaultDbConfig(&sc, useXattrs).CompactIntervalDays)
+	compactIntervalDays := *(DefaultDbConfig(&sc).CompactIntervalDays)
 	require.Equal(t, db.DefaultCompactInterval, time.Duration(compactIntervalDays)*time.Hour*24)
 }
 
@@ -38,7 +37,7 @@ func TestDefaultDbConfig(t *testing.T) {
 // they should have a default value exposed in include_runtime=true config output.
 func TestDefaultDbConfigFieldCoverage(t *testing.T) {
 	sc := DefaultStartupConfig("/default/log/file/path")
-	defaultConfig := DefaultDbConfig(&sc, true)
+	defaultConfig := DefaultDbConfig(&sc)
 
 	// Fields that are intentionally left unset in DefaultDbConfig.
 	// When adding a field here, add a comment explaining why it doesn't need a default.
@@ -264,17 +263,6 @@ func TestDatabaseConfigValidation(t *testing.T) {
 				},
 			},
 			expectedError: "num_partitions must be greater than 0",
-		},
-		{
-			name: "partitions with xattrs=false",
-			dbConfig: DbConfig{
-				Name: "db",
-				Index: &IndexConfig{
-					NumPartitions: base.Ptr(uint32(2)),
-				},
-				EnableXattrs: base.Ptr(false),
-			},
-			expectedError: "incompatible with enable_shared_bucket_access=false",
 		},
 		{
 			name: "allowing conflicts with allow_conflicts=true",

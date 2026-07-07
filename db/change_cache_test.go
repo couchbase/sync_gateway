@@ -1790,8 +1790,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			bucket := base.GetTestBucket(b)
 			defer bucket.Close(ctx)
 			context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-				EnableXattr: true,
-				Scopes:      GetScopesOptions(b, bucket, 1),
+				Scopes: GetScopesOptions(b, bucket, 1),
 			})
 			require.NoError(b, err)
 			defer context.Close(ctx)
