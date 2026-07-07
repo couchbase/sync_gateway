@@ -12,6 +12,7 @@ package base
 
 import (
 	"expvar"
+	"math"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -161,4 +162,40 @@ func initExpvarBaseEquivalent() *expvar.Map {
 	expvarMap.Set("per_replication", new(expvar.Map).Init())
 
 	return expvarMap
+}
+
+// TestSgwFloatStatMarshalNonFinite is a regression test for CBG-3658: a non-finite float value
+// (e.g. +Inf produced by a divide-by-zero in the process CPU percentage calculation) must not
+// corrupt stats serialization. Previously MarshalJSON emitted the raw bytes "+Inf"/"NaN", which the
+// JSON encoder rejected ("invalid character '+' looking for beginning of value"), collapsing the
+// entire SgwStats blob to "null".
+func TestSgwFloatStatMarshalNonFinite(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value float64
+	}{
+		{"positive_infinity", math.Inf(1)},
+		{"negative_infinity", math.Inf(-1)},
+		{"nan", math.NaN()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stat := &SgwFloatStat{}
+			stat.Set(test.value)
+
+			// Marshal the stat inside a larger structure: this is the exact path that failed via
+			// SgwStats.String -> JSONMarshalCanonical.
+			marshalled, err := JSONMarshalCanonical(map[string]*SgwFloatStat{"stat": stat})
+			require.NoError(t, err)
+
+			// The output must be valid, parseable JSON, and non-finite values must fall back to 0.
+			var roundTripped map[string]float64
+			require.NoError(t, JSONUnmarshal(marshalled, &roundTripped))
+			require.Equal(t, 0.0, roundTripped["stat"])
+
+			// String() satisfies expvar.Var, which likewise requires a valid JSON value.
+			var viaString float64
+			require.NoError(t, JSONUnmarshal([]byte(stat.String()), &viaString))
+			require.Equal(t, 0.0, viaString)
+		})
+	}
 }
