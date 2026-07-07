@@ -765,3 +765,566 @@ func TestChangesFeedActiveOnlyStopsWhenChannelExhausted(t *testing.T) {
 	assert.Equal(t, "removed1", received[0].ID)
 	assert.Equal(t, 1, stub.calls, "changesFeed should stop after a short batch signals the channel is exhausted")
 }
+
+// docMutation names one write-order step in a single-channel feed: whether the doc written at that
+// step is left active in the channel, or removed from it (shows up with the Removed flag). A []docMutation
+// list documents a test case's write sequence directly, without needing to decode a pattern string.
+type docMutation int
+
+const (
+	// iota+1 so the zero value is never a valid mutation - an unset docMutation fails loudly
+	// (removedFlagsFromMutations) instead of silently behaving like docActive.
+	docActive docMutation = iota + 1
+	docRemoved
+)
+
+func (m docMutation) String() string {
+	switch m {
+	case docActive:
+		return "docActive"
+	case docRemoved:
+		return "docRemoved"
+	default:
+		return fmt.Sprintf("docMutation(%d)", int(m))
+	}
+}
+
+// channelFeedEntry is a compact description of one document to materialize in a target channel's feed.
+// Lets stub-style scenarios run against a real channel cache instead.
+type channelFeedEntry struct {
+	docID   string
+	removed bool
+}
+
+// seedChannelFeed writes entries into targetChannel in order, moving removed entries into otherChannel
+// so they show up as removals. Writes happen before the cache is primed, so a since=0 request backfills
+// through real query pagination rather than an already-warm cache.
+func seedChannelFeed(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, targetChannel, otherChannel string, entries []channelFeedEntry) {
+	for _, e := range entries {
+		if e.removed {
+			revID, _, err := collection.Put(ctx, e.docID, Body{"channels": targetChannel})
+			require.NoError(t, err)
+			_, _, err = collection.Put(ctx, e.docID, Body{"channels": otherChannel, "_rev": revID})
+			require.NoError(t, err)
+		} else {
+			_, _, err := collection.Put(ctx, e.docID, Body{"channels": targetChannel})
+			require.NoError(t, err)
+		}
+	}
+}
+
+// removedFlagsFromMutations converts a []docMutation into a per-index removed slice.
+func removedFlagsFromMutations(t testing.TB, mutations []docMutation) []bool {
+	removed := make([]bool, len(mutations))
+	for i, m := range mutations {
+		switch m {
+		case docActive:
+			removed[i] = false
+		case docRemoved:
+			removed[i] = true
+		default:
+			t.Fatalf("unknown %v at index %d", m, i)
+		}
+	}
+	return removed
+}
+
+// expectedActiveOnlyDocIDs derives the expected result ("doc<i+1>" per write-order entry) from the same
+// removed/write-order data used to seed the feed, so the assertion can't drift from the seed: drop
+// removed docs when activeOnly, then cap at limit.
+func expectedActiveOnlyDocIDs(removed []bool, activeOnly bool, limit int) []string {
+	var expected []string
+	for i, r := range removed {
+		if activeOnly && r {
+			continue
+		}
+		expected = append(expected, fmt.Sprintf("doc%d", i+1))
+	}
+	if limit > 0 && len(expected) > limit {
+		expected = expected[:limit]
+	}
+	return expected
+}
+
+// TestChangesQueryLimitBoundaries is TestActiveOnlyWithLimit run against a real channel cache instead
+// of stubSingleChannelCache, sweeping cases where ChannelQueryLimit (query page size) differs from the
+// requested Limit and active entries straddle query-batch boundaries, for both ActiveOnly values. Each
+// case's mutations list spells out the write-order sequence of docs to seed (see docMutation);
+// expectedActiveOnlyDocIDs derives the expected result from that same list.
+//
+// Catches the original CBG-5555 bug (itemsSent counting inactive entries toward the limit): fails on
+// the pre-fix revision. Does NOT catch the later, narrower changesFeed fix (shrinking the per-call page
+// size for ActiveOnly) - and can't, structurally: singleChannelCacheImpl.GetChanges already ignores
+// Limit when serving from cache, and its query path loops past inactive rows regardless of page size,
+// so a wrong page size never produces a wrong result, only (sometimes) more round trips. Only the
+// stubSingleChannelCache-based tests (TestChangesFeedActiveOnlyContinuesPastInactiveBatch etc.) pin
+// that fix down.
+func TestChangesQueryLimitBoundaries(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	const targetChannel = "target"
+	const otherChannel = "other"
+
+	testCases := []struct {
+		name         string
+		queryLimit   int  // CacheOptions.ChannelQueryLimit (query page size)
+		requestLimit int  // ChangesOptions.Limit (0 == no limit)
+		activeOnly   bool // ChangesOptions.ActiveOnly
+		mutations    []docMutation
+	}{
+		// --- ActiveOnly=false: every entry (active + removal) is returned, capped by requestLimit ---
+		{ // active run spans batches; requestLimit stops mid-second-batch (query page size 3, request 4)
+			name: "false/active_across_batches_request_lt_total", queryLimit: 3, requestLimit: 4, activeOnly: false,
+			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
+		},
+		{ // requestLimit > queryLimit and > total: full result, having paged through several batches
+			name: "false/request_gt_total_multi_batch", queryLimit: 3, requestLimit: 100, activeOnly: false,
+			mutations: []docMutation{docActive, docRemoved, docActive, docRemoved, docActive, docRemoved, docActive, docRemoved},
+		},
+		{ // requestLimit == queryLimit, more data than one batch: must page past the first batch
+			name: "false/request_eq_query_limit", queryLimit: 3, requestLimit: 3, activeOnly: false,
+			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive},
+		},
+		{ // no requestLimit: drain everything across many small batches
+			name: "false/no_limit_many_batches", queryLimit: 2, requestLimit: 0, activeOnly: false,
+			mutations: []docMutation{docActive, docRemoved, docActive, docRemoved, docActive, docRemoved, docActive, docRemoved},
+		},
+		{ // total is an exact multiple of the query page size (boundary lands exactly at end of data)
+			name: "false/exact_multiple_of_query_limit", queryLimit: 3, requestLimit: 0, activeOnly: false,
+			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
+		},
+
+		// --- ActiveOnly=true: removals are filtered out; changesFeed must keep paging past
+		//     all-inactive batches to reach the requested number of active entries ---
+		{ // a full leading batch of removals (zero active), then active entries - request < active available
+			name: "true/removals_fill_first_batch", queryLimit: 3, requestLimit: 3, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docActive, docActive, docActive, docActive},
+		},
+		{ // active entries straddle a query-batch boundary; requestLimit lands mid-run
+			name: "true/active_straddles_batch_boundary", queryLimit: 3, requestLimit: 3, activeOnly: true,
+			mutations: []docMutation{docActive, docActive, docRemoved, docRemoved, docActive, docActive, docActive},
+		},
+		{ // multiple all-removal batches before any active entry (like the stub multi-inactive-batch test)
+			name: "true/multiple_removal_batches", queryLimit: 3, requestLimit: 2, activeOnly: true,
+			mutations: []docMutation{
+				docRemoved, docRemoved, docRemoved, docRemoved, docRemoved, docRemoved, docRemoved,
+				docActive, docActive, docActive, docActive,
+			},
+		},
+		{ // requestLimit > queryLimit: active limit exceeds a single query page
+			name: "true/request_gt_query_limit", queryLimit: 2, requestLimit: 5, activeOnly: true,
+			mutations: []docMutation{
+				docActive, docRemoved, docActive, docRemoved, docActive, docRemoved,
+				docActive, docRemoved, docActive, docRemoved, docActive, docRemoved,
+			},
+		},
+		{ // requestLimit < queryLimit: single page satisfies the request, no extra paging needed
+			name: "true/request_lt_query_limit", queryLimit: 5, requestLimit: 2, activeOnly: true,
+			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
+		},
+		{ // no requestLimit: every active entry must be returned regardless of interleaved removals
+			name: "true/no_limit_interleaved", queryLimit: 3, requestLimit: 0, activeOnly: true,
+			mutations: []docMutation{
+				docRemoved, docActive, docRemoved, docActive, docRemoved, docActive,
+				docRemoved, docActive, docRemoved, docActive, docRemoved,
+			},
+		},
+		{ // channel exhausted before requestLimit is met: return the few active entries and stop
+			name: "true/exhausted_before_limit", queryLimit: 3, requestLimit: 10, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docActive, docActive, docRemoved, docRemoved, docActive},
+		},
+		{ // all removals: active-only feed is empty even though the channel has entries to page through
+			name: "true/all_removed_empty", queryLimit: 2, requestLimit: 5, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docRemoved, docRemoved},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cacheOptions := DefaultCacheOptions()
+			cacheOptions.ChannelQueryLimit = tc.queryLimit
+			ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+			removed := removedFlagsFromMutations(t, tc.mutations)
+			entries := make([]channelFeedEntry, 0, len(removed))
+			for i, r := range removed {
+				entries = append(entries, channelFeedEntry{docID: fmt.Sprintf("doc%d", i+1), removed: r})
+			}
+			seedChannelFeed(t, ctx, collection, targetChannel, otherChannel, entries)
+			db.WaitForPendingChanges(t)
+
+			changesOptions := ChangesOptions{
+				Since:      SequenceID{Seq: 0},
+				ActiveOnly: tc.activeOnly,
+				Limit:      tc.requestLimit,
+				ChangesCtx: base.TestCtx(t),
+			}
+			changes := getChanges(t, collection, base.SetOf(targetChannel), changesOptions)
+
+			expected := expectedActiveOnlyDocIDs(removed, tc.activeOnly, tc.requestLimit)
+
+			require.Len(t, changes, len(expected))
+			for i, exp := range expected {
+				assert.Equal(t, exp, changes[i].ID, "unexpected doc at feed index %d", i)
+				if tc.activeOnly {
+					assert.Empty(t, changes[i].Removed, "active-only feed should not contain removals (index %d)", i)
+				}
+			}
+		})
+	}
+}
+
+// TestChangesQueryCacheConcatenationBoundaries is TestChangesQueryLimitBoundaries's counterpart for a
+// *partially warm* cache: the cache is primed before writing, and ChannelCacheMaxLength is kept below
+// the mutations length so older entries are pruned to query-only while newer ones stay cached. A
+// since=0 request must then merge query results (pruned prefix) with cache results (retained suffix),
+// deduplicating the one-sequence overlap at the cache's validFrom boundary.
+//
+// Like TestChangesQueryLimitBoundaries, this doesn't discriminate the historical fix to this seam, for
+// a similar structural reason: changesFeed only retries a call that under-delivered, and any retry
+// lands past the query boundary on the cache-only fast path, which ignores Limit for ActiveOnly - so
+// whatever the first call dropped, the retry recovers.
+func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	const targetChannel = "target"
+	const otherChannel = "other"
+
+	testCases := []struct {
+		name           string
+		cacheMaxLength int  // CacheOptions.ChannelCacheMaxLength (query/cache split point: last N entries stay cached)
+		queryLimit     int  // CacheOptions.ChannelQueryLimit (query page size within the pruned/query-only prefix)
+		requestLimit   int  // ChangesOptions.Limit (0 == no limit)
+		activeOnly     bool // ChangesOptions.ActiveOnly
+		mutations      []docMutation
+	}{
+		{ // active run straddles the prune boundary: docs 1-3 pruned to query-only, docs 4-6 stay cached
+			name: "active_run_straddles_prune_boundary", cacheMaxLength: 3, queryLimit: 2, requestLimit: 4, activeOnly: true,
+			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
+		},
+		{ // pruned (query-only) prefix is all removals; every active entry lives in the cached suffix
+			name: "removals_pruned_actives_cached", cacheMaxLength: 3, queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docActive, docActive, docActive},
+		},
+		{ // requestLimit fully satisfied within the pruned prefix; cache boundary is never reached
+			name: "request_satisfied_before_prune_boundary", cacheMaxLength: 2, queryLimit: 2, requestLimit: 2, activeOnly: true,
+			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
+		},
+		{ // pruned prefix needs multiple query pages (queryLimit small relative to prefix) before the
+			// cache boundary is reached and the cached suffix gets appended
+			name: "multi_page_query_then_cache_append", cacheMaxLength: 2, queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docRemoved, docRemoved, docActive, docActive},
+		},
+		{ // no requestLimit: every active entry must be returned across the query/cache split with no
+			// duplication of the overlap entry at the cache's validFrom boundary
+			name: "no_limit_full_span", cacheMaxLength: 3, queryLimit: 3, requestLimit: 0, activeOnly: true,
+			mutations: []docMutation{
+				docActive, docRemoved, docActive, docRemoved, docActive,
+				docRemoved, docActive, docRemoved, docActive, docRemoved,
+			},
+		},
+		{ // ActiveOnly=false: plain concatenation across a prune boundary that doesn't align with the
+			// query page size, to check for off-by-one duplication/loss at the query/cache seam
+			name: "activeOnly_false_misaligned_boundary", cacheMaxLength: 4, queryLimit: 3, requestLimit: 0, activeOnly: false,
+			mutations: []docMutation{
+				docActive, docRemoved, docActive, docRemoved, docActive,
+				docRemoved, docActive, docRemoved, docActive, docRemoved,
+			},
+		},
+		{ // cache boundary and query page size coincide exactly (aligned case)
+			name: "aligned_boundary", cacheMaxLength: 3, queryLimit: 3, requestLimit: 0, activeOnly: true,
+			mutations: []docMutation{docActive, docActive, docActive, docRemoved, docRemoved, docRemoved, docActive, docActive, docActive},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cacheOptions := DefaultCacheOptions()
+			cacheOptions.ChannelCacheMaxLength = tc.cacheMaxLength
+			cacheOptions.ChannelQueryLimit = tc.queryLimit
+			ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+			// Prime the cache before writing so live writes populate it directly (and get pruned live
+			// once ChannelCacheMaxLength is exceeded), rather than requiring a query to backfill it.
+			primingOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
+			_ = getChanges(t, collection, base.SetOf(targetChannel), primingOptions)
+
+			removed := removedFlagsFromMutations(t, tc.mutations)
+			entries := make([]channelFeedEntry, 0, len(removed))
+			for i, r := range removed {
+				entries = append(entries, channelFeedEntry{docID: fmt.Sprintf("doc%d", i+1), removed: r})
+			}
+			seedChannelFeed(t, ctx, collection, targetChannel, otherChannel, entries)
+			db.WaitForPendingChanges(t)
+
+			changesOptions := ChangesOptions{
+				Since:      SequenceID{Seq: 0},
+				ActiveOnly: tc.activeOnly,
+				Limit:      tc.requestLimit,
+				ChangesCtx: base.TestCtx(t),
+			}
+			changes := getChanges(t, collection, base.SetOf(targetChannel), changesOptions)
+
+			expected := expectedActiveOnlyDocIDs(removed, tc.activeOnly, tc.requestLimit)
+
+			require.Len(t, changes, len(expected))
+			for i, exp := range expected {
+				assert.Equal(t, exp, changes[i].ID, "unexpected doc at feed index %d", i)
+				if tc.activeOnly {
+					assert.Empty(t, changes[i].Removed, "active-only feed should not contain removals (index %d)", i)
+				}
+			}
+		})
+	}
+}
+
+// multiChannelFeedEntry seeds one doc across one or more channels at once. removedFrom is the subset
+// of channels it's later removed from: if it covers every channel, the doc is fully inactive; if it's a
+// strict subset, the doc stays active via the remaining channel(s) - see fullyRemoved.
+type multiChannelFeedEntry struct {
+	channels    []string
+	removedFrom []string
+}
+
+// fullyRemoved reports whether the doc was removed from every channel it's in.
+func (e multiChannelFeedEntry) fullyRemoved() bool {
+	return len(e.removedFrom) > 0 && len(e.removedFrom) == len(e.channels)
+}
+
+// seedMultiChannelFeed is seedChannelFeed generalized to multiple (and shared) channels: entries are
+// written in slice order, so write order equals global sequence order. A fully-removed doc moves to
+// otherChannel; a partially-removed doc just drops the removedFrom channels, staying live elsewhere.
+func seedMultiChannelFeed(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, otherChannel string, entries []multiChannelFeedEntry) {
+	for i, e := range entries {
+		docID := fmt.Sprintf("doc%d", i+1)
+		revID, _, err := collection.Put(ctx, docID, Body{"channels": e.channels})
+		require.NoError(t, err)
+		if len(e.removedFrom) == 0 {
+			continue
+		}
+		removedSet := make(map[string]bool, len(e.removedFrom))
+		for _, c := range e.removedFrom {
+			removedSet[c] = true
+		}
+		var newChannels []string
+		for _, c := range e.channels {
+			if !removedSet[c] {
+				newChannels = append(newChannels, c)
+			}
+		}
+		if len(newChannels) == 0 {
+			// Fully removed: move to a channel outside the requested set rather than leaving the doc
+			// with an empty channel list, mirroring seedChannelFeed's single-channel convention.
+			newChannels = []string{otherChannel}
+		}
+		_, _, err = collection.Put(ctx, docID, Body{"channels": newChannels, "_rev": revID})
+		require.NoError(t, err)
+	}
+}
+
+// multiChannelMutation names one write-order step across two channels (ch1/ch2 in this test): which
+// channel(s) a doc is written to, and whether/how it's later removed. The "both" values cover a single
+// doc shared by both channels at once; bothRemoveCh1Only/bothRemoveCh2Only remove it from just one of
+// the two, leaving it active via the other.
+type multiChannelMutation int
+
+const (
+	// iota+1 so the zero value is never a valid mutation - an unset multiChannelMutation fails loudly
+	// (entriesFromMultiChannelMutations) instead of silently being dropped from the seed.
+	ch1Active         multiChannelMutation = iota + 1 // active in ch1 only
+	ch1Removed                                        // removed from ch1 (was ch1-only)
+	ch2Active                                         // active in ch2 only
+	ch2Removed                                        // removed from ch2 (was ch2-only)
+	bothActive                                        // written to both channels, stays active in both
+	bothRemoved                                       // removed from both channels at once (fully inactive)
+	bothRemoveCh1Only                                 // written to both, removed from ch1 only
+	bothRemoveCh2Only                                 // written to both, removed from ch2 only
+)
+
+func (m multiChannelMutation) String() string {
+	switch m {
+	case ch1Active:
+		return "ch1Active"
+	case ch1Removed:
+		return "ch1Removed"
+	case ch2Active:
+		return "ch2Active"
+	case ch2Removed:
+		return "ch2Removed"
+	case bothActive:
+		return "bothActive"
+	case bothRemoved:
+		return "bothRemoved"
+	case bothRemoveCh1Only:
+		return "bothRemoveCh1Only"
+	case bothRemoveCh2Only:
+		return "bothRemoveCh2Only"
+	default:
+		return fmt.Sprintf("multiChannelMutation(%d)", int(m))
+	}
+}
+
+// entriesFromMultiChannelMutations converts a []multiChannelMutation into multiChannelFeedEntry values.
+func entriesFromMultiChannelMutations(t testing.TB, mutations []multiChannelMutation, ch1, ch2 string) []multiChannelFeedEntry {
+	entries := make([]multiChannelFeedEntry, len(mutations))
+	for i, m := range mutations {
+		switch m {
+		case ch1Active:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch1}}
+		case ch1Removed:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch1}, removedFrom: []string{ch1}}
+		case ch2Active:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch2}}
+		case ch2Removed:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch2}, removedFrom: []string{ch2}}
+		case bothActive:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch1, ch2}}
+		case bothRemoved:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch1, ch2}, removedFrom: []string{ch1, ch2}}
+		case bothRemoveCh1Only:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch1, ch2}, removedFrom: []string{ch1}}
+		case bothRemoveCh2Only:
+			entries[i] = multiChannelFeedEntry{channels: []string{ch1, ch2}, removedFrom: []string{ch2}}
+		default:
+			t.Fatalf("unknown %v at index %d", m, i)
+		}
+	}
+	return entries
+}
+
+// TestChangesMultiChannelActiveOnlyLimit exercises MultiChangesFeed's cross-channel merge (the min-seq
+// loop that interleaves each channel's independent changesFeed) with ActiveOnly+Limit across two real
+// channels - a combination no existing test covers (TestMultichannelChangesQueryBackfillWithLimit
+// isn't ActiveOnly; the ActiveOnly+Limit tests are single-channel).
+//
+// The digit-'3' cases cover a doc shared by both channels, testing the merge loop's allRemoved dedup:
+// removing a doc from only one of its channels must leave it active via the other (confirmed
+// empirically that the other channel re-logs the doc at the same sequence, which is what makes this
+// reachable at all - see multiChannelFeedEntry.fullyRemoved). That logic predates CBG-5555, so these
+// cases are general coverage, not a regression pin.
+//
+// The other cases catch the original CBG-5555 bug (channel_exhausted_early_other_continues fails
+// pre-fix) - same as TestChangesQueryLimitBoundaries but across a channel merge, and likewise don't
+// discriminate the later, narrower changesFeed page-size fix.
+func TestChangesMultiChannelActiveOnlyLimit(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	const ch1 = "ch1"
+	const ch2 = "ch2"
+	const otherChannel = "other"
+
+	testCases := []struct {
+		name         string
+		queryLimit   int
+		requestLimit int
+		activeOnly   bool
+		mutations    []multiChannelMutation
+	}{
+		{ // simple alternation between channels, all active: verifies merge preserves global write order
+			name: "interleaved_actives_request_lt_total", queryLimit: 2, requestLimit: 3, activeOnly: true,
+			mutations: []multiChannelMutation{ch1Active, ch2Active, ch1Active, ch2Active, ch1Active, ch2Active},
+		},
+		{ // ch1 has a long removal run while ch2 keeps producing actives: ch1's inactive backlog must
+			// not starve or misorder ch2's actives in the merged, globally-ordered output
+			name: "one_channel_removed_run_other_active", queryLimit: 2, requestLimit: 3, activeOnly: true,
+			mutations: []multiChannelMutation{
+				ch1Removed, ch1Removed, ch1Removed, ch2Active, ch1Removed, ch2Active, ch2Active, ch1Active,
+			},
+		},
+		{ // both channels have enough entries to require multiple internal query batches each
+			// (queryLimit=2); no requestLimit, so the full merged result must be complete and ordered
+			name: "both_channels_paginate_independently", queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []multiChannelMutation{
+				ch1Active, ch1Removed, ch2Active, ch2Removed, ch1Active,
+				ch1Removed, ch2Active, ch2Removed, ch1Active, ch2Active,
+			},
+		},
+		{ // requestLimit lands exactly between two actives contributed by different channels
+			name: "limit_lands_at_cross_channel_boundary", queryLimit: 3, requestLimit: 2, activeOnly: true,
+			mutations: []multiChannelMutation{ch1Active, ch2Removed, ch2Removed, ch2Removed, ch1Active, ch2Active},
+		},
+		{ // ActiveOnly=false across channels: plain merge/limit behavior with removals present
+			name: "activeOnly_false_multichannel", queryLimit: 2, requestLimit: 5, activeOnly: false,
+			mutations: []multiChannelMutation{
+				ch1Active, ch2Removed, ch1Removed, ch2Active, ch1Active, ch2Removed, ch2Active, ch1Removed,
+			},
+		},
+		{ // ch1 exhausts after a single entry while ch2 continues; the merge loop must keep draining
+			// ch2 correctly after ch1's changesFeed goroutine has already finished
+			name: "channel_exhausted_early_other_continues", queryLimit: 2, requestLimit: 4, activeOnly: true,
+			mutations: []multiChannelMutation{
+				ch1Active, ch2Active, ch2Removed, ch2Active, ch2Removed, ch2Active, ch2Removed, ch2Active,
+			},
+		},
+
+		// --- shared docs: a single doc written to both channels at once, exercising MultiChangesFeed's
+		//     per-sequence allRemoved dedup across channel feeds ---
+		{ // doc removed from only one of its two channels stays active via the other; must still be
+			// returned under ActiveOnly, not dropped as if fully removed
+			name: "partial_removal_stays_active", queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []multiChannelMutation{bothRemoveCh1Only, ch1Active, ch2Active},
+		},
+		{ // same, removing the *other* channel first, to rule out any asymmetry in which channel-feed
+			// slot the allRemoved dedup happens to inspect first
+			name: "partial_removal_other_direction_stays_active", queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []multiChannelMutation{bothRemoveCh2Only, ch1Active, ch2Active},
+		},
+		{ // doc removed from both of its channels (in the same write) is fully inactive, unlike the
+			// partial-removal cases above - the dedup must correctly distinguish the two
+			name: "full_removal_of_shared_doc_is_inactive", queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []multiChannelMutation{bothRemoved, ch1Active, ch2Active},
+		},
+		{ // a partially-removed shared doc mixed with an ordinary single-channel removal run and a
+			// requestLimit landing after both, forced through multi-batch pagination on each channel
+			name: "partial_removal_mixed_with_limit", queryLimit: 2, requestLimit: 3, activeOnly: true,
+			mutations: []multiChannelMutation{
+				ch1Removed, ch1Removed, bothRemoveCh1Only, ch2Active, ch1Active, ch2Removed, bothRemoveCh2Only, ch2Active,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cacheOptions := DefaultCacheOptions()
+			cacheOptions.ChannelQueryLimit = tc.queryLimit
+			ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+
+			entries := entriesFromMultiChannelMutations(t, tc.mutations, ch1, ch2)
+			seedMultiChannelFeed(t, ctx, collection, otherChannel, entries)
+			db.WaitForPendingChanges(t)
+
+			changesOptions := ChangesOptions{
+				Since:      SequenceID{Seq: 0},
+				ActiveOnly: tc.activeOnly,
+				Limit:      tc.requestLimit,
+				ChangesCtx: base.TestCtx(t),
+			}
+			changes := getChanges(t, collection, base.SetOf(ch1, ch2), changesOptions)
+
+			removed := make([]bool, len(entries))
+			entriesByDocID := make(map[string]multiChannelFeedEntry, len(entries))
+			for i, e := range entries {
+				removed[i] = e.fullyRemoved()
+				entriesByDocID[fmt.Sprintf("doc%d", i+1)] = e
+			}
+			expected := expectedActiveOnlyDocIDs(removed, tc.activeOnly, tc.requestLimit)
+
+			require.Len(t, changes, len(expected))
+			for i, exp := range expected {
+				assert.Equal(t, exp, changes[i].ID, "unexpected doc at feed index %d", i)
+				if !tc.activeOnly {
+					continue
+				}
+				// A doc partially removed (still active via another channel) legitimately carries a
+				// non-empty Removed set recording which channel(s) it left, even though it wasn't
+				// filtered out - so check it matches removedFrom exactly, rather than requiring empty.
+				entry := entriesByDocID[exp]
+				if len(entry.removedFrom) == 0 {
+					assert.Empty(t, changes[i].Removed, "expected no partial removals for %s (index %d)", exp, i)
+				} else {
+					assert.Equal(t, base.SetOf(entry.removedFrom...), changes[i].Removed, "unexpected partial removal set for %s (index %d)", exp, i)
+				}
+			}
+		})
+	}
+}
