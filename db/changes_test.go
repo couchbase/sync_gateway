@@ -642,17 +642,12 @@ func drainChangesFeed(t *testing.T, feed <-chan *ChangeEntry) []*ChangeEntry {
 	return received
 }
 
-// TestChangesFeedActiveOnlyContinuesPastInactiveBatch reproduces the CBG-5555 bug directly against
-// changesFeed, bypassing the cache/query layer entirely. For ActiveOnly feeds, changesFeed must page
-// by ChannelQueryLimit rather than the caller's requested Limit (the caller's Limit is enforced
-// further upstream, in SimpleMultiChangesFeed, since raw entries and active entries aren't the same
-// count). The buggy version instead kept shrinking its per-call Limit toward the small requested
-// Limit and stopped as soon as it had sent that many *active* entries - so with Limit=1 here, it
-// would give up after finding a single active entry even though the channel has a second one still
-// to come. ChannelQueryLimit is set to 3: the channel has three channel-removal entries (a full page,
-// zero active) followed by two active entries. The stub honors Since/Limit like a real channel
-// cache, so this only passes if changesFeed's actual pagination choices - not a pre-scripted call
-// count - are what produce the full result.
+// TestChangesFeedActiveOnlyContinuesPastInactiveBatch verifies that ActiveOnly feeds correctly page
+// past inactive/deleted entries and don't prematurely terminate when a user-requested limit is specified.
+// For ActiveOnly feeds, changesFeed must query using the database query pagination limit (ChannelQueryLimit)
+// rather than the user-requested limit, since the number of raw entries and active entries differ.
+// The test ensures changesFeed continues to iterate over the result set to retrieve all active entries
+// even when an inactive page precedes them.
 func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 3
@@ -846,19 +841,16 @@ func expectedActiveOnlyDocIDs(removed []bool, activeOnly bool, limit int) []stri
 	return expected
 }
 
-// TestChangesQueryLimitBoundaries is TestActiveOnlyWithLimit run against a real channel cache instead
-// of stubSingleChannelCache, sweeping cases where ChannelQueryLimit (query page size) differs from the
-// requested Limit and active entries straddle query-batch boundaries, for both ActiveOnly values. Each
-// case's mutations list spells out the write-order sequence of docs to seed (see docMutation);
-// expectedActiveOnlyDocIDs derives the expected result from that same list.
+// TestChangesQueryLimitBoundaries is TestActiveOnlyWithLimit run against a real database/collection
+// changes feed, verifying that database query pagination limit (ChannelQueryLimit) boundary combinations
+// correctly return active entries without premature termination.
 //
-// Catches the original CBG-5555 bug (itemsSent counting inactive entries toward the limit): fails on
-// the pre-fix revision. Does NOT catch the later, narrower changesFeed fix (shrinking the per-call page
-// size for ActiveOnly) - and can't, structurally: singleChannelCacheImpl.GetChanges already ignores
-// Limit when serving from cache, and its query path loops past inactive rows regardless of page size,
-// so a wrong page size never produces a wrong result, only (sometimes) more round trips. Only the
-// stubSingleChannelCache-based tests (TestChangesFeedActiveOnlyContinuesPastInactiveBatch etc.) pin
-// that fix down.
+// It ensures that inactive/deleted entries are not counted toward the user-requested limit, preventing
+// the feed from stopping early.
+//
+// Note: This end-to-end test does not verify that we avoid shrinking the database query pagination limit
+// for ActiveOnly feeds; if it were shrunk, the queries would still return correct results but with more
+// round trips. The stub-based tests instead verify that we query with the full ChannelQueryLimit.
 func TestChangesQueryLimitBoundaries(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
@@ -867,13 +859,13 @@ func TestChangesQueryLimitBoundaries(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		queryLimit   int  // CacheOptions.ChannelQueryLimit (query page size)
-		requestLimit int  // ChangesOptions.Limit (0 == no limit)
+		queryLimit   int  // CacheOptions.ChannelQueryLimit (database query pagination limit)
+		requestLimit int  // ChangesOptions.Limit (user-requested limit, 0 == no limit)
 		activeOnly   bool // ChangesOptions.ActiveOnly
 		mutations    []docMutation
 	}{
 		// --- ActiveOnly=false: every entry (active + removal) is returned, capped by requestLimit ---
-		{ // active run spans batches; requestLimit stops mid-second-batch (query page size 3, request 4)
+		{ // active run spans batches; requestLimit stops mid-second-batch (pagination limit 3, request 4)
 			name: "false/active_across_batches_request_lt_total", queryLimit: 3, requestLimit: 4, activeOnly: false,
 			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
 		},
@@ -889,7 +881,7 @@ func TestChangesQueryLimitBoundaries(t *testing.T) {
 			name: "false/no_limit_many_batches", queryLimit: 2, requestLimit: 0, activeOnly: false,
 			mutations: []docMutation{docActive, docRemoved, docActive, docRemoved, docActive, docRemoved, docActive, docRemoved},
 		},
-		{ // total is an exact multiple of the query page size (boundary lands exactly at end of data)
+		{ // total is an exact multiple of the query pagination limit (boundary lands exactly at end of data)
 			name: "false/exact_multiple_of_query_limit", queryLimit: 3, requestLimit: 0, activeOnly: false,
 			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
 		},
@@ -974,16 +966,14 @@ func TestChangesQueryLimitBoundaries(t *testing.T) {
 	}
 }
 
-// TestChangesQueryCacheConcatenationBoundaries is TestChangesQueryLimitBoundaries's counterpart for a
-// *partially warm* cache: the cache is primed before writing, and ChannelCacheMaxLength is kept below
-// the mutations length so older entries are pruned to query-only while newer ones stay cached. A
-// since=0 request must then merge query results (pruned prefix) with cache results (retained suffix),
-// deduplicating the one-sequence overlap at the cache's validFrom boundary.
+// TestChangesQueryCacheConcatenationBoundaries is the counterpart to TestChangesQueryLimitBoundaries,
+// verifying correct merging and deduplication of query results (pruned prefix) and cache results (retained suffix)
+// at the cache validFrom boundary.
 //
-// Like TestChangesQueryLimitBoundaries, this doesn't discriminate the historical fix to this seam, for
-// a similar structural reason: changesFeed only retries a call that under-delivered, and any retry
-// lands past the query boundary on the cache-only fast path, which ignores Limit for ActiveOnly - so
-// whatever the first call dropped, the retry recovers.
+// Like TestChangesQueryLimitBoundaries, this end-to-end test does not directly verify the optimization
+// that avoids shrinking the database query pagination limit (ChannelQueryLimit) during pagination. This is because
+// any active entries omitted in an iteration would still be retrieved in a subsequent query iteration as changesFeed
+// continues to iterate over the resultset using ChannelQueryLimit.
 func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
@@ -993,8 +983,8 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 	testCases := []struct {
 		name           string
 		cacheMaxLength int  // CacheOptions.ChannelCacheMaxLength (query/cache split point: last N entries stay cached)
-		queryLimit     int  // CacheOptions.ChannelQueryLimit (query page size within the pruned/query-only prefix)
-		requestLimit   int  // ChangesOptions.Limit (0 == no limit)
+		queryLimit     int  // CacheOptions.ChannelQueryLimit (database query pagination limit within the pruned/query-only prefix)
+		requestLimit   int  // ChangesOptions.Limit (user-requested limit, 0 == no limit)
 		activeOnly     bool // ChangesOptions.ActiveOnly
 		mutations      []docMutation
 	}{
@@ -1006,6 +996,10 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 			name: "removals_pruned_actives_cached", cacheMaxLength: 3, queryLimit: 2, requestLimit: 0, activeOnly: true,
 			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docActive, docActive, docActive},
 		},
+		{ // same as removals_pruned_actives_cached but with a non-zero requestLimit (the original failure case)
+			name: "removals_pruned_actives_cached_with_limit", cacheMaxLength: 3, queryLimit: 2, requestLimit: 2, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docActive, docActive, docActive},
+		},
 		{ // requestLimit fully satisfied within the pruned prefix; cache boundary is never reached
 			name: "request_satisfied_before_prune_boundary", cacheMaxLength: 2, queryLimit: 2, requestLimit: 2, activeOnly: true,
 			mutations: []docMutation{docActive, docActive, docActive, docActive, docActive, docActive},
@@ -1013,6 +1007,10 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 		{ // pruned prefix needs multiple query pages (queryLimit small relative to prefix) before the
 			// cache boundary is reached and the cached suffix gets appended
 			name: "multi_page_query_then_cache_append", cacheMaxLength: 2, queryLimit: 2, requestLimit: 0, activeOnly: true,
+			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docRemoved, docRemoved, docActive, docActive},
+		},
+		{ // same as multi_page_query_then_cache_append but with a non-zero requestLimit
+			name: "multi_page_query_then_cache_append_with_limit", cacheMaxLength: 2, queryLimit: 2, requestLimit: 1, activeOnly: true,
 			mutations: []docMutation{docRemoved, docRemoved, docRemoved, docRemoved, docRemoved, docActive, docActive},
 		},
 		{ // no requestLimit: every active entry must be returned across the query/cache split with no
@@ -1024,14 +1022,14 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 			},
 		},
 		{ // ActiveOnly=false: plain concatenation across a prune boundary that doesn't align with the
-			// query page size, to check for off-by-one duplication/loss at the query/cache seam
+			// query pagination limit, to check for off-by-one duplication/loss at the query/cache seam
 			name: "activeOnly_false_misaligned_boundary", cacheMaxLength: 4, queryLimit: 3, requestLimit: 0, activeOnly: false,
 			mutations: []docMutation{
 				docActive, docRemoved, docActive, docRemoved, docActive,
 				docRemoved, docActive, docRemoved, docActive, docRemoved,
 			},
 		},
-		{ // cache boundary and query page size coincide exactly (aligned case)
+		{ // cache boundary and query pagination limit coincide exactly (aligned case)
 			name: "aligned_boundary", cacheMaxLength: 3, queryLimit: 3, requestLimit: 0, activeOnly: true,
 			mutations: []docMutation{docActive, docActive, docActive, docRemoved, docRemoved, docRemoved, docActive, docActive, docActive},
 		},
@@ -1192,20 +1190,12 @@ func entriesFromMultiChannelMutations(t testing.TB, mutations []multiChannelMuta
 	return entries
 }
 
-// TestChangesMultiChannelActiveOnlyLimit exercises MultiChangesFeed's cross-channel merge (the min-seq
-// loop that interleaves each channel's independent changesFeed) with ActiveOnly+Limit across two real
-// channels - a combination no existing test covers (TestMultichannelChangesQueryBackfillWithLimit
-// isn't ActiveOnly; the ActiveOnly+Limit tests are single-channel).
+// TestChangesMultiChannelActiveOnlyLimit exercises MultiChangesFeed's cross-channel merge with
+// ActiveOnly+Limit across two real channels, verifying correct global write order and deduplication of
+// multi-channel documents.
 //
-// The digit-'3' cases cover a doc shared by both channels, testing the merge loop's allRemoved dedup:
-// removing a doc from only one of its channels must leave it active via the other (confirmed
-// empirically that the other channel re-logs the doc at the same sequence, which is what makes this
-// reachable at all - see multiChannelFeedEntry.fullyRemoved). That logic predates CBG-5555, so these
-// cases are general coverage, not a regression pin.
-//
-// The other cases catch the original CBG-5555 bug (channel_exhausted_early_other_continues fails
-// pre-fix) - same as TestChangesQueryLimitBoundaries but across a channel merge, and likewise don't
-// discriminate the later, narrower changesFeed page-size fix.
+// It ensures that inactive/deleted entries on one channel do not incorrectly starve or block active
+// entries on another channel, and that we correctly page past inactive entries across channel merges.
 func TestChangesMultiChannelActiveOnlyLimit(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
