@@ -416,7 +416,9 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 		var lastSeq uint64
 		// Pagination based on ChannelQueryLimit.  This loop may terminated in three ways (see return statements):
 		//   1. Query returns fewer rows than ChannelQueryLimit
-		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached
+		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached. Not applicable to
+		//      ActiveOnly feeds - the query always runs at ChannelQueryLimit, and requestLimit is instead enforced
+		//      by the main changes loop after cache entries have been appended.
 		//   3. An error is returned when calling singleChannelCache.GetChanges
 		for {
 			if options.ChangesCtx.Err() != nil {
@@ -424,7 +426,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 				return
 			}
 			// Calculate limit for this iteration
-			if requestLimit == 0 {
+			if requestLimit == 0 || options.ActiveOnly {
 				paginationOptions.Limit = queryLimit
 			} else {
 				remainingLimit := requestLimit - itemsSent
@@ -481,12 +483,14 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 				return
 			}
 
-			// If we've reached the request limit, we're done
-			itemsSent += sentChanges
-			if requestLimit > 0 && itemsSent >= requestLimit {
-				return
+			// If we've reached the request limit we're done.  If this is an ActiveOnly changes feed there
+			// is additional filtering in the main changes loop, so we can't apply the requestLimit here.
+			if !options.ActiveOnly {
+				itemsSent += sentChanges
+				if requestLimit > 0 && itemsSent >= requestLimit {
+					return
+				}
 			}
-
 			paginationOptions.Since.Seq = lastSeq
 		}
 	}()
