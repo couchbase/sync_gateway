@@ -662,15 +662,20 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
 
 		// doc1: active (seq 1) - will be in backing store, not cache
-		_, _, _ = collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		require.NoError(t, err)
 
 		// doc2: active (seq 2) -> inactive (seq 3) - seq 3 in cache
-		revID2, _, _ := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
-		_, _, _ = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
+		revID2, _, err := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
+		require.NoError(t, err)
 
 		// doc3: active (seq 4) -> inactive (seq 5) - seq 5 in cache
-		revID3, _, _ := collection.Put(ctx, "doc3", Body{"channels": activeChannel})
-		_, _, _ = collection.Put(ctx, "doc3", Body{"channels": "other", "_rev": revID3})
+		revID3, _, err := collection.Put(ctx, "doc3", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc3", Body{"channels": "other", "_rev": revID3})
+		require.NoError(t, err)
 
 		db.WaitForPendingChanges(t)
 
@@ -697,14 +702,18 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
 
 		// doc1: active (seq 1) - backing store
-		_, _, _ = collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		_, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		require.NoError(t, err)
 
 		// doc2: active (seq 2) -> inactive (seq 3) - cache
-		revID2, _, _ := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
-		_, _, _ = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
+		revID2, _, err := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
+		require.NoError(t, err)
 
 		// doc3: active (seq 4) - cache
-		_, _, _ = collection.Put(ctx, "doc3", Body{"channels": activeChannel})
+		_, _, err = collection.Put(ctx, "doc3", Body{"channels": activeChannel})
+		require.NoError(t, err)
 
 		db.WaitForPendingChanges(t)
 
@@ -732,12 +741,16 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		ctx, db, collection := setupDBWithChannelCacheSize(t, 2)
 
 		// doc1: active (seq 1) -> inactive (seq 2)
-		revID1, _, _ := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
-		_, _, _ = collection.Put(ctx, "doc1", Body{"channels": "other", "_rev": revID1})
+		revID1, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc1", Body{"channels": "other", "_rev": revID1})
+		require.NoError(t, err)
 
 		// doc2: active (seq 3) -> inactive (seq 4)
-		revID2, _, _ := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
-		_, _, _ = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
+		revID2, _, err := collection.Put(ctx, "doc2", Body{"channels": activeChannel})
+		require.NoError(t, err)
+		_, _, err = collection.Put(ctx, "doc2", Body{"channels": "other", "_rev": revID2})
+		require.NoError(t, err)
 
 		db.WaitForPendingChanges(t)
 
@@ -767,7 +780,8 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		// Write 20 docs to the channel.  5 should be cached, 15 require query
 		for i := range 20 {
 			docID := fmt.Sprintf("doc%d", i+1)
-			_, _, _ = collection.Put(ctx, docID, Body{"channels": activeChannel})
+			_, _, err := collection.Put(ctx, docID, Body{"channels": activeChannel})
+			require.NoError(t, err)
 		}
 		db.WaitForPendingChanges(t)
 		changesOptions = ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 0, ChangesCtx: base.TestCtx(t)}
@@ -788,7 +802,8 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
 		_ = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
 		for i := 1; i <= 20; i++ {
-			_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"channels": activeChannel})
+			_, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"channels": activeChannel})
+			require.NoError(t, err)
 		}
 		db.WaitForPendingChanges(t)
 		// Limit=10 spans two query batches (5+5) before reaching cache. The pagination loop must
@@ -1111,8 +1126,10 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		db.WaitForPendingChanges(t)
 
 		// doc1 is pruned, cache contains doc2 and doc3. validFrom is 2 (doc1.Seq + 1 = 2).
-		// Querying with Limit=1 should get doc1 (Seq 1) and stop early because limit=1 is met before Seq 2 (validFrom).
-		// The query returns exactly `limit` (1) row, so there's no room left to append the cache; only doc1 is returned.
+		// For ActiveOnly feeds the query always runs at ChannelQueryLimit rather than the request
+		// limit, so the query for doc1 (Seq 1) has room left over and the cache entries (doc2, doc3)
+		// are appended too. It's the main changes loop, not this query, that then trims the combined
+		// result down to the requested Limit=1, leaving only doc1.
 		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
