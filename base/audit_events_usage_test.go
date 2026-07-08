@@ -137,7 +137,7 @@ func findRepoRoot(t *testing.T) string {
 			return dir
 		}
 		parent := filepath.Dir(dir)
-		require.NotEqual(t, dir, parent, "could not find repo root (go.mod) starting from %s", dir)
+		require.NotEqualf(t, dir, parent, "could not find repo root (go.mod) starting from %s", dir)
 		dir = parent
 	}
 }
