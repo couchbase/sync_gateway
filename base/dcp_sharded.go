@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/gocbcore/v10/connstr"
 )
 
 const (
@@ -322,6 +323,42 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID str
 	}
 }
 
+// cbgtManagerOptions builds the options map passed to cbgt.NewManagerEx for the given DCP connection string.
+func cbgtManagerOptions(ctx context.Context, serverURL string) (map[string]string, error) {
+	// Specify one feed per pindex
+	options := make(map[string]string)
+	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
+	options["managerLoadDataDir"] = "false"
+	// TLS is controlled by the connection string.
+	// cbgt uses this parameter to run in mixed mode - non-TLS for CCCP but TLS for memcached. Sync Gateway does not need to set this parameter.
+	options["feedInitialBootstrapNonTLS"] = "false"
+
+	// Since cbgt initializes a buffer per CBS node per partition in most cases (vbuckets in partitions can't be grouped by CBS node),
+	// setting the small buffer size used in cbgt 1.3.2.  (see CBG-3341 for potential optimization of this value)
+	idealKvConnectionBufferSize := 16384
+	// This value will be overridden by the BucketSpec connection string.
+	options["kvConnectionBufferSize"] = strconv.Itoa(idealKvConnectionBufferSize)
+	connSpec, err := connstr.Parse(serverURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse connection string: %w", err)
+	}
+
+	connStrKvBufferSize, err := getConnSpecOption[int](&connSpec, kvBufferSizeKey)
+	if err == nil && connStrKvBufferSize != nil && *connStrKvBufferSize > idealKvConnectionBufferSize {
+		WarnfCtx(ctx, "DCP sharded import connection string includes %s=%d, which is more than the implicit %s=%d. This will result in increased memory usage.", kvBufferSizeKey, *connStrKvBufferSize, kvBufferSizeKey, idealKvConnectionBufferSize)
+	}
+
+	networkType, err := getConnSpecOption[string](&connSpec, networkKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine network type from connection string: %w", err)
+	}
+	if networkType != nil {
+		options["gocbcoreIOConfigNetworkType"] = *networkType
+	}
+
+	return options, nil
+}
+
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
@@ -378,6 +415,11 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   avoids file system usage, in conjunction with managerLoadDataDir=false in options.
 	dataDir := ""
 
+	options, err := cbgtManagerOptions(ctx, serverURL)
+	if err != nil {
+		return nil, err
+	}
+
 	eventHandlersCtx, eventHandlersCancel := context.WithCancelCause(ctx)
 	eventHandlers := &sgMgrEventHandlers{
 		ctx:                    eventHandlersCtx,
@@ -385,24 +427,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		unregisterFeedCallback: unregisterCallback,
 	}
 
-	// Specify one feed per pindex
-	options := make(map[string]string)
-	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
-	options["managerLoadDataDir"] = "false"
-	// TLS is controlled by the connection string.
-	// cbgt uses this parameter to run in mixed mode - non-TLS for CCCP but TLS for memcached. Sync Gateway does not need to set this parameter.
-	options["feedInitialBootstrapNonTLS"] = "false"
-
-	// Since cbgt initializes a buffer per CBS node per partition in most cases (vbuckets in partitions can't be grouped by CBS node),
-	// setting the small buffer size used in cbgt 1.3.2.  (see CBG-3341 for potential optimization of this value)
-	idealKvConnectionBufferSize := 16384
-	// This value will be overridden by the BucketSpec connection string.
-	options["kvConnectionBufferSize"] = strconv.Itoa(idealKvConnectionBufferSize)
-
-	connStrKvBufferSize, err := getIntFromConnStr(serverURL, kvBufferSizeKey)
-	if err == nil && connStrKvBufferSize != nil && *connStrKvBufferSize > idealKvConnectionBufferSize {
-		WarnfCtx(ctx, "DCP sharded import connection string includes %s=%d, which is more than the implicit %s=%d. This will result in increased memory usage.", kvBufferSizeKey, *connStrKvBufferSize, kvBufferSizeKey, idealKvConnectionBufferSize)
-	}
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
 		SGCbgtMetadataVersion, // cbgt metadata version, matching 3.0 clients

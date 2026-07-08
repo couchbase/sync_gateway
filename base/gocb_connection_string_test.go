@@ -11,6 +11,7 @@ package base
 import (
 	"testing"
 
+	"github.com/couchbase/gocbcore/v10/connstr"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
@@ -73,6 +74,85 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 			require.Equal(t, testCase.connStr, connStr)
 		})
 	}
+}
+
+func TestGetConnSpecOption(t *testing.T) {
+	t.Run("int", func(t *testing.T) {
+		testCases := []struct {
+			name          string
+			options       map[string][]string
+			expected      *int
+			expectedError bool
+		}{
+			{
+				name:    "not set",
+				options: map[string][]string{},
+			},
+			{
+				name:     "single value",
+				options:  map[string][]string{"kv_pool_size": {"8"}},
+				expected: Ptr(8),
+			},
+			{
+				name:          "multiple values",
+				options:       map[string][]string{"kv_pool_size": {"8", "4"}},
+				expectedError: true,
+			},
+			{
+				name:          "non-int value",
+				options:       map[string][]string{"kv_pool_size": {"notanint"}},
+				expectedError: true,
+			},
+		}
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				spec := &connstr.ConnSpec{Options: testCase.options}
+				value, err := getConnSpecOption[int](spec, "kv_pool_size")
+				if testCase.expectedError {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, testCase.expected, value)
+				}
+			})
+		}
+	})
+
+	t.Run("string", func(t *testing.T) {
+		testCases := []struct {
+			name          string
+			options       map[string][]string
+			expected      *string
+			expectedError bool
+		}{
+			{
+				name:    "not set",
+				options: map[string][]string{},
+			},
+			{
+				name:     "single value",
+				options:  map[string][]string{networkKey: {"external"}},
+				expected: Ptr("external"),
+			},
+			{
+				name:          "multiple values",
+				options:       map[string][]string{networkKey: {"external", "default"}},
+				expectedError: true,
+			},
+		}
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				spec := &connstr.ConnSpec{Options: testCase.options}
+				value, err := getConnSpecOption[string](spec, networkKey)
+				if testCase.expectedError {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, testCase.expected, value)
+				}
+			})
+		}
+	})
 }
 
 func TestGetIntFromConnStr(t *testing.T) {

@@ -563,3 +563,107 @@ func TestCBGTKvPoolSize(t *testing.T) {
 	defer cbgtContext.Stop(ctx)
 	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")
 }
+
+func TestCBGTManagerOptions(t *testing.T) {
+	testCases := []struct {
+		name            string
+		server          string
+		expectedOptions map[string]string
+	}{
+		{
+			name:   "no options",
+			server: "couchbase://127.0.0.1",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:     cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":         "false",
+				"feedInitialBootstrapNonTLS": "false",
+				"kvConnectionBufferSize":     "16384",
+			},
+		},
+		{
+			name:   "network=default",
+			server: "couchbase://127.0.0.1?network=default",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:      cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":          "false",
+				"feedInitialBootstrapNonTLS":  "false",
+				"kvConnectionBufferSize":      "16384",
+				"gocbcoreIOConfigNetworkType": "default",
+			},
+		},
+		{
+			name:   "network=external",
+			server: "couchbase://127.0.0.1?network=external",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:      cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":          "false",
+				"feedInitialBootstrapNonTLS":  "false",
+				"kvConnectionBufferSize":      "16384",
+				"gocbcoreIOConfigNetworkType": "external",
+			},
+		},
+		{
+			name:   "network=auto",
+			server: "couchbase://127.0.0.1?network=auto",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:      cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":          "false",
+				"feedInitialBootstrapNonTLS":  "false",
+				"kvConnectionBufferSize":      "16384",
+				"gocbcoreIOConfigNetworkType": "auto",
+			},
+		},
+		{
+			// kv_buffer_size never overrides the returned kvConnectionBufferSize option - the connection string is
+			// passed to cbgt.NewManagerEx separately and cbgt applies it there.
+			name:   "kv_buffer_size below implicit size",
+			server: "couchbase://127.0.0.1?kv_buffer_size=100",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:     cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":         "false",
+				"feedInitialBootstrapNonTLS": "false",
+				"kvConnectionBufferSize":     "16384",
+			},
+		},
+		{
+			name:   "kv_buffer_size above implicit size",
+			server: "couchbase://127.0.0.1?kv_buffer_size=20000",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:     cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":         "false",
+				"feedInitialBootstrapNonTLS": "false",
+				"kvConnectionBufferSize":     "16384",
+			},
+		},
+		{
+			// an unparsable kv_buffer_size is silently ignored, rather than failing the manager options build.
+			name:   "kv_buffer_size not an int",
+			server: "couchbase://127.0.0.1?kv_buffer_size=notanumber",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:     cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":         "false",
+				"feedInitialBootstrapNonTLS": "false",
+				"kvConnectionBufferSize":     "16384",
+			},
+		},
+		{
+			// multiple values for a single option is also silently ignored.
+			name:   "multiple kv_buffer_size values",
+			server: "couchbase://127.0.0.1?kv_buffer_size=20000&kv_buffer_size=30000",
+			expectedOptions: map[string]string{
+				cbgt.FeedAllotmentOption:     cbgt.FeedAllotmentOnePerPIndex,
+				"managerLoadDataDir":         "false",
+				"feedInitialBootstrapNonTLS": "false",
+				"kvConnectionBufferSize":     "16384",
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			options, err := cbgtManagerOptions(ctx, testCase.server)
+			require.NoError(t, err)
+			require.Equal(t, testCase.expectedOptions, options)
+		})
+	}
+}
