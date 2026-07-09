@@ -23,6 +23,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+)
 
 // TestAuditEventsAreReferenced statically verifies that every audit event registered in
 // AuditEvents is referenced somewhere in the codebase outside of its definition in
