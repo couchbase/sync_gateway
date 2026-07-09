@@ -2835,57 +2835,95 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 	}, db.GetRawGlobalSyncAttachments(t, ds, docID))
 }
 
-// TestAttachmentMigrationToGlobalXattrOnUpdate:
-//   - Create doc with attachment defined
-//   - Set doc in bucket to move attachment from global xattr to old location in sync data
-//   - Update this doc through sync gateway
-//   - Assert that the attachment metadata in moved from sync data to global xattr on update
+// TestAttachmentMigrationToGlobalXattrOnUpdate verifies that attachment metadata ends up in the
+// global xattr with revpos=2 after a doc update, both with and without a concurrent CAS failure.
+//
+// The "CAS failure" subtest deterministically injects a CAS mismatch by running MigrateAttachmentMetadata
+// inside the LeakyBucket UpdateCallback — which fires after the SG write callback builds its stubs but
+// before the actual write to the datastore. This changes the document CAS, causing WriteUpdateWithXattrs
+// to retry. The maps.Clone reset in the relevant Put/PutExisting* codepaths must preserve revpos=2 on that retry.
 func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{AutoImport: base.Ptr(false)})
+	rt := NewRestTester(t, &RestTesterConfig{
+		AutoImport:        base.Ptr(false),
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+	})
 	defer rt.Close()
 	ds := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	docID := "baa"
-
-	body := `{"test":"doc","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	vrs := rt.PutDoc(docID, body)
-
-	// get xattrs, remove the global xattr and move attachments back to sync data in the bucket
-	xattrs, cas, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
-	require.NoError(t, err)
-	require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName)
-	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
-
-	var bucketSyncData db.SyncData
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
-	var globalXattr db.GlobalSyncData
-	require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
-
-	bucketSyncData.AttachmentsPre4dot0 = globalXattr.Attachments
-	syncBytes := base.MustJSONMarshal(t, bucketSyncData)
-	xattrBytes := map[string][]byte{
-		base.SyncXattrName: syncBytes,
+	testCases := []struct {
+		name       string
+		casFailure bool
+	}{
+		{name: "no CAS failure on update", casFailure: false},
+		{name: "CAS failure on update", casFailure: true},
 	}
-	// add new update sync data but also remove global xattr from doc
-	_, err = collection.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"test":"doc"}`), xattrBytes, []string{base.GlobalXattrName}, nil)
-	require.NoError(t, err)
 
-	// update doc
-	body = `{"some":"update","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	_ = rt.UpdateDoc(docID, vrs, body)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			docID := "doc_" + strings.ReplaceAll(tc.name, " ", "_")
 
-	// assert that the attachments moved to global xattr after doc update
-	require.Empty(t, db.GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
-	require.Equal(t, db.AttachmentMap{
-		"camera.txt": {
-			Digest:  "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=",
-			Length:  20,
-			Revpos:  2,
-			Version: 2,
-			Stub:    true,
-		},
-	}, db.GetRawGlobalSyncAttachments(t, ds, docID))
+			// Create doc with attachment.
+			body := `{"test":"doc","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+			vrs := rt.PutDoc(docID, body)
+
+			// Read xattrs, remove global xattr, move attachments back to AttachmentsPre4dot0 in sync data.
+			// This simulates a document that has not yet been through the background attachment migration.
+			xattrs, cas, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+			require.NoError(t, err)
+			require.Contains(t, maps.Keys(xattrs), base.GlobalXattrName)
+			require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
+
+			var bucketSyncData db.SyncData
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &bucketSyncData))
+			var globalXattr db.GlobalSyncData
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.GlobalXattrName], &globalXattr))
+
+			bucketSyncData.AttachmentsPre4dot0 = globalXattr.Attachments
+			syncBytes := base.MustJSONMarshal(t, bucketSyncData)
+			_, err = collection.GetCollectionDatastore().WriteWithXattrs(ctx, docID, 0, cas, []byte(`{"test":"doc"}`),
+				map[string][]byte{base.SyncXattrName: syncBytes}, []string{base.GlobalXattrName}, nil)
+			require.NoError(t, err)
+
+			rt.WaitForPendingChanges()
+			if tc.casFailure {
+				// UpdateCallback fires after the SG write callback completes (stubs created) but before
+				// the datastore write. Calling MigrateAttachmentMetadata here changes the doc CAS,
+				// which forces WriteUpdateWithXattrs to retry. sync.Once ensures we only inject the
+				// failure on the first attempt so the retry can succeed.
+				var once sync.Once
+				rt.LeakyBucket().SetUpdateCallback(func(key string) {
+					if key != docID {
+						return
+					}
+					once.Do(func() {
+						xattrs, cas, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName})
+						require.NoError(t, err)
+						var syncData db.SyncData
+						require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+						require.NoError(t, collection.MigrateAttachmentMetadata(ctx, docID, cas, &syncData))
+					})
+				})
+				defer rt.LeakyBucket().SetUpdateCallback(nil)
+			}
+
+			body = `{"some":"update","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+			_ = rt.UpdateDoc(docID, vrs, body)
+
+			rt.LeakyBucket().SetUpdateCallback(nil)
+
+			require.Empty(t, db.GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
+			require.Equal(t, db.AttachmentMap{
+				"camera.txt": {
+					Digest:  "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=",
+					Length:  20,
+					Revpos:  2,
+					Version: 2,
+					Stub:    true,
+				},
+			}, db.GetRawGlobalSyncAttachments(t, ds, docID))
+		})
+	}
 }
 
 func TestBlipPushRevWithAttachment(t *testing.T) {
