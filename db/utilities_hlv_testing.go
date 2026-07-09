@@ -421,3 +421,8 @@ func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore
 func (db *DatabaseContext) GetHLCValueForTest(floorValue uint64) uint64 {
 	return db.hlc.Now(floorValue)
 }
+
+// SetHLCClockForTest overrides the database's HLC clock function, for deterministic HLV version generation in tests.
+func (db *DatabaseContext) SetHLCClockForTest(clockFn func() uint64) {
+	db.hlc.SetClockForTest(clockFn)
+}

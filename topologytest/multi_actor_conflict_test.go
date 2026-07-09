@@ -14,21 +14,45 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// clockTieSubtestName names the forceClockTie dimension run by each TestMultiActorConflict* test below.
+func clockTieSubtestName(forceClockTie bool) string {
+	if forceClockTie {
+		return "ClockTie"
+	}
+	return "default"
+}
+
 // TestMultiActorConflictCreate
 //  1. create document on each peer with different contents
 //  2. start replications
 //  3. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
 //     Lite peers. The body should match.
+//
+// The forceClockTie dimension forces every controllable peer's HLC clock to the same fixed timestamp
+// immediately before step 1, so the creates in step 1 tie on HLV Value (see forceHLCClockTieForTest) instead of
+// relying on real clock jitter to hit that case.
 func TestMultiActorConflictCreate(t *testing.T) {
 	base.LongRunningTest(t)
 
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
-			collectionName, topology := setupTests(t, topologySpec)
-			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
-			topology.StartReplications()
-			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+			for _, forceClockTie := range []bool{false, true} {
+				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
+					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
+						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					}
+
+					collectionName, topology := setupTests(t, topologySpec)
+					if forceClockTie {
+						forceHLCClockTieForTest(t, topology)
+					}
+
+					docID := getDocID(t)
+					docVersion := createConflictingDocs(collectionName, docID, topology)
+					topology.StartReplications()
+					waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+				})
+			}
 		})
 	}
 }
@@ -43,24 +67,39 @@ func TestMultiActorConflictCreate(t *testing.T) {
 //  6. start replications
 //  7. wait for documents to exist with a matching CV for Couchbase Lite peers, and a full HLV match for non Couchbase
 //     Lite peers. The body should match.
+//
+// The forceClockTie dimension forces every controllable peer's HLC clock to the same fixed timestamp
+// immediately before step 5, so the updates in step 5 tie on HLV Value instead of relying on real clock jitter
+// to hit that case.
 func TestMultiActorConflictUpdate(t *testing.T) {
 	base.LongRunningTest(t)
 
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
-			collectionName, topology := setupTests(t, topologySpec)
+			for _, forceClockTie := range []bool{false, true} {
+				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
+					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
+						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					}
 
-			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+					collectionName, topology := setupTests(t, topologySpec)
 
-			topology.StartReplications()
-			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+					docID := getDocID(t)
+					docVersion := createConflictingDocs(collectionName, docID, topology)
 
-			topology.StopReplications()
+					topology.StartReplications()
+					waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
-			docVersion = updateConflictingDocs(collectionName, docID, topology)
-			topology.StartReplications()
-			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+					topology.StopReplications()
+
+					if forceClockTie {
+						forceHLCClockTieForTest(t, topology)
+					}
+					docVersion = updateConflictingDocs(collectionName, docID, topology)
+					topology.StartReplications()
+					waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+				})
+			}
 		})
 	}
 }
@@ -73,23 +112,38 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 // 5. delete documents on all peers
 // 6. start replications
 // 7. assert that the documents are deleted on all peers and have hlv sources equal to the number of active peers
+//
+// The forceClockTie dimension forces every controllable peer's HLC clock to the same fixed timestamp
+// immediately before step 5, so the concurrent deletes in step 5 tie on HLV Value instead of relying on real
+// clock jitter to hit that case.
 func TestMultiActorConflictDelete(t *testing.T) {
 	base.LongRunningTest(t)
 
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
-			collectionName, topology := setupTests(t, topologySpec)
-			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+			for _, forceClockTie := range []bool{false, true} {
+				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
+					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
+						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					}
 
-			topology.StartReplications()
-			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+					collectionName, topology := setupTests(t, topologySpec)
+					docID := getDocID(t)
+					docVersion := createConflictingDocs(collectionName, docID, topology)
 
-			topology.StopReplications()
-			deleteConflictDocs(collectionName, docID, topology)
+					topology.StartReplications()
+					waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
-			topology.StartReplications()
-			waitForConvergingTombstones(t, collectionName, docID, topology)
+					topology.StopReplications()
+					if forceClockTie {
+						forceHLCClockTieForTest(t, topology)
+					}
+					deleteConflictDocs(collectionName, docID, topology)
+
+					topology.StartReplications()
+					waitForConvergingTombstones(t, collectionName, docID, topology)
+				})
+			}
 		})
 	}
 }
@@ -110,31 +164,46 @@ func TestMultiActorConflictDelete(t *testing.T) {
 //  10. start replications
 //  11. assert that the documents are resurrected on all peers and have matching hlvs for non Couchbase Lite peers and
 //     matching CV for Couchbase Lite peers.
+//
+// The forceClockTie dimension forces every controllable peer's HLC clock to the same fixed timestamp
+// immediately before step 9, so the concurrent resurrections in step 9 tie on HLV Value instead of relying on
+// real clock jitter to hit that case.
 func TestMultiActorConflictResurrect(t *testing.T) {
 	base.LongRunningTest(t)
 
 	for _, topologySpec := range append(simpleTopologySpecifications, TopologySpecifications...) {
 		t.Run(topologySpec.description, func(t *testing.T) {
-			collectionName, topology := setupTests(t, topologySpec)
+			for _, forceClockTie := range []bool{false, true} {
+				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
+					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
+						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					}
 
-			docID := getDocID(t)
-			docVersion := createConflictingDocs(collectionName, docID, topology)
+					collectionName, topology := setupTests(t, topologySpec)
 
-			topology.StartReplications()
-			waitForCVAndBody(t, collectionName, docID, docVersion, topology)
+					docID := getDocID(t)
+					docVersion := createConflictingDocs(collectionName, docID, topology)
 
-			topology.StopReplications()
-			deleteConflictDocs(collectionName, docID, topology)
+					topology.StartReplications()
+					waitForCVAndBody(t, collectionName, docID, docVersion, topology)
 
-			topology.StartReplications()
+					topology.StopReplications()
+					deleteConflictDocs(collectionName, docID, topology)
 
-			waitForConvergingTombstones(t, collectionName, docID, topology)
-			topology.StopReplications()
+					topology.StartReplications()
 
-			resurrectVersion := updateConflictingDocs(collectionName, docID, topology)
-			topology.StartReplications()
+					waitForConvergingTombstones(t, collectionName, docID, topology)
+					topology.StopReplications()
 
-			waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+					if forceClockTie {
+						forceHLCClockTieForTest(t, topology)
+					}
+					resurrectVersion := updateConflictingDocs(collectionName, docID, topology)
+					topology.StartReplications()
+
+					waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+				})
+			}
 		})
 	}
 }

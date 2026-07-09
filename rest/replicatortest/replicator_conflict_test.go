@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -2217,6 +2218,78 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		for _, revID := range docHistoryLeaves {
 			assert.True(t, rt1Doc.History[revID].Deleted)
 		}
+	})
+}
+
+// TestDefaultConflictResolverMatchingTimestamps verifies that default (HLV-aware) conflict resolution for different
+// source IDs but matching versions is local wins. See CBG-5570 for changing this.
+func TestDefaultConflictResolverMatchingTimestamps(t *testing.T) {
+	base.LongRunningTest(t)
+
+	base.RequireNumTestBuckets(t, 2)
+
+	// Matching-timestamps ties are an HLV/V4-only scenario (V3/revTree conflicts are resolved by generation and
+	// digest, not by timestamp), so only the V4 subtest is run.
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
+		activeRT, passiveRT, remoteDBURLString := sgrRunner.SetupSGRPeers(t)
+		remoteURL, err := url.Parse(remoteDBURLString)
+		require.NoError(t, err)
+		activeRTCtx := activeRT.Context()
+
+		fixedTime := sgbucket.HLCWallClock()
+		tieClock := func() uint64 { return fixedTime }
+		activeRT.GetDatabase().SetHLCClockForTest(tieClock)
+		passiveRT.GetDatabase().SetHLCClockForTest(tieClock)
+
+		docID := "doc"
+		activeRTVersion := createDoc(activeRT, docID, "local")
+		passiveRTVersion := createDoc(passiveRT, docID, "remote")
+		require.Equal(t, activeRTVersion.CV.Value, passiveRTVersion.CV.Value, "test requires activeRT and passiveRT to generate matching HLC timestamps")
+		require.NotEqual(t, activeRTVersion.CV.SourceID, passiveRTVersion.CV.SourceID)
+
+		replicationStats := dbReplicatorStats(t)
+		config := db.ActiveReplicatorConfig{
+			ID:          t.Name(),
+			Direction:   db.ActiveReplicatorTypePushAndPull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
+			},
+			Continuous:                 true,
+			ConflictResolverFuncForHLV: db.DefaultLWWConflictResolutionType,
+			ReplicationStatsMap:        replicationStats,
+			CollectionsEnabled:         !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
+		}
+
+		// Create active replicator and start replication.
+		ar, err := db.NewActiveReplicator(activeRTCtx, &config)
+		require.NoError(t, err)
+		require.NoError(t, ar.Start(activeRTCtx), "Error starting replication")
+		defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
+
+		requireConflictResolvedLocally := func(t *testing.T, rt *rest.RestTester) {
+			t.Helper()
+			collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+				if !assert.NoError(c, err) {
+					return
+				}
+				if !assert.NotNil(c, doc.HLV) {
+					return
+				}
+				assert.Equal(c, activeRTVersion.CV.SourceID, doc.HLV.SourceID, "expected local (activeRT) source to win the tie")
+				assert.Equal(c, "local", doc.Body(base.TestCtx(t))["key"], "expected local (activeRT) body to win the tie")
+			}, 10*time.Second, 100*time.Millisecond)
+		}
+		requireConflictResolvedLocally(t, activeRT)
+		requireConflictResolvedLocally(t, passiveRT)
+
+		base.RequireWaitForStat(t, replicationStats.ConflictResolvedLocalCount.Value, 1)
+		base.RequireWaitForStat(t, replicationStats.ConflictResolvedMergedCount.Value, 0)
+		base.RequireWaitForStat(t, replicationStats.ConflictResolvedRemoteCount.Value, 0)
 	})
 }
 

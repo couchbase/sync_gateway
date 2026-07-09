@@ -539,6 +539,60 @@ func TestLWWAfterInitialReplication(t *testing.T) {
 	requireCV(t, xattrs[base.VvXattrName], fromBucketSourceID, fromCAS)
 }
 
+// TestXDCRMatchingTimestamps verifies XDCR's local wins conflict resolution when the source and target's
+// CAS match but the sourceIDs are different.
+func TestXDCRMatchingTimestamps(t *testing.T) {
+	fromBucket, fromDs, toBucket, toDs := getTwoBucketDataStores(t)
+	ctx := base.TestCtx(t)
+
+	docID := "doc"
+	// Fixed value shared by both sides to force a tie. CAS is roughly nanoseconds since the Unix epoch, so this
+	// must stay comfortably in the past (this value is ~2020) - real Couchbase Server rejects an HLV whose
+	// cvCAS is newer than the document's actual CAS.
+	const matchingCAS = 0x1600000000000000
+	const fromSourceID = "fromSource"
+	const toSourceID = "toSource"
+
+	writeTiedDoc := func(ds sgbucket.DataStore, sourceID string, body string) {
+		hlv := &db.HybridLogicalVector{
+			SourceID:          db.EncodeSource(sourceID),
+			Version:           matchingCAS,
+			CurrentVersionCAS: matchingCAS,
+		}
+		xattrs := map[string][]byte{
+			base.VvXattrName:  base.MustJSONMarshal(t, hlv),
+			base.MouXattrName: base.MustJSONMarshal(t, &db.MetadataOnlyUpdate{HexCAS: "expand"}),
+		}
+		opts := &sgbucket.MutateInOptions{
+			MacroExpansion: []sgbucket.MacroExpansionSpec{
+				sgbucket.NewMacroExpansionSpec(db.XattrMouCasPath(), sgbucket.MacroCas),
+			},
+		}
+		_, err := ds.WriteWithXattrs(ctx, docID, 0, 0, []byte(body), xattrs, nil, opts)
+		require.NoError(t, err)
+	}
+
+	writeTiedDoc(fromDs, fromSourceID, `{"source":"fromDs"}`)
+	writeTiedDoc(toDs, toSourceID, `{"source":"toDs"}`)
+
+	xdcr := startXDCR(t, fromBucket, toBucket, XDCROptions{Mobile: MobileOn})
+	defer func() {
+		assert.NoError(t, xdcr.Stop(ctx))
+	}()
+	requireWaitForXDCRDocsProcessed(t, xdcr, 1)
+
+	stats, err := xdcr.Stats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), stats.DocsWritten)
+	assert.Equal(t, uint64(1), stats.TargetNewerDocs)
+
+	// The target (toDs) keeps its own document: the tied source write does not win.
+	body, xattrs, _, err := toDs.GetWithXattrs(ctx, docID, []string{base.VvXattrName})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"source":"toDs"}`, string(body))
+	requireCV(t, xattrs[base.VvXattrName], db.EncodeSource(toSourceID), matchingCAS)
+}
+
 func TestReplicateXattrs(t *testing.T) {
 	base.LongRunningTest(t)
 
