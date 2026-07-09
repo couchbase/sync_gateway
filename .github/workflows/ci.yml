@@ -97,8 +97,6 @@ jobs:
           go-version: *go_version
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
-      - name: Build
-        run: go build -v "./topologytest"
       - name: Run Tests
         run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./topologytest"
         shell: bash
