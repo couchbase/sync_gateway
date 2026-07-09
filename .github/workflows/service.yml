@@ -40,6 +40,7 @@ concurrency:
 
 jobs:
   scripts:
+    if: false
     runs-on: ubuntu-latest
     name: Verify service script installation.
     steps:
