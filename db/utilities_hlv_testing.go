@@ -373,6 +373,7 @@ func ParseTestHistory(t *testing.T, historyString string) (pv HLVVersions, mv HL
 
 // RequireCVEqual fails tests if provided HLV does not have expected CV (sent in blip wire format)
 func RequireCVEqual(t *testing.T, hlv *HybridLogicalVector, expectedCV string) {
+	t.Helper()
 	testVersion, err := ParseVersion(expectedCV)
 	require.NoError(t, err)
 	require.Equal(t, EncodeSource(testVersion.SourceID), hlv.SourceID)

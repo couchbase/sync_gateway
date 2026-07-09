@@ -171,6 +171,7 @@ func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
 }
 
 func assertHTTPError(t *testing.T, err error, status int) bool {
+	t.Helper()
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&
 		assert.ErrorAs(t, err, &httpErr) &&

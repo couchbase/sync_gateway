@@ -3230,6 +3230,7 @@ func ExpectedRange(start, end uint64) sequenceRange {
 // AssertPendingLogs validates the ordering of the provided LogPriorityQueue against the ordered expectedPending slice.
 // We don't want to modify the incoming LogPriorityQueue, so makes a copy and then performs heap removal
 func AssertPendingLogs(t *testing.T, pendingLogs LogPriorityQueue, expectedPending []sequenceRange) {
+	t.Helper()
 
 	pendingCopy := make(LogPriorityQueue, len(pendingLogs))
 	_ = copy(pendingCopy, pendingLogs)

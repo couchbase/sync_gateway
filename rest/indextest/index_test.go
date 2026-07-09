@@ -915,6 +915,7 @@ func waitAndRequireDBState(t *testing.T, sc *rest.ServerContext, dbName string, 
 }
 
 func requireActiveChannel(t *testing.T, dataStore base.DataStore, key string, channelName string) {
+	t.Helper()
 	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr as sync data")
 	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)

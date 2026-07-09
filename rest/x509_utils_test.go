@@ -383,6 +383,7 @@ func couchbaseNodeConfiguredHostname(ctx context.Context, restAPIURL url.URL) (s
 
 // assertHostnameMatch ensures the hostname using for the test server matches what Couchbase Server's node hostname is.
 func assertHostnameMatch(t *testing.T, couchbaseServerURL *url.URL) {
+	t.Helper()
 	restAPIURL := basicAuthRESTPIURLFromConnstrHost(*couchbaseServerURL)
 
 	nodeHostname, err := couchbaseNodeConfiguredHostname(base.TestCtx(t), restAPIURL)

@@ -1342,6 +1342,7 @@ func TestPutUserUnsetAdminChannelsNamedCollection(t *testing.T) {
 }
 
 func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, ds sgbucket.DataStore) {
+	t.Helper()
 	configChannels := principalConfig.ExplicitChannels
 	if !base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
 		configChannels = principalConfig.CollectionAccess[ds.ScopeName()][ds.CollectionName()].ExplicitChannels_
@@ -1350,6 +1351,7 @@ func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConf
 }
 
 func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, ds sgbucket.DataStore) {
+	t.Helper()
 	configChannels := principalConfig.JWTChannels
 	if !base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
 		configChannels = principalConfig.CollectionAccess[ds.ScopeName()][ds.CollectionName()].JWTChannels_

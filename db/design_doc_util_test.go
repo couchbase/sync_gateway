@@ -28,12 +28,14 @@ func setDesignDocPreviousVersionsForTest(t testing.TB, versions ...string) {
 
 // assertDesignDocExists ensures that the design doc exists in the dataStore.
 func assertDesignDocExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName string) bool {
+	t.Helper()
 	_, err := viewStore.GetDDoc(base.TestCtx(t), ddocName)
 	return assert.NoErrorf(t, err, "Design doc %s should exist but got an error fetching it: %v", ddocName, err)
 }
 
 // assertDesignDocDoesNotExist ensures that the design doc does not exist in the dataStore.
 func assertDesignDocNotExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName string) bool {
+	t.Helper()
 	ddoc, err := viewStore.GetDDoc(base.TestCtx(t), ddocName)
 	assert.Error(t, err, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
 	return assert.Truef(t, IsMissingDDocError(err), "Design doc %s should not exist but got a different error fetching it: %v", ddocName, err)

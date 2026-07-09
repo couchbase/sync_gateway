@@ -84,6 +84,7 @@ func initializeCollectionIndexes(ctx context.Context, t *testing.T, testBucket b
 }
 
 func requireCoveredQuery(t *testing.T, database *db.Database, statement string, isCovered bool) {
+	t.Helper()
 	n1QLStore, ok := base.AsN1QLStore(database.MetadataStore)
 	require.True(t, ok)
 	plan, explainErr := n1QLStore.ExplainQuery(base.TestCtx(t), statement, nil)

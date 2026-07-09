@@ -803,6 +803,7 @@ func TestImportNullDocRaw(t *testing.T) {
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
+	t.Helper()
 	_, xattrs, _, err := dataStore.GetWithXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr")
 	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)

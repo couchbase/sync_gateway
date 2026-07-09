@@ -7948,6 +7948,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	require.Equal(t, int64(2), stats.NumConnectAttemptsPush.Value())
 }
 func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
+	t.Helper()
 	var expectedBody db.Body
 	require.NoError(t, base.JSONUnmarshal([]byte(expected), &expectedBody))
 	require.Equal(t, expectedBody, doc.Body(base.TestCtx(t)))

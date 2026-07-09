@@ -610,12 +610,14 @@ func (rt *RestTester) GetSingleDataStore() base.DataStore {
 
 // WaitForDoc will wait for the specific docID to be available in the change cache by comparing the sequence number in the bucket to latest sequence processed by channel cache. Consider replacing with WaitForPendingChanges.
 func (rt *RestTester) WaitForDoc(docid string) {
+	rt.TB().Helper()
 	seq := rt.SequenceForDoc(docid)
 	rt.WaitForSequence(seq)
 }
 
 // SequenceForDoc returns the current sequence for a document from the bucket, failing the test if the document doesn't exist.
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
+	rt.TB().Helper()
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	doc, err := collection.GetDocument(ctx, docid, db.DocUnmarshalAll)
 	require.NoError(rt.TB(), err, "Error getting doc %q", docid)
@@ -624,11 +626,13 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64) {
 
 // WaitForSequence waits for the sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) {
+	rt.TB().Helper()
 	rt.GetDatabase().WaitForSequence(rt.TB(), seq)
 }
 
 // WaitForPendingChanges waits all outstanding changes to be buffered by the channel cache.
 func (rt *RestTester) WaitForPendingChanges() {
+	rt.TB().Helper()
 	rt.GetDatabase().WaitForPendingChanges(rt.TB())
 }
 
@@ -857,6 +861,7 @@ type ChangesResults struct {
 }
 
 func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
+	t.Helper()
 	require.Len(t, cr.Results, len(docIDs))
 	for _, docID := range docIDs {
 		var found bool
@@ -871,6 +876,7 @@ func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 }
 
 func (cr ChangesResults) RequireRevID(t testing.TB, revIDs []string) {
+	t.Helper()
 	require.Equal(t, len(revIDs), len(cr.Results))
 	for _, rev := range revIDs {
 		var found bool
@@ -894,6 +900,7 @@ func (cr ChangesResults) Summary() string {
 
 // RequireChangeRev asserts that the given db.ChangeByVersionType returned a /_changes feed has the expected DocVersion entry, for a given versionType (rev or cv)
 func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVersionType, versionType db.ChangesVersionType) {
+	t.Helper()
 	// Only one version type will be populated on a changes feed, based on what the original request demanded and what version types are available on that particular revision.
 	var expectedStr string
 	switch versionType {
@@ -909,6 +916,7 @@ func RequireChangeRev(t *testing.T, expected DocVersion, changeRev db.ChangeByVe
 
 // WaitForChanges waits for the specific number of changes to appear. Fails the test harness if more or fewer changes appear.
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
+	rt.TB().Helper()
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
 	if db.HasCachingFeedDelay(rt.TB()) {
 		waitTime *= db.GetCachingFeedDelayFactor(rt.TB())
@@ -983,16 +991,19 @@ func (rt *RestTester) SendUserRequest(method, resource, body, username string) *
 }
 
 func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult) {
+	rt.TB().Helper()
 	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, user, password)
 }
 
 func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult) {
+	rt.TB().Helper()
 	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, nil, "")
 }
 
 // Wait for a certain number of results to be returned from a view query
 // viewUrlPath: is the path to the view, including the db name.  Eg: "/db/_design/foo/_view/bar"
 func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult) {
+	rt.TB().Helper()
 
 	worker := func() (shouldRetry bool, err error, value sgbucket.ViewResult) {
 		var response *TestResponse
@@ -1064,6 +1075,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 }
 
 func (rt *RestTester) GetDBState() string {
+	rt.TB().Helper()
 	var body db.Body
 	resp := rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	RequireStatus(rt.TB(), resp, 200)
@@ -1073,16 +1085,19 @@ func (rt *RestTester) GetDBState() string {
 
 // WaitForDBOnline waits for the database to be in the Online state. Fail the test harness if the state is not reached within the timeout.
 func (rt *RestTester) WaitForDBOnline() {
+	rt.TB().Helper()
 	rt.WaitForDBState("Online")
 }
 
 // WaitForDBState waits for the database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
 func (rt *RestTester) WaitForDBState(stateWant string) {
+	rt.TB().Helper()
 	rt.WaitForDatabaseState(rt.GetDatabase().Name, stateWant)
 }
 
 // WaitForDatabaseState waits for the specified database to be in the specified state. Fails the test harness if the state is not reached within the timeout.
 func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
+	rt.TB().Helper()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		assert.Equal(c, targetState, rt.GetDatabaseRoot(dbName).State)
 	}, 10*time.Second, 100*time.Millisecond)
@@ -1094,6 +1109,7 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 // (including bucket-global docs such as _sync:registry, _sync:dbconfig:* and cbgt cfg) rather than for
 // a single database.
 func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) {
+	rt.TB().Helper()
 	timeout := 10 * time.Second
 	pollInterval := 100 * time.Millisecond
 	if !sgtest.UnitTestUrlIsWalrus() || sgtest.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
@@ -1116,6 +1132,7 @@ func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) 
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
+	rt.TB().Helper()
 	request := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
 		request.Header.Set(k, v)
@@ -1128,6 +1145,7 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 
 // SetAdminChannels creates or updates a user with the specified channels.
 func (rt *RestTester) SetAdminChannels(username string, password string, keyspace string, channels ...string) {
+	rt.TB().Helper()
 	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
 	require.NoError(rt.TB(), err)
 	var currentConfig auth.PrincipalConfig
@@ -1942,6 +1960,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (r
 //
 //	[[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
 func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]any) {
+	bt.TB().Helper()
 
 	retryWorker := func() (shouldRetry bool, err error, value [][]any) {
 		currentChanges := bt.GetChanges()
@@ -1968,6 +1987,7 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]any
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) GetChanges() (changes [][]any) {
+	bt.TB().Helper()
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
@@ -2005,6 +2025,7 @@ func (bt *BlipTester) GetChanges() (changes [][]any) {
 
 // WaitForNumDocsViaChanges waits for the number of documents to be seen on the BlipTester from a subChanges request. Fails the test if expected number of documents is not found.
 func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
+	bt.TB().Helper()
 
 	require.EventuallyWithT(bt.restTester.TB(), func(c *assert.CollectT) {
 		docs = bt.PullDocs()
@@ -2330,6 +2351,7 @@ type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
 func RequireDocVersionNotNil(t *testing.T, version DocVersion) {
+	t.Helper()
 	require.NotEqual(t, "", version.RevTreeID)
 }
 
@@ -2358,12 +2380,14 @@ func RequireDocRevTreeEqual(t *testing.T, expected, actual DocVersion) {
 
 // RequireDocVersionNotEqual calls t.Fail if two document versions are equal.
 func RequireDocVersionNotEqual(t *testing.T, expected, actual DocVersion) {
+	t.Helper()
 	require.NotEqual(t, expected.CV.String(), actual.CV.String(), "Versions mismatch.  Expected: %v, Actual: %v", expected, actual)
 	require.NotEqual(t, expected.RevTreeID, actual.RevTreeID, "Versions mismatch.  Expected: %v, Actual: %v", expected.RevTreeID, actual.RevTreeID)
 }
 
 // RequireDocumentCV asserts that the document's CV matches the expected version.
 func RequireDocumentCV(t *testing.T, expected DocVersion, actualVersion DocVersion) {
+	t.Helper()
 	require.Equal(t, expected.CV, actualVersion.CV)
 }
 
@@ -2379,6 +2403,7 @@ func NewDocVersionFromFakeRev(fakeRev string) DocVersion {
 
 // DocVersionFromPutResponse returns a DocVersion from the given response, or fails the given test if a version was not returned.
 func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion {
+	t.Helper()
 	var r struct {
 		DocID *string `json:"id"`
 		RevID *string `json:"rev"`
@@ -2396,6 +2421,7 @@ func DocVersionFromPutResponse(t testing.TB, response *TestResponse) DocVersion 
 }
 
 func MarshalConfig(t *testing.T, config db.ReplicationConfig) string {
+	t.Helper()
 	replicationPayload, err := json.Marshal(config)
 	require.NoError(t, err)
 	return string(replicationPayload)
@@ -2436,6 +2462,7 @@ func getKeyspaces(t testing.TB, database *db.DatabaseContext) []string {
 
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
 func (rt *RestTester) GetKeyspaces() []string {
+	rt.TB().Helper()
 	db := rt.GetDatabase()
 	var keyspaces []string
 	for _, collection := range db.CollectionByID {
@@ -2447,6 +2474,7 @@ func (rt *RestTester) GetKeyspaces() []string {
 
 // GetDbCollections returns a lexicographically sorted list of collections on the database for compatibility with GetKeyspaces and getCollectionsForBLIP
 func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
+	rt.TB().Helper()
 	var collections []*db.DatabaseCollection
 	for _, collection := range rt.GetDatabase().CollectionByID {
 		collections = append(collections, collection)
@@ -2460,6 +2488,7 @@ func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
 
 // GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
 func (rt *RestTester) GetSingleKeyspace() string {
+	rt.TB().Helper()
 	db := rt.GetDatabase()
 	require.Equal(rt.TB(), 1, len(db.CollectionByID), "Database must be configured with only one collection to use this function")
 	for _, collection := range db.CollectionByID {
@@ -2471,6 +2500,7 @@ func (rt *RestTester) GetSingleKeyspace() string {
 
 // getCollectionsForBLIP returns scope.collection strings for blip to process GetCollections messages. To test legacy functionality when SG_TEST_USE_DEFAULT_COLLECTION=true, don't return default collection if it is the only collection available.
 func (rt *RestTester) getCollectionsForBLIP() []string {
+	rt.TB().Helper()
 	db := rt.GetDatabase()
 	var collections []string
 	if db.OnlyDefaultCollection() {
@@ -2488,6 +2518,7 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 
 // ReadContinuousChanges reads the output continuous changes feed rest response into slice of ChangeEntry
 func (rt *RestTester) ReadContinuousChanges(response *TestResponse) []db.ChangeEntry {
+	rt.TB().Helper()
 	var change db.ChangeEntry
 	changes := make([]db.ChangeEntry, 0)
 	reader := bufio.NewReader(response.Body)
@@ -2512,6 +2543,7 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) []db.ChangeE
 // RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is
 // the number of changes for the nth collection.
 func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, keyspace int, expectedChanges int, timeout int) {
+	t.Helper()
 	resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=continuous&timeout=%d", keyspace, timeout), "", username)
 	changes := rt.ReadContinuousChanges(resp)
 	require.Len(t, changes, expectedChanges)
@@ -2519,6 +2551,7 @@ func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username s
 
 // GetChanges returns the set of changes from a GET request for a given user.
 func (rt *RestTester) GetChanges(uri string, username string) ChangesResults {
+	rt.TB().Helper()
 	changesResponse := rt.SendUserRequest(http.MethodGet, uri, "", username)
 	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
 	var changes ChangesResults
@@ -2529,6 +2562,7 @@ func (rt *RestTester) GetChanges(uri string, username string) ChangesResults {
 
 // PostChanges issues a changes POST request for a given user.
 func (rt *RestTester) PostChanges(uri, body, username string) ChangesResults {
+	rt.TB().Helper()
 	changesResponse := rt.SendUserRequest(http.MethodPost, uri, body, username)
 	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
 	var changes ChangesResults
@@ -2539,6 +2573,7 @@ func (rt *RestTester) PostChanges(uri, body, username string) ChangesResults {
 
 // PostChangesAdmin issues a changes POST request for a given user.
 func (rt *RestTester) PostChangesAdmin(uri, body string) ChangesResults {
+	rt.TB().Helper()
 	changesResponse := rt.SendAdminRequest(http.MethodPost, uri, body)
 	RequireStatus(rt.TB(), changesResponse, http.StatusOK)
 	var changes ChangesResults
@@ -2549,6 +2584,7 @@ func (rt *RestTester) PostChangesAdmin(uri, body string) ChangesResults {
 
 // NewDbConfig returns a DbConfig for the given RestTester. This sets up a config appropriate to collections, xattrs, import filter and sync function.
 func (rt *RestTester) NewDbConfig() DbConfig {
+	rt.TB().Helper()
 	// make sure bucket has been initialized
 	config := DbConfig{
 		BucketConfig: BucketConfig{
@@ -2624,6 +2660,7 @@ func stringPtrOrNil(s string) *string {
 }
 
 func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {
+	t.Helper()
 	sc.invalidDatabaseConfigTracking.m.RLock()
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
 
@@ -2637,6 +2674,7 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 
 // ForceDbConfigsReload forces the reload db config from bucket process (like the ConfigUpdate background process)
 func (sc *ServerContext) ForceDbConfigsReload(t *testing.T, ctx context.Context) {
+	t.Helper()
 	_, err := sc.fetchAndLoadConfigs(ctx, false)
 	require.NoError(t, err)
 }
@@ -2656,6 +2694,7 @@ func (sc *ServerContext) ForceClusterCompatRefresh(t *testing.T, ctx context.Con
 // BootstrapDocKeysToMigrate returns the bucket-global bootstrap doc keys that MigrateBootstrapDocs
 // moves from _default._default to _system._mobile for the given bucket.
 func (sc *ServerContext) BootstrapDocKeysToMigrate(t *testing.T, ctx context.Context, bucketName string) []string {
+	t.Helper()
 	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	return bootstrapDocKeysToMigrate(ctx, registry)
@@ -2674,6 +2713,7 @@ func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
 
 // RequireBucketSpecificCredentials skips tests if bucket specific credentials are required
 func RequireBucketSpecificCredentials(t *testing.T) {
+	t.Helper()
 	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no bucket specific credentials")
 	}
@@ -2681,6 +2721,7 @@ func RequireBucketSpecificCredentials(t *testing.T) {
 
 // RequireN1QLIndexes skips tests if N1QL indexes are required
 func RequireN1QLIndexes(t *testing.T) {
+	t.Helper()
 	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for N1QL indexes")
 	}
@@ -2688,6 +2729,7 @@ func RequireN1QLIndexes(t *testing.T) {
 
 // RequireGocbDCPResync skips tests if not gocb backed buckets.
 func RequireGocbDCPResync(t *testing.T) {
+	t.Helper()
 	if !sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server since rosmar has no support for DCP resync")
 	}
@@ -2704,6 +2746,7 @@ func SafeDatabaseName(t *testing.T, name string) string {
 
 // SafeDocumentName returns a document name free of any special characters for use in tests.
 func SafeDocumentName(t *testing.T, name string) string {
+	t.Helper()
 	docName := strings.ToLower(name)
 	for _, c := range []string{" ", "<", ">", "/", "="} {
 		docName = strings.ReplaceAll(docName, c, "_")
@@ -2740,6 +2783,7 @@ func TestBucketPoolRestWithIndexes(ctx context.Context, m *testing.M, tbpOptions
 }
 
 func RequireNotFoundError(t *testing.T, response *TestResponse) {
+	t.Helper()
 	RequireStatus(t, response, http.StatusNotFound)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -2747,6 +2791,7 @@ func RequireNotFoundError(t *testing.T, response *TestResponse) {
 }
 
 func AssertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus int, expectedReason string) {
+	t.Helper()
 	var httpError struct {
 		Reason string `json:"reason"`
 	}
@@ -2759,6 +2804,7 @@ func AssertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus 
 }
 
 func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, expectedActiveRevTreeID, expectedTombstoneParentID string) {
+	t.Helper()
 	activeLeafCount := 0
 	for _, revID := range doc.History.GetLeaves() {
 		revItem := doc.History[revID]

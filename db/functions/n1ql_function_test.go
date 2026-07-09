@@ -87,6 +87,7 @@ func queryResultString(t *testing.T, iter sgbucket.QueryResultIterator) string {
 }
 
 func assertQueryResults(t *testing.T, expected string, iter sgbucket.QueryResultIterator) {
+	t.Helper()
 	if actual := queryResultString(t, iter); actual != "" {
 		assert.Equal(t, expected, actual)
 	}

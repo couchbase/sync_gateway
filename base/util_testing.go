@@ -751,10 +751,12 @@ func DeepCopyInefficient(dst any, src any) error {
 type RetryUntilTrueFunc func() bool
 
 func testRetryUntilTrue(t *testing.T, retryFunc RetryUntilTrueFunc) {
+	t.Helper()
 	testRetryUntilTrueCustom(t, retryFunc, 100, 10000)
 }
 
 func testRetryUntilTrueCustom(t *testing.T, retryFunc RetryUntilTrueFunc, waitTimeMs int, timeoutMs int) {
+	t.Helper()
 	timeElapsedMs := 0
 	for timeElapsedMs < timeoutMs {
 		if retryFunc() {
@@ -784,6 +786,7 @@ func DirExists(filename string) bool {
 
 // AssertWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	t.Helper()
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()
 		assert.Equal(c, expected, val)
@@ -826,27 +829,30 @@ func TestRequiresCbgt(t testing.TB) {
 
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
+	t.Helper()
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
 }
 
 // RequireXattrDeleteOnDocumentInsertError asserts that the given error represents error deleting xattrs during document delete
 func RequireXattrDeleteOnDocumentInsertError(t testing.TB, e error) {
+	t.Helper()
 	require.True(t, errors.Is(e, sgbucket.ErrDeleteXattrOnDocumentInsert))
 }
 
 // RequireXattrNotFoundError asserts that the given error represents an xattr not found error.
 func RequireXattrNotFoundError(t testing.TB, e error) {
+	t.Helper()
 	require.True(t, IsXattrNotFoundError(e), fmt.Sprintf("Expected error to be an xattr not found error, but was: %v", e))
 }
 
 func requireCasMismatchError(t testing.TB, err error) {
+	t.Helper()
 	require.Error(t, err, "Expected an error of type IsCasMismatch %+v\n", err)
 	require.True(t, IsCasMismatch(err), "Expected error of type IsCasMismatch but got %+v\n", err)
 }
 
 // SkipImportTestsIfNotEnabled skips test that exercise import features
 func SkipImportTestsIfNotEnabled(t *testing.T) {
-
 	if !TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
@@ -860,6 +866,7 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 //	    assert.True(t, condition2),
 //	)
 func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
+	t.Helper()
 	var failed bool
 	for _, ok := range assertionResults {
 		if !ok {
@@ -887,10 +894,12 @@ func LongRunningTest(t *testing.T) {
 }
 
 func AssertTimeGreaterThan(t *testing.T, e1, e2 time.Time, msgAndArgs ...any) bool {
+	t.Helper()
 	return AssertTimestampGreaterThan(t, e1.UnixNano(), e2.UnixNano(), msgAndArgs...)
 }
 
 func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...any) bool {
+	t.Helper()
 	// time.Nanoseconds has poor precision on Windows - equal is good enough there...
 	if runtime.GOOS == "windows" {
 		return assert.GreaterOrEqual(t, e1, e2, msgAndArgs...)
@@ -1011,11 +1020,13 @@ func TestClusterSpec(t *testing.T) CouchbaseClusterSpec {
 
 // RequireKeysEqual asserts that a map has the expected keys.
 func RequireKeysEqual[T any](t testing.TB, expectedKeys []string, actual map[string]T, msgAndArgs ...any) {
+	t.Helper()
 	require.ElementsMatch(t, expectedKeys, slices.Collect(maps.Keys(actual)), msgAndArgs...)
 }
 
 // RequireXattrNotFound asserts that the given xattr is not found on the document.
 func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID string, xattrName string) {
+	t.Helper()
 	xattrs, _, err := dataStore.GetXattrs(TestCtx(t), docID, []string{xattrName})
 	require.Error(t, err, fmt.Sprintf("Expected xattr %q to not be found on document %q but has contents %s", xattrName, docID, xattrs[xattrName]))
 	RequireXattrNotFoundError(t, err)
@@ -1101,7 +1112,7 @@ func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time
 	}
 }
 
-// RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
+// RequireChanClosed waits for channel to be closed. Will drain the channel if required.
 // Fails the test if the channel is not closed in TestChanTimeout.
 func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
 	t.Helper()

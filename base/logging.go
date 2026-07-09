@@ -418,6 +418,7 @@ func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
 
 // AssertLogContains asserts that the logs produced by function f contain string s.
 func AssertLogContains(t *testing.T, s string, f func()) {
+	t.Helper()
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
@@ -434,6 +435,7 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 
 // AssertLogNotContains asserts that the logs produced by function f do not contain string s.
 func AssertLogNotContains(t *testing.T, s string, f func()) {
+	t.Helper()
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)

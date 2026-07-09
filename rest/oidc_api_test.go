@@ -949,6 +949,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 
 // assertHttpResponse asserts the forceError against HTTP response.
 func assertHttpResponse(t *testing.T, response *http.Response, forceError forceError) {
+	t.Helper()
 	bodyBytes, err := io.ReadAll(response.Body)
 	require.NoError(t, err, "error reading response body")
 	assert.Contains(t, string(bodyBytes), forceError.expectedErrorMessage)

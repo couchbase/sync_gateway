@@ -2836,6 +2836,7 @@ func TestCollectionsValidation(t *testing.T) {
 // This function allows for error checking on both x509.UnknownAuthorityError non-x509.UnknownAuthorityError types as we switch on the expected error type
 // We get OS specific errors on x509.UnknownAuthorityError so we switch the expected error string if on darwin OS
 func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) {
+	t.Helper()
 	expectedErrorString := expected.Error()
 	if strings.Contains(actual.Error(), expectedErrorString) {
 		return

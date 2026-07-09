@@ -525,6 +525,7 @@ func GetImportVersion(t *testing.T, rt *rest.RestTester, dbName string) uint64 {
 }
 
 func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {
+	rt.TB().Helper()
 	xattrs, _, err := dataStore.GetXattrs(rt.Context(), docName, []string{base.SyncXattrName})
 	if hasSyncData {
 		require.NoError(rt.TB(), err)
