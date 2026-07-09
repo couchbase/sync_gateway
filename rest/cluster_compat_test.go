@@ -1885,7 +1885,7 @@ func TestClusterCompatRefreshAndStopUntrackVanishedBucket(t *testing.T) {
 	ctx := base.TestCtx(t)
 	fakeBucket := "non_existent_fake_bucket_123"
 
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		defer func() {
 			// Under Rosmar, any read against fakeBucket auto-creates it.
 			// Make sure to delete it regardless of what happened in the test.
@@ -1929,7 +1929,7 @@ func TestClusterCompatRefreshAndStopUntrackVanishedBucket(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, clusterCompat.trackedBucketList(), bucketName, "real bucket should remain tracked")
 
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		require.Contains(t, clusterCompat.trackedBucketList(), fakeBucket, "Rosmar auto-creates buckets on read, so the fake bucket is never classified as vanished")
 	} else {
 		require.NotContains(t, clusterCompat.trackedBucketList(), fakeBucket, "vanished bucket should be untracked")
