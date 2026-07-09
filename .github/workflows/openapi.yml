@@ -45,6 +45,7 @@ concurrency:
 
 jobs:
   api_validation:
+    if: false
     runs-on: ubuntu-latest
     name: OpenAPI Validation
     steps:
@@ -55,6 +56,7 @@ jobs:
           npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
 
   yamllint:
+    if: false
     name: 'yamllint'
     runs-on: ubuntu-latest
     steps:

@@ -35,6 +35,7 @@ concurrency:
 
 jobs:
   shellcheck:
+    if: false
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:

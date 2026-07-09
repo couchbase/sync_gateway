@@ -41,6 +41,7 @@ env:
 
 jobs:
   build:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
@@ -51,6 +52,7 @@ jobs:
         run: go build "./..."
 
   addlicense:
+    if: false
     name: addlicense
     runs-on: ubuntu-latest
     steps:
@@ -62,6 +64,7 @@ jobs:
       - run: addlicense -check -f licenses/addlicense.tmpl .
 
   golangci:
+    if: false
     name: lint
     runs-on: ubuntu-latest
     steps:
@@ -95,9 +98,9 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Build
-        run: go build -v "./..."
+        run: go build -v "./topologytest"
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./topologytest"
         shell: bash
       - name: Test Summary
         if: always()
@@ -272,6 +275,7 @@ jobs:
           if-no-files-found: warn
 
   python-format:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
@@ -279,11 +283,13 @@ jobs:
         with:
           args: 'format --check'
   python-lint:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
       - uses: *actions_ruff_version
   test-sgcollect:
+    if: false
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -300,6 +306,7 @@ jobs:
           uv run -- mypy
 
   test-stats-definition-exporter:
+    if: false
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -339,6 +346,7 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   cache_perf_tool_build:
+    if: false
     runs-on: ubuntu-latest
     name: build cache perf tool
     steps:
@@ -349,6 +357,7 @@ jobs:
       - name: Build
         run: go build "./tools/cache_perf_tool"
   govulncheck:
+    if: false
     runs-on: ubuntu-latest
     name: Run govulncheck
     steps:

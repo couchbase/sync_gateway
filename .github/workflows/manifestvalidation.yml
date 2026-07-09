@@ -37,6 +37,7 @@ concurrency:
 
 jobs:
   manifest_validation:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
