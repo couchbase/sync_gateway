@@ -774,7 +774,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Database-level metadata (sequence allocator, syncInfo, _sync:user:*, _sync:role:*, etc.)
 	// is targeted at:
 	//   - _default._default when use_system_metadata_collection is disabled at both the cluster
-	//     and per-DB level (legacy behaviour; simplest RBAC, _default cannot be dropped by customers)
+	//     and per-DB level (legacy behaviour; simplest RBAC, _default cannot be dropped by customers for this case)
 	//   - _system._mobile (with read-fallback to _default._default) when enabled at either level,
 	//     via base.MetadataStore. For a brand-new database with no legacy metadata in
 	//     _default._default the wrapper is immediately marked MigrationComplete so reads go
@@ -785,6 +785,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// legacy (non-opted-in) DBs — where _default is the metadata store and always exists — and the
 	// "couldn't determine existence" case both preserve existing behavior.
 	defaultCollectionPresent := true
+	var defaultErr error
+	if present, err := defaultCollectionExists(ctx, bucket); err != nil {
+		defaultErr = err
+	} else {
+		defaultCollectionPresent = present
+	}
 	if resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
 		primaryMetadataStore, err := bucket.NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
 		if err != nil {
@@ -799,12 +805,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// in which case we can mark the per-DB MetadataStore wrapper as MigrationComplete and skip
 		// dual-read mode. If it exists, probe for legacy _sync:seq to determine whether we need to keep
 		// dual-read mode active.
-		defaultExists, defaultErr := defaultCollectionExists(ctx, bucket)
 		switch {
 		case defaultErr != nil:
 			base.WarnfCtx(ctx, "db:%s unable to determine whether _default._default exists while resolving metadata fallback: %v — keeping dual-read mode", base.MD(dbName), defaultErr)
-		case !defaultExists:
-			defaultCollectionPresent = false
+		case !defaultCollectionPresent:
 			metaStore.SetMigrationComplete()
 			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — marking per-DB MetadataStore wrapper migration-complete (no legacy fallback collection to read from)", base.MD(dbName))
 		case !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID):
@@ -825,6 +829,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		contextOptions.MetadataStore = metaStore
 	} else {
+		if !defaultCollectionPresent {
+			// If the _default._default collection has been dropped by a customer, we can't use it for metadata.
+			// This is a misconfiguration, fail the database load.
+			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseNoMetadataStore))
+			return nil, fmt.Errorf("use_system_metadata_collection disabled but _default._default does not exist on bucket %s — cannot use legacy collection for metadata for db %s", base.MD(spec.BucketName), base.MD(dbName))
+		}
 		contextOptions.MetadataStore = bucket.DefaultDataStore(ctx)
 	}
 	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
@@ -941,13 +951,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if !ok {
 			return nil, fmt.Errorf("metadata store of type %T does not support N1QL", primaryIndexStore)
 		}
-		contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, metadataStore, config.UseXattrs())
+		contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, metadataStore)
 		if !contextOptions.UseLegacySyncDocsIndex && fallbackIndexStore != nil {
 			// Primary returned "use new-style", but that may just mean primary is empty.
 			// Consult the fallback so an existing database whose _default._default still only
 			// carries the legacy syncDocs index doesn't get implicitly upgraded mid-migration.
 			if fallbackN1QL, ok := base.AsN1QLStore(fallbackIndexStore); ok {
-				contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, fallbackN1QL, config.UseXattrs())
+				contextOptions.UseLegacySyncDocsIndex = db.ShouldUseLegacySyncDocsIndex(ctx, fallbackN1QL)
 			}
 		}
 		if sc.DatabaseInitManager == nil {
@@ -2313,6 +2323,11 @@ func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Cont
 			continue
 		}
 		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+			if base.IsDocNotFoundError(err) {
+				// no migration status doc for this bucket means no metadata migration has ever
+				// been run for any of its databases — not an error worth warning about
+				continue
+			}
 			base.WarnfCtx(ctx, "Re-check of bucket %q metadata migration failed: %v", base.MD(bucket), err)
 		}
 	}

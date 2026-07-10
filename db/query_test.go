@@ -561,8 +561,8 @@ func TestCountAllDocs(t *testing.T) {
 	if !base.TestsDisableGSI() {
 		n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 		require.True(t, ok, "Unable to get n1QLStore for testBucket")
-		countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement, collection.UseXattrs())
-		countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], collection.UseXattrs(), collection.numIndexPartitions())
+		countDocsQueryStatement := replaceSyncTokensQuery(QueryCountDocs.statement)
+		countDocsQueryStatement = replaceIndexTokensQuery(countDocsQueryStatement, sgIndexes[IndexAllDocs], collection.numIndexPartitions())
 		plan, err := n1QLStore.ExplainQuery(ctx, countDocsQueryStatement, nil)
 		require.NoError(t, err, "Error generating explain for count all docs query")
 		require.True(t, IsCovered(plan), "Expected %s to be covering", plan)

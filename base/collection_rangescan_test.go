@@ -33,6 +33,8 @@ func collectScanIDs(t testing.TB, ctx context.Context, rss sgbucket.RangeScanSto
 	for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
 		ids = append(ids, item.ID)
 	}
+	// A clean drain must leave no error, inspectable without closing the iterator.
+	assert.NoError(t, iter.Err())
 	sort.Strings(ids)
 	return ids
 }
@@ -82,6 +84,7 @@ func runRangeScanSubtests(t *testing.T, ctx context.Context, writeDS sgbucket.Da
 			assert.NotNil(t, item.Body, "Expected body for key %s", item.ID)
 			assert.NotZero(t, item.Cas, "Expected non-zero CAS for key %s", item.ID)
 		}
+		assert.NoError(t, iter.Err())
 		sort.Strings(ids)
 		require.Equal(t, allDocIDs, ids)
 	})
@@ -105,6 +108,7 @@ func runRangeScanSubtests(t *testing.T, ctx context.Context, writeDS sgbucket.Da
 			ids = append(ids, item.ID)
 			assert.Nil(t, item.Body, "Expected nil body for IDsOnly scan, key %s", item.ID)
 		}
+		assert.NoError(t, iter.Err())
 		sort.Strings(ids)
 		require.Equal(t, allDocIDs, ids)
 	})
@@ -112,6 +116,21 @@ func runRangeScanSubtests(t *testing.T, ctx context.Context, writeDS sgbucket.Da
 	t.Run("EmptyRange", func(t *testing.T) {
 		ids := collectScanIDs(t, ctx, scanStore, sgbucket.NewRangeScanForPrefix("zzz_nonexistent_"), sgbucket.ScanOptions{})
 		assert.Empty(t, ids)
+	})
+
+	t.Run("CloseCancellation", func(t *testing.T) {
+		iter, err := scanStore.Scan(ctx, sgbucket.NewRangeScanForPrefix("doc_"), sgbucket.ScanOptions{IDsOnly: true})
+		require.NoError(t, err)
+		for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
+			require.NotEmpty(t, item.ID)
+		}
+		// Clean end-of-stream: no error is reported until Close is called.
+		require.NoError(t, iter.Err())
+		// A clean Close returns nil...
+		require.NoError(t, iter.Close(ctx))
+		// ...but records a cancellation, surfaced by a later Err (gocb parity),
+		// identically on the Rosmar and gocb-backed implementations.
+		require.ErrorIs(t, iter.Err(), sgbucket.ErrScanCancelled)
 	})
 
 	t.Run("PrefixScan", func(t *testing.T) {
