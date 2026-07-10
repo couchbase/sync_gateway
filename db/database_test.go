@@ -3145,8 +3145,6 @@ func TestChannelQueryRevocation(t *testing.T) {
 
 }
 
-// ////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
-
 func TestConcurrentImport(t *testing.T) {
 
 	db, ctx := setupTestDB(t)

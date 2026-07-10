@@ -49,9 +49,6 @@ const (
 	// TestEnvDisableRevCache if set to true will disable the revision cache for tests
 	TestEnvDisableRevCache = "SG_TEST_DISABLE_REV_CACHE"
 
-	// Should the tests drop the GSI indexes?
-	TestEnvSyncGatewayDropIndexes = "SG_TEST_DROP_INDEXES"
-
 	// Should the tests use GSI instead of views?
 	TestEnvSyncGatewayDisableGSI = "SG_TEST_USE_GSI"
 
@@ -75,8 +72,6 @@ const (
 
 	DefaultUseXattrs      = true  // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = false // Whether Sync Gateway allows revision conflicts, if not specified in the config
-
-	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 
 	DefaultOldRevExpirySeconds = uint32(300)
 
