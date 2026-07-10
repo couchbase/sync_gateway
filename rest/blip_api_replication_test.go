@@ -9,10 +9,14 @@
 package rest
 
 import (
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
@@ -53,20 +57,8 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		versionDoc1 := rt.PutDoc(docID, `{"test": "value"}`)
 		btcRunner.WaitForVersion(client.id, docID, versionDoc1)
 
-		// alter sync data of this doc to artificially create skipped sequences
-		ds := rt.GetSingleDataStore()
-		xattrs, cas, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
-		require.NoError(t, err)
-
-		var retrievedXattr map[string]any
-		require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &retrievedXattr))
-		retrievedXattr["sequence"] = uint64(20)
-		newXattrVal := map[string][]byte{
-			base.SyncXattrName: base.MustJSONMarshal(t, retrievedXattr),
-		}
-
-		_, err = ds.UpdateXattrs(ctx, docID, 0, cas, newXattrVal, nil)
-		require.NoError(t, err)
+		// Artificial sequence jump with CAS expansion to prevent version mismatch on continuous pull replication.
+		versionDoc1 = forceSequenceJump(rt, docID, 19)
 
 		// wait for value to move from pending to cache and skipped list to fill
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -130,4 +122,85 @@ func TestBlipClientPushAndPullReplication(t *testing.T) {
 		body := rt.GetDocBody(docID)
 		require.Equal(t, "bob", body["greetings"].([]any)[2].(map[string]any)["howdy"])
 	})
+}
+
+// forceSequenceJump updates the sequence of the document like it would be via CRUD API. The body is not
+// changed so the revtree ID is not updated, but the version vector is updated.
+func forceSequenceJump(rt *RestTester, docID string, sequenceOffset uint64) DocVersion {
+	ds := rt.GetSingleDataStore()
+	ctx := rt.Context()
+	t := rt.TB()
+
+	var lastRevTreeID string
+	var currentSource string
+	var hlvPresent bool
+	var newHLVVersion uint64
+
+	writeUpdateFunc := func(currentDoc []byte, currentXattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		syncBytes, syncPresent := currentXattrs[base.SyncXattrName]
+		if !syncPresent {
+			return sgbucket.UpdatedDoc{}, fmt.Errorf("missing _sync xattr")
+		}
+		var retrievedSync db.SyncData
+		require.NoError(t, base.JSONUnmarshal(syncBytes, &retrievedSync))
+
+		lastRevTreeID = retrievedSync.RevAndVersion.RevTreeID
+		currentSource = retrievedSync.RevAndVersion.CurrentSource
+
+		// Modify sequence
+		retrievedSync.Sequence += sequenceOffset
+
+		// Set expand placeholder for Walrus mock macro-expansion
+		retrievedSync.Cas = "expand"
+
+		newXattrs := map[string][]byte{}
+
+		spec := []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec("_sync.cas", sgbucket.MacroCas),
+		}
+
+		// Update _vv if present
+		vvBytes, vvPresent := currentXattrs[base.VvXattrName]
+		hlvPresent = vvPresent
+		if vvPresent {
+			var retrievedVV db.HybridLogicalVector
+			require.NoError(t, base.JSONUnmarshal(vvBytes, &retrievedVV))
+
+			// Generate the next HLV version the same way a real write would: HLC, floored on the existing
+			// value for this source, to guarantee it's monotonically increasing.
+			newHLVVersion = rt.GetDatabase().GetHLCValueForTest(retrievedVV.Version)
+			retrievedVV.Version = newHLVVersion
+			retrievedSync.RevAndVersion.CurrentVersion = string(base.Uint64CASToLittleEndianHex(newHLVVersion))
+
+			retrievedVV.CurrentVersionCAS = math.MaxUint64 // Set expand placeholder for Walrus mock macro-expansion
+
+			newXattrs[base.VvXattrName] = base.MustJSONMarshal(t, retrievedVV)
+
+			spec = append(spec, sgbucket.NewMacroExpansionSpec("_vv.cvCas", sgbucket.MacroCas))
+		}
+
+		newXattrs[base.SyncXattrName] = base.MustJSONMarshal(t, retrievedSync)
+
+		return sgbucket.UpdatedDoc{
+			Doc:    currentDoc,
+			Xattrs: newXattrs,
+			Spec:   spec,
+		}, nil
+	}
+
+	_, err := ds.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName, base.VvXattrName}, 0, nil, &sgbucket.MutateInOptions{}, writeUpdateFunc)
+	require.NoError(t, err)
+
+	if hlvPresent && currentSource == "" {
+		require.FailNow(t, "hlvPresent is true but currentSource is empty")
+	}
+
+	var cv db.Version
+	if hlvPresent {
+		cv = db.CreateVersion(currentSource, newHLVVersion)
+	}
+	return DocVersion{
+		RevTreeID: lastRevTreeID,
+		CV:        cv,
+	}
 }
