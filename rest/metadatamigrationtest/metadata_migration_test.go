@@ -1855,7 +1855,7 @@ func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *
 		if !assert.NotNil(c, status) {
 			return
 		}
-		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "deleting all dbs should let the pending bucket migration complete")
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State)
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// delete db1

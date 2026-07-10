@@ -733,12 +733,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil && !resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
 		targetIsSystemMobile, targetErr := sc.BootstrapContext.Connection.BucketBootstrapTargetIsSystemMobile(ctx, spec.BucketName, false)
 		if targetErr != nil {
-			base.WarnfCtx(ctx, "Unable to determine bootstrap target for bucket %q while validating use_system_metadata_collection for db %s: %v", base.MD(spec.BucketName), base.MD(dbName), targetErr)
+			base.WarnfCtx(ctx, "Unable to determine bootstrap target for bucket %s while validating use_system_metadata_collection for db %s: %v", base.MD(spec.BucketName), base.MD(dbName), targetErr)
 		} else if targetIsSystemMobile {
 			if options.loadFromBucket {
 				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseSystemCollectionOptInRequired))
 			}
-			return nil, base.HTTPErrorf(http.StatusBadRequest, "database %q must enable use_system_metadata_collection: bucket %q bootstrap metadata resides in %s", base.MD(dbName), base.MD(spec.BucketName), base.MD(base.MobileSystemScopeAndCollectionName().String()))
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "database %s must enable use_system_metadata_collection: bucket %s bootstrap metadata resides in %s", base.MD(dbName), base.MD(spec.BucketName), base.MD(base.MobileSystemScopeAndCollectionName().String()))
 		}
 	}
 

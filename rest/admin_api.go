@@ -97,9 +97,9 @@ func (h *handler) handleCreateDB() error {
 		if !optInHint {
 			targetIsSystemMobile, targetErr := h.server.BootstrapContext.Connection.BucketBootstrapTargetIsSystemMobile(h.ctx(), bucket, false)
 			if targetErr != nil {
-				base.WarnfCtx(h.ctx(), "Unable to determine bootstrap target for bucket %q while validating use_system_metadata_collection for db %s: %v", base.MD(bucket), base.MD(dbName), targetErr)
+				base.WarnfCtx(h.ctx(), "Unable to determine bootstrap target for bucket %s while validating use_system_metadata_collection for db %s: %v", base.MD(bucket), base.MD(dbName), targetErr)
 			} else if targetIsSystemMobile {
-				return base.HTTPErrorf(http.StatusBadRequest, "database %q must enable use_system_metadata_collection: bucket %q bootstrap metadata resides in %s", base.MD(dbName), base.MD(bucket), base.MD(base.MobileSystemScopeAndCollectionName().String()))
+				return base.HTTPErrorf(http.StatusBadRequest, "database %s must enable use_system_metadata_collection: bucket %s bootstrap metadata resides in %s", base.MD(dbName), base.MD(bucket), base.MD(base.MobileSystemScopeAndCollectionName().String()))
 			}
 		}
 

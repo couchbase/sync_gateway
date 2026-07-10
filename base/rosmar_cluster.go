@@ -165,7 +165,8 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 	// every bucket open, regardless of the connection-wide flag, so a peer node discovers a bucket
 	// whose bootstrap docs already live in _system._mobile even when its own flag is off. Only caches
 	// when a registry is actually found (authoritative); a registry-less bucket stays uncached so a
-	// later SetBucketBootstrapTargetHint(optIn=true) can still claim _system._mobile.
+	// later SetBucketBootstrapTargetHint(optIn=true) can still claim _system._mobile. Will only run
+	// if not already cached.
 	if _, alreadyCached := c.bucketBootstrapTargets.Load(bucketName); !alreadyCached {
 		if target, found := c.probeRegistryLocation(ctx, systemCol, defaultCol); found {
 			c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
