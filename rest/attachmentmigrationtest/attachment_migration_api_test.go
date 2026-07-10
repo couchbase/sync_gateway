@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -21,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestAttachmentMigrationAPI(t *testing.T) {
@@ -95,7 +97,9 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 	rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte(`{"value":1234}`), "att", []byte("att body"))
 
 	// Pause migration mid-document so stop arrives while it is genuinely in-flight.
-	pauser := newMigrationPauser(rt, docID)
+	pauser := newMigrationPauser(rt)
+	defer pauser.Close()
+	pauser.Pause(docID)
 
 	// start migration
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -129,7 +133,9 @@ func TestAttachmentMigrationReset(t *testing.T) {
 
 	// Pause migration at the first legacy doc so stop arrives while it is genuinely in-flight.
 	docID := fmt.Sprintf("%s_0", t.Name())
-	pauser := newMigrationPauser(rt, docID)
+	pauser := newMigrationPauser(rt)
+	defer pauser.Close()
+	pauser.Pause(docID)
 
 	// start migration
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -151,11 +157,18 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, migrationStatus.State)
 
+	// Pause the reset run at the next legacy doc — docID above was already migrated, so it
+	// won't trigger the callback again.
+	docID2 := fmt.Sprintf("%s_1", t.Name())
+	pauser.Pause(docID2)
+
 	// reset migration run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?reset=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 	status := rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, migrationID, status.MigrationID)
+	pauser.Release()
 
 	// wait to complete
 	status = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
@@ -196,7 +209,9 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 
 	// Pause migration at the first vBucket 0 doc so stop arrives while it is genuinely in-flight.
 	// noCloseTB is already a LeakyBucket so its datastore satisfies the LeakyDataStore check.
-	pauser := newMigrationPauser(rt1, vb0IDs[0])
+	pauser := newMigrationPauser(rt1)
+	defer pauser.Close()
+	pauser.Pause(vb0IDs[0])
 
 	// kick off migration on node 1
 	resp := rt1.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -284,41 +299,67 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 	return numDocs
 }
 
-// migrationPauser blocks the attachment migration at a specific document, letting tests
-// assert migration is genuinely in-flight before issuing stop or reset commands.
+// migrationPauser blocks attachment migration at a specific document. Can be Paused and
+// Released multiple times across a test.
 type migrationPauser struct {
-	t       testing.TB
-	blocked chan struct{}
-	blockCh chan struct{}
-	ds      *base.LeakyDataStore
+	t           testing.TB
+	blocked     chan struct{}
+	blockCh     chan struct{}
+	ds          *base.LeakyDataStore
+	callbackSet atomic.Bool
 }
 
-func newMigrationPauser(rt *rest.RestTester, docID string) *migrationPauser {
+func newMigrationPauser(rt *rest.RestTester) *migrationPauser {
 	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
-	p := &migrationPauser{
-		t:       rt.TB(),
-		blocked: make(chan struct{}),
-		blockCh: make(chan struct{}),
-		ds:      leakyDS,
+	return &migrationPauser{
+		t:  rt.TB(),
+		ds: leakyDS,
 	}
-	leakyDS.SetUpdateXattrsCallback(func(key string) {
+}
+
+// Pause arms the pauser to block migration at docID. Call Release before pausing again.
+func (p *migrationPauser) Pause(docID string) {
+	if !p.callbackSet.CompareAndSwap(false, true) {
+		require.FailNow(p.t, "migrationPauser.Pause called while already paused; call Release first")
+	}
+	p.blocked = make(chan struct{})
+	p.blockCh = make(chan struct{})
+	p.ds.SetUpdateXattrsCallback(func(key string) {
 		if key != docID {
 			return
 		}
 		close(p.blocked)
-		base.RequireChanClosed(p.t, p.blockCh)
+		// Runs on the migration job's goroutine, so use the goroutine-safe wait.
+		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
 	})
-	return p
 }
 
-// WaitUntilBlocked blocks until migration is paused at docID, proving it is in-flight.
+// WaitUntilBlocked blocks until migration is paused at docID.
 func (p *migrationPauser) WaitUntilBlocked() {
+	p.t.Helper()
 	base.RequireChanClosed(p.t, p.blocked)
 }
 
-// Release clears the callback so subsequent docs pass through, then unblocks the paused doc.
+// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
 func (p *migrationPauser) Release() {
+	if !p.release() {
+		require.FailNow(p.t, "migrationPauser.Release called while not paused")
+	}
+}
+
+// Close releases the pauser and resets the LeakyBucket callback.
+func (p *migrationPauser) Close() {
+	p.release()
+}
+
+// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// it was paused.
+func (p *migrationPauser) release() bool {
+	if !p.callbackSet.CompareAndSwap(true, false) {
+		return false
+	}
 	p.ds.SetUpdateXattrsCallback(nil)
 	close(p.blockCh)
+	return true
 }

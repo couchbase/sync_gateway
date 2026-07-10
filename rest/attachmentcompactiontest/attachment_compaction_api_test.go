@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestAttachmentCompactionAPI(t *testing.T) {
@@ -57,15 +59,14 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	// Create some legacy attachments to be marked but not compacted.
-	// Bodies are chosen so their _sync:att:sha1-<digest> keys all land on vBucket 0, ensuring
-	// the mark phase processes them serially on a single DCP worker (CBS). This prevents
-	// concurrent SetXattr calls from different workers from racing to close the pauser channel.
+	// Create some legacy attachments to be marked but not compacted. Both doc keys and attachment
+	// bodies land on vBucket 0 so the mark phase stays serial on a single DCP worker — otherwise
+	// concurrent SetXattrs calls race to close the pauser channel.
+	docIDs := base.VBucket0DocIDs(t, rt.Bucket(), 3)
 	attBodies := base.VBucket0AttachmentBodies(t, rt.Bucket(), 3)
 	for i, attBody := range attBodies {
-		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
-		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, attBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docIDs[i], []byte("{}"), attID, attBody)
 	}
 
 	// Create some 'unmarked' attachments
@@ -81,6 +82,8 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Pause at the first attachment mark so the concurrent-start 503 check arrives while running.
 	pauser := newCompactionPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
 
 	// Start attachment compaction run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
@@ -106,7 +109,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	require.Empty(t, response.LastErrorMessage)
 
 	// Start another run and stop it mid-flight.
-	pauser = newCompactionPauser(rt)
+	pauser.Pause()
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	pauser.WaitUntilBlocked()
@@ -156,6 +159,8 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 
 	// Pause at the mark phase so stop arrives while genuinely in-flight.
 	pauser := newCompactionPauser(rt1)
+	defer pauser.Close()
+	pauser.Pause()
 
 	// Start compaction again
 	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
@@ -262,6 +267,8 @@ func TestAttachmentCompactionReset(t *testing.T) {
 
 	// Pause compaction at the mark of the first attachment so stop arrives while genuinely in-flight.
 	pauser := newCompactionPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
 
 	// Start compaction
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
@@ -397,6 +404,8 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 	rest.CreateLegacyAttachmentDoc(t, ctx, collection, t.Name(), []byte("{}"), "att", []byte("att body"))
 
 	pauser := newCompactionPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
 
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -471,45 +480,73 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 
 }
 
-// compactionPauser blocks the attachment compaction mark phase at the first attachment it encounters,
-// letting tests assert compaction is genuinely in-flight before issuing stop or reset commands.
-// Tests using this pauser must ensure all legacy attachment bodies are chosen via
-// base.VBucket0AttachmentBodies so their _sync:att: keys land on vBucket 0, keeping the mark
-// phase serial on a single DCP worker.
+// compactionPauser blocks the compaction mark phase at the first attachment it encounters. Can be
+// Paused and Released multiple times across a test.
+// With more than one legacy attachment doc, both the parent doc keys (base.VBucket0DocIDs) and the
+// attachment bodies (base.VBucket0AttachmentBodies) must land on vBucket 0: the mark phase's
+// SetXattrs calls run on whichever goroutine processes the parent doc's mutation, not one keyed
+// off the attachment's own vBucket, so constraining only the bodies still allows concurrent calls.
 type compactionPauser struct {
-	t       testing.TB
-	blocked chan struct{}
-	blockCh chan struct{}
-	ds      *base.LeakyDataStore
+	t           testing.TB
+	blocked     chan struct{}
+	blockCh     chan struct{}
+	ds          *base.LeakyDataStore
+	callbackSet atomic.Bool
 }
 
 func newCompactionPauser(rt *rest.RestTester) *compactionPauser {
 	leakyDS, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
-	p := &compactionPauser{
-		t:       rt.TB(),
-		blocked: make(chan struct{}),
-		blockCh: make(chan struct{}),
-		ds:      leakyDS,
+	return &compactionPauser{
+		t:  rt.TB(),
+		ds: leakyDS,
 	}
-	leakyDS.SetXattrCallback(func(key string) error {
+}
+
+// Pause arms the pauser to block the mark phase at the first attachment it encounters. Call
+// Release before pausing again.
+func (p *compactionPauser) Pause() {
+	if !p.callbackSet.CompareAndSwap(false, true) {
+		require.FailNow(p.t, "compactionPauser.Pause called while already paused; call Release first")
+	}
+	p.blocked = make(chan struct{})
+	p.blockCh = make(chan struct{})
+	p.ds.SetXattrCallback(func(key string) error {
 		if !strings.HasPrefix(key, base.AttPrefix) {
 			return nil
 		}
 		close(p.blocked)
-		base.RequireChanClosed(p.t, p.blockCh)
+		// Runs on the mark phase's goroutine, so use the goroutine-safe wait.
+		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
 		return nil
 	})
-	return p
 }
 
-// WaitUntilBlocked blocks until compaction is paused at an attachment doc, proving it is in-flight.
+// WaitUntilBlocked blocks until compaction is paused at an attachment doc.
 func (p *compactionPauser) WaitUntilBlocked() {
+	p.t.Helper()
 	base.RequireChanClosed(p.t, p.blocked)
 }
 
-// Release clears the callback so subsequent docs pass through, then unblocks the paused doc.
+// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
 func (p *compactionPauser) Release() {
+	if !p.release() {
+		require.FailNow(p.t, "compactionPauser.Release called while not paused")
+	}
+}
+
+// Close releases the pauser and resets the LeakyBucket callback.
+func (p *compactionPauser) Close() {
+	p.release()
+}
+
+// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// it was paused.
+func (p *compactionPauser) release() bool {
+	if !p.callbackSet.CompareAndSwap(true, false) {
+		return false
+	}
 	p.ds.SetXattrCallback(nil)
 	close(p.blockCh)
+	return true
 }

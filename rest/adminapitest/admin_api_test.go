@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
@@ -787,9 +788,8 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 	)
 	defer rt.Close()
 
-	// All docs on vBucket 0 so a single DCP worker processes them serially. This ensures the
-	// callback in newResyncPauser (which fires for any user doc) cannot be triggered by two
-	// goroutines simultaneously, preventing a double-close panic on p.blocked.
+	// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
+	// double-close panic from concurrent callback invocations.
 	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
 	numDocs := len(docKeys)
 	for _, key := range docKeys {
@@ -800,6 +800,8 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	// Pause resync at the first user document so stop arrives while genuinely in-flight.
 	pauser := newResyncPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
 
 	// start a resync run
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -814,24 +816,22 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 
-	// Set up a pauser for the reset run so we can observe "running" before it completes.
-	// The reset resync calls WriteUpdateWithXattrs for every user doc (even when unchanged),
-	// so the pauser fires. All docs are on vBucket 0, ensuring only one DCP worker fires the callback.
-	pauser2 := newResyncPauser(rt)
+	// Pause again for the reset run so we can observe "running" before it completes.
+	pauser.Pause()
 
 	// reset the resync process through the endpoint
 	response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Block until the reset resync is genuinely in-flight, then verify running state.
-	pauser2.WaitUntilBlocked()
+	pauser.WaitUntilBlocked()
 
 	// grab new resync status from reset run, assert the resync id is not the same as the first
 	// run and that the docs processed is equal to number of docs we have created
 	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
 
-	pauser2.Release()
+	pauser.Release()
 
 	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
@@ -1469,6 +1469,8 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	// Pause resync at the first user document so the stop arrives while genuinely in-flight.
 	pauser := newResyncPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
 
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
@@ -4283,49 +4285,70 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 	assert.Equal(t, base.MetadataStoreModeFallbackInactive, statusResponse.Databases["db"].MetadataStoreMode)
 }
 
-// resyncPauser blocks the resync DCP stream at the first user document it encounters,
-// letting tests assert resync is genuinely in-flight before issuing stop commands.
-// Tests using this pauser must ensure all docs are on vBucket 0 (via base.VBucket0DocIDs)
-// so only a single DCP worker fires the callback.
+// resyncPauser blocks the resync DCP stream at the first user document it encounters. Can be
+// Paused and Released multiple times across a test.
+// Tests using this pauser must ensure all docs are on vBucket 0 (via base.VBucket0DocIDs) so only
+// a single DCP worker fires the callback.
 type resyncPauser struct {
-	t       testing.TB
-	blocked chan struct{}
-	blockCh chan struct{}
-	ds      *base.LeakyDataStore
+	t           testing.TB
+	blocked     chan struct{}
+	blockCh     chan struct{}
+	ds          *base.LeakyDataStore
+	callbackSet atomic.Bool
 }
 
 func newResyncPauser(rt *rest.RestTester) *resyncPauser {
 	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
-	p := &resyncPauser{
-		t:       rt.TB(),
-		blocked: make(chan struct{}),
-		blockCh: make(chan struct{}),
-		ds:      leakyDS,
+	return &resyncPauser{
+		t:  rt.TB(),
+		ds: leakyDS,
 	}
-	leakyDS.SetWriteUpdateWithXattrsCallback(func(key string) {
+}
+
+// Pause arms the pauser to block resync at the first user document it encounters. Call Release
+// before pausing again.
+func (p *resyncPauser) Pause() {
+	if !p.callbackSet.CompareAndSwap(false, true) {
+		require.FailNow(p.t, "resyncPauser.Pause called while already paused; call Release first")
+	}
+	p.blocked = make(chan struct{})
+	p.blockCh = make(chan struct{})
+	p.ds.SetWriteUpdateWithXattrsCallback(func(key string) {
 		if strings.HasPrefix(key, "_sync:") {
 			return
 		}
 		close(p.blocked)
-		base.RequireChanClosed(p.t, p.blockCh)
+		// Runs on the resync DCP goroutine, so use the goroutine-safe wait.
+		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
 	})
-	return p
 }
 
-// WaitUntilBlocked blocks until resync is paused at a user document, proving it is in-flight.
+// WaitUntilBlocked blocks until resync is paused at a user document.
 func (p *resyncPauser) WaitUntilBlocked() {
+	p.t.Helper()
 	base.RequireChanClosed(p.t, p.blocked)
 }
 
-// Release clears the callback so subsequent documents pass through, then unblocks the paused doc.
-// It asserts that the callback was actually triggered before releasing.
+// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
 func (p *resyncPauser) Release() {
-	select {
-	case <-p.blocked:
-	default:
-		require.FailNow(p.t, "resyncPauser.Release called before callback was triggered; call WaitUntilBlocked first")
+	if !p.release() {
+		require.FailNow(p.t, "resyncPauser.Release called while not paused")
+	}
+}
+
+// Close releases the pauser and resets the LeakyBucket callback.
+func (p *resyncPauser) Close() {
+	p.release()
+}
+
+// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// it was paused.
+func (p *resyncPauser) release() bool {
+	if !p.callbackSet.CompareAndSwap(true, false) {
+		return false
 	}
 	p.ds.SetWriteUpdateWithXattrsCallback(nil)
 	close(p.blockCh)
+	return true
 }
