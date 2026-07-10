@@ -84,7 +84,7 @@ func (r *boostrapResponse) RequireStatus(status int) {
 // AssertResponse asserts the status code and body of the response.
 func (r *boostrapResponse) AssertResponse(status int, body string) {
 	r.t.Helper()
-	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status codefor %s - body: %s", r.url, r.Body)
+	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status code for %s - body: %s", r.url, r.Body)
 	assert.Equal(r.t, body, r.Body, "unexpected body for %s", r.url)
 }
 

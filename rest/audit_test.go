@@ -2091,7 +2091,6 @@ func TestDocumentChannelHistoryCompactionAudit(t *testing.T) {
 
 func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.AuditID, docID, expectedSeq string, expectedChannels []any) {
 	t.Helper()
-	t.Helper()
 	events := jsonLines(t, output)
 	countFound := 0
 	for _, event := range events {
