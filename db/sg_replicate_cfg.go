@@ -474,7 +474,7 @@ func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 				return
 			}
 
-			err := dbc.SGReplicateMgr.StartReplications(dbc.SGReplicateMgr.loggingCtx) // TODO: use dbc.SGReplicateMgr.loggingCtx, if that is not removed ?
+			err := dbc.SGReplicateMgr.startReplications(dbc.SGReplicateMgr.loggingCtx) // TODO: use dbc.SGReplicateMgr.loggingCtx, if that is not removed ?
 			if err != nil {
 				base.ErrorfCtx(dbc.SGReplicateMgr.loggingCtx, "Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
 			}
@@ -526,9 +526,9 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 	return heartbeater.RegisterListener(m.heartbeatListener)
 }
 
-// StartReplications performs an initial retrieval of the cluster config, starts any replications
+// startReplications performs an initial retrieval of the cluster config, starts any replications
 // assigned to this node, and starts the process to monitor future changes to the cluster config.
-func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
+func (m *sgReplicateManager) startReplications(ctx context.Context) error {
 
 	replications, err := m.GetReplications()
 	if err != nil {
