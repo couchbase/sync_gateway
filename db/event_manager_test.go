@@ -399,6 +399,11 @@ func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
 		wr.IncrementCount()
 		_, _ = fmt.Fprintf(w, "OK")
 	})
+	r.HandleFunc("/slow_200ms", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		wr.IncrementCount()
+		_, _ = fmt.Fprintf(w, "OK")
+	})
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		body, err := io.ReadAll(r.Body)
@@ -861,29 +866,56 @@ func TestWebhookTimeout(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), em.GetEventsProcessedSuccess())
 
-	// Test slow webhook, no timeout, numProcess=1, waitForProcess=1s.  All events should complete.
-	log.Println("Test slow webhook, no timeout, wait for process ")
-	wr.Clear()
-	errCount = 0
-	em = NewEventManager(terminator)
-	em.Start(ctx, 1, 1500)
-	timeout = uint64(0)
-	webhookHandler, _ = NewWebhook(ctx, fmt.Sprintf("%s/slow", url), "", &timeout, nil)
+}
+
+// TestWebhookQueueDropTimeout tests the event queue's drop-timeout (waitTime), not webhook HTTP timeout (disabled
+// here via timeout=0). The 200ms handler delay vs. 3s drop-timeout gives a wide margin so a slow CI host can't
+// cause the queue to drop an event before a processing slot frees up.
+func TestWebhookQueueDropTimeout(t *testing.T) {
+	base.LongRunningTest(t)
+
+	terminator := make(chan bool)
+	defer close(terminator)
+
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	url := ts.URL
+
+	ids := make([]string, 10)
+	for i := range 10 {
+		ids[i] = fmt.Sprintf("%d", i)
+	}
+
+	eventForTest := func(k string, v int) (Body, string, base.Set) {
+		testBody := Body{
+			BodyId:  ids[v],
+			"value": k,
+		}
+		var channelSet base.Set
+		if v%2 == 0 {
+			channelSet = base.SetFromArray([]string{"Even"})
+		} else {
+			channelSet = base.SetFromArray([]string{"Odd"})
+		}
+		return testBody, ids[v], channelSet
+	}
+
+	ctx := base.TestCtx(t)
+	em := NewEventManager(terminator)
+	em.Start(ctx, 1, 3000)
+	timeout := uint64(0)
+	webhookHandler, _ := NewWebhook(ctx, fmt.Sprintf("%s/slow_200ms", url), "", &timeout, nil)
 	em.RegisterEventHandler(ctx, webhookHandler, DocumentChange)
 	for i := range 10 {
 		body, docid, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes := base.MustJSONMarshal(t, body)
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docid, "", channels, false)
 		time.Sleep(2 * time.Millisecond)
-		if err != nil {
-			errCount++
-		}
+		assert.NoError(t, err)
 	}
-	// wait for slow webhook to finish processing
-	err = em.waitForProcessedTotal(ctx, 10, 20*time.Second)
+	err := em.waitForProcessedTotal(ctx, 10, 30*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
-
 }
 
 func TestUnavailableWebhook(t *testing.T) {
