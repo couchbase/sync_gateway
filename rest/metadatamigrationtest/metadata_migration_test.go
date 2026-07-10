@@ -1816,24 +1816,15 @@ func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *
 	base.TestRequiresCollections(t)
 
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
-	groupID := t.Name()
+	// NewRestTesterCluster gives both nodes persistent config (so each has a bootstrap connection), a
+	// shared config group (so the peer sees this node's persisted configs), and one shared bucket.
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{NumNodes: 2})
+	defer rtc.Close(ctx)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          base.Ptr[string](groupID),
-	})
-	defer rt.Close()
-
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          base.Ptr[string](groupID),
-	})
-	defer rt2.Close()
+	rt := rtc.Node(0)
+	rt2 := rtc.Node(1)
+	tb := rt.TestBucket
 
 	dataStore1, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
@@ -1901,26 +1892,15 @@ func TestOptedInBucketRejectsCreateDbWithoutMobileSystemCollectionOptIn(t *testi
 	base.TestRequiresCollections(t)
 
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
-	// Both nodes must share a config group so the peer sees the databases this node persists —
-	// RestTesters otherwise generate their own random group UUIDs.
-	groupID := t.Name()
+	// NewRestTesterCluster gives both nodes persistent config (so each has a bootstrap connection), a
+	// shared config group (so the peer sees this node's persisted configs), and one shared bucket.
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{NumNodes: 2})
+	defer rtc.Close(ctx)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          base.Ptr[string](groupID),
-	})
-	defer rt.Close()
-
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          base.Ptr[string](groupID),
-	})
-	defer rt2.Close()
+	rt := rtc.Node(0)
+	rt2 := rtc.Node(1)
+	tb := rt.TestBucket
 
 	// db1 opts into the system metadata collection from creation, so its registry + dbconfig land in
 	// _system._mobile directly — no migration required.
