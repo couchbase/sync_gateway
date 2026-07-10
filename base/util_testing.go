@@ -914,9 +914,9 @@ func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (uint32, e
 // remaining docs to stay unprocessed until the pause is released.
 //
 // Keys were pre-computed using sgbucket.VBHash and are verified at runtime.
-// count must be between 1 and 5 inclusive.
+// count must be between 1 and 6 inclusive.
 func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
-	all := []string{"abbacomes", "baba", "ob", "rz", "aex"}
+	all := []string{"abbacomes", "baba", "ob", "rz", "aex", "fbz"}
 	require.GreaterOrEqual(t, count, 1, "VBucket0DocIDs: count must be at least 1")
 	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
 	keys := all[:count]

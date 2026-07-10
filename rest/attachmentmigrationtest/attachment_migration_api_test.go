@@ -51,7 +51,7 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	numDocs := addDocsForMigrationProcess(t, ctx, collection)
+	numDocs, _ := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
 
 	// kick off migration
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -129,10 +129,10 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	numDocs := addDocsForMigrationProcess(t, ctx, collection)
+	numDocs, legacyKeys := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
 
 	// Pause migration at the first legacy doc so stop arrives while it is genuinely in-flight.
-	docID := fmt.Sprintf("%s_0", t.Name())
+	docID := legacyKeys[0]
 	pauser := newMigrationPauser(rt)
 	defer pauser.Close()
 	pauser.Pause(docID)
@@ -157,10 +157,13 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, migrationStatus.State)
 
-	// Pause the reset run at the next legacy doc — docID above was already migrated, so it
-	// won't trigger the callback again.
-	docID2 := fmt.Sprintf("%s_1", t.Name())
-	pauser.Pause(docID2)
+	// On a real cluster, stopping isn't instant, so any number of legacyKeys may already be
+	// migrated by now. Use a fresh doc instead of guessing which legacyKey is still unmigrated.
+	resetDocID := base.VBucket0DocIDs(t, rt.Bucket(), 6)[5]
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, resetDocID, []byte(`{"value":1234}`), "att", []byte("att body"))
+	numDocs++
+
+	pauser.Pause(resetDocID)
 
 	// reset migration run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?reset=true", "")
@@ -173,7 +176,7 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	// wait to complete
 	status = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 	// assert all docs are processed again
-	assert.Equal(t, numDocs, status.DocsProcessed)
+	assert.GreaterOrEqual(t, status.DocsProcessed, numDocs)
 }
 
 func TestAttachmentMigrationMultiNode(t *testing.T) {
@@ -252,17 +255,27 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	_ = rt2.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 }
 
-func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser) int64 {
+// addDocsForMigrationProcess creates numDocs docs and converts the first half to the legacy
+// attachment format needing migration. Returns the doc count and the legacy docs' keys.
+func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, bucket base.Bucket) (int64, []string) {
 	numDocs := int64(10)
-	if base.UnitTestUrlIsWalrus() {
-		numDocs *= 20
+	legacyCount := numDocs / 2
+
+	keys := make([]string, numDocs)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("%s_%d", t.Name(), i)
 	}
-	for i := range numDocs {
+	// Put the legacy docs on vBucket 0 so a single DCP worker processes them serially — required
+	// by tests that pause migration on one legacy doc and expect the rest to stay unmigrated
+	// until released; otherwise other DCP workers could migrate them concurrently.
+	copy(keys, base.VBucket0DocIDs(t, bucket, int(legacyCount)))
+	legacyKeys := keys[:legacyCount]
+
+	for _, key := range keys {
 		docBody := db.Body{
 			"value":            1234,
 			db.BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 		}
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
 		require.Equal(t, db.AttachmentsMeta{
@@ -288,15 +301,14 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 		require.Empty(t, db.GetRawSyncXattr(t, collection.GetCollectionDatastore(), key).AttachmentsPre4dot0)
 	}
 
-	// Move some subset of the documents attachment metadata from global sync to sync data
-	for j := range numDocs / 2 {
-		key := fmt.Sprintf("%s_%d", t.Name(), j)
+	// Move the legacy subset's attachment metadata from global sync to sync data
+	for _, key := range legacyKeys {
 		value, _, err := collection.GetCollectionDatastore().GetRaw(ctx, key)
 		require.NoError(t, err)
 
 		db.MoveAttachmentXattrFromGlobalToSync(t, collection.GetCollectionDatastore(), key, value, true)
 	}
-	return numDocs
+	return numDocs, legacyKeys
 }
 
 // migrationPauser blocks attachment migration at a specific document. Can be Paused and
