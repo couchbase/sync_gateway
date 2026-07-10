@@ -1811,3 +1811,174 @@ func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
 		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "deleting all dbs should let the pending bucket migration complete")
 	}, 5*time.Second, 100*time.Millisecond)
 }
+
+func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	groupID := t.Name()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.Ptr[string](groupID),
+	})
+	defer rt.Close()
+
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.Ptr[string](groupID),
+	})
+	defer rt2.Close()
+
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	db1Cfg := rt.NewDbConfig()
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.Scopes = rest.ScopesConfig{
+		dataStore1.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
+
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
+	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
+	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	rt.WaitForMetadataMigrationStatusForDB(db.BackgroundProcessStateCompleted, "db1")
+
+	conn := rt.ServerContext().BootstrapContext.Connection
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
+		status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.NotNil(c, status) {
+			return
+		}
+		assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "deleting all dbs should let the pending bucket migration complete")
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// delete db1
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db1/", ""), http.StatusOK)
+
+	// The bucket's bootstrap metadata has migrated to _system._mobile. Creating a new database on
+	// this bucket that has not opted into the system metadata collection must be rejected: its
+	// bootstrap config would land in _default._default, where peer nodes reading the migrated
+	// registry from _system._mobile could never find it, leaving the cluster in a split state.
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+	db2Cfg := rt.NewDbConfig()
+	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.Scopes = rest.ScopesConfig{
+		dataStore2.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
+		},
+	}
+	resp = rt.CreateDatabase("db2", db2Cfg)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, resp.Body.String(), "use_system_metadata_collection")
+
+	// The peer node must not pick up a phantom db2 through config polling either — nothing was persisted.
+	rt2.ServerContext().ForceDbConfigsReload(t, ctx)
+	rest.RequireStatus(t, rt2.SendAdminRequest(http.MethodGet, "/db2/", ""), http.StatusNotFound)
+}
+
+// TestOptedInBucketRejectsCreateDbWithoutMobileSystemCollectionOptIn: db1 opts into the system
+// metadata collection from the start, so the bucket's bootstrap registry lands directly in
+// _system._mobile with no migration ever running. A subsequent non-opted-in db must still be
+// rejected. This is the case that IsMigrationComplete cannot detect — no migration status doc is
+// ever stamped, so it stays false — which is why the guard checks the resolved bootstrap target.
+func TestOptedInBucketRejectsCreateDbWithoutMobileSystemCollectionOptIn(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	// Both nodes must share a config group so the peer sees the databases this node persists —
+	// RestTesters otherwise generate their own random group UUIDs.
+	groupID := t.Name()
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.Ptr[string](groupID),
+	})
+	defer rt.Close()
+
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.Ptr[string](groupID),
+	})
+	defer rt2.Close()
+
+	// db1 opts into the system metadata collection from creation, so its registry + dbconfig land in
+	// _system._mobile directly — no migration required.
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
+	db1Cfg := rt.NewDbConfig()
+	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Cfg.Scopes = rest.ScopesConfig{
+		dataStore1.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
+		},
+	}
+	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
+
+	conn := rt.ServerContext().BootstrapContext.Connection
+
+	// No migration ran, so no status doc was ever stamped complete: IsMigrationComplete is false even
+	// though the bucket's bootstrap metadata physically lives in _system._mobile. The guard cannot
+	// rely on IsMigrationComplete here — it must resolve the bootstrap target.
+	require.False(t, conn.IsMigrationComplete(tb.GetName()), "no migration ran, so IsMigrationComplete should be false")
+	targetIsSystemMobile, err := conn.BucketBootstrapTargetIsSystemMobile(ctx, tb.GetName(), false)
+	require.NoError(t, err)
+	require.True(t, targetIsSystemMobile, "opted-in db1 should have placed the bootstrap registry in _system._mobile")
+
+	// Creating a non-opted-in db2 on this bucket must be rejected.
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
+	db2Cfg := rt.NewDbConfig()
+	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.Scopes = rest.ScopesConfig{
+		dataStore2.ScopeName(): rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
+		},
+	}
+	resp := rt.CreateDatabase("db2", db2Cfg)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, resp.Body.String(), "use_system_metadata_collection")
+
+	// db2 was rejected at create and never persisted, so the peer must not pick it up through config
+	// polling either.
+	rt2.ServerContext().ForceDbConfigsReload(t, ctx)
+	rest.RequireStatus(t, rt2.SendAdminRequest(http.MethodGet, "/db2/", ""), http.StatusNotFound)
+
+	// The opted-in db1, however, must load on the peer: it reads the registry from _system._mobile
+	// (probed on bucket open) and the guard leaves opted-in databases alone. The config fetch and the
+	// asynchronous online transition race with this assertion, so re-trigger the reload and poll the
+	// db endpoint with soft assertions until db1 is present and Online. (WaitForDatabaseState can't be
+	// used here: its GetDatabaseRoot requires a 200, hard-failing the test on a transient 404.)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		rt2.ServerContext().ForceDbConfigsReload(t, ctx)
+		resp := rt2.SendAdminRequest(http.MethodGet, "/db1/", "")
+		if !assert.Equal(c, http.StatusOK, resp.Code) {
+			return
+		}
+		var dbRoot rest.DatabaseRoot
+		if !assert.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &dbRoot)) {
+			return
+		}
+		assert.Equal(c, "Online", dbRoot.State)
+	}, 10*time.Second, 100*time.Millisecond)
+}

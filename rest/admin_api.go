@@ -90,6 +90,19 @@ func (h *handler) handleCreateDB() error {
 			base.WarnfCtx(h.ctx(), "Failed to resolve bootstrap target for bucket %q: %v", base.MD(bucket), err)
 		}
 
+		// Once a bucket's bootstrap metadata has migrated to _system._mobile, every database on it
+		// must opt into the system metadata collection. A non-opted-in database would stamp its
+		// bootstrap config into _default._default, which peer nodes reading the migrated registry
+		// from _system._mobile can never find. Reject the create before persisting anything.
+		if !optInHint {
+			targetIsSystemMobile, targetErr := h.server.BootstrapContext.Connection.BucketBootstrapTargetIsSystemMobile(h.ctx(), bucket, false)
+			if targetErr != nil {
+				base.WarnfCtx(h.ctx(), "Unable to determine bootstrap target for bucket %q while validating use_system_metadata_collection for db %s: %v", base.MD(bucket), base.MD(dbName), targetErr)
+			} else if targetIsSystemMobile {
+				return base.HTTPErrorf(http.StatusBadRequest, "database %q must enable use_system_metadata_collection: bucket %q bootstrap metadata resides in %s", base.MD(dbName), base.MD(bucket), base.MD(base.MobileSystemScopeAndCollectionName().String()))
+			}
+		}
+
 		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
 		if metadataIDError != nil {
 			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)

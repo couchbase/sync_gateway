@@ -113,9 +113,11 @@ func (c *RosmarCluster) getDefaultDataStore(ctx context.Context, bucketName stri
 }
 
 // metadataDataStores opens the bucket and returns the primary metadata DataStore plus an optional
-// fallback. The per-bucket target cache (populated by SetBucketBootstrapTargetHint or the lazy
-// probe in this function) determines the choice; absent a cached entry the connection-wide flag
-// drives the decision.
+// fallback. On every open it probes for an existing _sync:registry (mirroring
+// CouchbaseCluster.ensureBucketBootstrapTargetCached) and caches the resolved target when found;
+// the per-bucket target cache then determines the choice, and absent any registry the
+// connection-wide flag drives the decision. SetBucketBootstrapTargetHint may also populate the
+// cache ahead of the first op.
 //
 // Fallback semantics are symmetric so reads can self-heal across a stale cache:
 //   - target=systemMobile: primary=_system._mobile, fallback=_default._default (legacy docs not
@@ -159,31 +161,32 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 		return nil, nil, nil, fmt.Errorf("unexpected type for system collection for bucket %q: %T", bucketName, systemDS)
 	}
 
+	// Mirror CouchbaseCluster.ensureBucketBootstrapTargetCached: probe for an existing registry on
+	// every bucket open, regardless of the connection-wide flag, so a peer node discovers a bucket
+	// whose bootstrap docs already live in _system._mobile even when its own flag is off. Only caches
+	// when a registry is actually found (authoritative); a registry-less bucket stays uncached so a
+	// later SetBucketBootstrapTargetHint(optIn=true) can still claim _system._mobile.
+	if _, alreadyCached := c.bucketBootstrapTargets.Load(bucketName); !alreadyCached {
+		if target, found := c.probeRegistryLocation(ctx, systemCol, defaultCol); found {
+			c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
+		}
+	}
+
 	cached, hasCachedTarget := c.bucketBootstrapTargets.Load(bucketName)
 	useSystemMobile := c.useSystemMetadataCollection
 	if hasCachedTarget {
 		useSystemMobile = cached == bucketTargetSystemMobile
 	}
 	if !useSystemMobile {
-		// Reads/writes route to default first. When this bucket has any opt-in indication —
-		// either cached as bucketTargetDefault (set by SetBucketBootstrapTargetHint after probing
-		// a legacy registry) or the connection-wide flag — systemMobile is wired as a self-heal
-		// fallback so a peer-migrated bucket doesn't return not-found from a stale-cached
-		// perspective. A bucket with no cache entry and no connection-wide opt-in skips the
-		// fallback entirely so non-opt-in clusters don't pay an extra _system._mobile probe per op.
+		// Reads/writes route to default first. When this bucket has a registry (cached as
+		// bucketTargetDefault by the probe above) or the connection-wide flag is set, systemMobile is
+		// wired as a self-heal fallback so a peer-migrated bucket doesn't return not-found from a
+		// stale-cached perspective. A registry-less bucket with the flag off stays uncached and skips
+		// the fallback — there is nothing to self-heal to.
 		if hasCachedTarget || c.useSystemMetadataCollection {
 			return defaultCol, systemCol, closer, nil
 		}
 		return defaultCol, nil, closer, nil
-	}
-	// Lazy-cache the target only when a registry is found in one of the collections — that's
-	// the only case where we have authoritative information. With no registry yet the choice
-	// stays uncached so a subsequent SetBucketBootstrapTargetHint(optIn=true) can still claim
-	// _system._mobile.
-	if _, alreadyCached := c.bucketBootstrapTargets.Load(bucketName); !alreadyCached {
-		if target, found := c.probeRegistryLocation(ctx, systemCol, defaultCol); found {
-			c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
-		}
 	}
 	if c.bucketBootstrapMigrationComplete(bucketName) {
 		return systemCol, nil, closer, nil
@@ -244,6 +247,18 @@ func (c *RosmarCluster) SetBucketBootstrapTargetHint(ctx context.Context, bucket
 	}
 	c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
 	return nil
+}
+
+// BucketBootstrapTargetIsSystemMobile mirrors CouchbaseCluster.BucketBootstrapTargetIsSystemMobile.
+func (c *RosmarCluster) BucketBootstrapTargetIsSystemMobile(ctx context.Context, bucketName string, optInHint bool) (bool, error) {
+	if c == nil {
+		return false, errors.New("nil RosmarCluster")
+	}
+	if err := c.SetBucketBootstrapTargetHint(ctx, bucketName, optInHint); err != nil {
+		return false, err
+	}
+	target, _ := c.bucketBootstrapTargets.Load(bucketName)
+	return target == bucketTargetSystemMobile, nil
 }
 
 // probeRegistryLocation reports where _sync:registry already lives, or that it doesn't exist yet.
