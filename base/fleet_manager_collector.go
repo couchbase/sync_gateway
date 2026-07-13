@@ -18,6 +18,7 @@ import (
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/elastic/gosigar"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 const ProductInfoName = "sync_gateway"
@@ -78,7 +79,7 @@ type systemInfo struct {
 }
 
 func getSystemInfo(ctx context.Context) systemInfo {
-	var residentBytes, totalRam int64
+	var residentBytes int64
 
 	// Sample process/system memory directly here rather than reading the ResourceUtilizationStats
 	// expvars: those are only populated by the stats-logger ticker, so at startup (before its first
@@ -91,23 +92,38 @@ func getSystemInfo(ctx context.Context) systemInfo {
 		residentBytes = int64(procMem.Resident)
 	}
 
-	if cgroupLimit, err := memlimit.FromCgroup(); err == nil {
-		// A cgroup memory limit, when present, is the meaningful "total" for this instance.
-		totalRam = int64(cgroupLimit)
-	} else {
-		sysMem := gosigar.Mem{}
-		if err := sysMem.Get(); err != nil {
-			WarnfCtx(ctx, "Could not read system memory for fleet manager metrics: %v", err)
-		} else {
-			totalRam = int64(sysMem.Total)
-		}
-	}
-
+	totalRam := GetTotalMemory(ctx, false)
 	return systemInfo{
 		uptimeSeconds: SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.ToSeconds(),
 		cpuCores:      runtime.NumCPU(),
 		ramBytesUsed:  strconv.FormatInt(residentBytes, 10),
-		ramBytesTotal: strconv.FormatInt(totalRam, 10),
+		ramBytesTotal: strconv.FormatInt(int64(totalRam), 10),
 		osVersion:     runtime.GOOS + "-" + runtime.GOARCH,
 	}
+}
+
+// getTotalMemory returns the total memory available on the system. If a cgroup is detected, it will use the cgroup memory max.
+func GetTotalMemory(ctx context.Context, virtualMem bool) uint64 {
+	memoryTotal, err := memlimit.FromCgroup()
+	if err == nil {
+		return memoryTotal
+	}
+	TracefCtx(ctx, KeyAll, "Did not detect a cgroup for a memory limit")
+	var totalRam uint64
+	if virtualMem {
+		memory, err := mem.VirtualMemory()
+		if err != nil {
+			WarnfCtx(ctx, "Error getting total memory from gopsutil: %v", err)
+			return 0
+		}
+		totalRam = memory.Total
+	} else {
+		sysMem := gosigar.Mem{}
+		if err := sysMem.Get(); err != nil {
+			WarnfCtx(ctx, "Error getting total memory from gosigar: %v", err)
+		} else {
+			totalRam = sysMem.Total
+		}
+	}
+	return totalRam
 }

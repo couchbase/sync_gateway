@@ -1116,7 +1116,7 @@ func TestValidateChangesUseSystemMetadataCollection(t *testing.T) {
 }
 
 func TestHeapProfileValuesPopulated(t *testing.T) {
-	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
+	totalMemory := uint64(float64(base.GetTotalMemory(base.TestCtx(t), true)) * 0.85)
 	testCases := []struct {
 		name                           string
 		startupConfig                  *StartupConfig
