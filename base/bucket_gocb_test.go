@@ -2169,6 +2169,7 @@ func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrN
 }
 
 func requireDocAndXattrDeleted(t *testing.T, store sgbucket.XattrStore, key, xattrName string) {
+	t.Helper()
 	_, _, _, err := store.GetWithXattrs(TestCtx(t), key, []string{xattrName})
 	RequireDocNotFoundError(t, err)
 }
@@ -2641,6 +2642,7 @@ func syncMutateInOpts() *sgbucket.MutateInOptions {
 }
 
 func requireXattrNotFoundError(t *testing.T, err error) {
+	t.Helper()
 	require.Error(t, err)
 	assert.True(t, IsXattrNotFoundError(err), "Expected an XattrMissingError but got %v", err)
 }

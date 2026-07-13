@@ -49,11 +49,13 @@ func (rt *RestTester) UpdateTB(t testing.TB) {
 
 // GetDocBody returns the doc body for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBody(docID string) db.Body {
+	rt.TB().Helper()
 	return rt.GetDocBodyFromKeyspace("{{.keyspace}}", docID)
 }
 
 // GetDocBodyFromKeyspace returns the doc body for the given docID in the specified keyspace. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocBodyFromKeyspace(keyspace, docID string) db.Body {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/"+keyspace+"/"+docID, "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
@@ -64,6 +66,7 @@ func (rt *RestTester) GetDocBodyFromKeyspace(keyspace, docID string) db.Body {
 
 // GetDoc returns the doc body and version for the given docID. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
@@ -84,6 +87,7 @@ func (rt *RestTester) TriggerOnDemandImport(docID string) {
 
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
+	rt.TB().Helper()
 	occValue := version.RevTreeID
 	if !version.CV.IsEmpty() {
 		occValue = version.CV.String()
@@ -97,6 +101,7 @@ func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
 
 // GetDocByRev returns the doc body for the given docID and Rev. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocByRev(docID, revTreeID string) db.Body {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revTreeID), "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusOK)
 	var body db.Body
@@ -106,6 +111,7 @@ func (rt *RestTester) GetDocByRev(docID, revTreeID string) db.Body {
 
 // CreateTestDoc creates a document with an arbitrary body.
 func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
+	rt.TB().Helper()
 	response := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docid), `{"prop":true}`)
 	RequireStatus(rt.TB(), response, 201)
 	return DocVersionFromPutResponse(rt.TB(), response)
@@ -113,6 +119,7 @@ func (rt *RestTester) CreateTestDoc(docid string) DocVersion {
 
 // PutDoc will upsert the document with a given contents.
 func (rt *RestTester) PutDoc(docID, body string) DocVersion {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s", docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
@@ -120,6 +127,7 @@ func (rt *RestTester) PutDoc(docID, body string) DocVersion {
 
 // CreateDocNoHLV creates a document without an HLV and returns the revID (1-abc).
 func (rt *RestTester) CreateDocNoHLV(docID string, body db.Body) *db.Document {
+	rt.TB().Helper()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	_, doc := collection.CreateDocNoHLV(rt.TB(), ctx, docID, body)
 	rt.WaitForPendingChanges()
@@ -128,6 +136,7 @@ func (rt *RestTester) CreateDocNoHLV(docID string, body db.Body) *db.Document {
 
 // GetDocument gets the document using the CRUD API, avoiding REST API.
 func (rt *RestTester) GetDocument(docID string) *db.Document {
+	rt.TB().Helper()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(rt.TB(), err)
@@ -154,6 +163,7 @@ func (rt *RestTester) WaitForLegacyRev(docID, legacyRevID string, expectedBody [
 
 // PutDocInCollection will upsert the document with a given contents in the given collection.
 func (rt *RestTester) PutDocInCollection(collection, docID, body string) DocVersion {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s.%s/%s", rt.GetDatabase().Name, collection, docID), body)
 	RequireStatus(rt.TB(), rawResponse, 201)
 	return DocVersionFromPutResponse(rt.TB(), rawResponse)
@@ -161,12 +171,14 @@ func (rt *RestTester) PutDocInCollection(collection, docID, body string) DocVers
 
 // UpdateDocRev updates a document at a specific revision and returns the new version. Deprecated for UpdateDoc.
 func (rt *RestTester) UpdateDocRev(docID, revID, body string) string {
+	rt.TB().Helper()
 	version := rt.UpdateDoc(docID, DocVersion{RevTreeID: revID}, body)
 	return version.RevTreeID
 }
 
 // UpdateDoc updates a document at a specific version and returns the new version. Uses CV for REST API if present in DocVersion, otherwise fall back to RevTreeID.
 func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) DocVersion {
+	rt.TB().Helper()
 	occValue := version.RevTreeID
 	if !version.CV.IsEmpty() {
 		occValue = version.CV.String()
@@ -184,6 +196,7 @@ func (rt *RestTester) UpdateDoc(docID string, version DocVersion, body string) D
 
 // DeleteDoc deletes a document at a specific version. The test will fail if the revision does not exist. Uses CV for REST API if present in DocVersion, otherwise fall back to RevTreeID.
 func (rt *RestTester) DeleteDoc(docID string, version DocVersion) DocVersion {
+	rt.TB().Helper()
 	occValue := version.RevTreeID
 	if !version.CV.IsEmpty() {
 		occValue = version.CV.String()
@@ -204,6 +217,7 @@ func isRespUseRevTreeIDInstead(resp *TestResponse) bool {
 }
 
 func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
+	rt.TB().Helper()
 	var dbroot DatabaseRoot
 	resp := rt.SendAdminRequest("GET", "/"+dbname+"/", "")
 	RequireStatus(rt.TB(), resp, 200)
@@ -213,6 +227,7 @@ func (rt *RestTester) GetDatabaseRoot(dbname string) DatabaseRoot {
 
 // GetAllDBsVerbose returns output from /_all_dbs?verbose=true which is a summary of databases sorted by database names.
 func (rt *RestTester) GetAllDBsVerbose() []DbSummary {
+	rt.TB().Helper()
 	resp := rt.SendAdminRequest(http.MethodGet, "/_all_dbs?verbose=true", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	var dbs []DbSummary
@@ -252,7 +267,7 @@ func (rt *RestTester) WaitForVersionRevIDOnly(docID string, version DocVersion) 
 	rt.WaitForVersion(docID, version)
 }
 
-// WaitForCV waits for the document's current version to match the expectedVersion. Fails the test harness. WaitForVersion should be used in the general case to test revtree and and cv behavior.
+// WaitForVersionHLVOnly waits for the document's current version to match the expectedVersion. Fails the test harness. WaitForVersion should be used in the general case to test revtree and cv behavior.
 func (rt *RestTester) WaitForVersionHLVOnly(docID string, version DocVersion) {
 	rt.TB().Helper()
 	version.RevTreeID = ""
@@ -261,6 +276,7 @@ func (rt *RestTester) WaitForVersionHLVOnly(docID string, version DocVersion) {
 
 // WaitForTombstone waits for a the document version to exist and be tombstoned. If the document is not found, the test will fail.
 func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
+	rt.TB().Helper()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
@@ -278,6 +294,7 @@ func (rt *RestTester) WaitForTombstone(docID string, deleteVersion DocVersion) {
 }
 
 func (rt *RestTester) WaitForTombstoneRevIDOnly(docID string, deleteVersion DocVersion) {
+	rt.TB().Helper()
 	deleteVersion.CV = db.Version{}
 	rt.WaitForTombstone(docID, deleteVersion)
 }
@@ -305,6 +322,7 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 }
 
 func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
+	rt.TB().Helper()
 	successFunc := func() bool {
 		ar := rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators()
 		return ar == count
@@ -313,6 +331,7 @@ func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
 }
 
 func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
+	rt.TB().Helper()
 	successFunc := func() bool {
 		bs := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(name).Pull.GetBlipSender()
 		return bs != nil
@@ -322,16 +341,19 @@ func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 
 // CreateReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType, conflictResolverFunc string) {
+	rt.TB().Helper()
 	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver, conflictResolverFunc)
 }
 
 // DeleteReplication deletes a replication via the REST API with the specified ID
 func (rt *RestTester) DeleteReplication(replicationID string) {
+	rt.TB().Helper()
 	resp := rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_replication/"+replicationID, "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 }
 
 func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType, conflictResolverFunc string) {
+	rt.TB().Helper()
 	replicationConfig := &db.ReplicationConfig{
 		ID:                     replicationID,
 		Direction:              direction,
@@ -355,6 +377,7 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 }
 
 func (rt *RestTester) WaitForAssignedReplications(count int) {
+	rt.TB().Helper()
 	successFunc := func() bool {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
 		return len(replicationStatuses) == count
@@ -369,6 +392,7 @@ func (rt *RestTester) GetActiveReplicatorCount() int {
 }
 
 func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
+	rt.TB().Helper()
 	var count int
 	successFunc := func() bool {
 		count = rt.GetActiveReplicatorCount()
@@ -414,6 +438,7 @@ func (rt *RestTester) GetReplicationStatusForDB(dbName string, replicationID str
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/"+queryString, "")
 	RequireStatus(rt.TB(), rawResponse, 200)
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
@@ -422,6 +447,7 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 
 // RunResync takes database offline, runs resync and waits for it to complete and takes database online. Returns the completed resync status.
 func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
+	rt.TB().Helper()
 	rt.TakeDbOffline()
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
@@ -430,11 +456,13 @@ func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
 
 // WaitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
 func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
+	rt.TB().Helper()
 	return rt.waitForResyncDCPStatus(status, "{{.db}}")
 }
 
 // WaitForResyncDCPStatusForDB waits for the resync status for a specific database name to reach the expected status.
 func (rt *RestTester) WaitForResyncDCPStatusForDB(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
+	rt.TB().Helper()
 	return rt.waitForResyncDCPStatus(status, dbName)
 }
 
@@ -513,16 +541,19 @@ func (rt *RestTester) UpdatePersistedBucketName(dbConfig *DatabaseConfig, newBuc
 }
 
 func (rt *RestTester) InsertDbConfigToBucket(config *DatabaseConfig, bucketName string) {
+	rt.TB().Helper()
 	_, insertErr := rt.ServerContext().BootstrapContext.InsertConfig(base.TestCtx(rt.TB()), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, config)
 	require.NoError(rt.TB(), insertErr)
 }
 
 func (rt *RestTester) RemoveDbConfigFromBucket(dbName string, bucketName string) {
+	rt.TB().Helper()
 	deleteErr := rt.ServerContext().BootstrapContext.DeleteConfig(base.TestCtx(rt.TB()), bucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbName)
 	require.NoError(rt.TB(), deleteErr)
 }
 
 func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName string) {
+	rt.TB().Helper()
 	version, err := GenerateDatabaseConfigVersionID(rt.Context(), "", &dbConfig)
 	require.NoError(rt.TB(), err)
 
@@ -541,6 +572,7 @@ func (rt *RestTester) PersistDbConfigToBucket(dbConfig DbConfig, bucketName stri
 
 // TakeDbOffline takes the database offline.
 func (rt *RestTester) TakeDbOffline() {
+	rt.TB().Helper()
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_offline", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	require.Equal(rt.TB(), db.DBOffline, atomic.LoadUint32(&rt.GetDatabase().State))
@@ -548,6 +580,7 @@ func (rt *RestTester) TakeDbOffline() {
 
 // TakeDbOnline takes the database online and waits for online status.
 func (rt *RestTester) TakeDbOnline() {
+	rt.TB().Helper()
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_online", "")
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 	rt.WaitForDBOnline()
@@ -555,6 +588,7 @@ func (rt *RestTester) TakeDbOnline() {
 
 // RequireDbOnline asserts that the state of the database is online
 func (rt *RestTester) RequireDbOnline() {
+	rt.TB().Helper()
 	response := rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	var body db.Body
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -563,6 +597,7 @@ func (rt *RestTester) RequireDbOnline() {
 
 // PutDocWithAttachment will upsert the document with a given contents and attachments.
 func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachmentName, attachmentBody string) DocVersion {
+	rt.TB().Helper()
 	// create new body with a 1.x style inline attachment body like `{"_attachments": {"camera.txt": {"data": "Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`.
 	require.NotEmpty(rt.TB(), attachmentName)
 	require.NotEmpty(rt.TB(), attachmentBody)
@@ -580,11 +615,13 @@ func (rt *RestTester) PutDocWithAttachment(docID string, body string, attachment
 // WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Fails the
 // test harness if the sequence remains in the skipped list after timeout.
 func (rt *RestTester) WaitForSequenceNotSkipped(sequence uint64) {
+	rt.TB().Helper()
 	require.NoError(rt.TB(), rt.GetDatabase().WaitForSequenceNotSkipped(rt.Context(), sequence))
 }
 
 // WaitForDBInitializationCompleted polls the ServerContext until there is no active database initialization (index creation). Fails the test if initialization does not complete within the timeout.
 func (rt *RestTester) WaitForDBInitializationCompleted(dbName string) {
+	rt.TB().Helper()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		assert.False(c, rt.ServerContext().DatabaseInitManager.HasActiveInitialization(dbName))
 	}, 30*time.Second, 100*time.Millisecond, "Database initialization did not complete within expected time")

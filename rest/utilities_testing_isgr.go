@@ -141,6 +141,7 @@ func (runner *SGRTestRunner) IsV4Protocol() bool {
 }
 
 func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, version DocVersion) {
+	rt.TB().Helper()
 	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
 		// only assert on rev tree IDs when we're not replicating using v4 protocol
 		rt.WaitForVersionRevIDOnly(docID, version)
@@ -150,6 +151,7 @@ func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, versio
 }
 
 func (runner *SGRTestRunner) WaitForTombstone(docID string, rt *RestTester, version DocVersion) {
+	rt.TB().Helper()
 	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
 		// only assert on rev tree IDs when we're not replicating using v4 protocol
 		rt.WaitForTombstoneRevIDOnly(docID, version)

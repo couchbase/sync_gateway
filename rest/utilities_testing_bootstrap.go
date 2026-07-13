@@ -71,43 +71,51 @@ func (r *boostrapResponse) StatusCode() int {
 
 // AssertStatus asserts the status code of the response
 func (r *boostrapResponse) AssertStatus(status int) {
+	r.t.Helper()
 	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status code for %s - body: %s", r.url, r.Body)
 }
 
 // RequireStatus fails the test if the this response does not have the expected status code.
 func (r *boostrapResponse) RequireStatus(status int) {
+	r.t.Helper()
 	require.Equal(r.t, status, r.response.StatusCode, "unexpected status code for %s - body: %s", r.url, r.Body)
 }
 
 // AssertResponse asserts the status code and body of the response.
 func (r *boostrapResponse) AssertResponse(status int, body string) {
-	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status codefor %s - body: %s", r.url, r.Body)
+	r.t.Helper()
+	assert.Equal(r.t, status, r.response.StatusCode, "unexpected status code for %s - body: %s", r.url, r.Body)
 	assert.Equal(r.t, body, r.Body, "unexpected body for %s", r.url)
 }
 
 // RequireResponse fails the test if the this response does not have the expected status code or body.
 func (r *boostrapResponse) RequireResponse(status int, body string) {
+	r.t.Helper()
 	require.Equal(r.t, status, r.response.StatusCode, "unexpected status code - body: %s", r.Body)
 	require.Equal(r.t, body, r.Body, "unexpected body")
 }
 
 // Unmarshal unmarshals the response body into the given interface. Fails the test if unmarshalling fails.
 func (r *boostrapResponse) Unmarshal(v any) {
+	r.t.Helper()
 	err := base.JSONUnmarshal([]byte(r.Body), &v)
 	require.NoError(r.t, err, "Error unmarshalling bootstrap response body")
 }
 
 // BootstrapAdminRequest sends a request to the given server type, and returns the response.
 func BootstrapAdminRequest(t *testing.T, sc *ServerContext, method, path, body string) boostrapResponse {
+	t.Helper()
 	return doBootstrapAdminRequest(t, sc, method, path, body, nil)
 }
 
 // BootstrapAdminRequestWithHeaders sends a request to the given server type with custom headers, and returns the response.
 func BootstrapAdminRequestWithHeaders(t *testing.T, sc *ServerContext, method, path, body string, headers map[string]string) boostrapResponse {
+	t.Helper()
 	return doBootstrapAdminRequest(t, sc, method, path, body, headers)
 }
 
 func mustGetServerAddr(t *testing.T, sc *ServerContext, s serverType) string {
+	t.Helper()
 	addr, err := sc.getServerAddr(s)
 	require.NoError(t, err, "Server %s not found in server context", s)
 	return addr

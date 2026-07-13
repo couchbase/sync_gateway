@@ -1324,6 +1324,7 @@ func TestWriteWithXattrsInsertAndDeleteError(t *testing.T) {
 }
 
 func requireXattrsEqual(t testing.TB, expected map[string][]byte, actual map[string][]byte) {
+	t.Helper()
 	require.Len(t, actual, len(expected), "Expected xattrs to be the same length %v, got %v", expected, actual)
 	for k, v := range expected {
 		require.Contains(t, maps.Keys(actual), k)
@@ -1637,6 +1638,7 @@ func TestWriteUpdateWithXattrsReplacingNilDoc(t *testing.T) {
 }
 
 func requireDocNotFoundOrCasMismatchError(t testing.TB, err error) {
+	t.Helper()
 	require.Error(t, err)
 	if !IsDocNotFoundError(err) && !IsCasMismatch(err) {
 		errMsg := fmt.Sprintf("Expected error to be either a doc not found or cas mismatch error, got %+v", err)
@@ -1645,6 +1647,7 @@ func requireDocNotFoundOrCasMismatchError(t testing.TB, err error) {
 }
 
 func requireDocFoundOrCasMismatchError(t testing.TB, err error) {
+	t.Helper()
 	require.Error(t, err)
 	if !errors.Is(err, sgbucket.ErrKeyExists) && !IsCasMismatch(err) {
 		errMsg := fmt.Sprintf("Expected error to be either a doc found or cas mismatch error, got %+v", err)

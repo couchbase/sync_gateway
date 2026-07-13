@@ -35,6 +35,7 @@ import (
 // bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
 // assertExpiry validates that the two expiry values are within a 10 second window
 func assertExpiry(t testing.TB, expected uint32, actual uint32) {
+	t.Helper()
 	assert.True(t, base.DiffUint32(expected, actual) < 10, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
 }
 
@@ -1799,6 +1800,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 }
 
 func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, propertyName string, expectedPropertyValue any) {
+	t.Helper()
 	var responseBody map[string]any
 	err := base.JSONUnmarshal(getDocResponse.Body.Bytes(), &responseBody)
 	assert.NoError(t, err, "Error unmarshalling document response")
@@ -1808,6 +1810,7 @@ func assertDocProperty(t *testing.T, getDocResponse *rest.TestResponse, property
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
+	t.Helper()
 	xattrs, _, err := dataStore.GetXattrs(base.TestCtx(t), key, []string{base.SyncXattrName})
 	require.NoError(t, err, "Error Getting Xattr")
 	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)

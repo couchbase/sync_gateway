@@ -686,6 +686,7 @@ func TestAuditDatabaseUpdate(t *testing.T) {
 
 // requireValidDatabaseUpdatedEventPayload checks the audit log output for at least one database updated event, and validates that each payload can be used validly
 func requireValidDatabaseUpdatedEventPayload(rt *RestTester, output []byte) {
+	rt.TB().Helper()
 	events := bytes.Split(output, []byte("\n"))
 	foundEvent := false
 	for _, rawEvent := range events {
@@ -1503,6 +1504,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 
 // requireDocumentMetadataReadEvents validates that there read events for each doc version specified. There should be only audit events for a given docid.
 func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID string, revid string, count int) {
+	rt.TB().Helper()
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -1518,6 +1520,7 @@ func requireDocumentMetadataReadEvents(rt *RestTester, output []byte, docID stri
 
 // requireDocumentReadEvents validates that there read events for each doc version specified. There should be only audit events for a given docid and it should be revid specified.
 func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docVersions []string) {
+	rt.TB().Helper()
 	events := jsonLines(rt.TB(), output)
 	var docVersionsFound []string
 	for _, event := range events {
@@ -1534,6 +1537,7 @@ func requireDocumentReadEvents(rt *RestTester, output []byte, docID string, docV
 
 // requireAttachmentEvents validates that an attachment CRUD event occurred in the right number only on the correct document.
 func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersionStr string, attachmentName string, count int) {
+	rt.TB().Helper()
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -1551,6 +1555,7 @@ func requireAttachmentEvents(rt *RestTester, eventID base.AuditID, output []byte
 
 // requireDocumentEvents validates that a document CRUD event occurred on the right doc ID with the correct channels.
 func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, docID, docVersion string, count int) {
+	rt.TB().Helper()
 	events := jsonLines(rt.TB(), output)
 	countFound := 0
 	for _, event := range events {
@@ -1567,6 +1572,7 @@ func requireDocumentEvents(rt *RestTester, eventID base.AuditID, output []byte, 
 
 // requireChangesStartEvent validates that there is a changes start event with the specified fields
 func requireChangesStartEvent(t testing.TB, output []byte, expectedFields map[string]any) {
+	t.Helper()
 	events := jsonLines(t, output)
 	found := false
 	for _, event := range events {

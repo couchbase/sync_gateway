@@ -656,6 +656,7 @@ func TestCORSBlipNoConfig(t *testing.T) {
 
 // requireBlipHandshakeEmptyCORS creates a new blip tester with no Origin header
 func requireBlipHandshakeEmptyCORS(rt *RestTester) {
+	rt.TB().Helper()
 	spec := getDefaultBlipTesterSpec()
 	_, err := createBlipTesterWithSpec(rt, spec)
 	require.NoError(rt.TB(), err)
@@ -663,6 +664,7 @@ func requireBlipHandshakeEmptyCORS(rt *RestTester) {
 
 // requireBlipHandshakeMatchingHost creates a new blip tester with an Origin header that matches the host name of the test
 func requireBlipHandshakeMatchingHost(rt *RestTester) {
+	rt.TB().Helper()
 	spec := getDefaultBlipTesterSpec()
 	spec.useHostOrigin = true
 	_, err := createBlipTesterWithSpec(rt, spec)

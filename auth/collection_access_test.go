@@ -21,6 +21,7 @@ import (
 
 // requireCanSeeCollectionChannels asserts that the principal can see all the specified channels in the given collection
 func requireCanSeeCollectionChannels(t *testing.T, scope, collection string, princ Principal, channels ...string) {
+	t.Helper()
 	for _, channel := range channels {
 		canSee, err := princ.CanSeeCollectionChannel(scope, collection, channel)
 		require.NoError(t, err)
@@ -30,6 +31,7 @@ func requireCanSeeCollectionChannels(t *testing.T, scope, collection string, pri
 
 // requireCannotSeeCollectionChannels asserts that the principal cannot see any of the specified channels in the given collection
 func requireCannotSeeCollectionChannels(t *testing.T, scope, collection string, princ Principal, channels ...string) {
+	t.Helper()
 	for _, channel := range channels {
 		canSee, err := princ.CanSeeCollectionChannel(scope, collection, channel)
 		require.NoError(t, err)
@@ -281,6 +283,7 @@ func TestPrincipalConfigSetExplicitChannels(t *testing.T) {
 
 // requireExpandCollectionWildCardChannels asserts that the channels will be expanded to the expected channels for the given collection
 func requireExpandCollectionWildCardChannels(t *testing.T, user User, scope, collection string, expectedChannels []string, channelsToExpand []string) {
+	t.Helper()
 	expandedChannels, err := user.expandCollectionWildCardChannel(scope, collection, base.SetFromArray(channelsToExpand))
 	require.NoError(t, err)
 	require.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v for %s.%s from %v on user %s", expectedChannels, scope, collection, channelsToExpand, user.Name())

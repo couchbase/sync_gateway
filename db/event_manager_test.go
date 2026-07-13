@@ -933,6 +933,7 @@ func TestUnavailableWebhook(t *testing.T) {
 // asserts that the number of items seen in the channel within the specified time limit is the same as the expected value.
 // WARNING: This function will drain the channel of items!
 func assertChannelLengthWithTimeout(t *testing.T, c chan any, expectedLength int, timeout time.Duration) {
+	t.Helper()
 	count := 0
 	for {
 		if count >= expectedLength {

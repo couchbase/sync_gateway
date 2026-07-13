@@ -4158,6 +4158,7 @@ func TestDatabaseConfigAuditAPI(t *testing.T) {
 }
 
 func RequireEventCount(t *testing.T, runtimeConfig *rest.RuntimeDatabaseConfig, auditID base.AuditID, expectedCount int) {
+	t.Helper()
 	require.NotNil(t, runtimeConfig)
 
 	loggingConfig := runtimeConfig.DbConfig.Logging

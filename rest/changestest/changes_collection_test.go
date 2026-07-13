@@ -399,6 +399,7 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 }
 
 func requireAdminChangesCount(rt *rest.RestTester, keyspace string, expectedChangeCount int) {
+	rt.TB().Helper()
 	changesResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/_changes", keyspace), "")
 	rest.RequireStatus(rt.TB(), changesResponse, http.StatusOK)
 	var changes rest.ChangesResults

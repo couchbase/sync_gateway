@@ -191,6 +191,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 
 // requireNumSGIndexPartitions ensures that the number of partitions for SG indexes is as expected. Some indexes aren't partitioned.
 func assertNumSGIndexPartitions(t testing.TB, database *db.DatabaseContext) {
+	t.Helper()
 	gocbBucket, err := base.AsGocbV2Bucket(database.Bucket)
 	require.NoError(t, err)
 	re := regexp.MustCompile(`sg_(?:allDocs|channels)_x1(?:_p(\d+))?$`)

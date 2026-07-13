@@ -395,6 +395,7 @@ func TestCORSOrigin(t *testing.T) {
 
 // assertGatewayStatus is like requireStatus but with StatusGatewayTimeout error checking for temporary network failures.
 func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
+	t.Helper()
 	if response.Code == http.StatusGatewayTimeout {
 		respBody := response.Body.String()
 		t.Skipf("WARNING: Host could not be reached: %s", respBody)

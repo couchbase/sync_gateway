@@ -1206,6 +1206,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 }
 
 func AssertChangeEquals(t *testing.T, change []any, expectedChange ExpectedChange) {
+	t.Helper()
 	if err := expectedChange.Equals(change); err != nil {
 		t.Errorf("Change %+v does not equal expected change: %+v.  Error: %v", change, expectedChange, err)
 	}

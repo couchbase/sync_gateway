@@ -188,6 +188,7 @@ func getMultiBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, 
 }
 
 func assertRevTreeUnmarshal(t *testing.T, jsonString string, expectedRevtree RevTree) bool {
+	t.Helper()
 	var gotmap RevTree
 	require.NoError(t, base.JSONUnmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
 	return assert.Equal(t, expectedRevtree, gotmap)

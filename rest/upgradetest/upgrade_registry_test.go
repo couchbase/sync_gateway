@@ -297,6 +297,7 @@ func TestMetadataIDWithConfigGroups(t *testing.T) {
 }
 
 func requireBobUserLocation(rt *rest.RestTester, docName string) {
+	rt.TB().Helper()
 	metadataStore := rt.GetDatabase().Bucket.DefaultDataStore(base.TestCtx(rt.TB()))
 
 	_, _, err := metadataStore.GetRaw(base.TestCtx(rt.TB()), docName)
