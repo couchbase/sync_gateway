@@ -1159,7 +1159,7 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 		return false, ErrLoginRequired
 	}
 
-	statusCode, _, err := doHTTPAuthRequest(h.ctx(), httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, nil)
+	statusCode, _, err := doHTTPAuthRequest(h.ctx(), httpClient, username, password, "POST", "/pools/default/checkPermissions", "", managementEndpoints, nil)
 	if err != nil {
 		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error performing HTTP auth request: %v", err)
 	}

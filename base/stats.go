@@ -1332,6 +1332,10 @@ func (s *SgwDurStat) String() string {
 	return strconv.Itoa(int(time.Since(s.StartTime).Nanoseconds()))
 }
 
+func (s *SgwDurStat) ToSeconds() int64 {
+	return int64(time.Since(s.StartTime).Seconds())
+}
+
 type QueryStat struct {
 	QueryCount      *SgwIntStat
 	QueryErrorCount *SgwIntStat
