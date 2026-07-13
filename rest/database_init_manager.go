@@ -35,6 +35,13 @@ type DatabaseInitManager struct {
 	workers     map[string]*DatabaseInitWorker
 	workersLock sync.Mutex
 
+	// sharedCollectionInitLocks serializes index initialization of the collections that can be shared
+	// across databases on a bucket (_default._default and _system._mobile), so their workers don't
+	// issue concurrent CREATE/BUILD INDEX against the same collection.  Concurrent builds on the same
+	// collection race in the server's GSI and can leave an index stranded in a permanently-deferred
+	// state.  See DatabaseInitWorker.initializeCollectionIndexes.
+	sharedCollectionInitLocks sharedCollectionInitLocker
+
 	// initializeIndexesFunc is defined for testability only.
 	initializeIndexesFunc InitializeIndexesFunc
 
@@ -45,6 +52,32 @@ type DatabaseInitManager struct {
 	// testDatabaseCompleteCallback is defined for testability only.
 	// Invoked after worker completes, but before worker is removed from workers set
 	testDatabaseCompleteCallback func(databaseName string) // Callback for testability only
+}
+
+// sharedCollectionInitLocker hands out a distinct mutex per bucket, used to serialize initialization
+// of the collections that can be shared across databases on that bucket (_default._default and
+// _system._mobile).  The zero value is ready to use.  Entries are never removed; the set of buckets
+// is bounded, so the map stays small.
+type sharedCollectionInitLocker struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+// lock acquires the mutex for the given bucket, returning the function to release it.
+func (l *sharedCollectionInitLocker) lock(bucketName string) (unlock func()) {
+	l.mu.Lock()
+	if l.locks == nil {
+		l.locks = make(map[string]*sync.Mutex)
+	}
+	bucketLock, ok := l.locks[bucketName]
+	if !ok {
+		bucketLock = &sync.Mutex{}
+		l.locks[bucketName] = bucketLock
+	}
+	l.mu.Unlock()
+
+	bucketLock.Lock()
+	return bucketLock.Unlock
 }
 
 // CollectionCallbackFunc is called when the initialization has completed for each collection on the database.
@@ -129,7 +162,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 		initializeIndexesFunc = m.initializeIndexesFunc
 	}
 	// Create new worker and add this caller as a watcher
-	worker := NewDatabaseInitWorker(context.WithoutCancel(ctx), dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback, initializeIndexesFunc)
+	worker := NewDatabaseInitWorker(context.WithoutCancel(ctx), dbConfig.Name, n1qlStore, collectionSet, indexOptions, statusCallback, initializeIndexesFunc, &m.sharedCollectionInitLocks)
 	m.workers[dbConfig.Name] = worker
 	doneChan = worker.addWatcher()
 
@@ -282,7 +315,8 @@ type DatabaseInitWorker struct {
 	completed   bool       // Set to true when processing completes, to handle watcher registration during completion.  Synchronized with watcherLock.
 	lastError   error      // Set for when processing does not complete successfully.  Synchronized with watcherLock
 
-	initializeIndexesFunc InitializeIndexesFunc // function to create indexes, for testability
+	initializeIndexesFunc     InitializeIndexesFunc       // function to create indexes, for testability
+	sharedCollectionInitLocks *sharedCollectionInitLocker // per-bucket locks serializing init of collections shared across databases (see initializeCollectionIndexes)
 }
 
 // DatabaseInitOptions specifies the options used for database initialization
@@ -290,17 +324,18 @@ type DatabaseInitOptions struct {
 	indexOptions db.InitializeIndexOptions // Options used for index initialization
 }
 
-func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc, initializeIndexesFunc InitializeIndexesFunc) *DatabaseInitWorker {
+func NewDatabaseInitWorker(ctx context.Context, dbName string, n1qlStore *base.ClusterOnlyN1QLStore, collections CollectionInitData, indexOptions db.InitializeIndexOptions, callback CollectionCallbackFunc, initializeIndexesFunc InitializeIndexesFunc, sharedCollectionInitLocks *sharedCollectionInitLocker) *DatabaseInitWorker {
 	cancelCtx, cancelFunc := context.WithCancelCause(ctx)
 	return &DatabaseInitWorker{
-		dbName:                   dbName,
-		options:                  DatabaseInitOptions{indexOptions: indexOptions},
-		ctx:                      cancelCtx,
-		cancelFunc:               cancelFunc,
-		collections:              collections,
-		n1qlStore:                n1qlStore,
-		collectionStatusCallback: callback,
-		initializeIndexesFunc:    initializeIndexesFunc,
+		dbName:                    dbName,
+		options:                   DatabaseInitOptions{indexOptions: indexOptions},
+		ctx:                       cancelCtx,
+		cancelFunc:                cancelFunc,
+		collections:               collections,
+		n1qlStore:                 n1qlStore,
+		collectionStatusCallback:  callback,
+		initializeIndexesFunc:     initializeIndexesFunc,
+		sharedCollectionInitLocks: sharedCollectionInitLocks,
 	}
 }
 
@@ -328,10 +363,8 @@ func (w *DatabaseInitWorker) Run() {
 		collectionIndexOptions := w.options.indexOptions
 		collectionIndexOptions.MetadataIndexes = indexSet
 
-		// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
-		w.n1qlStore.SetScopeAndCollection(scName)
 		keyspaceCtx := base.KeyspaceLogCtx(w.ctx, w.n1qlStore.BucketName(), scName.ScopeName(), scName.CollectionName())
-		indexErr = w.initializeIndexesFunc(keyspaceCtx, w.n1qlStore, collectionIndexOptions)
+		indexErr = w.initializeCollectionIndexes(keyspaceCtx, scName, collectionIndexOptions)
 		if w.collectionStatusCallback != nil {
 			if indexErr != nil {
 				w.collectionStatusCallback(w.dbName, scName, db.CollectionIndexStatusError)
@@ -359,6 +392,27 @@ func (w *DatabaseInitWorker) Run() {
 		close(doneChan)
 	}
 	w.completed = true
+}
+
+// initializeCollectionIndexes runs index initialization for a single collection.  Initialization of
+// the collections that can be shared across databases on a bucket is serialized per bucket; all
+// other collections run concurrently.
+//
+// _default._default and _system._mobile are the only collections that more than one database on a
+// bucket can initialize: named data collections are guaranteed unique per database by the registry
+// conflict check (see GatewayRegistry.getCollectionConflicts), but these two metadata collections
+// are added implicitly by buildCollectionIndexData and escape that check.  Concurrent CREATE/BUILD
+// INDEX against the same collection races in the server's GSI and can leave an index stranded in a
+// permanently-deferred state, so we serialize their init per bucket.
+func (w *DatabaseInitWorker) initializeCollectionIndexes(ctx context.Context, scName base.ScopeAndCollectionName, indexOptions db.InitializeIndexOptions) error {
+	if scName.IsDefault() || scName == base.MobileSystemScopeAndCollectionName() {
+		unlock := w.sharedCollectionInitLocks.lock(w.n1qlStore.BucketName())
+		defer unlock()
+	}
+
+	// Set the scope and collection name on the cluster n1ql store for use by initializeIndexes
+	w.n1qlStore.SetScopeAndCollection(scName)
+	return w.initializeIndexesFunc(ctx, w.n1qlStore, indexOptions)
 }
 
 // Adds a watcher for the current worker.  Creates a new notification channel for completion and adds
