@@ -753,11 +753,9 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 
 	// create required number of buckets (skipping any already existing ones)
 	for i := range numBuckets {
-		bucketName := tbpBucketName(fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp.UnixNano()))
-		ctx := BucketNameCtx(ctx, string(bucketName))
-
 		bucketInit := func() {
 			defer wg.Done()
+			bucketName := tbpBucketName(fmt.Sprintf(tbpBucketNameFormat, tbpBucketNamePrefix, i, bucketNameTimestamp.UnixNano()))
 			ctx := BucketNameCtx(ctx, string(bucketName))
 
 			bucket, err := tbp.insertAndOpenTestBucket(ctx, bucketName, bucketQuotaMB)
