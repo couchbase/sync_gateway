@@ -37,6 +37,9 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	})
 	defer rt.Close()
 
+	// Avoid racing the automatic startup migration against the mark phase below.
+	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
+
 	// cleanup attachments left behind
 	defer func() {
 		resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&reset=true", "")
@@ -310,6 +313,9 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
+
+	// Avoid racing the automatic startup migration against the mark phase below.
+	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	dataStore := rt.GetSingleDataStore()
 	// Create a raw binary doc
