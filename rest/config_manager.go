@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -647,6 +648,24 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 	return err
 }
 
+// errBucketDoesNotExist wraps a getGatewayRegistry failure that was caused by the target
+// bucket no longer existing in the cluster (as opposed to a transient I/O error), so callers can
+// stop tracking/retrying the bucket via errors.Is instead of separately re-checking existence.
+var errBucketDoesNotExist = errors.New("bucket no longer exists in cluster")
+
+// bucketExists returns whether the specified bucket exists in the cluster. Will return an error
+// if communicating with Couchbase Server does not work.
+func (b *bootstrapContext) bucketExists(ctx context.Context, bucketName string) (bool, error) {
+	if b.Connection == nil {
+		return false, errors.New("nil bootstrap connection")
+	}
+	buckets, err := b.Connection.GetConfigBuckets(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(buckets, bucketName), nil
+}
+
 // getGatewayRegistry returns the database registry document for the bucket
 func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName string) (result *GatewayRegistry, err error) {
 
@@ -655,6 +674,10 @@ func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName st
 	if getErr != nil {
 		if base.IsDocNotFoundError(getErr) {
 			return NewGatewayRegistry(b.sgVersion), nil
+		}
+		// A failure to list cluster buckets must not be misread as bucketName having vanished.
+		if exists, checkErr := b.bucketExists(ctx, bucketName); checkErr == nil && !exists {
+			return nil, fmt.Errorf("%w: %w", errBucketDoesNotExist, getErr)
 		}
 		return nil, getErr
 	}
@@ -838,6 +861,10 @@ func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName
 	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
+			if errors.Is(err, errBucketDoesNotExist) {
+				base.InfofCtx(ctx, base.KeyConfig, "DeregisterNodeVersion: Bucket %s no longer exists in cluster. Skipping deregistration.", base.MD(bucketName))
+				return
+			}
 			base.WarnfCtx(ctx, "Failed to get registry for node deregistration from bucket %s: %v", base.MD(bucketName), err)
 			return
 		}
