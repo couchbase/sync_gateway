@@ -40,7 +40,7 @@ rm -rf couchbase-lite-tests
 
 git clone --recurse-submodules https://github.com/couchbaselabs/couchbase-lite-tests.git
 cd couchbase-lite-tests
-git fetch origin "${COUCHBASE_LITE_TESTS_COMMIT}"
+git fetch origin -- "${COUCHBASE_LITE_TESTS_COMMIT}"
 git checkout --detach FETCH_HEAD
 git submodule sync --recursive
 git submodule update --init --recursive --force
