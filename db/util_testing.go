@@ -739,7 +739,7 @@ func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbu
 	}
 	ctx := base.TestCtx(t)
 	uri := "/getIndexStatus"
-	respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
+	respBytes, statusCode, err := base.MgmtRequest(ctx, bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
 	var output struct {

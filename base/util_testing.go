@@ -298,6 +298,35 @@ func UnitTestUrlIsWalrus() bool {
 	return sgtest.UnitTestUrlIsWalrus()
 }
 
+// TestClusterVersion returns the Couchbase Server version backing the test bucket pool. It fails the
+// test if there is no cluster connection (i.e. not running against Couchbase Server).
+func TestClusterVersion(t testing.TB) *ComparableBuildVersion {
+	require.NotNil(t, GTestBucketPool, "GTestBucketPool is not initialized")
+	require.NotNil(t, GTestBucketPool.cluster, "no cluster connection available - not running against Couchbase Server")
+	version := GTestBucketPool.cluster.version
+	return &version
+}
+
+// RequireServerVersionForTest skips the test unless the Couchbase Server backing the test bucket pool
+// is at least the minimum version required for its release train. Pass one minimum version per release
+// train the feature shipped in, e.g. RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0"). This
+// is a no-op when not running against Couchbase Server, since those tests are gated separately.
+func RequireServerVersionForTest(t testing.TB, minReleaseVersions ...string) {
+	if !sgtest.TestUseCouchbaseServer() {
+		return
+	}
+	minVersions := make([]*ComparableBuildVersion, 0, len(minReleaseVersions))
+	for _, v := range minReleaseVersions {
+		parsed, err := NewComparableBuildVersionFromString(v)
+		require.NoError(t, err, "couldn't parse minimum version %q", v)
+		minVersions = append(minVersions, parsed)
+	}
+	serverVersion := TestClusterVersion(t)
+	if !serverVersion.AtLeastReleaseVersion(minVersions...) {
+		t.Skipf("Test requires Couchbase Server %v, but running against %v", minReleaseVersions, serverVersion)
+	}
+}
+
 func TestUseWalrus() bool {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	return strings.EqualFold(backingStore, TestEnvBackingStoreWalrus)

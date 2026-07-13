@@ -176,8 +176,8 @@ func getRootCAs(ctx context.Context, caCertPath string) (*x509.CertPool, error) 
 
 // MgmtRequest makes a request to the http couchbase management api. This function will read the entire contents of
 // the response and return the output bytes, the status code, and an error.
-func MgmtRequest(client *http.Client, mgmtEp, method, uri, contentType, username, password string, body io.Reader) ([]byte, int, error) {
-	req, err := http.NewRequest(method, mgmtEp+uri, body)
+func MgmtRequest(ctx context.Context, client *http.Client, mgmtEp, method, uri, contentType, username, password string, body io.Reader) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, method, mgmtEp+uri, body)
 	if err != nil {
 		return nil, 0, err
 	}
