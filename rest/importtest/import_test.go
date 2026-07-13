@@ -41,9 +41,7 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 
 // Test feed-based import
 func TestImportFeed(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -85,7 +83,6 @@ func TestImportFeed(t *testing.T) {
 
 func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -474,7 +471,6 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
@@ -712,8 +708,6 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
 
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -783,9 +777,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportLargeNumbers(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -836,8 +828,6 @@ type treeHistory struct {
 func TestMigrateLargeInlineRevisions(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
-
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -904,9 +894,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 
 // Test migration of a 1.4 doc that's been tombstoned
 func TestMigrateTombstone(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -973,9 +961,7 @@ func TestMigrateTombstone(t *testing.T) {
 
 // Test migration of a 1.5 doc that already includes some external revision storage from docmeta to xattr.
 func TestMigrateWithExternalRevisions(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1043,9 +1029,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
 func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1104,9 +1088,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 // Test migration of a 1.5 doc that has an expiry value.
 func TestFeedBasedMigrateWithExpiry(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1152,9 +1134,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 // Verify that an on-demand import of a null document during write doesn't block the incoming write
 func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1192,9 +1172,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 // Verify that an on-demand import of a nil document during write doesn't block the incoming write
 func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1233,9 +1211,6 @@ func TestOnDemandWriteImportReplacingNilDoc(t *testing.T) {
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via on-demand
 // import (GET or WRITE)
 func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	mobileBody := make(map[string]any)
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
@@ -1319,9 +1294,6 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is migrated via on-demand
 // import (GET or WRITE)
 func TestOnDemandMigrateWithExpiry(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	triggerOnDemandViaGet := func(rt *rest.RestTester, key string) {
 		// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 		response := rt.SendAdminRequest("GET", "/db/"+key, "")
@@ -1393,9 +1365,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 // Write through SG, non-imported SDK write, subsequent SG write
 func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
@@ -1475,9 +1445,7 @@ func TestImportBinaryDoc(t *testing.T) {
 
 // TestImportZeroValueDecimalPlaces tests that docs containing numbers of the form 0.0000 are imported correctly.
 func TestImportZeroValueDecimalPlaces(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -1538,9 +1506,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 // TestImportZeroValueDecimalPlacesScientificNotation tests that docs containing numbers of the form 0e10 are imported correctly.
 func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -1602,9 +1568,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
 // Test creation of backup revision on import
 func TestImportRevisionCopy(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 	if base.TestDisableRevCache() {
 		t.Skip("Backup import revs requires previous rev to be in revision cache")
 	}
@@ -1662,9 +1626,7 @@ func TestImportRevisionCopy(t *testing.T) {
 
 // Test creation of backup revision on import, when rev is no longer available in rev cache.
 func TestImportRevisionCopyUnavailable(t *testing.T) {
-
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -2102,9 +2064,6 @@ func TestImportTouch(t *testing.T) {
 }
 func TestImportingPurgedDocument(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2142,9 +2101,6 @@ func TestNonImportedDuplicateID(t *testing.T) {
 
 func TestImportOnWriteMigration(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2468,7 +2424,6 @@ func TestImportUpdateExpiry(t *testing.T) {
 
 func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCRUD, base.KeyImport)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -2625,7 +2580,6 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 
 func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2686,8 +2640,6 @@ func TestPrevRevNoPopulationImportFeed(t *testing.T) {
 func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.LongRunningTest(t)
-
-	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2784,8 +2736,6 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 //   - Trigger an on demand import for write
 //   - Assert that the attachment metadata is migrated from sync data xattr to global sync xattr
 func TestMigrationOfAttachmentsOnDemandImport(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rtConfig := rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // avoid anything arriving over import feed for this test

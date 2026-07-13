@@ -2732,9 +2732,6 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 }
 
 func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it writes directly to the xattr")
-	}
 	defer SuspendSequenceBatching()() // turn off sequence batching to avoid unused sequence(s) being released
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
@@ -2805,9 +2802,6 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 }
 
 func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it writes directly to the xattr")
-	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
@@ -3152,13 +3146,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 
 }
 
-// ////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
-
 func TestConcurrentImport(t *testing.T) {
-
-	if !base.TestUseXattrs() {
-		t.Skip("Test only works with XATTRS")
-	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -3693,9 +3681,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 }
 
 func TestRepairUnorderedRecentSequences(t *testing.T) {
-	if base.TestUseXattrs() {
-		t.Skip("xattr=false only - test modifies doc _sync property")
-	}
+	t.Skip("xattr=false only - test modifies doc _sync property")
 
 	var db *Database
 	var body Body
@@ -3758,9 +3744,6 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 }
 
 func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("Xattrs required")
-	}
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
@@ -3800,10 +3783,6 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	base.LongRunningTest(t)
-
-	if !base.TestUseXattrs() {
-		t.Skip("Compaction requires xattrs")
-	}
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{
@@ -4251,10 +4230,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 // Regression test for CBG-2058.
 func TestImportCompactPanic(t *testing.T) {
 	base.LongRunningTest(t)
-
-	if !base.TestUseXattrs() {
-		t.Skip("requires xattrs")
-	}
 
 	// Set the compaction and purge interval unrealistically low to reproduce faster
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{

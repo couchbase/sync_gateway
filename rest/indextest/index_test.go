@@ -770,6 +770,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	databaseConfig := dbConfig.ToDatabaseConfig()
 	databaseConfig.Version = version
 	databaseConfig.MetadataID = metadataID
+	databaseConfig.EnableXattrs = base.Ptr(true) // ToDatabaseConfig will always set EnableXattrs = false for old upgrade scenarios
 
 	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, databaseConfig)
 	require.NoError(t, err)
@@ -866,15 +867,13 @@ func makeDbConfig(t *testing.T, tb *base.TestBucket, syncFunction string, import
 		}
 	}
 	bucketName := tb.GetName()
-	enableXattrs := true
 
 	dbConfig := rest.DbConfig{
 		BucketConfig: rest.BucketConfig{
 			Bucket: &bucketName,
 		},
-		EnableXattrs: &enableXattrs,
-		Scopes:       scopesConfig,
-		AutoImport:   false, // disable import to streamline index tests and avoid teardown races
+		Scopes:     scopesConfig,
+		AutoImport: false, // disable import to streamline index tests and avoid teardown races
 	}
 	if base.TestsDisableGSI() {
 		dbConfig.UseViews = base.Ptr(true)

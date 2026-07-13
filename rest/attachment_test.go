@@ -507,11 +507,9 @@ func TestAddingAttachment(t *testing.T) {
 // Reproduces panic seen in https://github.com/couchbase/sync_gateway/issues/2528
 func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
-	if base.TestUseXattrs() {
-		// Since we now store attachment metadata in sync data,
-		// this test cannot modify the xattrs to reproduce the panic
-		t.Skip("This test only works with XATTRS disabled")
-	}
+	// Since we now store attachment metadata in sync data,
+	// this test cannot modify the xattrs to reproduce the panic
+	t.Skip("This test only works with XATTRS disabled")
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -748,9 +746,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 // Reproduces CBG-616
 func TestAttachmentRevposPre25Metadata(t *testing.T) {
 
-	if base.TestUseXattrs() {
-		t.Skip("Skipping with xattrs due to use of AddRaw _sync data")
-	}
+	t.Skip("Skipping with xattrs due to use of AddRaw _sync data")
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -1685,9 +1681,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test requires xattrs")
-		}
 
 		// Create a document with inline attachment.
 		docID := "foo10"
@@ -1731,9 +1724,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("skip attachment removal upon document update via SDK", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test requires xattrs")
-		}
 
 		// Create a document with inline attachment.
 		docID := "foo11"
@@ -1878,9 +1868,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc delete (single doc referencing an attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with Xattrs")
-		}
 		docID := "foo15"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
@@ -1902,9 +1889,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc delete (multiple docs referencing same attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with and Xattrs")
-		}
 		docID1 := "foo16"
 		docID2 := "bar16"
 		attBody := []byte(`hi`)
@@ -1940,9 +1924,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc update (single doc referencing an attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with with xattrs")
-		}
 		docID := "foo17"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
@@ -1964,9 +1945,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc update (multiple docs referencing same attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with xattrs")
-		}
 		docID1 := "foo18"
 		docID2 := "bar18"
 		attBody := []byte(`hi`)
@@ -1997,9 +1975,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc purge (single doc referencing an attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with xattrs")
-		}
 		docID := "foo19"
 		attBody := []byte(`hi`)
 		digest := db.Sha1DigestKey(attBody)
@@ -2015,9 +1990,6 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	rt.Run("legacy attachment persistence upon doc purge (multiple docs referencing same attachment)", func(t *testing.T) {
-		if !base.TestUseXattrs() {
-			t.Skip("Test only works with and xattrs")
-		}
 		docID1 := "foo20"
 		docID2 := "bar20"
 		attBody := []byte(`hi`)
@@ -2215,7 +2187,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AutoImport = base.Ptr(base.TestUseXattrs())
+	dbConfig.AutoImport = base.Ptr(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()

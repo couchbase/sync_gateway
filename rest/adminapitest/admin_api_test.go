@@ -1896,13 +1896,8 @@ func TestRawRedaction(t *testing.T) {
 	assert.Contains(t, rawResponseStr, `"foo":"bar"`)    // doc body
 	assert.Contains(t, rawResponseStr, `"myattachment"`) // attachment name
 	// check all requested xattrs are present, even in the values are `null`
-	if base.TestUseXattrs() {
-		for _, xattrName := range base.SyncGatewayRawDocXattrs {
-			assert.Contains(t, rawResponseStr, `"`+xattrName+`":`)
-		}
-	} else {
-		// test framework won't allow the test to get this far in 4.0 but in case this is backported, let it fail, since the assertions will need to be tailored
-		t.Fatalf("inline sync data is not a supported configuration in 4.0+")
+	for _, xattrName := range base.SyncGatewayRawDocXattrs {
+		assert.Contains(t, rawResponseStr, `"`+xattrName+`":`)
 	}
 
 	// Test redacted
@@ -2051,8 +2046,8 @@ func TestHandleCreateDBJsonName(t *testing.T) {
 			}
 			resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
 				fmt.Sprintf(
-					`{"bucket": "%s", %s "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-					tb.GetName(), DbConfigJson, base.TestUseXattrs(), base.TestsDisableGSI(),
+					`{"bucket": "%s", %s "index": {"num_replicas": 0}, "use_views": %t}`,
+					tb.GetName(), DbConfigJson, base.TestsDisableGSI(),
 				),
 			)
 			if test.expectError {
@@ -2112,7 +2107,6 @@ func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
 	reqBodyWithBackticks := `{
         "server": "walrus:",
         "bucket": "backticks",
-		"enable_shared_bucket_access":true,
 		"scopes": {
 			"scope1": {
 			  "collections" : {
@@ -3045,8 +3039,8 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t}`,
+			tb.GetName(), base.TestsDisableGSI(),
 		),
 	)
 	resp.RequireStatus(http.StatusCreated)
@@ -3086,7 +3080,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	defer tb2.Close(ctx)
 
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "unsupported": {"disable_clean_skipped_query": true}}`, tb2.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t, "unsupported": {"disable_clean_skipped_query": true}}`, tb2.GetName(), base.TestsDisableGSI(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
@@ -3141,8 +3135,8 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			// No credentials should fail
 			resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/",
 				fmt.Sprintf(
-					`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-					tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+					`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t}`,
+					tb.GetName(), base.TestsDisableGSI(),
 				),
 			)
 			resp.RequireStatus(expectedFailStatus)
@@ -3156,8 +3150,8 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			// Proper credentials should pass
 			resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db3/",
 				fmt.Sprintf(
-					`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "username": "%s", "password": "%s"}`,
-					tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
+					`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t, "username": "%s", "password": "%s"}`,
+					tb.GetName(), base.TestsDisableGSI(), base.TestClusterUsername(), base.TestClusterPassword(),
 				),
 			)
 			resp.RequireStatus(http.StatusCreated)
@@ -3272,26 +3266,24 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/TestSyncDoc", "{}"), http.StatusCreated)
 
-	if base.TestUseXattrs() {
-		// default data store - we're not using a named scope/collection in this test
-		add, err := rt.GetSingleDataStore().Add(ctx, "TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
-		require.NoError(t, err)
-		require.Equal(t, true, add)
+	// default data store - we're not using a named scope/collection in this test
+	add, err := rt.GetSingleDataStore().Add(ctx, "TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+	require.NoError(t, err)
+	require.Equal(t, true, add)
 
-		// On-demand import - rejected doc
-		rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/TestImportDoc", ""), http.StatusNotFound)
+	// On-demand import - rejected doc
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/TestImportDoc", ""), http.StatusNotFound)
 
-		// Persist configs
-		rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/import_filter", ""), http.StatusOK)
+	// Persist configs
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/_config/import_filter", ""), http.StatusOK)
 
-		// Check configs match
-		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-		require.Equal(t, "", resp.Body.String())
+	// Check configs match
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/import_filter", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.Equal(t, "", resp.Body.String())
 
-		// On-demand import - allowed doc after restored default import filter
-		rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/TestImportDoc", ""), http.StatusOK)
-	}
+	// On-demand import - allowed doc after restored default import filter
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/TestImportDoc", ""), http.StatusOK)
 }
 
 func TestSetFunctionsWhileDbOffline(t *testing.T) {
@@ -3336,7 +3328,7 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
 	// Initial DB config
 	dbConfig := fmt.Sprintf(`{
-    "num_index_replicas": 0,
+    "index": {"num_replicas": 0},
     	"bucket": "%s",
     		"scopes": {
 			  	"%s": {
@@ -3374,8 +3366,8 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	// db put with empty sync func and import filter
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
-			rt.Bucket().GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t, "sync": "", "import_filter": ""}`,
+			rt.Bucket().GetName(), base.TestsDisableGSI(),
 		),
 	)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -3383,8 +3375,8 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	// db config put with empty sync func and import filter
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
-			rt.Bucket().GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t, "sync": "", "import_filter": ""}`,
+			rt.Bucket().GetName(), base.TestsDisableGSI(),
 		),
 	)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -3392,8 +3384,8 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	// db config post, with empty sync func and import filter
 	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config",
 		fmt.Sprintf(
-			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "sync": "", "import_filter": ""}`,
-			rt.Bucket().GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+			`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t, "sync": "", "import_filter": ""}`,
+			rt.Bucket().GetName(), base.TestsDisableGSI(),
 		),
 	)
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -3497,9 +3489,6 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 
 // CBG-1790: Deleting a database that targets the same bucket as another causes a panic in legacy
 func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works against Couchbase Server with xattrs")
-	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	tb := base.GetTestBucket(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: tb})
@@ -3512,14 +3501,14 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		"username": "%s",
 		"password": "%s",
 		"use_views": %t,
-		"num_index_replicas": 0
+		"index": {"num_replicas": 0}
 	}`, tb.GetName(), base.TestClusterUsername(), base.TestClusterPassword(), base.TestsDisableGSI()))
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server with xattrs")
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
@@ -3536,9 +3525,8 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
    "bucket": "` + tb.GetName() + `",
    "name": "%s",
    "import_docs": true,
-   "enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
    "use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-   "num_index_replicas": 0 }`
+   "index": {"num_replicas": 0} }`
 
 	resp := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db1/", fmt.Sprintf(dbConfig, "db1"))
 	resp.RequireStatus(http.StatusCreated)
@@ -3870,9 +3858,8 @@ func TestPerDBCredsOverride(t *testing.T) {
 
 			dbConfig := `{
 				"bucket": "` + tb1.GetName() + `",
-				"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 				"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-				"num_index_replicas": 0
+				"index": {"num_replicas": 0}
 			}`
 
 			res := rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db/", dbConfig)
