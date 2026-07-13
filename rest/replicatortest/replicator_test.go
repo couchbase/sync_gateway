@@ -7437,11 +7437,7 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRTConfig := &rest.RestTesterConfig{
-				SyncFn:             syncFunc,
-				SgReplicateEnabled: true,
-			}
-			activeRT := rest.NewRestTester(t, activeRTConfig)
+			activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: rtConfig.SyncFn, SgReplicateEnabled: true})
 			defer activeRT.Close()
 
 			for _, rt := range []*rest.RestTester{passiveRT, activeRT} {

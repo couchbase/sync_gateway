@@ -474,7 +474,7 @@ func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 				return
 			}
 
-			err := dbc.SGReplicateMgr.startReplications(dbc.SGReplicateMgr.loggingCtx) // TODO: use dbc.SGReplicateMgr.loggingCtx, if that is not removed ?
+			err := dbc.SGReplicateMgr.startReplications(dbc.SGReplicateMgr.loggingCtx)
 			if err != nil {
 				base.ErrorfCtx(dbc.SGReplicateMgr.loggingCtx, "Error starting %q Inter-Sync Gateway Replications: %v", dbc.Name, err)
 			}
