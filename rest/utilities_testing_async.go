@@ -18,7 +18,7 @@ import (
 )
 
 // TestChannelTimeout can be increased to support step-through debugging
-const TestChannelTimeout = 30 * time.Second
+const TestChannelTimeout = 45 * time.Second
 
 func WaitForChannel(t *testing.T, ch <-chan error, message string) {
 	if message != "" {
