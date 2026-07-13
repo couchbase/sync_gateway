@@ -134,6 +134,30 @@ func TestComparableBuildVersionEmptyStringJSON(t *testing.T) {
 	require.Equal(t, "0.0.0", version.String())
 }
 
+func TestReleaseVersionString(t *testing.T) {
+	testCases := []struct {
+		version  string
+		expected string
+	}{
+		{version: "4.1.0", expected: "4.1.0"},            // 4th component is 0 → omitted
+		{version: "4.0.6", expected: "4.0.6"},            // patch release
+		{version: "4.1.0.1", expected: "4.1.0.1"},        // 4th component present
+		{version: "4.1.0@123-EE", expected: "4.1.0"},     // build and edition stripped
+		{version: "4.1.0.1@123-CE", expected: "4.1.0.1"}, // build and edition stripped, other kept
+	}
+	for _, test := range testCases {
+		t.Run(test.version, func(t *testing.T) {
+			version, err := NewComparableBuildVersionFromString(test.version)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, version.ReleaseVersionString())
+		})
+	}
+
+	// nil receiver is safe and yields the zero version.
+	var nilVersion *ComparableBuildVersion
+	assert.Equal(t, "0.0.0", nilVersion.ReleaseVersionString())
+}
+
 func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 	testCases := []struct {
 		versionA       string
@@ -230,6 +254,43 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 			versionB, err := NewComparableBuildVersionFromString(test.versionB)
 			require.NoError(t, err)
 			require.Equal(t, test.minorDowngrade, versionA.AtLeastMinorDowngrade(versionB))
+		})
+	}
+}
+
+func TestAtLeastReleaseVersion(t *testing.T) {
+	// Feature shipped across three release trains at different patch levels.
+	minVersions := []string{"7.6.12", "8.0.3", "8.1.0"}
+	testCases := []struct {
+		version   string
+		qualifies bool
+	}{
+		{version: "7.6.11", qualifies: false},
+		{version: "7.6.12", qualifies: true},
+		{version: "7.6.13", qualifies: true},
+		{version: "8.0.2", qualifies: false},
+		{version: "8.0.3", qualifies: true},
+		{version: "8.0.4", qualifies: true},
+		{version: "8.1.0", qualifies: true},
+		{version: "8.1.5", qualifies: true},
+		{version: "8.2.0", qualifies: true},
+		{version: "9.0.0", qualifies: true},
+		{version: "7.6.0", qualifies: false},
+		{version: "7.2.0", qualifies: false},
+	}
+
+	mins := make([]*ComparableBuildVersion, 0, len(minVersions))
+	for _, v := range minVersions {
+		parsed, err := NewComparableBuildVersionFromString(v)
+		require.NoError(t, err)
+		mins = append(mins, parsed)
+	}
+
+	for _, test := range testCases {
+		t.Run(test.version, func(t *testing.T) {
+			version, err := NewComparableBuildVersionFromString(test.version)
+			require.NoError(t, err)
+			require.Equal(t, test.qualifies, version.AtLeastReleaseVersion(mins...))
 		})
 	}
 }

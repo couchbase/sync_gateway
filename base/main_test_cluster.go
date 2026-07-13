@@ -146,6 +146,7 @@ func (c *tbpCluster) MgmtRequest(method, path string, contentType string, body i
 		return nil, 0, fmt.Errorf("no management endpoints available for cluster %q", c.clusterSpec.Server)
 	}
 	return MgmtRequest(
+		context.Background(),
 		c.agent.HTTPClient(),
 		mgmtEps[0],
 		method,
@@ -164,6 +165,7 @@ func GetCouchbaseServerVersion(agent *gocbcore.Agent, clusterSpec CouchbaseClust
 		return nil, false, fmt.Errorf("no management endpoints available")
 	}
 	output, status, err := MgmtRequest(
+		context.Background(),
 		agent.HTTPClient(),
 		mgmtEps[0],
 		http.MethodGet,
