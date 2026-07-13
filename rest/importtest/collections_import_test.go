@@ -26,7 +26,6 @@ import (
 func TestMultiCollectionImportFilter(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 3)
 
 	ctx := base.TestCtx(t)
@@ -163,8 +162,8 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
-		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes":%s}`,
+		testBucket.GetName(), string(scopesConfigString)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	dataStore3, err := testBucket.GetNamedDataStore(2)
@@ -208,8 +207,8 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
-		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes":%s}`,
+		testBucket.GetName(), string(scopesConfigString)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// Write private doc 2
@@ -240,16 +239,14 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 
 const collectionsDbConfig = `{
 		"bucket": "%s",
-		"num_index_replicas": 0,
-		"enable_shared_bucket_access": true,
+		"index": {"num_replicas": 0},
 		"scopes": %s,
 		"import_docs": true
 	}`
 
 const collectionsDbConfigRevsLimit = `{
 		"bucket": "%s",
-		"num_index_replicas": 0,
-		"enable_shared_bucket_access": true,
+		"index": {"num_replicas": 0},
 		"scopes": %s,
 		"import_docs": true,
 		"revs_limit": 21
@@ -265,7 +262,6 @@ const collectionsDbConfigUpsertScopes = `{
 func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SkipImportTestsIfNotEnabled(t)
 	base.RequireNumTestDataStores(t, 2)
 
 	ctx := base.TestCtx(t)
@@ -359,7 +355,6 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 	base.LongRunningTest(t)
 
 	defer db.SuspendSequenceBatching()()
-	base.SkipImportTestsIfNotEnabled(t)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 
@@ -436,9 +431,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 
 // TestImportVersionWriteVariations - ensure import version is updated for all different APIs that can modify the collection set
 func TestImportVersionWriteVariations(t *testing.T) {
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyDCP)
-	base.SkipImportTestsIfNotEnabled(t)
 	numCollections := 3
 	base.RequireNumTestDataStores(t, numCollections)
 

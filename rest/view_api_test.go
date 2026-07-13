@@ -673,9 +673,6 @@ func TestViewQueryWrappers(t *testing.T) {
 func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
 
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")

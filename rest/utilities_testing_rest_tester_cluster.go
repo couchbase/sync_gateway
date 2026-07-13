@@ -131,7 +131,6 @@ func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
 		Index: &IndexConfig{
 			NumReplicas: base.Ptr(uint(0)),
 		},
-		UseViews:     base.Ptr(base.TestsDisableGSI()),
-		EnableXattrs: base.Ptr(base.TestUseXattrs()),
+		UseViews: base.Ptr(base.TestsDisableGSI()),
 	}
 }
