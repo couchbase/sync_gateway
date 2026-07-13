@@ -604,3 +604,50 @@ function sync(doc, oldDoc){
 	log.Printf("rt2 stats - resync num processed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumProcessed.Value())
 
 }
+
+// TestResyncInvalidCollections verifies behavior when _resync is started with collection names not present in the
+// database config: the start fails, the status reflects the error state, a second invalid start is rejected
+// as already-running, a valid start is also rejected until stop is called, and after stop a valid start completes.
+func TestResyncInvalidCollections(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	rt.TakeDbOffline()
+
+	invalidBody := `{"scopes": {"_default": ["nonexistent_collection"]}}`
+
+	// First start with invalid collection: Init() fails synchronously, returns 500
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", invalidBody)
+	rest.RequireStatus(t, resp, http.StatusInternalServerError)
+	assert.Contains(t, resp.BodyString(), "nonexistent_collection")
+
+	// Status reflects the error state because Init() failing calls SetError before returning
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_resync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var status db.ResyncManagerResponseDCP
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
+	require.Equal(t, db.BackgroundProcessStateError, status.State)
+
+	// Second start with invalid collection: rejected as already running (503) because state is in error state
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", invalidBody)
+	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	// Starting with valid collections is also rejected (503) while the error state persists
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_resync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
+	require.Equal(t, db.BackgroundProcessStateError, status.State)
+
+	// Stop clears the error state
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
+
+	// After stop, a valid start with no collection filter completes successfully
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+}
