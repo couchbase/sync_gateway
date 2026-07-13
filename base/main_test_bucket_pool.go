@@ -613,13 +613,15 @@ func ensureDefaultDataStores(ctx context.Context, bucket Bucket) {
 }
 
 // CreateCollections ensures the default and mobile system datastores exist on bucket, and creates
-// numCollections additional named collections, if enabled. numCollections must be at least 1.
+// numCollections additional named collections, if enabled.
 func (tbp *TestBucketPool) CreateCollections(ctx context.Context, bucket Bucket, numCollections int) {
-	if numCollections == 0 {
-		tbp.Fatalf(ctx, "CreateCollections called with numCollections: 0")
+	if numCollections < 0 {
+		tbp.Fatalf(ctx, "CreateCollections called with numCollections: %d", numCollections)
 	}
 	ensureDefaultDataStores(ctx, bucket)
-
+	if numCollections == 0 {
+		return
+	}
 	// If we're able to use collections, the test bucket pool will also create N collections per bucket - rather than just getting the default collection ready.
 	if tbp.skipCollections {
 		return
