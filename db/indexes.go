@@ -17,6 +17,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
@@ -451,12 +452,91 @@ func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options In
 
 	// Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
 	base.InfofCtx(ctx, base.KeyAll, "Verifying index availability...")
+
+	// While waiting for indexes to come online, run a deferred-index watcher that re-issues BUILD
+	// INDEX for any index left stuck in the deferred state (build never started). When multiple
+	// databases share a bucket, their init workers can concurrently create+build the same indexes on
+	// a shared metadata collection (e.g. _default._default, _system._mobile); a concurrent BUILD INDEX
+	// makes the server reply "Build Already In Progress", which SG treats as success, and on some
+	// server versions that collided background retry never completes - leaving the index deferred
+	// forever and (with WaitForIndexesInfinite) this wait blocked indefinitely. The watcher is a no-op
+	// on the normal single-initializer path, where indexes are already building rather than deferred.
+	deferredWatcherCtx, cancelDeferredWatcher := context.WithCancelCause(ctx)
+	deferredWatcherDone := make(chan struct{})
+	go func() {
+		defer close(deferredWatcherDone)
+		rebuildDeferredIndexesUntilDone(deferredWatcherCtx, n1QLStore, fullIndexNames)
+	}()
+	defer func() {
+		cancelDeferredWatcher(errors.New("index initialization wait complete"))
+		<-deferredWatcherDone
+	}()
+
 	if err := n1QLStore.WaitForIndexesOnline(ctx, fullIndexNames, options.WaitForIndexesOnlineOption); err != nil {
 		return err
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Indexes ready")
 	return nil
+}
+
+// deferredIndexRebuildInterval is how often background initialization re-checks for indexes stuck in
+// the deferred state and re-issues BUILD INDEX for them. See rebuildDeferredIndexesUntilDone.
+const deferredIndexRebuildInterval = 5 * time.Second
+
+// rebuildDeferredIndexesUntilDone periodically re-issues BUILD INDEX for any of the named indexes
+// observed still in the deferred state (created, but build not started), until ctx is cancelled.
+// This makes index initialization self-healing when a concurrent initializer building the same
+// index on a shared collection causes our BUILD to be swallowed as "Build Already In Progress" and
+// the server-side retry to never complete. It only acts on indexes genuinely in the deferred state -
+// indexes that are pending/building (a slow but healthy build) or already online are left alone, so
+// the normal single-initializer path is unaffected.
+func rebuildDeferredIndexesUntilDone(ctx context.Context, n1QLStore base.N1QLStore, indexNames []string) {
+	ticker := time.NewTicker(deferredIndexRebuildInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			deferred, err := getDeferredIndexes(ctx, n1QLStore, indexNames)
+			if err != nil {
+				base.DebugfCtx(ctx, base.KeyQuery, "Error checking for deferred indexes during initialization: %v", err)
+				continue
+			}
+			if len(deferred) == 0 {
+				continue
+			}
+			base.InfofCtx(ctx, base.KeyAll, "Indexes still deferred during initialization, re-issuing build: %v", deferred)
+			if err := base.BuildDeferredIndexes(ctx, n1QLStore, deferred); err != nil {
+				base.DebugfCtx(ctx, base.KeyQuery, "Error re-issuing build for deferred indexes %v: %v", deferred, err)
+			}
+		}
+	}
+}
+
+// getDeferredIndexes returns the subset of indexNames currently in the deferred state for the
+// store's keyspace.
+func getDeferredIndexes(ctx context.Context, n1QLStore base.N1QLStore, indexNames []string) ([]string, error) {
+	var (
+		indexesMeta map[string]base.IndexMeta
+		err         error
+	)
+	if base.IsMobileSystemCollection(n1QLStore) {
+		indexesMeta, err = base.GetSystemCollectionIndexesMeta(ctx, n1QLStore, n1QLStore.ScopeName(), n1QLStore.CollectionName(), indexNames)
+	} else {
+		indexesMeta, err = base.GetIndexesMeta(ctx, n1QLStore, indexNames)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var deferred []string
+	for _, name := range indexNames {
+		if meta, ok := indexesMeta[name]; ok && meta.State == base.IndexStateDeferred {
+			deferred = append(deferred, name)
+		}
+	}
+	return deferred, nil
 }
 
 // Return true if the string representation of the error contains

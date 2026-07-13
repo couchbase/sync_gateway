@@ -242,7 +242,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
 	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll) //base.KeyHTTP, base.KeyConfig)
 
 	sc, closeFn := StartBootstrapServer(t)
 	defer closeFn()
