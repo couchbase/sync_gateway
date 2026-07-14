@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
@@ -781,54 +782,68 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			SyncFn: syncFn,
+			SyncFn:            syncFn,
+			LeakyBucketConfig: &base.LeakyBucketConfig{},
 		},
 	)
 	defer rt.Close()
 
-	const numDocs = 1000
-
-	// create some docs
-	for i := range numDocs {
-		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
+	// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
+	// double-close panic from concurrent callback invocations.
+	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
+	numDocs := len(docKeys)
+	for _, key := range docKeys {
+		rt.CreateTestDoc(key)
 	}
 
 	rt.TakeDbOffline()
 
+	// Pause resync at the first user document so stop arrives while genuinely in-flight.
+	pauser := newResyncPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
+
 	// start a resync run
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-
-	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
-	resyncID := resyncManagerStatus.ResyncID
+	pauser.WaitUntilBlocked()
+	resyncID := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning).ResyncID
 
 	// stop resync before it completes, assert it has been aborted
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
+	pauser.Release()
 
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
+
+	// Pause again for the reset run so we can observe "running" before it completes.
+	pauser.Pause()
 
 	// reset the resync process through the endpoint
 	response = rt.SendAdminRequest("POST", "/db/_resync?reset=true", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	// grab new resync status from rest run, assert the resync id is not the same as the first
+	// Block until the reset resync is genuinely in-flight, then verify running state.
+	pauser.WaitUntilBlocked()
+
+	// grab new resync status from reset run, assert the resync id is not the same as the first
 	// run and that the docs processed is equal to number of docs we have created
-	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	resyncManagerStatus := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, resyncID, resyncManagerStatus.ResyncID)
+
+	pauser.Release()
 
 	resyncManagerStatus = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 	if !base.UnitTestUrlIsWalrus() && !base.TestsDisableGSI() {
 		// It is possible for Couchbase Server GSI runs which use DCP purge to two DCP events from a previous
 		// test.
-		// 1. doc1 mutation
-		// 2. doc1 deletion
+		// 1. doc mutation
+		// 2. doc deletion
 		//
 		// In a test, these will not be resynced but docsProcessed is incremented. Relax
 		// the assertion to greater than the number of documents.
 		assert.GreaterOrEqual(t, int(resyncManagerStatus.DocsProcessed), numDocs)
 	} else {
-
 		assert.Equal(t, int64(numDocs), resyncManagerStatus.DocsProcessed)
 	}
 }
@@ -1424,23 +1439,26 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 		channel("x")
 	}`
 
-	testBucket := base.GetTestBucket(t)
-
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
-			SyncFn:           syncFn,
-			CustomTestBucket: testBucket,
+			SyncFn:            syncFn,
+			LeakyBucketConfig: &base.LeakyBucketConfig{},
 		},
 	)
 	defer rt.Close()
 
-	numOfDocs := 1000
-	// gsi is slower than views, so update the number of documents for views so stopping the resync will not complete
-	if base.TestsDisableGSI() {
-		numOfDocs = 5000
-	}
-	for i := range numOfDocs {
-		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
+	// All docs on vBucket 0 so a single DCP worker processes them serially. Without this,
+	// workers on other vBuckets could run unblocked while the pauser holds the vBucket 0 worker,
+	// letting SyncFunctionCount reach numOfDocs*2 before stop arrives and causing the assertion
+	// at the end to fail.
+	//
+	// The pauser eliminates the race between "DCP finishes all docs → completed" and "stop
+	// command arrives → stopped", so numOfDocs can be kept small for test speed without
+	// risking the process completing before stop is issued.
+	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
+	numOfDocs := len(docKeys)
+	for _, key := range docKeys {
+		rt.CreateTestDoc(key)
 	}
 
 	rt.WaitForPendingChanges()
@@ -1449,12 +1467,18 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	rt.TakeDbOffline()
 
+	// Pause resync at the first user document so the stop arrives while genuinely in-flight.
+	pauser := newResyncPauser(rt)
+	defer pauser.Close()
+	pauser.Pause()
+
 	response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
+	pauser.WaitUntilBlocked()
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
+	pauser.Release()
 
 	rt.WaitForResyncDCPStatus(db.BackgroundProcessStateStopped)
 
@@ -4247,4 +4271,72 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &statusResponse))
 	assert.Equal(t, base.MetadataStoreModeFallbackInactive, statusResponse.Databases["db"].MetadataStoreMode)
+}
+
+// resyncPauser blocks the resync DCP stream at the first user document it encounters. Can be
+// Paused and Released multiple times across a test.
+// Tests using this pauser must ensure all docs are on vBucket 0 (via base.VBucket0DocIDs) so only
+// a single DCP worker fires the callback.
+type resyncPauser struct {
+	t           testing.TB
+	blocked     chan struct{}
+	blockCh     chan struct{}
+	ds          *base.LeakyDataStore
+	callbackSet atomic.Bool
+}
+
+func newResyncPauser(rt *rest.RestTester) *resyncPauser {
+	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
+	return &resyncPauser{
+		t:  rt.TB(),
+		ds: leakyDS,
+	}
+}
+
+// Pause arms the pauser to block resync at the first user document it encounters. Call Release
+// before pausing again.
+func (p *resyncPauser) Pause() {
+	if !p.callbackSet.CompareAndSwap(false, true) {
+		require.FailNow(p.t, "resyncPauser.Pause called while already paused; call Release first")
+	}
+	p.blocked = make(chan struct{})
+	p.blockCh = make(chan struct{})
+	p.ds.SetWriteUpdateWithXattrsCallback(func(key string) {
+		if strings.HasPrefix(key, "_sync:") {
+			return
+		}
+		close(p.blocked)
+		// Runs on the resync DCP goroutine, so use the goroutine-safe wait.
+		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
+	})
+}
+
+// WaitUntilBlocked blocks until resync is paused at a user document.
+func (p *resyncPauser) WaitUntilBlocked() {
+	p.t.Helper()
+	base.RequireChanClosed(p.t, p.blocked)
+}
+
+// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
+func (p *resyncPauser) Release() {
+	if !p.release() {
+		require.FailNow(p.t, "resyncPauser.Release called while not paused")
+	}
+}
+
+// Close releases the pauser and resets the LeakyBucket callback.
+func (p *resyncPauser) Close() {
+	p.release()
+}
+
+// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// it was paused.
+func (p *resyncPauser) release() bool {
+	if !p.callbackSet.CompareAndSwap(true, false) {
+		return false
+	}
+	p.ds.SetWriteUpdateWithXattrsCallback(nil)
+	close(p.blockCh)
+	return true
 }
