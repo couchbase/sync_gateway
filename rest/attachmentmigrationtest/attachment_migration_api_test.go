@@ -14,11 +14,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +51,7 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	numDocs := addDocsForMigrationProcess(t, ctx, collection)
+	numDocs, _ := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
 
 	// kick off migration
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
@@ -82,6 +84,7 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
 		}},
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -89,30 +92,27 @@ func TestAttachmentMigrationAbort(t *testing.T) {
 	// Wait for run on startup to complete
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
-	numDocs := 20
-	if base.UnitTestUrlIsWalrus() {
-		numDocs *= 10
-	}
-	// add some docs to arrive over dcp
-	for i := range numDocs {
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		docBody := db.Body{
-			"value": 1234,
-		}
-		_, _, err := collection.Put(ctx, key, docBody)
-		require.NoError(t, err)
-	}
+	// Create one doc with legacy attachment metadata — enough for migration to block on.
+	docID := t.Name()
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte(`{"value":1234}`), "att", []byte("att body"))
+
+	// Pause migration mid-document so stop arrives while it is genuinely in-flight.
+	pauser := newMigrationPauser(rt)
+	defer pauser.Close()
+	pauser.Pause(docID)
 
 	// start migration
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 
 	// stop the migration job
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.Release()
 
 	status := rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateStopped)
-	assert.Equal(t, int64(0), status.DocsChanged)
+	assert.Equal(t, int64(1), status.DocsChanged)
 }
 
 func TestAttachmentMigrationReset(t *testing.T) {
@@ -120,6 +120,7 @@ func TestAttachmentMigrationReset(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
 		}},
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -128,18 +129,25 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	numDocs := addDocsForMigrationProcess(t, ctx, collection)
+	numDocs, legacyKeys := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
+
+	// Pause migration at the first legacy doc so stop arrives while it is genuinely in-flight.
+	docID := legacyKeys[0]
+	pauser := newMigrationPauser(rt)
+	defer pauser.Close()
+	pauser.Pause(docID)
 
 	// start migration
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status := rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
-	migrationID := status.MigrationID
+	pauser.WaitUntilBlocked()
+	migrationID := rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning).MigrationID
 
 	// Stop migration
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateStopped)
+	pauser.Release()
+	rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateStopped)
 
 	// make sure status is stopped
 	resp = rt.SendAdminRequest("GET", "/{{.db}}/_attachment_migration", "")
@@ -149,27 +157,42 @@ func TestAttachmentMigrationReset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, migrationStatus.State)
 
+	// On a real cluster, stopping isn't instant, so any number of legacyKeys may already be
+	// migrated by now. Use a fresh doc instead of guessing which legacyKey is still unmigrated.
+	resetDocID := base.VBucket0DocIDs(t, rt.Bucket(), 6)[5]
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, resetDocID, []byte(`{"value":1234}`), "att", []byte("att body"))
+	numDocs++
+
+	pauser.Pause(resetDocID)
+
 	// reset migration run
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?reset=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	status = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
+	pauser.WaitUntilBlocked()
+	status := rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, migrationID, status.MigrationID)
+	pauser.Release()
 
 	// wait to complete
 	status = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 	// assert all docs are processed again
-	assert.Equal(t, numDocs, status.DocsProcessed)
+	assert.GreaterOrEqual(t, status.DocsProcessed, numDocs)
 }
 
 func TestAttachmentMigrationMultiNode(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
+	dbCfg := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		AutoImport: false, // turn off import feed to stop the feed migrating attachments
+	}}
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: noCloseTB,
+		DatabaseConfig:   dbCfg,
 	})
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb,
+		DatabaseConfig:   dbCfg,
 	})
 	defer rt2.Close()
 	defer rt1.Close()
@@ -179,12 +202,24 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	_ = rt1.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 	_ = rt2.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
-	// add some docs for migration
-	addDocsForMigrationProcess(t, ctx, collection)
+	// Create legacy attachment docs all on vBucket 0. This ensures the DCP worker for vBucket 0
+	// processes them sequentially: blocking the first doc keeps the rest queued, so doneChan
+	// cannot close before the terminator fires and the select can reliably pick "stopped".
+	vb0IDs := base.VBucket0DocIDs(t, rt1.Bucket(), 5)
+	for _, id := range vb0IDs {
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, id, []byte(`{}`), "att", []byte("att body"))
+	}
+
+	// Pause migration at the first vBucket 0 doc so stop arrives while it is genuinely in-flight.
+	// noCloseTB is already a LeakyBucket so its datastore satisfies the LeakyDataStore check.
+	pauser := newMigrationPauser(rt1)
+	defer pauser.Close()
+	pauser.Pause(vb0IDs[0])
 
 	// kick off migration on node 1
 	resp := rt1.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 	status := rt1.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
 	migrationID := status.MigrationID
 
@@ -196,6 +231,7 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	// stop migration
 	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.Release()
 	_ = rt1.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateStopped)
 
 	// assert that node 2 also has stopped status
@@ -219,17 +255,27 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	_ = rt2.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 }
 
-func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser) int64 {
+// addDocsForMigrationProcess creates numDocs docs and converts the first half to the legacy
+// attachment format needing migration. Returns the doc count and the legacy docs' keys.
+func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, bucket base.Bucket) (int64, []string) {
 	numDocs := int64(10)
-	if base.UnitTestUrlIsWalrus() {
-		numDocs *= 20
+	legacyCount := numDocs / 2
+
+	keys := make([]string, numDocs)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("%s_%d", t.Name(), i)
 	}
-	for i := range numDocs {
+	// Put the legacy docs on vBucket 0 so a single DCP worker processes them serially — required
+	// by tests that pause migration on one legacy doc and expect the rest to stay unmigrated
+	// until released; otherwise other DCP workers could migrate them concurrently.
+	copy(keys, base.VBucket0DocIDs(t, bucket, int(legacyCount)))
+	legacyKeys := keys[:legacyCount]
+
+	for _, key := range keys {
 		docBody := db.Body{
 			"value":            1234,
 			db.BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 		}
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		_, doc, err := collection.Put(ctx, key, docBody)
 		require.NoError(t, err)
 		require.Equal(t, db.AttachmentsMeta{
@@ -255,13 +301,77 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 		require.Empty(t, db.GetRawSyncXattr(t, collection.GetCollectionDatastore(), key).AttachmentsPre4dot0)
 	}
 
-	// Move some subset of the documents attachment metadata from global sync to sync data
-	for j := range numDocs / 2 {
-		key := fmt.Sprintf("%s_%d", t.Name(), j)
+	// Move the legacy subset's attachment metadata from global sync to sync data
+	for _, key := range legacyKeys {
 		value, _, err := collection.GetCollectionDatastore().GetRaw(ctx, key)
 		require.NoError(t, err)
 
 		db.MoveAttachmentXattrFromGlobalToSync(t, collection.GetCollectionDatastore(), key, value, true)
 	}
-	return numDocs
+	return numDocs, legacyKeys
+}
+
+// migrationPauser blocks attachment migration at a specific document. Can be Paused and
+// Released multiple times across a test.
+type migrationPauser struct {
+	t           testing.TB
+	blocked     chan struct{}
+	blockCh     chan struct{}
+	ds          *base.LeakyDataStore
+	callbackSet atomic.Bool
+}
+
+func newMigrationPauser(rt *rest.RestTester) *migrationPauser {
+	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
+	return &migrationPauser{
+		t:  rt.TB(),
+		ds: leakyDS,
+	}
+}
+
+// Pause arms the pauser to block migration at docID. Call Release before pausing again.
+func (p *migrationPauser) Pause(docID string) {
+	if !p.callbackSet.CompareAndSwap(false, true) {
+		require.FailNow(p.t, "migrationPauser.Pause called while already paused; call Release first")
+	}
+	p.blocked = make(chan struct{})
+	p.blockCh = make(chan struct{})
+	p.ds.SetUpdateXattrsCallback(func(key string) {
+		if key != docID {
+			return
+		}
+		close(p.blocked)
+		// Runs on the migration job's goroutine, so use the goroutine-safe wait.
+		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
+	})
+}
+
+// WaitUntilBlocked blocks until migration is paused at docID.
+func (p *migrationPauser) WaitUntilBlocked() {
+	p.t.Helper()
+	base.RequireChanClosed(p.t, p.blocked)
+}
+
+// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
+func (p *migrationPauser) Release() {
+	if !p.release() {
+		require.FailNow(p.t, "migrationPauser.Release called while not paused")
+	}
+}
+
+// Close releases the pauser and resets the LeakyBucket callback.
+func (p *migrationPauser) Close() {
+	p.release()
+}
+
+// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// it was paused.
+func (p *migrationPauser) release() bool {
+	if !p.callbackSet.CompareAndSwap(true, false) {
+		return false
+	}
+	p.ds.SetUpdateXattrsCallback(nil)
+	close(p.blockCh)
+	return true
 }
