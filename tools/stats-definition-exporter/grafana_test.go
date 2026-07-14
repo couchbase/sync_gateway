@@ -148,7 +148,7 @@ func TestSubsystemGrouping(t *testing.T) {
 }
 
 // findChildPanel searches all row panels for a child panel with the given title
-func findChildPanel(d sdkdashboard.Dashboard, title string) *sdkdashboard.Panel {
+func findChildPanel(d sdkdashboard.Dashboard, title string) *sdkdashboard.Panel { //nolint:staticcheck // intentional v1 dashboard schema
 	for i := range d.Panels {
 		rp := d.Panels[i].RowPanel
 		if rp == nil {

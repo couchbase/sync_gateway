@@ -31,6 +31,7 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 // GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
@@ -742,6 +743,11 @@ func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.Metri
 		return nil, fmt.Errorf("Could not get metrics from %s. %s %s -> (%d) %s", b.GetName(), http.MethodGet, url, statusCode, string(resp))
 	}
 
+	return parseServerMetrics(resp)
+}
+
+// parseServerMetrics parses the Prometheus text-exposition format returned by Couchbase Server's /metrics endpoint.
+func parseServerMetrics(resp []byte) (map[string]*dto.MetricFamily, error) {
 	// filter duplicates from couchbase server or TextToMetricFamilies will fail MB-43772
 	lines := map[string]struct{}{}
 	filteredOutput := []string{}
@@ -754,11 +760,6 @@ func (b *GocbV2Bucket) ServerMetrics(ctx context.Context) (map[string]*dto.Metri
 		filteredOutput = append(filteredOutput, line)
 	}
 	filteredOutput = append(filteredOutput, "")
-	var parser expfmt.TextParser
-	mf, err := parser.TextToMetricFamilies(strings.NewReader(strings.Join(filteredOutput, "\n")))
-	if err != nil {
-		return nil, err
-	}
-
-	return mf, nil
+	parser := expfmt.NewTextParser(model.UTF8Validation)
+	return parser.TextToMetricFamilies(strings.NewReader(strings.Join(filteredOutput, "\n")))
 }
