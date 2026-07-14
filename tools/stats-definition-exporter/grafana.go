@@ -159,15 +159,15 @@ func selectAll() sdkdashboard.VariableOption {
 	}
 }
 
-// generateGrafanaDashboard creates a Grafana dashboard from stat definitions.
-func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) (sdkdashboard.Dashboard, error) {
+// generateGrafanaDashboard creates a Grafana (v1) dashboard from stat definitions.
+func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig) (sdkdashboard.Dashboard, error) { //nolint:staticcheck // intentional v1 dashboard schema
 	datasource := common.DataSourceRef{
 		Type: ptr(config.datasourceType),
 		Uid:  ptr(config.datasourceUID),
 	}
 
-	b := sdkdashboard.NewDashboardBuilder(config.dashboardTitle).
-		Uid(config.dashboardUID).
+	b := sdkdashboard.NewDashboardBuilder(config.dashboardTitle) //nolint:staticcheck // intentional v1 dashboard schema
+	b = b.Uid(config.dashboardUID).
 		Version(1).
 		Tags([]string{"Sync Gateway"}).
 		Tooltip(sdkdashboard.DashboardCursorSyncCrosshair).
@@ -197,7 +197,7 @@ func generateGrafanaDashboard(stats statDefinitions, config grafanaFormatConfig)
 
 	d, err := b.Build()
 	if err != nil {
-		return sdkdashboard.Dashboard{}, fmt.Errorf("build dashboard %q: %w", config.dashboardUID, err)
+		return sdkdashboard.Dashboard{}, fmt.Errorf("build dashboard %q: %w", config.dashboardUID, err) //nolint:staticcheck // intentional v1 dashboard schema
 	}
 	if config.schemaVersion != 0 {
 		d.SchemaVersion = config.schemaVersion
