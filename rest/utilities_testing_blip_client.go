@@ -2282,6 +2282,11 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			updatedHLV.UpdateWithIncomingHLV(opts.incomingHLV)
 		}
 	}
+	// A bodyless norev must never clobber a document we already have real content for.
+	if opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil {
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev for docID %q: no body for version %#v", docID, opts.incomingVersion)
+		return
+	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{

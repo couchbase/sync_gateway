@@ -3532,6 +3532,51 @@ func TestBlipPullConflict(t *testing.T) {
 	})
 }
 
+// TestBlipPullConflictNoRevLosesBody asserts that a bodyless norev can never overwrite a client's known-good
+// revision during conflict resolution (see CBG-5547).
+func TestBlipPullConflictNoRevLosesBody(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeySGTest)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // requires HLV-based conflict detection
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled:      true,
+			LeakyBucketConfig: &base.LeakyBucketConfig{},
+		})
+		defer rt.Close()
+
+		const (
+			cblBody = `{"actor": "cbl"}`
+			docID   = "doc1"
+		)
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer btc.Close()
+
+		client := btcRunner.SingleCollection(btc.id)
+		cblVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
+
+		// SG writes its own conflicting revision afterwards, so it genuinely wins LWW resolution.
+		sgVersion := rt.PutDoc(docID, `{"actor": "sg"}`)
+		require.Greater(t, sgVersion.CV.Value, cblVersion.CV.Value)
+		rt.WaitForPendingChanges()
+
+		// Force SG to fail to retrieve its own revision body, so the pull can only deliver a bodyless norev.
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
+		require.True(t, ok)
+		leakyDataStore.SetGetRawCallback(func(string) error { return gocb.ErrDocumentNotFound })
+		leakyDataStore.SetGetWithXattrCallback(func(string) error { return gocb.ErrDocumentNotFound })
+
+		btcRunner.StartOneshotPull(btc.id)
+
+		require.Never(t, func() bool {
+			body, _, _ := client.GetDoc(docID)
+			return !bytes.Equal(body, []byte(cblBody))
+		}, 2*time.Second, 100*time.Millisecond, "norev overwrote known-good revision with no body")
+	})
+}
+
 func TestManyChannelsRemovedOnDocUpdate(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache, base.KeySGTest)
 
