@@ -135,12 +135,14 @@ func (sw *StatWaiter) Add(count int) {
 }
 
 func (sw *StatWaiter) AddAndWait(count int) {
+	sw.tb.Helper()
 	sw.targetCount += int64(count)
 	sw.Wait()
 }
 
 // Wait uses backoff retry for up to ~33s
 func (sw *StatWaiter) Wait() {
+	sw.tb.Helper()
 	actualCount := sw.stat.Value()
 	if actualCount >= sw.targetCount {
 		return
@@ -160,6 +162,7 @@ func (sw *StatWaiter) Wait() {
 }
 
 func AssertEqualBodies(t *testing.T, expected, actual Body) {
+	t.Helper()
 	expectedCanonical, err := base.JSONMarshalCanonical(expected)
 	assert.NoError(t, err)
 	actualCanonical, err := base.JSONMarshalCanonical(actual)
@@ -169,6 +172,7 @@ func AssertEqualBodies(t *testing.T, expected, actual Body) {
 
 // WaitForUserWaiterChange waits for number of users found to change. Fails test harness if the no users were modified.
 func WaitForUserWaiterChange(t testing.TB, userWaiter *ChangeWaiter) {
+	t.Helper()
 	timeout := 10 * time.Second * GetCachingFeedDelayFactor(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, userWaiter.RefreshUserCount(), "Expected the user count for the ChangeWaiter to be updated")
@@ -448,6 +452,7 @@ func (dbc *DatabaseContext) CollectionChannelViewForTest(tb testing.TB, collecti
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
 func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUser bool) (info *auth.PrincipalConfig, err error) {
+	tb.Helper()
 	ctx := base.TestCtx(tb)
 	var princ auth.Principal
 	if isUser {
@@ -531,9 +536,7 @@ func IsCovered(plan map[string]any) bool {
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
+	dbcOptions.EnableXattr = true
 
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
@@ -547,14 +550,14 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	}
 }
 
-// SetupTestDBWithOptions creates an online test db with the specified database context options. Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).
+// SetupTestDBWithOptions creates an online test db with the specified database context options. Note that environment variables will override values (SG_TEST_USE_DEFAULT_COLLECTION).
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
 	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
-// SetupTestDBForBucketWithOptions sets up a test database with the specified database context options.  Note that environment variables will override values (SG_TEST_USE_XATTRS, SG_TEST_USE_DEFAULT_COLLECTION).
+// SetupTestDBForBucketWithOptions sets up a test database with the specified database context options.  Note that environment variables will override values (SG_TEST_USE_DEFAULT_COLLECTION).
 func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	if dbcOptions.Scopes == nil {
@@ -628,6 +631,7 @@ func GetScopesOptionsDefaultCollectionOnly(_ testing.TB) ScopesOptions {
 }
 
 func GetSingleDatabaseCollectionWithUser(ctx context.Context, tb testing.TB, database *Database) (*DatabaseCollectionWithUser, context.Context) {
+	tb.Helper()
 	c := &DatabaseCollectionWithUser{
 		DatabaseCollection: GetSingleDatabaseCollection(tb, database.DatabaseContext),
 		user:               database.user,
@@ -636,6 +640,7 @@ func GetSingleDatabaseCollectionWithUser(ctx context.Context, tb testing.TB, dat
 }
 
 func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
+	tb.Helper()
 	require.Equal(tb, 1, len(database.CollectionByID), fmt.Sprintf("Database must only have a single collection configured has %d", len(database.CollectionByID)))
 	for _, collection := range database.CollectionByID {
 		return collection
@@ -720,18 +725,12 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		History:   revTree,
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
-	if base.TestUseXattrs() {
-
-		opts := &sgbucket.MutateInOptions{
-			MacroExpansion: macroExpandSpec(base.SyncXattrName),
-		}
-		ctx := base.TestCtx(t)
-		_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
-		require.NoError(t, err)
-	} else {
-		_, err := collection.dataStore.Add(base.TestCtx(t), key, 0, base.MustJSONMarshal(t, Body{base.SyncPropertyName: syncData, "key": key}))
-		require.NoError(t, err)
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: macroExpandSpec(base.SyncXattrName),
 	}
+	ctx := base.TestCtx(t)
+	_, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(body), map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, syncData)}, nil, opts)
+	require.NoError(t, err)
 }
 
 // GetIndexPartitionCount returns the number of partitions for a given index. This function queries index nodes directly and would not be suitable for production use, since this port is not generally accessible.
@@ -747,7 +746,7 @@ func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbu
 	}
 	ctx := base.TestCtx(t)
 	uri := "/getIndexStatus"
-	respBytes, statusCode, err := base.MgmtRequest(bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
+	respBytes, statusCode, err := base.MgmtRequest(ctx, bucket.HttpClient(ctx), gsiEps[0], http.MethodGet, uri, "application/json", username, password, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, statusCode, "unexpected status code for %s", respBytes)
 	var output struct {
@@ -797,6 +796,7 @@ func CreateTestDocument(docID string, revID string, body Body, deleted bool, exp
 
 // requireCurrentVersion fetches the document by key, and validates that cv matches.
 func (c *DatabaseCollection) RequireCurrentVersion(t *testing.T, key string, source string, version uint64) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	doc, err := c.GetDocument(ctx, key, DocUnmarshalSync)
 	require.NoError(t, err)
@@ -901,6 +901,7 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 // heartbeat document. When restarting a background manager, the state of the heartbeat document is checked, allowing
 // for a small race if you try to stop and immediately restart a background manager.
 func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *BackgroundManager[O]) {
+	t.Helper()
 	if mgr.mode() != backgroundManagerModeSingleNode {
 		return
 	}
@@ -921,6 +922,7 @@ func (s BackgroundManagerStatus) GetState() BackgroundProcessState {
 
 // RequireBackgroundManagerState waits for a BackgroundManager to reach a given state or fails test harness.
 func RequireBackgroundManagerState[O any](t testing.TB, mgr *BackgroundManager[O], expState BackgroundProcessState) BackgroundManagerStatus {
+	t.Helper()
 	waitTime := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
 	ctx := base.TestCtx(t)
 	var status *BackgroundManagerStatus
@@ -940,6 +942,7 @@ func RequireBackgroundManagerState[O any](t testing.TB, mgr *BackgroundManager[O
 
 // AssertSyncInfoMetaVersion will assert that meta version is equal to current product version
 func AssertSyncInfoMetaVersion(t *testing.T, ds base.DataStore) {
+	t.Helper()
 	rawBody, _, err := ds.GetRaw(base.TestCtx(t), base.SGSyncInfo)
 	require.NoError(t, err)
 	syncInfo, decodeErr := base.DecodeSyncInfo(rawBody)
@@ -1010,6 +1013,7 @@ func GetChangeEntryCV(t *testing.T, entry *ChangeEntry) Version {
 
 // SafeDocumentName returns a document name free of any special characters for use in tests.
 func SafeDocumentName(t *testing.T, name string) string {
+	t.Helper()
 	docName := strings.ToLower(name)
 	for _, c := range []string{" ", "<", ">", "/", "="} {
 		docName = strings.ReplaceAll(docName, c, "_")
@@ -1021,6 +1025,7 @@ func SafeDocumentName(t *testing.T, name string) string {
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database. Fails the
 // test harness if cache does not catch up.
 func (db *DatabaseContext) WaitForPendingChanges(t testing.TB) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	lastSequence, err := db.sequences.lastSequence(ctx)
 	require.NoError(t, err, "Error retrieving last sequence")
@@ -1031,12 +1036,14 @@ func (db *DatabaseContext) WaitForPendingChanges(t testing.TB) {
 // WaitForSequence blocks until the change-cache has processed up to the target sequence. Fails the test harness
 // if cache does not catch up.
 func (db *DatabaseContext) WaitForSequence(t testing.TB, targetSequence uint64) {
+	t.Helper()
 	db.changeCache.requireWaitForSequence(t, targetSequence)
 }
 
 // requireWaitForSequence blocks until the change cache has processed up to the target sequence. Fails the test harness
 // if cache does not catch up.
 func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	startTime := time.Now()
 	waitForSequenceTimeout := defaultWaitForSequence
@@ -1048,6 +1055,7 @@ func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64
 
 // HasCachingFeedDelay returns true if a user has specified
 func HasCachingFeedDelay(t testing.TB) bool {
+	t.Helper()
 	delay, err := GetCachingFeedDelay()
 	require.NoError(t, err, "Error parsing caching feed delay")
 	return delay > 0
@@ -1056,6 +1064,7 @@ func HasCachingFeedDelay(t testing.TB) bool {
 // GetCachingFeedDelayFactor returns a multipler for increasing wait times for sequences if the test harness is
 // configured with a delayed caching feed.
 func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
+	t.Helper()
 	cachingDelay, err := GetCachingFeedDelay()
 	require.NoError(t, err)
 	if cachingDelay == 0 {

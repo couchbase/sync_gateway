@@ -452,9 +452,10 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 
 // refreshNodeRegistrations iterates the tracked buckets, registers this node, and returns
 // the per-node version map and the aggregate freeze record across those registries. Returns
-// an error if every tracked bucket failed so callers can leave the previously-cached state
-// in place — stale is preferable to flipping the cluster compat version to nil on a transient
-// bucket outage.
+// an error only if every tracked bucket failed for a reason other than vanishing — stale cache
+// is preferable to flipping the cluster compat version to nil on a transient bucket outage. If
+// every tracked bucket vanished instead, that's reported as success with empty results, so the
+// caller updates the cache to reflect that no buckets remain tracked.
 func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (map[string]base.ClusterCompatVersion, *base.RegistryFreeze, map[string]*base.RegistryPreCCVAwareNode, *base.ClusterCompatVersion, error) {
 	buckets := m.trackedBucketList()
 	if len(buckets) == 0 {
@@ -475,6 +476,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	var aggregateFreeze *base.RegistryFreeze
 	var aggregateHWM *base.ClusterCompatVersion
 	succeeded := 0
+	vanished := 0
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
 		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
@@ -489,6 +491,12 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 			RatchetHWM:       ratchet,
 		})
 		if err != nil {
+			if errors.Is(err, errBucketDoesNotExist) {
+				base.InfofCtx(ctx, base.KeyConfig, "Bucket %s no longer exists in cluster; removing from cluster compatibility manager: %v", base.MD(bucket), err)
+				m.releaseBucket(bucket)
+				vanished++
+				continue
+			}
 			base.WarnfCtx(ctx, "Failed to register node version in bucket %s: %v", base.MD(bucket), err)
 			continue
 		}
@@ -525,9 +533,11 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 			preCCVAwareMap[uuid] = &cp
 		}
 	}
-	if succeeded == 0 {
+	if succeeded == 0 && vanished < len(buckets) {
 		return nil, nil, nil, nil, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
 	}
+	// If every bucket vanished, the aggregates below are still empty/nil — correctly
+	// representing "no buckets tracked" for the cache.
 	return nodeMap, aggregateFreeze, preCCVAwareMap, aggregateHWM, nil
 }
 

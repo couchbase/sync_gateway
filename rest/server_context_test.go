@@ -29,6 +29,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestIsPerDBMigrationInProgress verifies the guard that prevents a joining node from marking
@@ -238,14 +239,12 @@ func TestAllDatabaseNames(t *testing.T) {
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
 
-	xattrs := base.TestUseXattrs()
 	useViews := base.TestsDisableGSI()
 	dbConfig := DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
 		Name:               "imdb1",
 		AllowEmptyPassword: base.Ptr(true),
 		NumIndexReplicas:   base.Ptr(uint(0)),
-		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
 	_, err := serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -258,7 +257,6 @@ func TestAllDatabaseNames(t *testing.T) {
 		Name:               "imdb2",
 		AllowEmptyPassword: base.Ptr(true),
 		NumIndexReplicas:   base.Ptr(uint(0)),
-		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
 	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -311,14 +309,12 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
-	xattrs := base.TestUseXattrs()
 	useViews := base.TestsDisableGSI()
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfig,
 		Name:               databaseName,
 		AllowEmptyPassword: base.Ptr(true),
-		EnableXattrs:       &xattrs,
 		UseViews:           &useViews,
 	}
 	dbContext, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -843,8 +839,7 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 						Username: base.TestClusterUsername(),
 						Password: base.TestClusterPassword(),
 					},
-					EnableXattrs: base.Ptr(base.TestUseXattrs()),
-					UseViews:     base.Ptr(base.TestsDisableGSI()),
+					UseViews: base.Ptr(base.TestsDisableGSI()),
 				}
 				if scopes {
 					if !base.TestsUseNamedCollections() {
@@ -874,16 +869,12 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 // TestOfflineDatabaseStartup ensures that background processes are not actually running when starting up a database in offline mode.
 func TestOfflineDatabaseStartup(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.TestUseXattrs() {
-		t.Skip("TestOfflineDatabaseStartup requires xattrs for document import")
-	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				StartOffline: base.Ptr(true),
 				AutoImport:   true,
-				EnableXattrs: base.Ptr(true),
 			},
 		},
 	})
@@ -1115,7 +1106,7 @@ func TestValidateChangesUseSystemMetadataCollection(t *testing.T) {
 }
 
 func TestHeapProfileValuesPopulated(t *testing.T) {
-	totalMemory := uint64(float64(getTotalMemory(base.TestCtx(t))) * 0.85)
+	totalMemory := uint64(float64(base.GetTotalMemory(base.TestCtx(t), true)) * 0.85)
 	testCases := []struct {
 		name                           string
 		startupConfig                  *StartupConfig
@@ -1283,4 +1274,149 @@ func TestCollectStackTraceFile(t *testing.T) {
 	files := getFilenames(t, tempPath)
 	require.Len(t, files, 10)
 	require.ElementsMatch(t, files, expectedFiles)
+}
+
+func TestSendingMetricsToNsServerCollector(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+	bucket := rt.Bucket()
+
+	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
+	require.NoError(t, err)
+
+	uri := "/internal/settings/telemetry"
+	respBytes, _, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
+	require.NoError(t, err)
+	var settings base.FleetManagerCollectorSettings
+	require.NoError(t, base.JSONUnmarshal(respBytes, &settings))
+	assert.True(t, settings.Enabled) // enabled by default
+	assert.NotEmpty(t, settings.ReportingInterval)
+
+	// Exercise the production send path rather than re-implementing the POST here.
+	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
+	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics))
+}
+
+// TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole verifies that a user holding only the
+// role Sync Gateway is bootstrapped with (mobile_sync_gateway on Enterprise, bucket_full_access on
+// Community) is authorized to POST to the ns_server collector endpoint. Operators are expected to
+// bootstrap Sync Gateway with such a user, so we point the server's bootstrap credentials at a
+// freshly-created user with that role and run the production send path as it.
+func TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+
+	eps, httpClient, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	roleName := MobileSyncGatewayRole.RoleName
+	if base.TestsUseServerCE() {
+		roleName = BucketFullAccessRole.RoleName
+	}
+
+	const username, password = "MobileSyncGatewayUser", "password"
+	role := fmt.Sprintf("%s[%s]", roleName, rt.Bucket().GetName())
+	base.MakeUser(t, httpClient, eps[0], username, password, []string{role})
+	defer base.DeleteUser(t, httpClient, eps[0], username)
+
+	// Redirect the send path's authentication to the scoped user for the test;
+	// sendFleetManagerMetrics reads these credentials at call time.
+	sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password = username, password
+
+	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
+	require.NoError(t, sc.sendFleetManagerMetrics(ctx, metrics))
+}
+
+func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+	bucket := rt.Bucket()
+
+	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
+	require.NoError(t, err)
+
+	uri := "/internal/settings/telemetry"
+	disableBody := []byte(`{"enabled": false}`)
+	respBytes, statusCode, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader(disableBody))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, statusCode, "unexpected response: %s code: %d", string(respBytes), statusCode)
+
+	// Re-enable the cluster-wide collector via defer so we don't leak the disabled state to other
+	// tests on the shared cluster if an assertion below fails before we get to flip it back.
+	defer func() {
+		enableBody := []byte(`{"enabled": true}`)
+		respBytes, statusCode, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader(enableBody))
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, statusCode)
+
+		// verify enabled is true now
+		settings := base.FleetManagerCollectorSettings{}
+		require.NoError(t, base.JSONUnmarshal(respBytes, &settings))
+		assert.True(t, settings.Enabled)
+	}()
+
+	var settings base.FleetManagerCollectorSettings
+	require.NoError(t, base.JSONUnmarshal(respBytes, &settings))
+	assert.False(t, settings.Enabled)
+
+	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
+	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics))
+}
+
+func TestNoContentResponseForCollector(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	gocbV2Bucket, err := base.AsGocbV2Bucket(rt.Bucket())
+	require.NoError(t, err)
+
+	metrics := base.CollectSGWFleetManagerMetrics(base.TestCtx(t), "someNodeID", "myHost")
+	uri := fmt.Sprintf("/_telemetryCollector/ingest?product_name=%s&instance_id=%s", base.ProductInfoName, "someID")
+	metricsBytes, err := base.JSONMarshal(metrics)
+	require.NoError(t, err)
+	respBytes, statusCode, err := gocbV2Bucket.MgmtRequest(rt.Context(), http.MethodPost, uri, "application/json", bytes.NewReader(metricsBytes))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, statusCode)
+	assert.Empty(t, respBytes)
+}
+
+func TestAllFleetManagerMetricsPopulated(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+
+	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
+	assert.NotEmpty(t, metrics.InstanceID)
+	assert.NotZero(t, metrics.CpuCores)
+	// RAM values are sampled directly at collection time, so they must be populated even before the
+	// stats-logger ticker has run (a "0" string passes NotEmpty, which is why we check for non-zero).
+	assert.NotEqual(t, "0", metrics.RamBytesTotal)
+	assert.NotEqual(t, "0", metrics.RamBytesUsed)
+	assert.NotEmpty(t, metrics.OSVersion)
+	assert.NotEmpty(t, metrics.Hostname)
+	assert.GreaterOrEqual(t, metrics.UptimeSeconds, 0)
+	assert.NotEmpty(t, metrics.ProductInfo.Edition)
+	assert.NotEmpty(t, metrics.ProductInfo.Version)
+	assert.NotEmpty(t, metrics.ProductInfo.Name)
 }

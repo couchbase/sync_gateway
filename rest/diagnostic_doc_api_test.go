@@ -927,8 +927,6 @@ func TestGetUserDocAccessDuplicates(t *testing.T) {
 
 // Tests the Diagnostic Endpoint to dry run Sync Function
 func TestSyncFuncDryRun(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})
@@ -1497,7 +1495,6 @@ func TestSyncFuncDryRunUserXattrs(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("Requires EE for some config properties")
 	}
-	base.SkipImportTestsIfNotEnabled(t)
 
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -1694,9 +1691,6 @@ func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
 }
 
 func TestImportFilterDryRun(t *testing.T) {
-
-	base.SkipImportTestsIfNotEnabled(t)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 	})

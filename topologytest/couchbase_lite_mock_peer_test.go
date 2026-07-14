@@ -64,6 +64,7 @@ func (p *CouchbaseLiteMockPeer) getLatestDocVersion(dsName sgbucket.DataStoreNam
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
 func (p *CouchbaseLiteMockPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body) {
+	p.TB().Helper()
 	bodyBytes, meta := p.getLatestDocVersion(dsName, docID)
 	require.NotNil(p.TB(), meta, "docID:%s not found on %s", docID, p)
 	var body db.Body
@@ -73,6 +74,7 @@ func (p *CouchbaseLiteMockPeer) GetDocument(dsName sgbucket.DataStoreName, docID
 
 // GetDocumentIfExists returns the latest version of a document.
 func (p *CouchbaseLiteMockPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, docID string) (m DocMetadata, body *db.Body, exists bool) {
+	p.TB().Helper()
 	bodyBytes, meta := p.getLatestDocVersion(dsName, docID)
 	if meta == nil {
 		return DocMetadata{}, nil, false
@@ -87,6 +89,7 @@ func (p *CouchbaseLiteMockPeer) GetDocumentIfExists(dsName sgbucket.DataStoreNam
 
 // getSingleSGBlipClient returns the single blip client for the peer. If there are multiple clients, or no clients it will fail the test. This is temporary to stub support for multiple Sync Gateway peers, see CBG-4433.
 func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
+	p.TB().Helper()
 	// couchbase lite peer can't exist separately from sync gateway peer, CBG-4433
 	require.Len(p.TB(), p.blipClients, 1, "blipClients haven't been created for %s, a temporary limitation of CouchbaseLiteMockPeer", p)
 	for _, c := range p.blipClients {
@@ -98,6 +101,7 @@ func (p *CouchbaseLiteMockPeer) getSingleSGBlipClient() *PeerBlipTesterClient {
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+	p.TB().Helper()
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	var docVersion db.DocVersion
 	var hlv *db.HybridLogicalVector
@@ -120,6 +124,7 @@ func (p *CouchbaseLiteMockPeer) CreateDocument(dsName sgbucket.DataStoreName, do
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+	p.TB().Helper()
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	_, parentMeta := p.getLatestDocVersion(dsName, docID)
 	parentVersion := rest.EmptyDocVersion()
@@ -147,6 +152,7 @@ func (p *CouchbaseLiteMockPeer) WriteDocument(dsName sgbucket.DataStoreName, doc
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
+	p.TB().Helper()
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	_, parentMeta := p.getLatestDocVersion(dsName, docID)
 	parentVersion := rest.EmptyDocVersion()
@@ -161,6 +167,7 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+	p.TB().Helper()
 	compareHLV := !topology.CompareRevTreeOnly()
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
@@ -187,6 +194,7 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 
 // WaitForCV waits for a document to reach a specific CV. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+	p.TB().Helper()
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
@@ -208,6 +216,7 @@ func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID s
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
+	p.TB().Helper()
 	client := p.getSingleSGBlipClient().CollectionClient(dsName)
 	expectedVersion := db.DocVersion{CV: expected.CV(p.TB())}
 	if p.Type() == PeerTypeCouchbaseLiteV3 {
@@ -334,6 +343,7 @@ func (r *CouchbaseLiteMockReplication) PassivePeer() Peer {
 
 // Start starts the replication
 func (r *CouchbaseLiteMockReplication) Start() {
+	r.btc.TB().Helper()
 	base.InfofCtx(r.btc.TB().Context(), base.KeySGTest, "Starting CBL replication: %s", r)
 	switch r.direction {
 	case PeerReplicationDirectionPush:
@@ -347,6 +357,7 @@ func (r *CouchbaseLiteMockReplication) Start() {
 
 // Stop halts the replication. The replication can be restarted after it is stopped.
 func (r *CouchbaseLiteMockReplication) Stop() {
+	r.btc.TB().Helper()
 	base.InfofCtx(r.btc.TB().Context(), base.KeySGTest, "Stopping CBL replication: %s", r)
 	switch r.direction {
 	case PeerReplicationDirectionPush:

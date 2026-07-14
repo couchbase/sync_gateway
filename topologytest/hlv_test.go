@@ -40,6 +40,7 @@ func (b BodyAndVersion) GoString() string {
 
 // requireBodyEqual compares bodies, removing private properties that might exist.
 func requireBodyEqual(t *testing.T, expected []byte, actual db.Body) {
+	t.Helper()
 	actual = actual.DeepCopy(base.TestCtx(t))
 	stripInternalProperties(actual)
 	require.JSONEq(t, string(expected), string(base.MustJSONMarshal(t, actual)))
@@ -52,6 +53,7 @@ func stripInternalProperties(body db.Body) {
 
 // waitForVersionAndBody waits for a document to reach a specific version on all peers.
 func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
@@ -197,6 +199,7 @@ func waitForAnyCV(t *testing.T, dsName base.ScopeAndCollectionName, docID string
 //   - CBL1: 7@rosmar1;5@cbl1
 //   - CBL2: 8@rosmar2;6@cbl2
 func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionName, docID string, topology Topology) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for converging tombstones")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -231,6 +234,7 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 
 // waitForTombstoneVersion waits for a tombstone document with a particular HLV to be present on all peers.
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {

@@ -238,6 +238,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 }
 
 func assertNewAllocatorStats(t *testing.T, stats *base.DatabaseStats, incrCount, reservedCount, assignedCount, releasedCount int64, lastAssignedValue, lastReservedValue uint64) {
+	t.Helper()
 	assert.Equal(t, incrCount, stats.SequenceIncrCount.Value())
 	assert.Equal(t, uint64(reservedCount), stats.SequenceReservedCount.Value())
 	assert.Equal(t, uint64(assignedCount), stats.SequenceAssignedCount.Value())

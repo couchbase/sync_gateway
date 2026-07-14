@@ -35,6 +35,7 @@ func NewTestAuthenticator(t testing.TB, dataStore sgbucket.DataStore, channelCom
 
 // requireCanSeeChannels asserts that the given principal can see all of the specified channels.
 func requireCanSeeChannels(t *testing.T, princ Principal, channels ...string) {
+	t.Helper()
 	for _, channel := range channels {
 		canSee, err := princ.canSeeChannel(channel)
 		require.NoError(t, err)
@@ -44,6 +45,7 @@ func requireCanSeeChannels(t *testing.T, princ Principal, channels ...string) {
 
 // assertCannotSeeChannels asserts that the given principal cannot see any of the specified channels.
 func requireCannotSeeChannels(t *testing.T, princ Principal, channels ...string) {
+	t.Helper()
 	for _, channel := range channels {
 		canSee, err := princ.canSeeChannel(channel)
 		require.NoError(t, err)
@@ -3214,6 +3216,7 @@ func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
 
 // requireExpandWildCardChannel is a helper function to assert that a user's wildcard channel expansion produces the expected result.
 func requireExpandWildCardChannel(t *testing.T, user User, expectedChannels, channelsToExpand []string) {
+	t.Helper()
 	expandedChannels, err := user.expandWildCardChannel(base.SetFromArray(channelsToExpand))
 	require.NoError(t, err)
 	assert.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)

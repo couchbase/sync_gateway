@@ -21,6 +21,7 @@ const standardMessage = "foobar"
 
 // RequireLogIs asserts that the logs produced by function f contain string s.
 func requireLogIs(t testing.TB, s string, f func()) {
+	t.Helper()
 	b := bytes.Buffer{}
 
 	config := &ConsoleLoggerConfig{
@@ -50,6 +51,7 @@ func requireLogIs(t testing.TB, s string, f func()) {
 }
 
 func RequireLogMessage(t testing.TB, ctx context.Context, expectedMessage string, logString string) {
+	t.Helper()
 	requireLogIs(t, expectedMessage, func() { InfofCtx(ctx, KeyAll, standardMessage) })
 }
 

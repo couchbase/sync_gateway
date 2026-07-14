@@ -22,8 +22,6 @@ import (
 )
 
 func TestCollectionsSyncImportFunctions(t *testing.T) {
-	base.SkipImportTestsIfNotEnabled(t)
-
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
 	ctx := base.TestCtx(t)
@@ -64,8 +62,7 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 				}
 			}
 		  },
-		  "num_index_replicas": 0,
-		  "enable_shared_bucket_access": true,
+		  "index": {"num_replicas": 0},
 		  "use_views": false}`,
 		tb.GetName(), dataStore1.ScopeName(), dataStore1.CollectionName(),
 		importFilter1,

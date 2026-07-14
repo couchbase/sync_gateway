@@ -21,6 +21,7 @@ import (
 )
 
 func (rt *RestTester) RequireDocNotFound(docID string) {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), "")
 	RequireStatus(rt.TB(), rawResponse, http.StatusNotFound)
 }

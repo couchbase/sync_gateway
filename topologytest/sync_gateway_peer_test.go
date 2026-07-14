@@ -50,6 +50,7 @@ func (p *SyncGatewayPeer) String() string {
 
 // getCollection returns the collection for the given data store name and a related context. The special context is needed to add fields for audit logging, required by build tag cb_sg_devmode.
 func (p *SyncGatewayPeer) getCollection(dsName sgbucket.DataStoreName) (*db.DatabaseCollectionWithUser, context.Context) {
+	p.TB().Helper()
 	dbCtx, err := db.GetDatabase(p.rt.GetDatabase(), nil)
 	require.NoError(p.TB(), err)
 	collection, err := dbCtx.GetDatabaseCollectionWithUser(dsName.ScopeName(), dsName.CollectionName())
@@ -60,6 +61,7 @@ func (p *SyncGatewayPeer) getCollection(dsName sgbucket.DataStoreName) (*db.Data
 
 // GetDocument returns the latest version of a document. The test will fail the document does not exist.
 func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID string) (DocMetadata, db.Body) {
+	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(p.TB(), err)
@@ -68,6 +70,7 @@ func (p *SyncGatewayPeer) GetDocument(dsName sgbucket.DataStoreName, docID strin
 
 // GetDocumentIfExists returns the latest version of a document if it exists.
 func (p *SyncGatewayPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, docID string) (meta DocMetadata, body *db.Body, exists bool) {
+	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	if base.IsDocNotFoundError(err) {
@@ -83,6 +86,7 @@ func (p *SyncGatewayPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, doc
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.
 func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+	p.TB().Helper()
 	docMetadata := p.writeDocument(dsName, docID, body)
 	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Created document %s with %#+v", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
@@ -94,6 +98,7 @@ func (p *SyncGatewayPeer) CreateDocument(dsName sgbucket.DataStoreName, docID st
 
 // writeDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID string, body []byte) DocMetadata {
+	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 
 	var doc *db.Document
@@ -124,6 +129,7 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 
 // WriteDocument writes a document to the peer. The test will fail if the write does not succeed.
 func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID string, body []byte) BodyAndVersion {
+	p.TB().Helper()
 	docMetadata := p.writeDocument(dsName, docID, body)
 	base.InfofCtx(p.Context(), base.KeySGTest, "%s: Wrote document %s with %s", p, docID, docMetadata.HLVString())
 	return BodyAndVersion{
@@ -135,6 +141,7 @@ func (p *SyncGatewayPeer) WriteDocument(dsName sgbucket.DataStoreName, docID str
 
 // DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata {
+	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 	require.NoError(p.TB(), err)
@@ -148,6 +155,7 @@ func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID st
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 	var doc *db.Document
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
@@ -172,6 +180,7 @@ func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID
 
 // WaitForCV waits for a document to reach a specific CV. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 	var doc *db.Document
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
@@ -191,6 +200,7 @@ func (p *SyncGatewayPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string,
 
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
+	p.TB().Helper()
 	docBytes := p.WaitForDocVersion(dsName, docID, expected, topology)
 	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s. Replications:\n%s", docID, docBytes, topology.GetDocState(p.TB(), dsName, docID))
 }

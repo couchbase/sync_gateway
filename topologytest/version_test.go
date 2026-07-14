@@ -94,6 +94,7 @@ func (v DocMetadata) HLVString() string {
 
 // DocMetadataFromDocVersion returns metadata DocVersion from the given document and version.
 func DocMetadataFromDocVersion(t testing.TB, docID string, hlv *db.HybridLogicalVector, version rest.DocVersion) DocMetadata {
+	t.Helper()
 	m := DocMetadata{
 		DocID:       docID,
 		RevTreeID:   version.RevTreeID,

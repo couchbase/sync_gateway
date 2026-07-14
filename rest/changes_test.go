@@ -266,9 +266,6 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 //   - Update this doc again, triggering unused sequence range release
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it writes directly to the xattr")
-	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -334,9 +331,6 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 //   - Update this doc again, triggering unused sequence range release
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test requires xattrs because it writes directly to the xattr")
-	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{

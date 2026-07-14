@@ -13,6 +13,8 @@ package base
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -195,24 +197,6 @@ func rosmarUriFromPath(path string) string {
 	return uri + strings.ReplaceAll(path, `\`, `/`)
 }
 
-// Should Sync Gateway use XATTRS functionality when running unit tests?
-func TestUseXattrs() bool {
-	useXattrs, isSet := os.LookupEnv(TestEnvSyncGatewayUseXattrs)
-	if !isSet {
-		return true
-	}
-
-	val, err := strconv.ParseBool(useXattrs)
-	if err != nil {
-		panic(fmt.Sprintf("unable to parse %q value %q: %v", TestEnvSyncGatewayUseXattrs, useXattrs, err))
-	}
-	if !val {
-		panic(fmt.Sprintf("sync gateway %s requires xattrs to be enabled, remove env var %s=%s", ProductVersion, TestEnvSyncGatewayUseXattrs, useXattrs))
-	}
-
-	return val
-}
-
 // Should Sync Gateway skip TLS verification. Default: DefaultTestTLSSkipVerify
 func TestTLSSkipVerify() bool {
 	tlsSkipVerify, isSet := os.LookupEnv(TestEnvTLSSkipVerify)
@@ -279,22 +263,6 @@ func TestSupportsMobileXDCR() bool {
 	return GTestBucketPool.cluster.isServerEnterprise()
 }
 
-// Should tests try to drop GSI indexes before flushing buckets?
-// See SG #3422
-func TestsShouldDropIndexes() bool {
-
-	// First check if the SG_TEST_USE_XATTRS env variable is set
-	dropIndexes := os.Getenv(TestEnvSyncGatewayDropIndexes)
-
-	if strings.EqualFold(dropIndexes, TestEnvSyncGatewayTrue) {
-		return true
-	}
-
-	// Otherwise fallback to hardcoded default
-	return DefaultDropIndexes
-
-}
-
 // TestsDisableGSI returns true if tests should be forced to avoid any GSI-specific code.
 func TestsDisableGSI() bool {
 	// Disable GSI when running with Walrus
@@ -330,6 +298,35 @@ func TestUseCouchbaseServer() bool {
 // Deprecated: use sgtest.UnitTestUrlIsWalrus() in new code.
 func UnitTestUrlIsWalrus() bool {
 	return sgtest.UnitTestUrlIsWalrus()
+}
+
+// TestClusterVersion returns the Couchbase Server version backing the test bucket pool. It fails the
+// test if there is no cluster connection (i.e. not running against Couchbase Server).
+func TestClusterVersion(t testing.TB) *ComparableBuildVersion {
+	require.NotNil(t, GTestBucketPool, "GTestBucketPool is not initialized")
+	require.NotNil(t, GTestBucketPool.cluster, "no cluster connection available - not running against Couchbase Server")
+	version := GTestBucketPool.cluster.version
+	return &version
+}
+
+// RequireServerVersionForTest skips the test unless the Couchbase Server backing the test bucket pool
+// is at least the minimum version required for its release train. Pass one minimum version per release
+// train the feature shipped in, e.g. RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0"). This
+// is a no-op when not running against Couchbase Server, since those tests are gated separately.
+func RequireServerVersionForTest(t testing.TB, minReleaseVersions ...string) {
+	if !sgtest.TestUseCouchbaseServer() {
+		return
+	}
+	minVersions := make([]*ComparableBuildVersion, 0, len(minReleaseVersions))
+	for _, v := range minReleaseVersions {
+		parsed, err := NewComparableBuildVersionFromString(v)
+		require.NoError(t, err, "couldn't parse minimum version %q", v)
+		minVersions = append(minVersions, parsed)
+	}
+	serverVersion := TestClusterVersion(t)
+	if !serverVersion.AtLeastReleaseVersion(minVersions...) {
+		t.Skipf("Test requires Couchbase Server %v, but running against %v", minReleaseVersions, serverVersion)
+	}
 }
 
 func TestUseWalrus() bool {
@@ -751,10 +748,12 @@ func DeepCopyInefficient(dst any, src any) error {
 type RetryUntilTrueFunc func() bool
 
 func testRetryUntilTrue(t *testing.T, retryFunc RetryUntilTrueFunc) {
+	t.Helper()
 	testRetryUntilTrueCustom(t, retryFunc, 100, 10000)
 }
 
 func testRetryUntilTrueCustom(t *testing.T, retryFunc RetryUntilTrueFunc, waitTimeMs int, timeoutMs int) {
+	t.Helper()
 	timeElapsedMs := 0
 	for timeElapsedMs < timeoutMs {
 		if retryFunc() {
@@ -784,6 +783,7 @@ func DirExists(filename string) bool {
 
 // AssertWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+	t.Helper()
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()
 		assert.Equal(c, expected, val)
@@ -826,30 +826,26 @@ func TestRequiresCbgt(t testing.TB) {
 
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
+	t.Helper()
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
 }
 
 // RequireXattrDeleteOnDocumentInsertError asserts that the given error represents error deleting xattrs during document delete
 func RequireXattrDeleteOnDocumentInsertError(t testing.TB, e error) {
+	t.Helper()
 	require.True(t, errors.Is(e, sgbucket.ErrDeleteXattrOnDocumentInsert))
 }
 
 // RequireXattrNotFoundError asserts that the given error represents an xattr not found error.
 func RequireXattrNotFoundError(t testing.TB, e error) {
+	t.Helper()
 	require.True(t, IsXattrNotFoundError(e), fmt.Sprintf("Expected error to be an xattr not found error, but was: %v", e))
 }
 
 func requireCasMismatchError(t testing.TB, err error) {
+	t.Helper()
 	require.Error(t, err, "Expected an error of type IsCasMismatch %+v\n", err)
 	require.True(t, IsCasMismatch(err), "Expected error of type IsCasMismatch but got %+v\n", err)
-}
-
-// SkipImportTestsIfNotEnabled skips test that exercise import features
-func SkipImportTestsIfNotEnabled(t *testing.T) {
-
-	if !TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
 }
 
 // RequireAllAssertions ensures that all assertion results were true/ok, and fails the test if any were not.
@@ -860,6 +856,7 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 //	    assert.True(t, condition2),
 //	)
 func RequireAllAssertions(t *testing.T, assertionResults ...bool) {
+	t.Helper()
 	var failed bool
 	for _, ok := range assertionResults {
 		if !ok {
@@ -887,10 +884,12 @@ func LongRunningTest(t *testing.T) {
 }
 
 func AssertTimeGreaterThan(t *testing.T, e1, e2 time.Time, msgAndArgs ...any) bool {
+	t.Helper()
 	return AssertTimestampGreaterThan(t, e1.UnixNano(), e2.UnixNano(), msgAndArgs...)
 }
 
 func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...any) bool {
+	t.Helper()
 	// time.Nanoseconds has poor precision on Windows - equal is good enough there...
 	if runtime.GOOS == "windows" {
 		return assert.GreaterOrEqual(t, e1, e2, msgAndArgs...)
@@ -898,19 +897,63 @@ func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...any) b
 	return assert.Greater(t, e1, e2, msgAndArgs...)
 }
 
-func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (vbNo uint32, err error) {
-
-	cbBucket, ok := AsCouchbaseBucketStore(bucket)
-	if !ok {
-		return 0, fmt.Errorf("GetVbucketForKey not supported for non-Couchbase bucket")
-	}
-
-	maxVbNo, err := cbBucket.GetMaxVbno(ctx)
+func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (uint32, error) {
+	maxVbNo, err := bucket.GetMaxVbno(ctx)
 	if err != nil {
 		return 0, err
 	}
-
 	return sgbucket.VBHash(key, maxVbNo), nil
+}
+
+// VBucket0DocIDs returns count doc IDs that all hash to vBucket 0 for every supported vBucket count
+// (32, 64, 100, 128, 1024). Placing multiple test docs on the same vBucket ensures they are processed
+// sequentially by a single DCP worker, which is required when a test pauses one doc and needs the
+// remaining docs to stay unprocessed until the pause is released.
+//
+// Keys were pre-computed using sgbucket.VBHash and are verified at runtime.
+// count must be between 1 and 6 inclusive.
+func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
+	all := []string{"abbacomes", "baba", "ob", "rz", "aex", "fbz"}
+	require.GreaterOrEqual(t, count, 1, "VBucket0DocIDs: count must be at least 1")
+	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
+	keys := all[:count]
+	ctx := TestCtx(t)
+	for _, key := range keys {
+		vbNo, err := GetVbucketForKey(ctx, bucket, key)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
+	}
+	return keys
+}
+
+// VBucket0AttachmentBodies returns count attachment body byte slices whose v1 attachment data
+// keys (_sync:att:sha1-<digest>) all hash to vBucket 0 for every supported vBucket count
+// (32, 64, 100, 128, 1024). Using these bodies with CreateLegacyAttachmentDoc ensures the
+// SetXattrs calls made by the compaction mark phase are processed by a single DCP worker,
+// preventing concurrent double-close of test synchronisation channels.
+//
+// Bodies were pre-computed by brute-force search. On CBS, each derived key is verified at runtime.
+// count must be between 1 and 5 inclusive.
+func VBucket0AttachmentBodies(t testing.TB, bucket Bucket, count int) [][]byte {
+	all := [][]byte{
+		[]byte("att1224"),
+		[]byte("att1231"),
+		[]byte("att1763"),
+		[]byte("att1906"),
+		[]byte("att2328"),
+	}
+	require.GreaterOrEqual(t, count, 1, "VBucket0AttachmentBodies: count must be at least 1")
+	require.LessOrEqual(t, count, len(all), "VBucket0AttachmentBodies: count %d exceeds the %d pre-computed bodies", count, len(all))
+	bodies := all[:count]
+	ctx := TestCtx(t)
+	for _, body := range bodies {
+		h := sha1.Sum(body)
+		attKey := AttPrefix + "sha1-" + base64.StdEncoding.EncodeToString(h[:])
+		vbNo, err := GetVbucketForKey(ctx, bucket, attKey)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), vbNo, "attachment key %q should map to vBucket 0 (got %d)", attKey, vbNo)
+	}
+	return bodies
 }
 
 // MoveDocument moves the document from src to dst
@@ -1011,11 +1054,13 @@ func TestClusterSpec(t *testing.T) CouchbaseClusterSpec {
 
 // RequireKeysEqual asserts that a map has the expected keys.
 func RequireKeysEqual[T any](t testing.TB, expectedKeys []string, actual map[string]T, msgAndArgs ...any) {
+	t.Helper()
 	require.ElementsMatch(t, expectedKeys, slices.Collect(maps.Keys(actual)), msgAndArgs...)
 }
 
 // RequireXattrNotFound asserts that the given xattr is not found on the document.
 func RequireXattrNotFound(t testing.TB, dataStore sgbucket.DataStore, docID string, xattrName string) {
+	t.Helper()
 	xattrs, _, err := dataStore.GetXattrs(TestCtx(t), docID, []string{xattrName})
 	require.Error(t, err, fmt.Sprintf("Expected xattr %q to not be found on document %q but has contents %s", xattrName, docID, xattrs[xattrName]))
 	RequireXattrNotFoundError(t, err)
@@ -1101,7 +1146,7 @@ func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time
 	}
 }
 
-// RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
+// RequireChanClosed waits for channel to be closed. Will drain the channel if required.
 // Fails the test if the channel is not closed in TestChanTimeout.
 func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
 	t.Helper()

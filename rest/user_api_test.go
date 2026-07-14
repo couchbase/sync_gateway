@@ -1071,9 +1071,6 @@ func TestFunkyUsernames(t *testing.T) {
 	}
 }
 func TestRemovingUserXattr(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
 
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
@@ -1252,8 +1249,8 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
-		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+		`{"bucket": "%s", "index": {"num_replicas": 0}, "scopes":%s}`,
+		testBucket.GetName(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
@@ -1342,6 +1339,7 @@ func TestPutUserUnsetAdminChannelsNamedCollection(t *testing.T) {
 }
 
 func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, ds sgbucket.DataStore) {
+	t.Helper()
 	configChannels := principalConfig.ExplicitChannels
 	if !base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
 		configChannels = principalConfig.CollectionAccess[ds.ScopeName()][ds.CollectionName()].ExplicitChannels_
@@ -1350,6 +1348,7 @@ func requireAdminChannels(t *testing.T, expectedChannels base.Set, principalConf
 }
 
 func requireJWTChannels(t *testing.T, expectedChannels base.Set, principalConfig auth.PrincipalConfig, ds sgbucket.DataStore) {
+	t.Helper()
 	configChannels := principalConfig.JWTChannels
 	if !base.IsDefaultCollection(ds.ScopeName(), ds.CollectionName()) {
 		configChannels = principalConfig.CollectionAccess[ds.ScopeName()][ds.CollectionName()].JWTChannels_

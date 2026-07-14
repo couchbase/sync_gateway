@@ -859,6 +859,7 @@ func startXDCR(t *testing.T, fromBucket base.Bucket, toBucket base.Bucket, opts 
 
 // requireWaitForXDCRDocsProcessed waits for the replication to process the exact number of documents. If more than the expected number of documents are processed, this will fail.
 func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsProcessed uint64) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
@@ -871,6 +872,7 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 
 // requireWaitForXDCRDocsWritten waits for the replication to write the exact number of documents.
 func requireWaitForXDCRDocsWritten(t *testing.T, xdcr Manager, expectedDocsWritten uint64) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
@@ -883,6 +885,7 @@ func requireWaitForXDCRDocsWritten(t *testing.T, xdcr Manager, expectedDocsWritt
 
 // requireCV requires tests that a given hlv from server has sourceID and cas matching the current version.
 func requireCV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
+	t.Helper()
 	var vv *db.HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(vvBytes, &vv))
 	require.Equal(t, cas, vv.CurrentVersionCAS)
@@ -891,6 +894,7 @@ func requireCV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
 
 // requirePV requires tests that a given hlv from server has an entry in the PV with sourceID and cas matching the provided values.
 func requirePV(t *testing.T, vvBytes []byte, sourceID string, cas uint64) {
+	t.Helper()
 	var vv *db.HybridLogicalVector
 	require.NoError(t, base.JSONUnmarshal(vvBytes, &vv))
 	require.NotNil(t, vv.PreviousVersions)

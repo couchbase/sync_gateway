@@ -58,6 +58,7 @@ func controllableClockPeerCount(topologySpec TopologySpecification) (count int) 
 // already-written docs) - so t is required purely to register a t.Cleanup that restores the real clock once this
 // specific (sub)test finishes, before any sibling or later test runs.
 func forceHLCClockTieForTest(t testing.TB, topology Topology) (forced int) {
+	t.Helper()
 	ctx := base.TestCtx(t)
 	fixedTime := sgbucket.HLCWallClock()
 	tieClock := func() uint64 { return fixedTime }
