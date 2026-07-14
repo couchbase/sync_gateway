@@ -1289,7 +1289,7 @@ func TestSendingMetricsToNsServerCollector(t *testing.T) {
 	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
 	require.NoError(t, err)
 
-	uri := "/internal/settings/telemetry"
+	uri := base.TelemetrySettingsEndpoint
 	respBytes, _, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodGet, uri, "application/json", nil)
 	require.NoError(t, err)
 	var settings base.FleetManagerCollectorSettings
@@ -1352,7 +1352,7 @@ func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
 	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
 	require.NoError(t, err)
 
-	uri := "/internal/settings/telemetry"
+	uri := base.TelemetrySettingsEndpoint
 	disableBody := []byte(`{"enabled": false}`)
 	respBytes, statusCode, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader(disableBody))
 	require.NoError(t, err)
@@ -1392,13 +1392,53 @@ func TestNoContentResponseForCollector(t *testing.T) {
 	require.NoError(t, err)
 
 	metrics := base.CollectSGWFleetManagerMetrics(base.TestCtx(t), "someNodeID", "myHost")
-	uri := fmt.Sprintf("/_telemetryCollector/ingest?product_name=%s&instance_id=%s", base.ProductInfoName, "someID")
+	uri := base.TelemetryIngestURI("someID")
 	metricsBytes, err := base.JSONMarshal(metrics)
 	require.NoError(t, err)
 	respBytes, statusCode, err := gocbV2Bucket.MgmtRequest(rt.Context(), http.MethodPost, uri, "application/json", bytes.NewReader(metricsBytes))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, statusCode)
 	assert.Empty(t, respBytes)
+}
+
+// TestGetCollectorSettings exercises the production getCollectorSettings path: it should return the
+// server's enabled flag and reporting interval, reflecting an operator toggling the collector off.
+func TestGetCollectorSettings(t *testing.T) {
+	if !sgtest.TestUseCouchbaseServer() {
+		t.Skip("Fleet Manager Collector only works on CBS")
+	}
+	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0")
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+
+	// Collector is enabled by default, so a fresh read should report enabled with a positive interval.
+	settings, err := sc.getCollectorSettings(ctx)
+	require.NoError(t, err)
+	assert.True(t, settings.Enabled, "collector should be enabled by default")
+	assert.NotEmpty(t, settings.ReportingInterval)
+	assert.NotZero(t, settings.Interval())
+
+	gocbV2Bucket, err := base.AsGocbV2Bucket(rt.Bucket())
+	require.NoError(t, err)
+	uri := base.TelemetrySettingsEndpoint
+
+	// Disable the cluster-wide collector and confirm getCollectorSettings reflects it. Re-enable via
+	// defer so the disabled state doesn't leak to other tests on the shared cluster if an assertion
+	// below fails first.
+	_, statusCode, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader([]byte(`{"enabled": false}`)))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, statusCode)
+	defer func() {
+		_, statusCode, err := gocbV2Bucket.MgmtRequest(ctx, http.MethodPost, uri, "application/json", bytes.NewReader([]byte(`{"enabled": true}`)))
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, statusCode)
+	}()
+
+	settings, err = sc.getCollectorSettings(ctx)
+	require.NoError(t, err)
+	assert.False(t, settings.Enabled, "collector should report as disabled after being disabled")
 }
 
 func TestAllFleetManagerMetricsPopulated(t *testing.T) {

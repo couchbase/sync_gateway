@@ -12,9 +12,12 @@ package base
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/elastic/gosigar"
@@ -22,6 +25,16 @@ import (
 )
 
 const ProductInfoName = "sync_gateway"
+
+// TelemetrySettingsEndpoint is the ns_server management API path exposing the fleet manager
+// collector settings (enabled flag + reporting interval).
+const TelemetrySettingsEndpoint = "/internal/settings/telemetry"
+
+// TelemetryIngestURI builds the ns_server management API path for POSTing collected metrics for a
+// given instance to the fleet manager collector.
+func TelemetryIngestURI(instanceID string) string {
+	return fmt.Sprintf("/_telemetryCollector/ingest?product_name=%s&instance_id=%s", ProductInfoName, url.QueryEscape(instanceID))
+}
 
 type SyncGatewayFleetManagerMetrics struct {
 	InstanceID    string                  `json:"instanceId"`
@@ -43,6 +56,19 @@ type FleetManagerProductInfo struct {
 type FleetManagerCollectorSettings struct {
 	ReportingInterval int  `json:"reportIntervalHours"`
 	Enabled           bool `json:"enabled"`
+}
+
+// defaultFleetManagerReportingInterval is used when the server does not supply a
+// reporting interval (e.g. an older server that predates the telemetry settings endpoint).
+const defaultFleetManagerReportingInterval = time.Hour
+
+// Interval returns the reporting interval as a Duration, falling back to the default when the
+// server hasn't supplied a positive value.
+func (s FleetManagerCollectorSettings) Interval() time.Duration {
+	if s.ReportingInterval <= 0 {
+		return defaultFleetManagerReportingInterval
+	}
+	return time.Duration(s.ReportingInterval) * time.Hour
 }
 
 func CollectSGWFleetManagerMetrics(ctx context.Context, nodeUID, hostname string) SyncGatewayFleetManagerMetrics {
