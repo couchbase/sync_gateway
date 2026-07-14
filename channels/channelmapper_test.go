@@ -593,7 +593,7 @@ func TestNilMetaMap(t *testing.T) {
 
 	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, metaMap, noUser)
 	require.Error(t, err)
-	assert.True(t, err.Error() == "TypeError: Cannot access member 'val' of undefined")
+	assert.Equal(t, `TypeError: Cannot access member "val" of undefined`, err.Error())
 }
 
 func TestChangedUsers(t *testing.T) {

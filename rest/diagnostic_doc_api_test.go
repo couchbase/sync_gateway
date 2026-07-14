@@ -1178,7 +1178,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 			requestDocID:    true, // fetch oldDoc by ID
 			existingDocBody: `{"user":{"num":123, "name":["user1"]}, "channel":"channel1"}`,
 			expectedOutput: SyncFnDryRun{
-				Exception: "Error returned from Sync Function: TypeError: Cannot access member '0' of undefined",
+				Exception: "Error returned from Sync Function: TypeError: Cannot access member \"0\" of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{`got oldDoc`},
@@ -1800,7 +1800,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member \"num\" of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1824,7 +1824,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member \"num\" of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1856,7 +1856,7 @@ func TestImportFilterDryRun(t *testing.T) {
 				},
 			},
 			expectedOutput: ImportFilterDryRun{
-				Exception: "Error returned from Import Filter: TypeError: Cannot access member 'num' of undefined",
+				Exception: "Error returned from Import Filter: TypeError: Cannot access member \"num\" of undefined",
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
