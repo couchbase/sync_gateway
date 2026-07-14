@@ -7147,12 +7147,8 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 	defer adminSrv.Close()
 
-	activeRT := rest.NewRestTester(t, nil)
+	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer activeRT.Close()
-	activeCtx := activeRT.Context()
-
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
-	require.NoError(t, err)
 
 	docID := "test"
 	version := activeRT.PutDoc(docID, `{"prop":true}`)
@@ -7179,7 +7175,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	rest.RequireStatus(t, resp, 200)
 
 	var config db.ReplicationConfig
-	err = json.Unmarshal(resp.BodyBytes(), &config)
+	err := json.Unmarshal(resp.BodyBytes(), &config)
 	require.NoError(t, err)
 	assert.Equal(t, "alice", config.Username)
 	assert.Equal(t, base.RedactedStr, config.Password)
@@ -7418,7 +7414,7 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := rest.NewRestTester(t, rtConfig)
+			activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: rtConfig.SyncFn, SgReplicateEnabled: true})
 			defer activeRT.Close()
 
 			for _, rt := range []*rest.RestTester{passiveRT, activeRT} {
@@ -7476,9 +7472,6 @@ function (doc) {
 			resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replName, replConf)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
-			activeCtx := activeRT.Context()
-			err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
-			require.NoError(t, err)
 			activeRT.WaitForReplicationStatus(replName, db.ReplicationStateRunning)
 
 			base.RequireWaitForStat(t, receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 6)
@@ -7492,7 +7485,7 @@ function (doc) {
 			}
 
 			// Stop and remove replicator (to stop checkpointing after teardown causing panic)
-			_, _, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), replName, "stop")
+			_, _, err := activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(activeRT.Context(), replName, "stop")
 			require.NoError(t, err)
 			activeRT.WaitForReplicationStatus(replName, db.ReplicationStateStopped)
 			err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replName)
@@ -8070,9 +8063,6 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 		"/{{.db}}/_replication/"+repl1Name, replConf)
 	rest.RequireStatus(t, configResp, http.StatusCreated)
 
-	// StartReplications will error initialising the replicator but will not return an error
-	require.NoError(t, activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeRT.Context()))
-
 	activeRT.WaitForReplicationStatus(repl1Name, db.ReplicationStateError)
 
 	resp := passiveRT.SendAdminRequest(http.MethodGet,
@@ -8161,9 +8151,8 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 
 	// Define the replication inline in the DatabaseConfig
 	// rather than creating it through the admin REST API.
-	// initial_state "stopped" prevents it from running before we call
-	// StartReplications, while still exercising the initialisation path that
-	// validates run_as.
+	// initial_state "stopped" prevents it from running, while still exercising
+	// the initialisation path that validates run_as.
 	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn:             syncFn,
 		SgReplicateEnabled: true,
@@ -8190,10 +8179,6 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 	docID := "private_doc_" + rest.SafeDocumentName(t, t.Name())
 	activeRT.PutDoc(docID, `{"channels":["`+privateChannel+`"],"content":"secret"}`)
 	activeRT.WaitForPendingChanges()
-
-	// StartReplications initialises the replicator; it errors on the missing
-	// run_as user but does not surface an error to the caller.
-	require.NoError(t, activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeRT.Context()))
 
 	activeRT.WaitForReplicationStatus(replName, db.ReplicationStateError)
 
