@@ -666,9 +666,10 @@ func (tbp *TestBucketPool) insertAndOpenTestBucket(ctx context.Context, bucketNa
 		return nil, fmt.Errorf("timed out trying to open new bucket: %w", err)
 	}
 	// From here on, the bucket has been opened as well as created, so clean it up if we return with an error below.
+	openBucket := bucket
 	defer func() {
 		if err != nil {
-			bucket.Close(ctx)
+			openBucket.Close(ctx)
 			_ = tbp.cluster.removeBucket(string(bucketName))
 		}
 	}()
