@@ -30,6 +30,7 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
 		}},
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -51,15 +52,24 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	numDocs, _ := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
+	numDocs, legacyKeys := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
+
+	// Pause migration at the first legacy doc so the duplicate start request below is
+	// guaranteed to arrive while the run is genuinely still in progress.
+	pauser := newMigrationPauser(rt)
+	defer pauser.Close()
+	pauser.Pause(legacyKeys[0])
 
 	// kick off migration
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 
 	// attempt to kick off again, should error
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	pauser.Release()
 
 	// Wait for run to complete
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
