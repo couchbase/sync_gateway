@@ -1683,7 +1683,7 @@ func (btcc *BlipTesterCollectionClient) upsertDoc(docID string, opts blipTesterU
 			require.NotNil(btcc.TB(), opts.specificNewVersion, "specificNewVersion must be set when using blipRevTreeEncodedCVRevType")
 			newVersion = opts.specificNewVersion.CV
 		} else {
-			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: btcc.hlc.Now(0)}
+			newVersion = db.Version{SourceID: btcc.parent.SourceID, Value: btcc.hlc.Now(hlv.MaxValueForSource(btcc.parent.SourceID))}
 		}
 		require.NoError(btcc.TB(), hlv.AddVersion(newVersion))
 		docVersion = DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}

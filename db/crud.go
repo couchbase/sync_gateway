@@ -2275,7 +2275,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMergeHLV(ctx context.Context, lo
 	// Generate the merge version value from the database HLC. The floor is the highest existing value for our
 	// source across both HLVs being merged, so the generated value preserves per-source monotonicity.
 	sourceID := db.dbCtx.EncodedSourceID
-	floor := max(localDoc.HLV.maxValueForSource(sourceID), remoteDoc.HLV.maxValueForSource(sourceID))
+	floor := max(localDoc.HLV.MaxValueForSource(sourceID), remoteDoc.HLV.MaxValueForSource(sourceID))
 	newCV := Version{
 		SourceID: sourceID,
 		Value:    db.dbCtx.hlc.Now(floor),
@@ -2763,7 +2763,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	if docUpdateEvent == NewVersion || docUpdateEvent == ExistingVersionWithUpdateToHLV {
 		var versionFloor uint64
 		if doc.HLV != nil {
-			versionFloor = doc.HLV.maxValueForSource(col.dbCtx.EncodedSourceID)
+			versionFloor = doc.HLV.MaxValueForSource(col.dbCtx.EncodedSourceID)
 		}
 		generatedVersion = col.dbCtx.hlc.Now(versionFloor)
 	}

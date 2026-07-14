@@ -1864,7 +1864,7 @@ func TestHLVMaxValueForSource(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, hlv.maxValueForSource(tc.sourceID))
+			assert.Equal(t, tc.expected, hlv.MaxValueForSource(tc.sourceID))
 		})
 	}
 
@@ -1876,6 +1876,6 @@ func TestHLVMaxValueForSource(t *testing.T) {
 			Version:       100,
 			MergeVersions: HLVVersions{sharedSource: 150},
 		}
-		assert.Equal(t, uint64(150), hlv.maxValueForSource(sharedSource))
+		assert.Equal(t, uint64(150), hlv.MaxValueForSource(sharedSource))
 	})
 }

@@ -471,7 +471,7 @@ func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 	return 0, false
 }
 
-// maxValueForSource returns the highest version value recorded for sourceID in the HLV, or 0 if the source
+// MaxValueForSource returns the highest version value recorded for sourceID in the HLV, or 0 if the source
 // is not present. It is used as the floor when generating a new version value for sourceID: the generated
 // value must strictly exceed any existing value for that source so the HLV never moves backwards for a
 // given source.
@@ -480,7 +480,7 @@ func (hlv *HybridLogicalVector) GetValue(sourceID string) (uint64, bool) {
 //   - A source is never in both the current and previous versions, so the cv case need not consult PV.
 //   - A source is never in both the previous and merge versions, so the PV case is authoritative on its own.
 //   - The current and merge versions *can* share a source, so the cv case folds in the merge version.
-func (hlv *HybridLogicalVector) maxValueForSource(sourceID string) uint64 {
+func (hlv *HybridLogicalVector) MaxValueForSource(sourceID string) uint64 {
 	if sourceID == "" {
 		return 0
 	}
