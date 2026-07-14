@@ -128,7 +128,7 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 		CustomTestBucket: noCloseTB,
 	})
 	rt2 := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.LeakyBucketClone(base.LeakyBucketConfig{}),
 	})
 	defer rt2.Close()
 	defer rt1.Close()
@@ -175,11 +175,21 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, rt2AttachmentStatus.State)
 
+	// Add another legacy attachment so the resumed mark phase has something new to block on too.
+	collection2, ctx2 := rt2.GetSingleTestDatabaseCollectionWithUser()
+	rest.CreateLegacyAttachmentDoc(t, ctx2, collection2, t.Name()+"-resume", []byte("{}"), "att2", []byte("att body 2"))
+
+	pauser2 := newCompactionPauser(rt2)
+	defer pauser2.Close()
+	pauser2.Pause()
+
 	// Attempt to start again from rt2 --> Should resume based on aborted state (same compactionID)
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser2.WaitUntilBlocked()
 	status := rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.Equal(t, compactID, status.CompactID)
+	pauser2.Release()
 
 	// Wait for compaction to complete
 	_ = rt1.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
