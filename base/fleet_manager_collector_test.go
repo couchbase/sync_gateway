@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -49,6 +50,21 @@ func TestFleetManagerCollectorSettingsInterval(t *testing.T) {
 			name:     "enabled flag does not affect interval",
 			settings: FleetManagerCollectorSettings{ReportingInterval: 2, Enabled: true},
 			expected: 2 * time.Hour,
+		},
+		{
+			name:     "largest non-overflowing interval converts",
+			settings: FleetManagerCollectorSettings{ReportingInterval: maxReportingIntervalHours},
+			expected: time.Duration(maxReportingIntervalHours) * time.Hour,
+		},
+		{
+			name:     "interval one hour past the overflow boundary falls back to default",
+			settings: FleetManagerCollectorSettings{ReportingInterval: maxReportingIntervalHours + 1},
+			expected: defaultFleetManagerReportingInterval,
+		},
+		{
+			name:     "max int interval falls back to default",
+			settings: FleetManagerCollectorSettings{ReportingInterval: math.MaxInt},
+			expected: defaultFleetManagerReportingInterval,
 		},
 	}
 	for _, tc := range testCases {

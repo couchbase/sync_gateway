@@ -13,6 +13,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"runtime"
@@ -62,10 +63,15 @@ type FleetManagerCollectorSettings struct {
 // reporting interval (e.g. an older server that predates the telemetry settings endpoint).
 const defaultFleetManagerReportingInterval = time.Hour
 
+// maxReportingIntervalHours is the largest hour count that can be converted to a time.Duration
+// (nanoseconds) without overflowing int64. A larger value would wrap to a negative Duration, which
+// panics time.NewTicker/Reset, so Interval falls back to the default for anything beyond it.
+const maxReportingIntervalHours = int(math.MaxInt64 / int64(time.Hour))
+
 // Interval returns the reporting interval as a Duration, falling back to the default when the
-// server hasn't supplied a positive value.
+// server hasn't supplied a positive value or supplies one large enough to overflow a Duration.
 func (s FleetManagerCollectorSettings) Interval() time.Duration {
-	if s.ReportingInterval <= 0 {
+	if s.ReportingInterval <= 0 || s.ReportingInterval > maxReportingIntervalHours {
 		return defaultFleetManagerReportingInterval
 	}
 	return time.Duration(s.ReportingInterval) * time.Hour

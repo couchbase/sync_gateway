@@ -79,20 +79,18 @@ func (sc *ServerContext) reportFleetManagerMetrics(ctx context.Context) {
 			}
 		}
 	}()
-	base.InfofCtx(ctx, base.KeyAll, "Starting fleet manager metrics reporting")
 }
 
 // sendFleetManagerMetrics POSTs the collected metrics to the ns_server fleet manager collector
-// ingest endpoint on the Couchbase Server management API. A 404 means the connected server predates
-// the collector endpoint (or it has been removed); this is treated as a benign skip so reporting
-// starts automatically once the server is upgraded, rather than a hard error.
+// ingest endpoint on the Couchbase Server management API. In the normal flow getCollectorSettings
+// gates this call: a server that predates the collector reports as disabled (settings 404), so we
+// never reach here for it. The 404 handling below is therefore a defensive fallback for the case
+// where we POST anyway - e.g. a transient settings-read failure left us on the reporting-enabled
+// default - keeping that a benign skip rather than a hard error.
 func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics base.SyncGatewayFleetManagerMetrics) error {
-	endpoints, httpClient, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	endpoints, httpClient, err := sc.getManagementEndpointsAndHTTPClient()
 	if err != nil {
-		return fmt.Errorf("could not obtain management endpoints: %w", err)
-	}
-	if len(endpoints) == 0 {
-		return fmt.Errorf("no management endpoints available")
+		return err
 	}
 
 	metricsJSON, err := base.JSONMarshal(metrics)
@@ -110,8 +108,8 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 		// success
 		return nil
 	case http.StatusNotFound:
-		// Server doesn't expose the collector endpoint (too old, or collector removed). Skip quietly
-		// and retry on the next interval.
+		// Ingest endpoint unavailable (server too old, or collector removed). This is normally caught
+		// earlier by the settings check, so treat a 404 here as a benign skip and retry next interval.
 		base.DebugfCtx(ctx, base.KeyAll, "Fleet manager collector endpoint unavailable (status %d); will retry next interval", statusCode)
 		return nil
 	default:
@@ -123,12 +121,9 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 // Server. A 404 means the server predates the collector (the settings and ingest endpoints ship
 // together), so it is reported as disabled rather than an error - there is nothing to report to.
 func (sc *ServerContext) getCollectorSettings(ctx context.Context) (base.FleetManagerCollectorSettings, error) {
-	endpoints, httpClient, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	endpoints, httpClient, err := sc.getManagementEndpointsAndHTTPClient()
 	if err != nil {
-		return base.FleetManagerCollectorSettings{}, fmt.Errorf("could not obtain management endpoints: %w", err)
-	}
-	if len(endpoints) == 0 {
-		return base.FleetManagerCollectorSettings{}, fmt.Errorf("no management endpoints available")
+		return base.FleetManagerCollectorSettings{}, err
 	}
 
 	uri := base.TelemetrySettingsEndpoint
@@ -151,4 +146,15 @@ func (sc *ServerContext) getCollectorSettings(ctx context.Context) (base.FleetMa
 	default:
 		return base.FleetManagerCollectorSettings{}, fmt.Errorf("unexpected status %d from fleet manager collector settings", statusCode)
 	}
+}
+
+func (sc *ServerContext) getManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+	endpoints, httpClient, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not obtain management endpoints: %w", err)
+	}
+	if len(endpoints) == 0 {
+		return nil, nil, fmt.Errorf("no management endpoints available")
+	}
+	return endpoints, httpClient, nil
 }
