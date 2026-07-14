@@ -108,7 +108,7 @@ func TestMultiActorResurrect(t *testing.T) {
 							resurrectVersion := resurrectPeer.WriteDocument(collectionName, docID, resBody)
 							// in the case of a Couchbase Server resurrection, the hlv is lost since all system xattrs are lost on a resurrection
 							if resurrectPeer.Type() == PeerTypeCouchbaseServer {
-								waitForCVAndBody(t, collectionName, docID, resurrectVersion, topology)
+								waitForCVAndBody(t, collectionName, docID, []BodyAndVersion{resurrectVersion}, topology)
 							} else {
 								waitForVersionAndBody(t, collectionName, docID, resurrectVersion, topology)
 							}

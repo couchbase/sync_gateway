@@ -173,7 +173,12 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
 		data, actual = p.getLatestDocVersion(dsName, docID)
-		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
+		if !assert.NotNil(c, actual, "Could not find docID:%+v on %s\nVersion %#v", docID, p, expected) {
+			return
+		}
+		// data is nil when the latest revision is a tombstone, which can happen transiently mid conflict
+		// resolution. Retry here rather than let the JSONUnmarshal below hit a nil body.
+		if !assert.NotNil(c, data, "Expected a live revision for docID:%+v on %s, but latest revision is a tombstone", docID, p) {
 			return
 		}
 		if compareHLV {
@@ -194,7 +199,12 @@ func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID s
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
 		data, actual = p.getLatestDocVersion(dsName, docID)
-		if !assert.NotNil(c, actual, "Could not find docID:%+v on %p\nVersion %#v", docID, p, expected) {
+		if !assert.NotNil(c, actual, "Could not find docID:%+v on %s\nVersion %#v", docID, p, expected) {
+			return
+		}
+		// See the comment in WaitForDocVersion: retry rather than fail outright on a transiently tombstoned
+		// latest revision, so a nil body here doesn't reach the unconditional JSONUnmarshal below.
+		if !assert.NotNil(c, data, "Expected a live revision for docID:%+v on %s, but latest revision is a tombstone", docID, p) {
 			return
 		}
 		assertCVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)

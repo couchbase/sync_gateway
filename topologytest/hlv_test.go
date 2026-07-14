@@ -98,21 +98,62 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 // Final state:
 //   - cv:2@rosmar2 on cbs1, cbs2, cbl2
 //   - cv:2@rosmar2, pv:1@rosmar1 on cbl1
-func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
-	t.Helper()
+//
+// acceptableVersions lists every version that could legitimately be the converged winner. Usually there's only one
+// (see acceptableConflictWinners), but with Couchbase Server<->Couchbase Server XDCR in the topology, either
+// cluster's direct write may win: XDCR resolves conflicts by CAS, not by the tied HLV Value SG/CBL use.
+func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID string, acceptableVersions []BodyAndVersion, topology Topology) {
+	require.NotEmpty(t, acceptableVersions, "no acceptable versions given for doc %s", docID)
+	winner := acceptableVersions[0]
+	if len(acceptableVersions) > 1 {
+		winner = waitForAnyCV(t, dsName, docID, acceptableVersions, topology)
+	}
 	ctx := base.TestCtx(t)
-	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
+	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", winner.updatePeer, winner.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
-		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
+		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, winner.updatePeer, winner)
 		var body db.Body
 		if peer.Type() == PeerTypeCouchbaseLite {
-			body = peer.WaitForCV(dsName, docID, expectedVersion.docMeta, topology)
+			body = peer.WaitForCV(dsName, docID, winner.docMeta, topology)
 		} else {
-			body = peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, topology)
+			body = peer.WaitForDocVersion(dsName, docID, winner.docMeta, topology)
 		}
-		requireBodyEqual(t, expectedVersion.body, body)
+		requireBodyEqual(t, winner.body, body)
 	}
-	base.InfofCtx(ctx, base.KeySGTest, "found matching doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
+	base.InfofCtx(ctx, base.KeySGTest, "found matching doc version on all peers, written from %s: %#v", winner.updatePeer, winner.docMeta.HLVString())
+}
+
+// waitForAnyCV waits for each candidate's owning peer to converge, via XDCR, on the same CV, then returns the
+// matching candidate. Which one wins isn't known ahead of time.
+//
+// This can't just poll one peer for a match against any candidate: right after the conflicting writes, each
+// owning peer trivially matches its own not-yet-XDCR-resolved candidate, giving a false winner before XDCR runs.
+func waitForAnyCV(t *testing.T, dsName base.ScopeAndCollectionName, docID string, candidates []BodyAndVersion, topology Topology) (winner BodyAndVersion) {
+	var agreedCV db.Version
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for i, candidate := range candidates {
+			peer := topology.peers[candidate.updatePeer]
+			docMeta, _, exists := peer.GetDocumentIfExists(dsName, docID)
+			if !assert.True(c, exists, "doc %s does not exist on peer %s", docID, candidate.updatePeer) {
+				return
+			}
+			cv := docMeta.CV(c)
+			if i == 0 {
+				agreedCV = cv
+				continue
+			}
+			if !assert.Equal(c, agreedCV, cv, "peer %s has not converged with peer %s for doc %s", candidate.updatePeer, candidates[0].updatePeer, docID) {
+				return
+			}
+		}
+	}, totalWaitTime, pollInterval, topology.GetDocState(t, dsName, docID))
+	for _, candidate := range candidates {
+		if candidate.docMeta.CV(t) == agreedCV {
+			return candidate
+		}
+	}
+	require.FailNow(t, fmt.Sprintf("converged cv %#v for doc %s does not match any acceptable candidate", agreedCV, docID))
+	return winner
 }
 
 // waitForConvergingTombstones waits for all peers to have a tombstone document for a given doc ID. This is the
@@ -204,33 +245,69 @@ func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, d
 }
 
 // createConflictingDocs will create a doc on each peer of the same doc ID to create conflicting documents, then
-// returns the last peer to have a doc created on it
-func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
+// returns the versions that could legitimately end up as the converged winner - see acceptableConflictWinners.
+func createConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) []BodyAndVersion {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "create"}`, peerName, topology.specDescription)
 		docVersion := peer.CreateDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
-
-	return lastWrite
+	return acceptableConflictWinners(topology, documentVersion)
 }
 
-// updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations, then
-// returns the last peer to have a doc updated on it.
-func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) (lastWrite BodyAndVersion) {
+// updateConflictingDocs will update a doc on each peer of the same doc ID to create conflicting document mutations,
+// then returns the versions that could legitimately end up as the converged winner - see
+// acceptableConflictWinners.
+func updateConflictingDocs(dsName base.ScopeAndCollectionName, docID string, topology Topology) []BodyAndVersion {
 	var documentVersion []BodyAndVersion
 	for peerName, peer := range topology.peers.NonImportSortedPeers() {
 		docBody := fmt.Sprintf(`{"activePeer": "%s", "topology": "%s", "action": "update"}`, peerName, topology.specDescription)
 		docVersion := peer.WriteDocument(dsName, docID, []byte(docBody))
 		documentVersion = append(documentVersion, docVersion)
 	}
-	index := len(documentVersion) - 1
-	lastWrite = documentVersion[index]
+	return acceptableConflictWinners(topology, documentVersion)
+}
 
-	return lastWrite
+// acceptableConflictWinners returns the writes that could legitimately be the final, converged version. Normally
+// that's just the last write. But when Couchbase Server<->Couchbase Server XDCR is in the topology (see
+// topologyHasXDCR), each cluster's direct write is reconciled by XDCR's real, CAS-based conflict resolution -
+// which can't be predicted from HLV timestamps recorded at write time: a Sync Gateway peer's HLV Value comes from
+// a separate logical clock than its document's actual storage CAS, and even that CAS can be bumped again by SG's
+// own async import before XDCR ever inspects it. So either cluster's last write may end up winning, and both are
+// returned - one per distinct backing bucket, since only the last write to a given bucket can win.
+func acceptableConflictWinners(topology Topology, writes []BodyAndVersion) []BodyAndVersion {
+	if !topologyHasXDCR(topology) {
+		return []BodyAndVersion{writes[len(writes)-1]}
+	}
+	lastWriteByBucket := make(map[string]BodyAndVersion)
+	var bucketOrder []string
+	for _, write := range writes {
+		bucket := topology.peers[write.updatePeer].GetBackingBucket()
+		if bucket == nil {
+			continue // Couchbase Lite peers have no backing bucket and can't win an XDCR conflict.
+		}
+		name := bucket.GetName()
+		if _, ok := lastWriteByBucket[name]; !ok {
+			bucketOrder = append(bucketOrder, name)
+		}
+		lastWriteByBucket[name] = write
+	}
+	winners := make([]BodyAndVersion, 0, len(bucketOrder))
+	for _, name := range bucketOrder {
+		winners = append(winners, lastWriteByBucket[name])
+	}
+	return winners
+}
+
+// topologyHasXDCR returns true if the topology replicates directly between two Couchbase Server peers (XDCR).
+func topologyHasXDCR(topology Topology) bool {
+	for _, r := range topology.replications {
+		if r.ActivePeer().Type() == PeerTypeCouchbaseServer && r.PassivePeer().Type() == PeerTypeCouchbaseServer {
+			return true
+		}
+	}
+	return false
 }
 
 // deleteConflictDocs will delete a doc on each peer of the same doc ID to create conflicting document deletions, then
