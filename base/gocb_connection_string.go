@@ -93,7 +93,7 @@ func getConnSpecOption[T string | int](spec *connstr.ConnSpec, key string) (*T, 
 		return nil, nil
 	}
 	if len(arg) > 1 {
-		return nil, fmt.Errorf("multiple %s values found in connection string %q", key, spec.String())
+		return nil, RedactErrorf("multiple %s values found in connection string %q", key, MD(spec.String()))
 	}
 
 	var value any
@@ -101,7 +101,7 @@ func getConnSpecOption[T string | int](spec *connstr.ConnSpec, key string) (*T, 
 	case int:
 		i, err := strconv.Atoi(arg[0])
 		if err != nil {
-			return nil, fmt.Errorf("invalid %s value %s in connection string %q, must be int", key, arg[0], spec.String())
+			return nil, RedactErrorf("invalid %s value %s in connection string %q, must be int", key, arg[0], MD(spec.String()))
 		}
 		value = i
 	case string:
