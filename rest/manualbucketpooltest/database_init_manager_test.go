@@ -11,6 +11,9 @@ package manualbucketpooltest
 import (
 	"fmt"
 	"log"
+	"sort"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -67,9 +70,14 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	testSignalChannel := make(chan error)
 	firstCollectionInitChannel := make(chan error)
 
+	// Track the latest status reported for every collection so that a done-channel timeout below can report which
+	// collection on which database was still in progress (see initProgressTracker).
+	progress := newInitProgressTracker()
+
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
 	initMgr.SetTestCallbacks(func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		progress.record(dbName, scName, status)
 		if status != db.CollectionIndexStatusReady {
 			return
 		}
@@ -106,9 +114,19 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	// Unblock the first InitializeDatabase, should cancel
 	close(testSignalChannel)
 
-	// Wait for notification on both done channels
-	rest.WaitForChannel(t, doneChan1, "modified init done chan")
-	rest.WaitForChannel(t, doneChan2, "modified init done chan")
+	// Wait for notification on both done channels.
+	//
+	// Known flake: db1 and db2 share this bucket and both set UseSystemMobileMetadataCollection, so both init
+	// workers initialize the shared _default and _mobile collections. Once db1 is unblocked while db2 is still
+	// running, the two workers can issue BUILD INDEX on the same keyspace (e.g. _default._default's principal
+	// indexes) concurrently. The index service rejects the second concurrent build with a transient
+	// "Build Already In Progress" error; buildIndexes() swallows that error and relies on the index service to
+	// retry the build in the background (see base.buildIndexes / IsIndexerRetryBuildError). That background retry
+	// plus the subsequent wait-for-online can take longer than TestChannelTimeout, so the done channel never fires
+	// in time and this wait fails. On timeout, progress.snapshot() reports the latest status recorded for each
+	// collection.
+	rest.WaitForChannelWithDiagnostic(t, doneChan1, "db1 InitializeDatabase done chan", progress.snapshot)
+	rest.WaitForChannelWithDiagnostic(t, doneChan2, "db2 InitializeDatabase done chan", progress.snapshot)
 
 	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
 	// The distinct collections are _mobile, _default, collection1, collection2, and
@@ -116,6 +134,64 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	totalCount := atomic.LoadInt64(&collectionCount)
 	require.Equal(t, int64(7), totalCount)
 
+}
+
+// initProgressTracker records the most recent CollectionIndexStatus reported for each (database, collection) pair via
+// the DatabaseInitManager test callback. Init workers for different databases invoke the callback from separate
+// goroutines, so access is guarded by a mutex. On a wait timeout, snapshot() renders the recorded state so the failure
+// names which collection on which database was still in progress - for example a collection stuck "in progress" on a
+// concurrent BUILD INDEX of a shared keyspace - rather than a static guess at the cause.
+type initProgressTracker struct {
+	mu       sync.Mutex
+	statuses map[string]map[base.ScopeAndCollectionName]db.CollectionIndexStatus // dbName -> collection -> latest status
+}
+
+func newInitProgressTracker() *initProgressTracker {
+	return &initProgressTracker{
+		statuses: make(map[string]map[base.ScopeAndCollectionName]db.CollectionIndexStatus),
+	}
+}
+
+// record stores the latest status reported for a collection on a database.
+func (p *initProgressTracker) record(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.statuses[dbName] == nil {
+		p.statuses[dbName] = make(map[base.ScopeAndCollectionName]db.CollectionIndexStatus)
+	}
+	p.statuses[dbName][scName] = status
+}
+
+// snapshot renders the recorded per-collection statuses as a stable, human-readable string, one database per line.
+func (p *initProgressTracker) snapshot() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.statuses) == 0 {
+		return "init progress: no collection status callbacks recorded yet"
+	}
+	dbNames := make([]string, 0, len(p.statuses))
+	for dbName := range p.statuses {
+		dbNames = append(dbNames, dbName)
+	}
+	sort.Strings(dbNames)
+
+	var sb strings.Builder
+	sb.WriteString("init progress (latest status per collection):")
+	for _, dbName := range dbNames {
+		statusByName := make(map[string]db.CollectionIndexStatus, len(p.statuses[dbName]))
+		scNames := make([]string, 0, len(p.statuses[dbName]))
+		for scName, status := range p.statuses[dbName] {
+			statusByName[scName.String()] = status
+			scNames = append(scNames, scName.String())
+		}
+		sort.Strings(scNames)
+		parts := make([]string, 0, len(scNames))
+		for _, scName := range scNames {
+			parts = append(parts, fmt.Sprintf("%s=%s", scName, statusByName[scName]))
+		}
+		sb.WriteString(fmt.Sprintf("\n  %s: %s", dbName, strings.Join(parts, ", ")))
+	}
+	return sb.String()
 }
 
 // makeScopesConfig builds a ScopesConfig for a single scope containing the given collection names.
