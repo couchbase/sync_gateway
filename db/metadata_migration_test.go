@@ -15,9 +15,9 @@ import (
 	"maps"
 	"testing"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -547,7 +547,7 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 
 	classify := func(metadataID string, siblingMetadataIDs []string, key string) *MigrationStats {
 		stats := &MigrationStats{}
-		handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, siblingMetadataIDs, nil, key, stats)
+		require.NoError(t, handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, siblingMetadataIDs, nil, key, stats))
 		return stats
 	}
 
@@ -676,7 +676,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 					require.NoError(t, err, "seed fallback %s", tc.key)
 				}
 				stats := &MigrationStats{}
-				handleMigrationKey(ctx, ms, keys, migratingID, siblings, syncFnKeys, tc.key, stats)
+				require.NoError(t, handleMigrationKey(ctx, ms, keys, migratingID, siblings, syncFnKeys, tc.key, stats))
 
 				switch tc.want {
 				case dispMigrated:
