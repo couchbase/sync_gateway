@@ -13,7 +13,7 @@ require (
 	github.com/couchbase/gocb/v2 v2.12.4
 	github.com/couchbase/gocbcore/v10 v10.9.3
 	github.com/couchbase/gomemcached v0.2.1
-	github.com/couchbase/sg-bucket v0.0.0-20260706130600-fc995d3ac4be
+	github.com/couchbase/sg-bucket v0.0.0-20260715203746-f47e1170820c
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
 	github.com/couchbaselabs/gocbconnstr v1.0.5
@@ -31,7 +31,6 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.70.0
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23
-	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20260131233133-1193a855cc76
 	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/stretchr/testify v1.11.1
@@ -41,6 +40,11 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+)
+
+require (
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 )
 
 require (
@@ -58,6 +62,7 @@ require (
 	github.com/couchbase/tools-common/types/v2 v2.2.2 // indirect
 	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dop251/goja v0.0.0-20260701091749-b07b74453ea9
 	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -95,7 +100,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/grpc v1.82.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

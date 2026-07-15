@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -398,7 +399,7 @@ func (e *SyncFnDryRunError) Error() string {
 	if e.Err == nil {
 		return syncFnDryRunErrorPrefix
 	}
-	return syncFnDryRunErrorPrefix + ": " + e.Err.Error()
+	return syncFnDryRunErrorPrefix + ": " + translateJSEngineErrorWording(e.Err.Error())
 }
 
 func (e *SyncFnDryRunError) Unwrap() error {
@@ -423,7 +424,17 @@ func (e *ImportFilterDryRunError) Error() string {
 	if e.Err == nil {
 		return importFilterErrorPrefix
 	}
-	return importFilterErrorPrefix + ": " + e.Err.Error()
+	return importFilterErrorPrefix + ": " + translateJSEngineErrorWording(e.Err.Error())
+}
+
+// translateJSEngineErrorWording rewrites goja's (this project's current JS engine) wording for a
+// property access on undefined/null, e.g. "Cannot read property 'foo' of undefined", to the
+// wording used by otto (this project's previous JS engine), e.g. "Cannot access member 'foo' of
+// undefined". Dry-run exception text is surfaced directly to API callers describing their own sync
+// function/import filter, so this keeps that text stable across the engine migration rather than
+// leaking which JS engine happens to be running underneath.
+func translateJSEngineErrorWording(msg string) string {
+	return strings.ReplaceAll(msg, "Cannot read property", "Cannot access member")
 }
 
 func (e *ImportFilterDryRunError) Unwrap() error {

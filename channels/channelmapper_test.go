@@ -12,16 +12,12 @@ import (
 	"fmt"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
-	"github.com/robertkrimen/otto"
-	"github.com/robertkrimen/otto/underscore"
+	"github.com/dop251/goja"
 )
-
-func init() {
-	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
-}
 
 func parse(t testing.TB, jsonStr string) map[string]any {
 	var parsed map[string]any
@@ -37,16 +33,16 @@ func emptyMetaMap() map[string]any {
 
 var noUser = map[string]any{"name": nil, "channels": []string{}}
 
-func TestOttoValueToStringArray(t *testing.T) {
+func TestJSValueToStringArray(t *testing.T) {
 	ctx := base.TestCtx(t)
 	// Test for https://github.com/robertkrimen/otto/issues/24
-	value, _ := otto.New().ToValue([]string{"foo", "bar", "baz"})
-	strings := ottoValueToStringArray(ctx, value)
+	value := goja.New().ToValue([]string{"foo", "bar", "baz"})
+	strings := jsValueToStringArray(ctx, value)
 	assert.Equal(t, []string{"foo", "bar", "baz"}, strings)
 
 	// Test for https://issues.couchbase.com/browse/CBG-714
-	value, _ = otto.New().ToValue([]any{"a", []any{"b", "g"}, "c", 4})
-	strings = ottoValueToStringArray(ctx, value)
+	value = goja.New().ToValue([]any{"a", []any{"b", "g"}, "c", 4})
+	strings = jsValueToStringArray(ctx, value)
 	assert.Equal(t, []string{"a", "c"}, strings)
 }
 
@@ -238,8 +234,8 @@ func TestEmptyChannelMapper(t *testing.T) {
 
 // channel mapper fn that uses _ underscore JS library
 func TestChannelMapperUnderscoreLib(t *testing.T) {
-	underscore.Enable() // It really slows down unit tests (by making otto.New take a lot longer)
-	defer underscore.Disable()
+	sgbucket.EnableUnderscoreJS() // It really slows down unit tests (by making goja.New take a lot longer)
+	defer sgbucket.DisableUnderscoreJS()
 	ctx := base.TestCtx(t)
 	mapper := NewChannelMapper(ctx, `function(doc) {channel(_.first(doc.channels));}`, 0)
 	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
@@ -593,7 +589,7 @@ func TestNilMetaMap(t *testing.T) {
 
 	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{}`), `{}`, metaMap, noUser)
 	require.Error(t, err)
-	assert.True(t, err.Error() == "TypeError: Cannot access member 'val' of undefined")
+	assert.Contains(t, err.Error(), "TypeError: Cannot read property 'val' of undefined")
 }
 
 func TestChangedUsers(t *testing.T) {

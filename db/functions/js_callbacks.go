@@ -13,12 +13,15 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/dop251/goja"
+
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/robertkrimen/otto"
 )
 
 type jsContextKey string
@@ -26,52 +29,55 @@ type jsContextKey string
 var readOnlyKey = jsContextKey("readOnly") // Context key preventing mutation; val is fn name
 
 func (runner *jsRunner) defineNativeCallbacks(_ context.Context) {
+	vm := runner.VM()
+
 	// Implementation of the 'delete(docID)' callback:
-	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_delete", func(call goja.FunctionCall) goja.Value {
 		var docID string
 		var doc map[string]any
-		if arg0 := call.Argument(0); arg0.IsString() {
+		arg0 := call.Argument(0)
+		if _, isString := arg0.(goja.String); isString {
 			docID = arg0.String()
-		} else if arg0.IsObject() {
-			doc = ottoObjectParam(call, 0, false, "user.delete")
+		} else if _, isObject := arg0.(*goja.Object); isObject {
+			doc = jsObjectParam(vm, call, 0, false, "user.delete")
 		} else {
-			panic(call.Otto.MakeTypeError("user.delete() arg 1 must be a string or object"))
+			panic(vm.NewTypeError("user.delete() arg 1 must be a string or object"))
 		}
-		sudo := ottoBoolParam(call, 1)
+		sudo := jsBoolParam(call, 1)
 		ok, err := runner.do_delete(docID, doc, sudo)
-		return ottoResult(call, ok, err)
+		return jsResult(vm, ok, err)
 	})
 
 	// Implementation of the 'function(name,params)' callback:
-	runner.DefineNativeFunction("_func", func(call otto.FunctionCall) otto.Value {
-		funcName := ottoStringParam(call, 0, "user.function")
-		params := ottoObjectParam(call, 1, true, "user.function")
-		sudo := ottoBoolParam(call, 2)
+	runner.DefineNativeFunction("_func", func(call goja.FunctionCall) goja.Value {
+		funcName := jsStringParam(vm, call, 0, "user.function")
+		params := jsObjectParam(vm, call, 1, true, "user.function")
+		sudo := jsBoolParam(call, 2)
 		result, err := runner.do_func(runner.ctx, funcName, params, sudo)
-		return ottoJSONResult(call, result, err)
+		return jsJSONResult(vm, result, err)
 	})
 
 	// Implementation of the 'get(docID)' callback:
-	runner.DefineNativeFunction("_get", func(call otto.FunctionCall) otto.Value {
-		docID := ottoStringParam(call, 0, "user.get")
-		sudo := ottoBoolParam(call, 1)
+	runner.DefineNativeFunction("_get", func(call goja.FunctionCall) goja.Value {
+		docID := jsStringParam(vm, call, 0, "user.get")
+		sudo := jsBoolParam(call, 1)
 		doc, err := runner.do_get(docID, nil, sudo)
-		return ottoJSONResult(call, doc, err)
+		return jsJSONResult(vm, doc, err)
 	})
 
 	// Implementation of the 'save(doc,docID?)' callback:
-	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
-		doc := ottoObjectParam(call, 0, false, "user.save")
-		docID := ottoOptionalStringParam(call, 1, "user.save")
-		sudo := ottoBoolParam(call, 2)
+	runner.DefineNativeFunction("_save", func(call goja.FunctionCall) goja.Value {
+		doc := jsObjectParam(vm, call, 0, false, "user.save")
+		docID := jsOptionalStringParam(vm, call, 1, "user.save")
+		sudo := jsBoolParam(call, 2)
 		docID, err := runner.do_save(doc, docID, sudo)
-		return ottoResult(call, docID, err)
+		return jsResult(vm, docID, err)
 	})
 
 	// Implementation of the '_requireMutating()' callback:
-	runner.DefineNativeFunction("_requireMutating", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("_requireMutating", func(call goja.FunctionCall) goja.Value {
 		err := runner.checkMutationAllowed("requireMutating")
-		return ottoResult(call, nil, err)
+		return jsResult(vm, nil, err)
 	})
 }
 
@@ -243,74 +249,81 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 	return &docID, nil
 }
 
-//////// OTTO UTILITIES:
+//////// JS UTILITIES:
 
-// Returns a parameter of `call` as a Go string, or throws a JS exception if it's not a string.
-func ottoBoolParam(call otto.FunctionCall, arg int) bool {
-	result, _ := call.Argument(arg).ToBoolean()
-	return result
+// makeJSError builds a JS Error object whose `name` is `name` and whose message is `msg`,
+// so that its rendered form (via Error.prototype.toString(), i.e. "name: message") matches
+// what javaScriptRunner.convertError expects to parse back apart into a Go error.
+func makeJSError(vm *goja.Runtime, name string, msg string) *goja.Object {
+	err := vm.NewGoError(errors.New(msg))
+	_ = err.Set("name", name)
+	return err
+}
+
+// Returns a parameter of `call` as a Go bool.
+func jsBoolParam(call goja.FunctionCall, arg int) bool {
+	return call.Argument(arg).ToBoolean()
 }
 
 // Returns a parameter of `call` as a Go string, or throws a JS exception if it's not a string.
-func ottoStringParam(call otto.FunctionCall, arg int, what string) string {
+func jsStringParam(vm *goja.Runtime, call goja.FunctionCall, arg int, what string) string {
 	val := call.Argument(arg)
-	if !val.IsString() {
-		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be a string", what, arg+1)))
+	if _, isString := val.(goja.String); !isString {
+		panic(vm.NewTypeError(fmt.Sprintf("%s() param %d must be a string", what, arg+1)))
 	}
 	return val.String()
 }
 
 // Returns a parameter of `call` as a Go string or nil.
-func ottoOptionalStringParam(call otto.FunctionCall, arg int, what string) *string {
+func jsOptionalStringParam(vm *goja.Runtime, call goja.FunctionCall, arg int, what string) *string {
 	val := call.Argument(arg)
-	if val.IsString() {
+	if _, isString := val.(goja.String); isString {
 		return base.Ptr(val.String())
-	} else if val.IsNull() || val.IsUndefined() {
+	} else if goja.IsNull(val) || goja.IsUndefined(val) {
 		return nil
 	} else {
-		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be a string or null", what, arg+1)))
+		panic(vm.NewTypeError(fmt.Sprintf("%s() param %d must be a string or null", what, arg+1)))
 	}
 }
 
 // Returns a parameter of `call` as a Go map, or throws a JS exception if it's not a map.
 // If `optional` is true, the parameter is allowed not to exist, in which case `nil` is returned.
-func ottoObjectParam(call otto.FunctionCall, arg int, optional bool, what string) map[string]any {
+func jsObjectParam(vm *goja.Runtime, call goja.FunctionCall, arg int, optional bool, what string) map[string]any {
 	val := call.Argument(arg)
-	if !val.IsObject() {
-		if optional && val.IsUndefined() {
+	obj, isObject := val.(*goja.Object)
+	if !isObject {
+		if optional && goja.IsUndefined(val) {
 			return nil
 		}
-		panic(call.Otto.MakeTypeError(fmt.Sprintf("%s() param %d must be an object", what, arg+1)))
+		panic(vm.NewTypeError(fmt.Sprintf("%s() param %d must be an object", what, arg+1)))
 	}
-	obj, err := val.Export()
-	if err != nil {
-		panic(call.Otto.MakeTypeError("Yikes, couldn't export JS value"))
+	exported, ok := sgbucket.ExportValue(obj).(map[string]any)
+	if !ok {
+		panic(vm.NewTypeError("Yikes, couldn't export JS value"))
 	}
-	return obj.(map[string]any)
+	return exported
 }
 
-// Returns `result` back to Otto; or if `err` is non-nil, "throws" it via a Go panic
-func ottoResult(call otto.FunctionCall, result any, err error) otto.Value {
+// Returns `result` back to JS; or if `err` is non-nil, "throws" it via a Go panic
+func jsResult(vm *goja.Runtime, result any, err error) goja.Value {
 	if err == nil {
-		val, _ := call.Otto.ToValue(result)
-		return val
+		return sgbucket.ToJSValue(vm, result)
 	} else {
 		// (javaScriptRunner.convertError clumsily takes these apart back into errors)
 		if status, msg := base.ErrorAsHTTPStatus(err); status != 500 && status != 200 {
-			panic(call.Otto.MakeCustomError("HTTP", fmt.Sprintf("%d %s", status, msg)))
+			panic(makeJSError(vm, "HTTP", fmt.Sprintf("%d %s", status, msg)))
 		} else {
-			panic(call.Otto.MakeCustomError("Go", err.Error()))
+			panic(makeJSError(vm, "Go", err.Error()))
 		}
 	}
 }
 
-// Returns `result` back to Otto in JSON form; or if `err` is non-nil, "throws" it via a Go panic
-func ottoJSONResult(call otto.FunctionCall, result any, err error) otto.Value {
+// Returns `result` back to JS in JSON form; or if `err` is non-nil, "throws" it via a Go panic
+func jsJSONResult(vm *goja.Runtime, result any, err error) goja.Value {
 	if err == nil && result != nil {
 		if j, err := json.Marshal(result); err == nil {
-			val, _ := call.Otto.ToValue(string(j))
-			return val
+			return vm.ToValue(string(j))
 		}
 	}
-	return ottoResult(call, result, err)
+	return jsResult(vm, result, err)
 }

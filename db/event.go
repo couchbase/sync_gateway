@@ -17,9 +17,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dop251/goja"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/robertkrimen/otto"
 )
 
 // EventType is an enum for each unique event type.
@@ -115,9 +116,8 @@ func newJsEventTask(ctx context.Context, funcSource string) (sgbucket.JSServerTa
 		return nil, err
 	}
 
-	eventTask.After = func(result otto.Value, err error) (any, error) {
-		nativeValue, _ := result.Export()
-		return nativeValue, err
+	eventTask.After = func(result goja.Value, err error) (any, error) {
+		return sgbucket.ExportValue(result), err
 	}
 
 	return eventTask, nil

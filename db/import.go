@@ -18,10 +18,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dop251/goja"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/robertkrimen/otto"
 )
 
 type ImportMode uint8
@@ -483,9 +484,8 @@ func newImportFilterRunnerWithLogging(ctx context.Context, funcSource string, ti
 		return nil, err
 	}
 
-	importFilterRunner.After = func(result otto.Value, err error) (any, error) {
-		nativeValue, _ := result.Export()
-		return nativeValue, err
+	importFilterRunner.After = func(result goja.Value, err error) (any, error) {
+		return sgbucket.ExportValue(result), err
 	}
 
 	return importFilterRunner, nil

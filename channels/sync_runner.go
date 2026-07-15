@@ -11,13 +11,15 @@ package channels
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/dop251/goja"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/robertkrimen/otto"
-	_ "github.com/robertkrimen/otto/underscore"
 )
 
 // Prefix used to identify roles in access grants
@@ -125,62 +127,59 @@ func NewSyncRunnerWithLogging(ctx context.Context, funcSource string, timeout ti
 	}
 
 	// Implementation of the 'channel()' callback:
-	runner.DefineNativeFunction("channel", func(call otto.FunctionCall) otto.Value {
-		for _, arg := range call.ArgumentList {
-			if strings := ottoValueToStringArray(ctx, arg); strings != nil {
+	runner.DefineNativeFunction("channel", func(call goja.FunctionCall) goja.Value {
+		for _, arg := range call.Arguments {
+			if strings := jsValueToStringArray(ctx, arg); strings != nil {
 				runner.channels = append(runner.channels, strings...)
 			}
 		}
-		return otto.UndefinedValue()
+		return goja.Undefined()
 	})
 
 	// Implementation of the 'access()' callback:
-	runner.DefineNativeFunction("access", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("access", func(call goja.FunctionCall) goja.Value {
 		return runner.addValueForUser(ctx, call.Argument(0), call.Argument(1), runner.access)
 	})
 
 	// Implementation of the 'role()' callback:
-	runner.DefineNativeFunction("role", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("role", func(call goja.FunctionCall) goja.Value {
 		return runner.addValueForUser(ctx, call.Argument(0), call.Argument(1), runner.roles)
 	})
 
 	// Implementation of the 'reject()' callback:
-	runner.DefineNativeFunction("reject", func(call otto.FunctionCall) otto.Value {
+	runner.DefineNativeFunction("reject", func(call goja.FunctionCall) goja.Value {
 		if runner.output.Rejection == nil {
-			if status, err := call.Argument(0).ToInteger(); err == nil && status >= 400 {
+			if status := call.Argument(0).ToInteger(); status >= 400 {
 				var message string
-				if len(call.ArgumentList) > 1 {
+				if len(call.Arguments) > 1 {
 					message = call.Argument(1).String()
 				}
 				runner.output.Rejection = base.NewHTTPError(int(status), message)
 			}
 		}
-		return otto.UndefinedValue()
+		return goja.Undefined()
 	})
 
 	// Implementation of the 'expiry()' callback:
-	runner.DefineNativeFunction("expiry", func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) > 0 {
-			rawExpiry, exportErr := call.Argument(0).Export()
-			if exportErr != nil {
-				base.WarnfCtx(ctx, "SyncRunner: Unable to export expiry parameter: %v Error: %s", call.Argument(0), exportErr)
-				return otto.UndefinedValue()
-			}
+	runner.DefineNativeFunction("expiry", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) > 0 {
+			arg := call.Argument(0)
+			rawExpiry := sgbucket.ExportValue(arg)
 
 			// Called expiry with null/undefined value - ignore
-			if rawExpiry == nil || call.Argument(0).IsUndefined() {
-				return otto.UndefinedValue()
+			if rawExpiry == nil || goja.IsUndefined(arg) {
+				return goja.Undefined()
 			}
 
 			expiry, reflectErr := base.ReflectExpiry(rawExpiry)
 			if reflectErr != nil {
-				base.WarnfCtx(ctx, "SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
-				return otto.UndefinedValue()
+				base.WarnfCtx(ctx, "SyncRunner: Invalid value passed to expiry().  Value:%+v ", arg)
+				return goja.Undefined()
 			}
 
 			runner.expiry = expiry
 		}
-		return otto.UndefinedValue()
+		return goja.Undefined()
 	})
 
 	runner.Before = func() {
@@ -190,7 +189,7 @@ func NewSyncRunnerWithLogging(ctx context.Context, funcSource string, timeout ti
 		runner.roles = map[string][]string{}
 		runner.expiry = nil
 	}
-	runner.After = func(result otto.Value, err error) (any, error) {
+	runner.After = func(result goja.Value, err error) (any, error) {
 		output := runner.output
 		runner.output = nil
 		if err == nil {
@@ -221,15 +220,76 @@ func (runner *SyncRunner) SetFunction(funcSource string) (bool, error) {
 	return runner.JSRunner.SetFunction(funcSource)
 }
 
+// Call invokes the sync function, first converting each argument (the document body, old document
+// body, meta map, and user ctx) into a JS value whose object/array properties are inserted in
+// sorted-key order, rather than relying on goja's default conversion of a Go map, which lazily
+// wraps it and enumerates (Object.keys, for-in, JSON.stringify) in Go's map iteration order --
+// randomized per run. Sync fn arguments are read-only from the JS side (mutations made by the sync
+// function aren't read back into Go afterwards -- only the channel()/access()/role()/expiry()/
+// reject() callback results matter), so replacing goja's live map wrapper with an ordinary, sorted
+// JS object/array here is safe, and makes things like console.log(JSON.stringify(doc))
+// reproducible across runs.
+func (runner *SyncRunner) Call(ctx context.Context, inputs ...any) (any, error) {
+	converted := make([]any, len(inputs))
+	for i, input := range inputs {
+		if jsonStr, ok := input.(sgbucket.JSONString); ok {
+			if jsonStr == "" {
+				converted[i] = goja.Null()
+				continue
+			}
+			var parsed any
+			if err := base.JSONUnmarshal([]byte(jsonStr), &parsed); err != nil {
+				return nil, fmt.Errorf("Unparseable JSRunner input: %s", jsonStr)
+			}
+			converted[i] = runner.toOrderedJSValue(parsed)
+			continue
+		}
+		converted[i] = runner.toOrderedJSValue(input)
+	}
+	return runner.JSRunner.Call(ctx, converted...)
+}
+
+// toOrderedJSValue recursively converts a Go value into a goja.Value, building maps/slices as
+// ordinary JS objects/arrays (with map keys inserted in sorted order) instead of using goja's
+// default lazy, order-unstable Go-map wrapper. Other value types are left to the existing
+// JSRunner/sgbucket conversion, unchanged.
+func (runner *SyncRunner) toOrderedJSValue(value any) goja.Value {
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String {
+			return runner.ToValue(value)
+		}
+		keys := make([]string, 0, rv.Len())
+		for _, k := range rv.MapKeys() {
+			keys = append(keys, k.String())
+		}
+		sort.Strings(keys)
+		obj := runner.VM().NewObject()
+		for _, k := range keys {
+			_ = obj.Set(k, runner.toOrderedJSValue(rv.MapIndex(reflect.ValueOf(k)).Interface()))
+		}
+		return obj
+	case reflect.Slice, reflect.Array:
+		elements := make([]any, rv.Len())
+		for i := range elements {
+			elements[i] = runner.toOrderedJSValue(rv.Index(i).Interface())
+		}
+		return runner.VM().NewArray(elements...)
+	default:
+		return runner.ToValue(value)
+	}
+}
+
 // Common implementation of 'access()' and 'role()' callbacks
-func (runner *SyncRunner) addValueForUser(ctx context.Context, user otto.Value, value otto.Value, mapping map[string][]string) otto.Value {
-	valueStrings := ottoValueToStringArray(ctx, value)
+func (runner *SyncRunner) addValueForUser(ctx context.Context, user goja.Value, value goja.Value, mapping map[string][]string) goja.Value {
+	valueStrings := jsValueToStringArray(ctx, value)
 	if len(valueStrings) > 0 {
-		for _, name := range ottoValueToStringArray(ctx, user) {
+		for _, name := range jsValueToStringArray(ctx, user) {
 			mapping[name] = append(mapping[name], valueStrings...)
 		}
 	}
-	return otto.UndefinedValue()
+	return goja.Undefined()
 }
 
 func compileAccessMap(input map[string][]string, prefix string) (AccessMap, error) {
@@ -262,12 +322,12 @@ func AccessNameToPrincipalName(accessPrincipalName string) (principalName string
 }
 
 // Converts a JS string or array into a Go string array.
-func ottoValueToStringArray(ctx context.Context, value otto.Value) []string {
-	nativeValue, _ := value.Export()
+func jsValueToStringArray(ctx context.Context, value goja.Value) []string {
+	nativeValue := sgbucket.ExportValue(value)
 
 	result, nonStrings := base.ValueToStringArray(nativeValue)
 
-	if !value.IsNull() && !value.IsUndefined() && nonStrings != nil {
+	if !goja.IsNull(value) && !goja.IsUndefined(value) && nonStrings != nil {
 		base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
 	return result

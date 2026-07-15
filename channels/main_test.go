@@ -15,10 +15,13 @@ import (
 	"os"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
 func TestMain(m *testing.M) {
+	sgbucket.DisableUnderscoreJS() // It really slows down unit tests (by making goja.New take a lot longer)
+
 	ctx := context.Background() // start of test process
 	// can't use defer because of os.Exit
 	teardownFuncs := make([]func(), 0)

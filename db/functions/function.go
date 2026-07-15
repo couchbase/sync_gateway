@@ -24,7 +24,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	_ "github.com/robertkrimen/otto/underscore"
 )
 
 //////// CONFIGURATION TYPES:

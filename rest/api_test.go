@@ -39,12 +39,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
-	"github.com/robertkrimen/otto/underscore"
 )
-
-func init() {
-	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
-}
 
 // ////// REST TESTER HELPER CLASS:
 

@@ -16,9 +16,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dop251/goja"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/robertkrimen/otto"
 )
 
 type ConflictResolverType string
@@ -267,7 +268,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(ctx context.Context, conflic
 	docID, _ := conflict.LocalDocument[BodyId].(string)
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
-	result, err := i.Call(ctx, conflict)
+	result, err := i.Call(ctx, conflictToJSInput(conflict))
 	if err != nil {
 		base.WarnfCtx(ctx, "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
 			base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
@@ -308,46 +309,72 @@ func newConflictResolverRunner(ctx context.Context, funcSource string, timeout t
 	}
 
 	// Implementation of the 'defaultPolicy(conflict)' callback:
-	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) == 0 {
-			return ErrorToOttoValue(ctx, conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
+	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 {
+			return ErrorToJSValue(conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
 		}
-		rawConflict, exportErr := call.Argument(0).Export()
-		if exportErr != nil {
-			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %s", call.Argument(0), exportErr))
-		}
+		arg0 := call.Argument(0)
+		rawConflict := sgbucket.ExportValue(arg0)
 
 		// Called defaultPolicy with null/undefined value - return
-		if rawConflict == nil || call.Argument(0).IsUndefined() {
-			return ErrorToOttoValue(ctx, conflictResolverRunner, errors.New("Null or undefined value passed to defaultPolicy()"))
+		if rawConflict == nil || goja.IsUndefined(arg0) {
+			return ErrorToJSValue(conflictResolverRunner, errors.New("Null or undefined value passed to defaultPolicy()"))
 		}
 
-		conflict, ok := rawConflict.(Conflict)
+		conflict, ok := conflictFromJSValue(rawConflict)
 		if !ok {
-			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Invalid value passed to defaultPolicy().  Value was type %T, expected type Conflict", rawConflict))
+			return ErrorToJSValue(conflictResolverRunner, fmt.Errorf("Invalid value passed to defaultPolicy().  Value was type %T, expected type Conflict", rawConflict))
 		}
 
 		defaultWinner, _ := DefaultConflictResolver(ctx, conflict)
-		ottoDefaultWinner, err := conflictResolverRunner.ToValue(defaultWinner)
-		if err != nil {
-			return ErrorToOttoValue(ctx, conflictResolverRunner, fmt.Errorf("Error converting default winner to javascript value.  Error:%w", err))
-		}
-		return ottoDefaultWinner
+		return conflictResolverRunner.ToValue(defaultWinner)
 	})
 
-	conflictResolverRunner.After = func(result otto.Value, err error) (any, error) {
-		nativeValue, _ := result.Export()
-		return nativeValue, err
+	conflictResolverRunner.After = func(result goja.Value, err error) (any, error) {
+		return sgbucket.ExportValue(result), err
 	}
 
 	return conflictResolverRunner, nil
 }
 
-// Converts an error to an otto value, to support native functions returning errors.
-func ErrorToOttoValue(ctx context.Context, runner *sgbucket.JSRunner, err error) otto.Value {
-	errorValue, convertErr := runner.ToValue(err)
-	if convertErr != nil {
-		base.WarnfCtx(ctx, "Unable to convert error to otto value: %v", convertErr)
+// Converts an error to a JS value, to support native functions returning errors.
+func ErrorToJSValue(runner *sgbucket.JSRunner, err error) goja.Value {
+	return runner.ToValue(err)
+}
+
+// conflictToJSInput converts a Conflict into the value passed as the resolver function's
+// `conflict` argument. LocalDocument/RemoteDocument are re-typed from Body to the unnamed,
+// method-less map[string]interface{} (a cheap reinterpretation, not a copy): goja only gives
+// a Go map property-style access to its entries (e.g. `conflict.LocalDocument.someProp`) when
+// it's that literal type with no methods; Body's methods would otherwise make goja expose it
+// as an opaque Go object exposing only those methods.
+func conflictToJSInput(conflict Conflict) map[string]any {
+	return map[string]any{
+		"LocalDocument":  map[string]any(conflict.LocalDocument),
+		"RemoteDocument": map[string]any(conflict.RemoteDocument),
+		"LocalHLV":       conflict.LocalHLV,
+		"RemoteHLV":      conflict.RemoteHLV,
 	}
-	return errorValue
+}
+
+// conflictFromJSValue reconstructs a Conflict from an exported JS value shaped like the map
+// conflictToJSInput produces (the inverse conversion), for the `defaultPolicy` native callback.
+func conflictFromJSValue(raw any) (Conflict, bool) {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return Conflict{}, false
+	}
+	localDoc, ok1 := m["LocalDocument"].(map[string]any)
+	remoteDoc, ok2 := m["RemoteDocument"].(map[string]any)
+	if !ok1 || !ok2 {
+		return Conflict{}, false
+	}
+	conflict := Conflict{LocalDocument: Body(localDoc), RemoteDocument: Body(remoteDoc)}
+	if hlv, ok := m["LocalHLV"].(*HybridLogicalVector); ok {
+		conflict.LocalHLV = hlv
+	}
+	if hlv, ok := m["RemoteHLV"].(*HybridLogicalVector); ok {
+		conflict.RemoteHLV = hlv
+	}
+	return conflict, true
 }

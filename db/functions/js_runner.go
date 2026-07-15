@@ -13,6 +13,7 @@ package functions
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -20,11 +21,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dop251/goja"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/robertkrimen/otto"
-	_ "github.com/robertkrimen/otto/underscore"
 )
 
 //////// JS RUNNER
@@ -98,7 +99,7 @@ func newJSRunner(ctx context.Context, name string, kind string, funcSource strin
 		}
 	}
 	// Function that runs after every call:
-	runner.After = func(jsResult otto.Value, err error) (any, error) {
+	runner.After = func(jsResult goja.Value, err error) (any, error) {
 		defer func() {
 			runner.currentDB = nil
 		}()
@@ -106,7 +107,7 @@ func newJSRunner(ctx context.Context, name string, kind string, funcSource strin
 			base.ErrorfCtx(ctx, base.KeyJavascript.String()+": %s %s failed: %#v", runner.kind, runner.name, err)
 			return nil, runner.convertError(err)
 		}
-		return jsResult.Export()
+		return sgbucket.ExportValue(jsResult), nil
 	}
 
 	return runner, nil
@@ -167,9 +168,16 @@ func (runner *jsRunner) convertError(err error) error {
 	if err == sgbucket.ErrJSTimeout {
 		return base.HTTPErrorf(408, "Timeout in JavaScript")
 	}
-	// Unfortunately there is no API on otto.Error to get the name & message separately.
-	// Instead, look for the name as a prefix. (See the `ottoResult` function below)
+	// Unfortunately there is no API to get a JS Error's name & message separately.
+	// Instead, look for the name as a prefix. (See the `jsResult` function in js_callbacks.go)
+	// Use the exception's JS value directly rather than err.Error(): goja's Exception.Error()
+	// appends a " at <native function> (native)" stack-frame suffix that would otherwise leak
+	// into the HTTP error message returned to API callers.
 	str := err.Error()
+	if exc, ok := errors.AsType[*goja.Exception](err); ok {
+		str = exc.Value().String()
+		err = errors.New(str)
+	}
 	if strings.HasPrefix(str, "HTTP:") {
 		m := HttpErrRE.FindStringSubmatch(str)
 		status, _ := strconv.ParseInt(m[1], 10, 0)

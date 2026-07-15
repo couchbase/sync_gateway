@@ -18,7 +18,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/db"
-	_ "github.com/robertkrimen/otto/underscore"
 )
 
 // implements UserFunctionInvocation

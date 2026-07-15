@@ -14,6 +14,7 @@ import (
 	"context"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -187,6 +188,8 @@ func TestBootstrapConnectionOptsConfigs(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	sgbucket.DisableUnderscoreJS() // It really slows down unit tests (by making goja.New take a lot longer)
+
 	ctx := context.Background() // start of test process
 	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192, NumCollectionsPerBucket: 3}
 	TestBucketPoolRestWithIndexes(ctx, m, tbpOptions)

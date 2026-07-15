@@ -33,12 +33,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/assert"
-	"github.com/robertkrimen/otto/underscore"
 )
-
-func init() {
-	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
-}
 
 // Note: It is important to call db.Close() on the returned database.
 func setupTestDB(t testing.TB) (*Database, context.Context) {

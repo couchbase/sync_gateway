@@ -16,7 +16,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	_ "github.com/robertkrimen/otto/underscore"
 )
 
 /** Result of running a channel-mapper function. */
