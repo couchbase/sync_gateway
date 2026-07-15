@@ -63,7 +63,7 @@ func TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole(t *testing.T) 
 	ctx := rt.Context()
 	sc := rt.ServerContext()
 
-	eps, httpClient, err := sc.ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := sc.getManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	roleName := MobileSyncGatewayRole.RoleName
