@@ -171,7 +171,11 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 {
-		return s.LowSeq
+		if s.LowSeq < s.Seq {
+			return s.LowSeq
+		} else {
+			return s.Seq
+		}
 	} else {
 		return s.Seq
 	}
