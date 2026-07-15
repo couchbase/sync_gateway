@@ -50,6 +50,7 @@ func TestBlipConflictResolution(t *testing.T) {
 		{"PullConflict", testBlipPullConflict},
 		{"PullConflictNoRevLosesBody", testBlipPullConflictNoRevLosesBody},
 		{"NoRevOnCorruptHistoryDelta", testBlipNoRevOnCorruptHistoryDelta},
+		{"NoRevIgnoredSingleChangesEntry", testBlipNoRevIgnoredSingleChangesEntry},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) { tc.test(t, rt) })
@@ -140,6 +141,55 @@ func testBlipPullConflictNoRevLosesBody(t *testing.T, rt *RestTester) {
 			body, _, _ := client.GetDoc(docID)
 			return !bytes.Equal(body, []byte(cblBody))
 		}, 2*time.Second, 100*time.Millisecond, "norev overwrote known-good revision with no body")
+	})
+}
+
+// testBlipNoRevIgnoredSingleChangesEntry asserts that once a bodyless norev is ignored because the client
+// already holds real content for the doc (CBG-5547), the client's push-changes iteration (OneShotChangesSince)
+// still surfaces the document exactly once. A stale second _seqStore entry left behind for the ignored norev's
+// sequence previously caused the same revision to be proposed twice during push replication.
+func testBlipNoRevIgnoredSingleChangesEntry(t *testing.T, rt *RestTester) {
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // requires HLV-based conflict detection
+
+	btcRunner.Run(func(t *testing.T) {
+		const cblBody = `{"actor": "cbl"}`
+		docID := SafeDocumentName(t, t.Name())
+
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer btc.Close()
+
+		client := btcRunner.SingleCollection(btc.id)
+		cblVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
+
+		// SG writes its own conflicting revision afterwards, so it genuinely wins LWW resolution.
+		sgVersion := rt.PutDoc(docID, `{"actor": "sg", "channels": ["shared"]}`)
+		require.Greater(t, sgVersion.CV.Value, cblVersion.CV.Value)
+		rt.WaitForPendingChanges()
+
+		// Force SG to fail to retrieve its own revision body, so the pull can only deliver a bodyless norev.
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore(rt.Context()))
+		require.True(t, ok)
+		leakyDataStore.SetGetRawCallback(func(string) error { return gocb.ErrDocumentNotFound })
+		leakyDataStore.SetGetWithXattrCallback(func(string) error { return gocb.ErrDocumentNotFound })
+		t.Cleanup(func() {
+			// reset the leaky callbacks so they don't leak into other subtests sharing this RestTester
+			leakyDataStore.SetGetRawCallback(nil)
+			leakyDataStore.SetGetWithXattrCallback(nil)
+		})
+
+		btcRunner.StartOneshotPull(btc.id)
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, sgVersion)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+
+		var matches []proposeChangeBatchEntry
+		for _, change := range client.OneShotChangesSince(rt.Context(), 0) {
+			if change.docID == docID {
+				matches = append(matches, *change)
+			}
+		}
+		require.Len(t, matches, 1, "expected exactly one push-changes entry for docID %q, got %#v", docID, matches)
 	})
 }
 

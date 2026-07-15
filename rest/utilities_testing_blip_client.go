@@ -2298,18 +2298,21 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 
 	if !hasLocalDoc {
 		doc = newClientDocument(docID, newClientSeq, &docRev)
+		btcc._seqStore[newClientSeq] = doc
+		btcc._seqFromDocID[docID] = newClientSeq
 	} else if ignoreNoRevBody {
 		// Record the version/message for waiters without replacing the doc's active content via _addNewRev.
-		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", base.UD(docID), opts.incomingVersion)
+		// No _seqStore/_seqFromDocID entry is added for newClientSeq: the doc's active revision (and its
+		// existing _seqStore entry) is unchanged, so a new entry here would be a second, stale-looking
+		// pointer to the same doc and would cause it to be yielded twice by changes iteration.
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", docID, opts.incomingVersion)
 		doc._revisionsBySeq[newClientSeq] = docRev
 		doc._seqsByVersions[newVersion] = newClientSeq
 	} else {
 		// remove existing entry and replace with new seq
 		delete(btcc._seqStore, doc._latestSeq)
 		doc._addNewRev(docRev)
-	}
-	btcc._seqStore[newClientSeq] = doc
-	if !ignoreNoRevBody {
+		btcc._seqStore[newClientSeq] = doc
 		btcc._seqFromDocID[docID] = newClientSeq
 	}
 
