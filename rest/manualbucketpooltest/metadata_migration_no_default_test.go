@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -56,4 +57,21 @@ func TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection(t *testing.T) {
 	resp := rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), "_default._default does not exist on bucket")
+
+	summaryResp := rt.GetAllDBsVerbose()
+	require.Len(t, summaryResp, 1)
+	assert.Equal(t, summaryResp[0].DBName, "db1")
+	assert.Equal(t, db.DatabaseNoMetadataStore, summaryResp[0].DatabaseError.Code)
+	assert.Equal(t, db.RunStateString[db.DBOffline], summaryResp[0].State)
+
+	// recover by opting-in
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp = rt.CreateDatabase("db1", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	summaryResp = rt.GetAllDBsVerbose()
+	require.Len(t, summaryResp, 1)
+	assert.Equal(t, summaryResp[0].DBName, "db1")
+	assert.Nil(t, summaryResp[0].DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOnline], summaryResp[0].State)
 }
