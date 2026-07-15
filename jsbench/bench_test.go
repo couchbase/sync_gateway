@@ -17,27 +17,53 @@
 //
 // Results (AMD Ryzen 9 3950X 16-Core, go1.26.5, linux/amd64):
 //
-//	BenchmarkCompile/Otto/Tiny-32         	    9468	    110580 ns/op	  155183 B/op	    1673 allocs/op
-//	BenchmarkCompile/Goja/Tiny-32         	  118567	      9775 ns/op	   10080 B/op	     117 allocs/op
-//	BenchmarkCompile/Otto/Small-32        	    9236	    116568 ns/op	  159130 B/op	    1771 allocs/op
-//	BenchmarkCompile/Goja/Small-32        	   55801	     21080 ns/op	   17376 B/op	     232 allocs/op
-//	BenchmarkCompile/Otto/Medium-32       	    7966	    134473 ns/op	  165603 B/op	    1925 allocs/op
-//	BenchmarkCompile/Goja/Medium-32       	   30050	     39895 ns/op	   30352 B/op	     434 allocs/op
-//	BenchmarkCompile/Otto/Large-32        	    1915	    642591 ns/op	  357206 B/op	    6621 allocs/op
-//	BenchmarkCompile/Goja/Large-32        	    2002	    568543 ns/op	  417610 B/op	    5520 allocs/op
-//	BenchmarkCall/Otto/Tiny-32            	  377562	      3008 ns/op	    2728 B/op	      43 allocs/op
-//	BenchmarkCall/Goja/Tiny-32            	 1765952	       685.5 ns/op	     608 B/op	      10 allocs/op
-//	BenchmarkCall/Otto/Small-32           	  269343	      4390 ns/op	    3480 B/op	      63 allocs/op
-//	BenchmarkCall/Goja/Small-32           	 1253538	       954.8 ns/op	     624 B/op	      11 allocs/op
-//	BenchmarkCall/Otto/Medium-32          	   21802	     55141 ns/op	   33314 B/op	     788 allocs/op
-//	BenchmarkCall/Goja/Medium-32          	   57534	     21273 ns/op	   17528 B/op	     238 allocs/op
-//	BenchmarkCall/Otto/Large-32           	    2004	    600626 ns/op	  347407 B/op	    9626 allocs/op
-//	BenchmarkCall/Goja/Large-32           	    4269	    285612 ns/op	  305170 B/op	    3728 allocs/op
+//	BenchmarkCompile/Otto/Tiny-32                    	    9321	    107362 ns/op	  155187 B/op	    1673 allocs/op
+//	BenchmarkCompile/Goja/Tiny-32                    	  120579	      9814 ns/op	   10080 B/op	     117 allocs/op
+//	BenchmarkCompile/Otto/Small-32                   	    9716	    116157 ns/op	  159130 B/op	    1771 allocs/op
+//	BenchmarkCompile/Goja/Small-32                   	   56233	     21574 ns/op	   17376 B/op	     232 allocs/op
+//	BenchmarkCompile/Otto/Medium-32                  	    8287	    137450 ns/op	  165603 B/op	    1925 allocs/op
+//	BenchmarkCompile/Goja/Medium-32                  	   27825	     42512 ns/op	   30352 B/op	     434 allocs/op
+//	BenchmarkCompile/Otto/Large-32                   	    1854	    658909 ns/op	  357529 B/op	    6632 allocs/op
+//	BenchmarkCompile/Goja/Large-32                   	    2050	    588906 ns/op	  418162 B/op	    5534 allocs/op
+//	BenchmarkCompile/Otto/TinySrcLargeDoc-32         	   10000	    109979 ns/op	  155187 B/op	    1673 allocs/op
+//	BenchmarkCompile/Goja/TinySrcLargeDoc-32         	  115106	     10034 ns/op	   10080 B/op	     117 allocs/op
+//	BenchmarkCompile/Otto/LargeSrcTinyDoc-32         	    1836	    644033 ns/op	  357528 B/op	    6632 allocs/op
+//	BenchmarkCompile/Goja/LargeSrcTinyDoc-32         	    2017	    584940 ns/op	  418162 B/op	    5534 allocs/op
+//	BenchmarkCall/Otto/Tiny-32                       	  388046	      3040 ns/op	    2728 B/op	      43 allocs/op
+//	BenchmarkCall/Goja/Tiny-32                       	 1766116	       675.6 ns/op	     608 B/op	      10 allocs/op
+//	BenchmarkCall/Otto/Small-32                      	  246973	      4374 ns/op	    3480 B/op	      63 allocs/op
+//	BenchmarkCall/Goja/Small-32                      	 1238571	       972.0 ns/op	     624 B/op	      11 allocs/op
+//	BenchmarkCall/Otto/Medium-32                     	   21922	     55397 ns/op	   33314 B/op	     788 allocs/op
+//	BenchmarkCall/Goja/Medium-32                     	   54799	     21220 ns/op	   17528 B/op	     238 allocs/op
+//	BenchmarkCall/Otto/Large-32                      	    2007	    586021 ns/op	  335655 B/op	    9309 allocs/op
+//	BenchmarkCall/Goja/Large-32                      	    4340	    264569 ns/op	  282802 B/op	    3488 allocs/op
+//	BenchmarkCall/Otto/TinySrcLargeDoc-32            	  394712	      2843 ns/op	    2656 B/op	      39 allocs/op
+//	BenchmarkCall/Goja/TinySrcLargeDoc-32            	 1874712	       632.0 ns/op	     576 B/op	       8 allocs/op
+//	BenchmarkCall/Otto/LargeSrcTinyDoc-32            	   36355	     32940 ns/op	   19592 B/op	     411 allocs/op
+//	BenchmarkCall/Goja/LargeSrcTinyDoc-32            	  114082	     10436 ns/op	    4648 B/op	      63 allocs/op
 //
-// Goja compiles ~2-11x faster than otto except at the "Large" size, where the two are close
-// (goja's parser/compiler does more upfront work per byte of source, so it stops being a clear
-// win once the source itself dominates). Goja calls a warm, already-compiled function ~2-4x
-// faster than otto across all sizes, with meaningfully fewer allocations throughout.
+// Goja compiles ~2-11x faster than otto except at the "Large"/"LargeSrcTinyDoc" sizes (same
+// source, so ~identical compile cost regardless of doc), where the two are close (goja's
+// parser/compiler does more upfront work per byte of source, so it stops being a clear win once
+// the source itself dominates). Goja calls a warm, already-compiled function ~2-4x faster than
+// otto across all sizes, with meaningfully fewer allocations throughout.
+//
+// The cross cases (TinySrcLargeDoc, LargeSrcTinyDoc) isolate which dimension -- function
+// complexity or document size -- actually drives cost:
+//   - TinySrcLargeDoc costs about the same as plain Tiny for both engines (compile and call):
+//     the tiny function only reads doc.channel, so a bigger document it never inspects is nearly
+//     free to hand to the JS runtime.
+//   - LargeSrcTinyDoc's Call cost sits between Small and Medium, well below Large: the 60
+//     generated branches run regardless of document size, but the shrunk history/events data
+//     means the nested aggregation loops (the O(history*events) part of Large) do almost no
+//     work. So call cost tracks *function complexity* (branch count) far more than document
+//     size, while the aggregation loops are what pushes cost up further when a large document
+//     backs a large function.
+//
+// Net takeaway: call cost tracks function complexity (branch count) far more than document size;
+// it's specifically the aggregation loops iterating over document data -- not the document's mere
+// presence -- that push Large's cost up further. Goja keeps its ~2-4x call-time and allocation
+// advantage over otto in both cross cases too.
 package jsbench
 
 import (
@@ -56,6 +82,9 @@ func sizeCases() []sizeCase {
 		{"Small", smallSource, smallDoc},
 		{"Medium", mediumSource, mediumDoc},
 		{"Large", largeSource, largeDoc},
+		// Cross cases: isolate whether cost tracks function complexity or document size.
+		{"TinySrcLargeDoc", tinySource, largeDoc},
+		{"LargeSrcTinyDoc", largeSource, tinyDoc},
 	}
 }
 

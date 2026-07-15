@@ -92,8 +92,9 @@ func buildLargeSource(n int) string {
 	}
 	b.WriteString("\tchannel(chans);\n")
 	b.WriteString("\tvar total = 0;\n")
-	b.WriteString("\tfor (var i = 0; i < doc.history.length; i++) {\n")
-	b.WriteString("\t\tvar entry = doc.history[i];\n")
+	b.WriteString("\tvar history = doc.history || [];\n") // tolerate docs with no history (e.g. tinyDoc)
+	b.WriteString("\tfor (var i = 0; i < history.length; i++) {\n")
+	b.WriteString("\t\tvar entry = history[i];\n")
 	b.WriteString("\t\tfor (var j = 0; j < entry.events.length; j++) {\n")
 	b.WriteString("\t\t\ttotal += entry.events[j].amount;\n")
 	b.WriteString("\t\t}\n")
