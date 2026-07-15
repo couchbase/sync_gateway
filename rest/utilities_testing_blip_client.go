@@ -2282,6 +2282,8 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			updatedHLV.UpdateWithIncomingHLV(opts.incomingHLV)
 		}
 	}
+	// A bodyless norev must never clobber a document we already have real content for.
+	ignoreNoRevBody := opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
@@ -2296,13 +2298,20 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 
 	if !hasLocalDoc {
 		doc = newClientDocument(docID, newClientSeq, &docRev)
+	} else if ignoreNoRevBody {
+		// Record the version/message for waiters without replacing the doc's active content via _addNewRev.
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", base.UD(docID), opts.incomingVersion)
+		doc._revisionsBySeq[newClientSeq] = docRev
+		doc._seqsByVersions[newVersion] = newClientSeq
 	} else {
 		// remove existing entry and replace with new seq
 		delete(btcc._seqStore, doc._latestSeq)
 		doc._addNewRev(docRev)
 	}
 	btcc._seqStore[newClientSeq] = doc
-	btcc._seqFromDocID[docID] = newClientSeq
+	if !ignoreNoRevBody {
+		btcc._seqFromDocID[docID] = newClientSeq
+	}
 
 	if opts.replacedVersion != nil {
 		// store the new sequence for a replaced rev for tests waiting for this specific rev
