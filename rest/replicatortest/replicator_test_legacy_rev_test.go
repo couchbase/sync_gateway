@@ -948,11 +948,18 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				require.NoError(t, ar.Start(ctx1))
 
 				if tc.activePeerHasPostUpgradeVersion {
-					base.RequireWaitForStat(t, func() int64 {
-						return replicationStats.ConflictResolvedLocalCount.Value()
-					}, 1)
-					replicatedDoc := rt1.GetDocument(docID)
-					verPostConflictRes := replicatedDoc.ExtractDocVersion()
+					// ConflictResolvedLocalCount is incremented inside the updateAndReturnDoc callback,
+					// before the CAS write commits. A plain GetDocument after RequireWaitForStat can still
+					// see the pre-resolution rev. Poll both the stat and the version change together so
+					// verPostConflictRes is always the committed post-resolution rev when we use it below.
+					var replicatedDoc *db.Document
+					var verPostConflictRes rest.DocVersion
+					require.EventuallyWithT(t, func(c *assert.CollectT) {
+						assert.Equal(c, int64(1), replicationStats.ConflictResolvedLocalCount.Value())
+						replicatedDoc = rt1.GetDocument(docID)
+						verPostConflictRes = replicatedDoc.ExtractDocVersion()
+						assert.NotEqual(c, legacyRevRT1, verPostConflictRes.RevTreeID)
+					}, 10*time.Second, 50*time.Millisecond)
 					// wait for this resolution to be pushed back to passive peer
 					rt2.WaitForVersion(docID, verPostConflictRes)
 
