@@ -86,13 +86,19 @@ func TestFreshDeploymentWithDroppedDefaultCollection(t *testing.T) {
 }
 
 // TestMigrationThenDropDefaultCollection exercises the full migration-then-drop lifecycle on a
-// fresh bucket created outside the pool. The flow is:
+// fresh bucket created outside the pool. Once a database has fully migrated its metadata into
+// _system._mobile, the _default collection is no longer required and can be dropped without
+// preventing the database from coming back online. The flow mirrors a production upgrade:
 //
 //  1. Create a database with use_system_metadata_collection=false so metadata lands in _default._default.
 //  2. Write users, placing real principal docs in _default._default.
-//  3. Opt into system metadata, drive migration to completion (per-DB and bucket-wide).
+//  3. Opt into system metadata, drive migration to completion (per-DB and bucket-wide), and assert
+//     the metadata moved from _default._default to _system._mobile.
 //  4. Drop _default._default (CBS only; rosmar cannot drop the default collection).
-//  5. Force a database reload and assert the database comes back online and still services requests.
+//  5. Force a database reload and assert the database comes back online and still services requests
+//     (principals readable, a doc round-trips through the named collection).
+//  6. On CBS, confirm a new database that opts OUT of the system metadata collection can no longer
+//     be created once _default._default is gone.
 func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -101,11 +107,17 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	tb := base.GTestBucketPool.CreateTestBucket(t)
 	t.Cleanup(func() { base.GTestBucketPool.RemoveBucket(tb) })
 
-	const testScope = "sg_test_0"
-	const testCollection = "sg_test_0"
-	const dbName = "db"
+	const (
+		scope       = "sg_test_0"
+		collection1 = "sg_test_0"
+		collection2 = "sg_test_1"
+		dbName      = "db"
+	)
 
-	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: testScope, Collection: testCollection}))
+	// The database's documents live in a named collection (sg_test_0.sg_test_0), NOT in
+	// _default._default. A second named collection backs the post-drop new-database probe.
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: scope, Collection: collection1}))
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: scope, Collection: collection2}))
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -117,20 +129,29 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
 	dbConfig.Scopes = rest.ScopesConfig{
-		testScope: rest.ScopeConfig{
-			Collections: rest.CollectionsConfig{
-				testCollection: {},
-			},
+		scope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{collection1: {}},
 		},
 	}
 	rest.RequireStatus(t, rt.CreateDatabase(dbName, dbConfig), http.StatusCreated)
 
 	// 2. Write users so there is real metadata in _default._default to migrate.
-	for _, user := range []string{"alice", "bob"} {
+	users := []string{"alice", "bob", "carol"}
+	for _, user := range users {
 		resp := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/_user/"+user,
-			fmt.Sprintf(`{"name":%q,"password":"letmein","admin_channels":["*"]}`, user))
+			fmt.Sprintf(`{"name":%q,"password":"letmein123","admin_channels":["*"]}`, user))
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
+
+	// Confirm the legacy metadata really is in _default._default — otherwise the drop-and-survive
+	// assertions below would be meaningless.
+	dbCtx, err := rt.ServerContext().GetDatabase(ctx, dbName)
+	require.NoError(t, err)
+	fallback := tb.Bucket.DefaultDataStore(ctx)
+	aliceKey := dbCtx.MetadataKeys.UserKey("alice")
+	exists, err := fallback.Exists(ctx, aliceKey)
+	require.NoError(t, err)
+	require.Truef(t, exists, "user key %q must exist in _default._default before migration", aliceKey)
 
 	// 3. Opt into system metadata collection, flush this node's applied-config gate, then drive
 	// migration to completion for the per-DB entry and the bucket-wide bootstrap docs.
@@ -142,33 +163,66 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	assert.Zero(t, migStatus.DocsFailed, "migration must complete with no per-doc failures")
 	rt.WaitForBucketMetadataMigrationComplete(rt.Bucket().GetName())
 
-	// 4. Drop _default._default. Rosmar does not support dropping the default collection.
+	// Sanity: the migrated metadata now lives on _system._mobile and is gone from _default._default.
+	systemDS, err := rt.Bucket().NamedDataStore(ctx, base.MobileSystemScopeAndCollectionName())
+	require.NoError(t, err)
+	onPrimary, err := systemDS.Exists(ctx, aliceKey)
+	require.NoError(t, err)
+	require.True(t, onPrimary, "user key must be on _system._mobile after migration")
+	onFallback, err := fallback.Exists(ctx, aliceKey)
+	require.NoError(t, err)
+	require.False(t, onFallback, "user key must be removed from _default._default after migration")
+
+	// 4. Drop _default._default. Rosmar cannot drop the default collection, so this and the
+	// drop-dependent probe in step 6 are CBS-only.
 	if !base.UnitTestUrlIsWalrus() {
 		require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
 			Scope: base.DefaultScope, Collection: base.DefaultCollection,
 		}), "dropping _default._default should succeed on Couchbase Server after migration")
 	}
 
-	// 5. Force a database reload via a benign config change (bump revs_limit). The opt-in is
-	// irreversible, so it remains true in the updated config.
+	// 5a. Force a full database reload via a benign config change (bump revs_limit) so the
+	// DatabaseContext is torn down and rebuilt, reopening its metadata store from scratch. The
+	// opt-in is irreversible, so it remains true in the updated config.
 	dbConfig.RevsLimit = base.Ptr(uint32(100))
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
 	rt.WaitForDatabaseState(dbName, "Online")
 	require.Eventually(t, func() bool {
-		reloaded, err := rt.ServerContext().GetDatabase(ctx, dbName)
-		return err == nil && reloaded.RevsLimit == 100
+		reloaded, getErr := rt.ServerContext().GetDatabase(ctx, dbName)
+		return getErr == nil && reloaded.RevsLimit == 100
 	}, 10*time.Second, 100*time.Millisecond, "config reload must be applied before asserting post-drop behaviour")
 
-	// 5. Principals must still be readable — reads go through _system._mobile.
-	for _, user := range []string{"alice", "bob"} {
+	// 5b. Principals must still be readable — reads go through the migrated _system._mobile store.
+	for _, user := range users {
 		resp := rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_user/"+user, "")
 		rest.RequireStatus(t, resp, http.StatusOK)
 		assert.Contains(t, resp.Body.String(), fmt.Sprintf(`"name":%q`, user))
 	}
 
-	// 6. Document round-trip through the named collection confirms the data path is functional.
-	rt.CreateTestDoc("doc1")
-	rt.GetDoc("doc1")
+	// 5c. End-to-end document round-trip through the named collection confirms the data path is
+	// functional with _default gone.
+	keyspace := fmt.Sprintf("%s.%s.%s", dbName, scope, collection1)
+	resp := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/doc1", `{"channels":["*"],"value":"hello"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/doc1", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), `"value":"hello"`)
+
+	// 6. With _default._default gone, a new database that opts OUT of the system metadata collection
+	// can no longer be created — its legacy metadata store no longer exists. CBS only: on rosmar
+	// _default was never dropped, so this database would succeed.
+	if !base.UnitTestUrlIsWalrus() {
+		newDbConfig := rt.NewDbConfig()
+		newDbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+		newDbConfig.Scopes = rest.ScopesConfig{
+			scope: rest.ScopeConfig{
+				Collections: rest.CollectionsConfig{collection2: {}},
+			},
+		}
+		resp = rt.CreateDatabase("newdb", newDbConfig)
+		rest.RequireStatus(t, resp, http.StatusInternalServerError)
+		assert.Contains(t, resp.Body.String(), "_default._default does not exist on bucket")
+	}
 }
 
 // TestFreshDeploymentWithDroppedDefaultCollectionTwoDatabases extends
