@@ -45,7 +45,7 @@ func TestSendingMetricsToNsServerCollector(t *testing.T) {
 
 	// Exercise the production send path rather than re-implementing the POST here.
 	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
-	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics))
+	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics, rt.ServerContext().Config.Bootstrap.Username, rt.ServerContext().Config.Bootstrap.Password))
 }
 
 // TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole verifies that a user holding only the
@@ -78,10 +78,8 @@ func TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole(t *testing.T) 
 
 	// Redirect the send path's authentication to the scoped user for the test;
 	// sendFleetManagerMetrics reads these credentials at call time.
-	sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password = username, password
-
 	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
-	require.NoError(t, sc.sendFleetManagerMetrics(ctx, metrics))
+	require.NoError(t, sc.sendFleetManagerMetrics(ctx, metrics, username, password))
 }
 
 func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
@@ -123,7 +121,7 @@ func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
 	assert.False(t, settings.Enabled)
 
 	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
-	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics))
+	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics, rt.ServerContext().Config.Bootstrap.Username, rt.ServerContext().Config.Bootstrap.Password))
 }
 
 func TestNoContentResponseForCollector(t *testing.T) {

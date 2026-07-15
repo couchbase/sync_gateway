@@ -31,12 +31,14 @@ func (sc *ServerContext) reportFleetManagerMetrics(ctx context.Context) {
 		base.WarnfCtx(ctx, "Could not read hostname for fleet manager metrics: %v", err)
 	}
 
+	reportUsername, reportPassword := sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password
+
 	report := func(settings base.FleetManagerCollectorSettings) {
 		if !settings.Enabled {
 			return
 		}
 		metrics := base.CollectSGWFleetManagerMetrics(ctx, sc.NodeUID, hostname)
-		if err := sc.sendFleetManagerMetrics(ctx, metrics); err != nil {
+		if err := sc.sendFleetManagerMetrics(ctx, metrics, reportUsername, reportPassword); err != nil {
 			base.WarnfCtx(ctx, "Could not report fleet manager metrics: %v", err)
 		}
 	}
@@ -87,7 +89,13 @@ func (sc *ServerContext) reportFleetManagerMetrics(ctx context.Context) {
 // never reach here for it. The 404 handling below is therefore a defensive fallback for the case
 // where we POST anyway - e.g. a transient settings-read failure left us on the reporting-enabled
 // default - keeping that a benign skip rather than a hard error.
-func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics base.SyncGatewayFleetManagerMetrics) error {
+//
+// username and password are taken as parameters rather than read from sc.Config.Bootstrap so tests
+// can inject credentials without mutating the shared ServerContext. TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole
+// in particular sets a role-scoped user/password, and writing those onto sc.Config.Bootstrap races
+// with other goroutines reading it. An empty username sends the request without basic auth (see
+// base.MgmtRequest), relying on the management HTTP client's own authentication.
+func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics base.SyncGatewayFleetManagerMetrics, username, password string) error {
 	endpoints, httpClient, err := sc.getManagementEndpointsAndHTTPClient()
 	if err != nil {
 		return err
@@ -99,7 +107,7 @@ func (sc *ServerContext) sendFleetManagerMetrics(ctx context.Context, metrics ba
 	}
 
 	uri := base.TelemetryIngestURI(metrics.InstanceID)
-	statusCode, _, err := doHTTPAuthRequest(ctx, httpClient, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodPost, uri, "application/json", endpoints, metricsJSON)
+	statusCode, _, err := doHTTPAuthRequest(ctx, httpClient, username, password, http.MethodPost, uri, "application/json", endpoints, metricsJSON)
 	if err != nil {
 		return err
 	}
