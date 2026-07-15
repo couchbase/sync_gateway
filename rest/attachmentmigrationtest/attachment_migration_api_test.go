@@ -201,7 +201,7 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 		DatabaseConfig:   dbCfg,
 	})
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.LeakyBucketClone(base.LeakyBucketConfig{}),
 		DatabaseConfig:   dbCfg,
 	})
 	defer rt2.Close()
@@ -252,12 +252,26 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, rt2MigrationStatus.State)
 
+	// Add a fresh legacy attachment now that the run is genuinely stopped. On a real cluster (and
+	// even Rosmar), stopping isn't instant, so the original vBucket 0 docs may already be migrated
+	// by this point -- a doc created after Stopped is confirmed is guaranteed unmigrated, giving the
+	// resumed run below something to genuinely block on.
+	resumeDocID := base.VBucket0DocIDs(t, rt1.Bucket(), 6)[5]
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, resumeDocID, []byte(`{}`), "att", []byte("att body"))
+
+	// Pause again, bound to rt2's own leaky datastore this time -- the resumed run below performs
+	// its writes through rt2, so a pauser bound to rt1 wouldn't intercept them.
+	pauser2 := newMigrationPauser(rt2)
+	defer pauser2.Close()
+	pauser2.Pause(resumeDocID)
+
 	// kick off migration run again on node 2. Should resume and have same migration id.
-	// Note: with the small Rosmar test dataset the resumed migration can finish before the
-	// transient Running state is observable, so we don't poll for it here — the resume is
-	// instead verified by the migrationID equality check on the final Completed status below.
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser2.WaitUntilBlocked()
+	status = rt2.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
+	assert.Equal(t, migrationID, status.MigrationID)
+	pauser2.Release()
 
 	// Wait for run to be marked as complete on both nodes
 	status = rt1.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
