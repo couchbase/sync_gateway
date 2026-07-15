@@ -208,6 +208,23 @@ pipeline {
                                 // Queues up an async integration test run using default build params (main branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
                                 build job: 'MainIntegration', quietPeriod: 3600, wait: false
+
+                                echo 'Queueing E2E test runs (rosmar/cbs x dev_e2e/QE) for branch "main" ...'
+                                script {
+                                    def e2eModes = [
+                                        [backingStore: 'rosmar', testDirectory: 'tests/dev_e2e'],
+                                        [backingStore: 'rosmar', testDirectory: 'tests/QE'],
+                                        [backingStore: 'cbs', testDirectory: 'tests/dev_e2e'],
+                                        [backingStore: 'cbs', testDirectory: 'tests/QE'],
+                                    ]
+                                    e2eModes.each { mode ->
+                                        build job: 'Couchbase Lite E2E', wait: false, parameters: [
+                                            string(name: 'SG_COMMIT', value: env.SG_COMMIT),
+                                            string(name: 'BACKING_STORE', value: mode.backingStore),
+                                            string(name: 'TEST_DIRECTORY', value: mode.testDirectory),
+                                        ]
+                                    }
+                                }
                             }
                         }
                     }
