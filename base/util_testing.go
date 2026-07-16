@@ -45,8 +45,6 @@ import (
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
 // util_test.go, which is only accessible from the base package.
 
-var TestExternalRevStorage = false
-
 type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec

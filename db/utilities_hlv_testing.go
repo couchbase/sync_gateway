@@ -143,9 +143,9 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t testing.TB, ctx context.C
 	require.NoError(t, err)
 
 	docUpdateEvent := NoHLVUpdateForTest
-	allowImport := db.UseXattrs()
 	// we cannot use rev cache for legacy rev writes, the rev cache is architected to always expect a CV on a Put
 	// here we don't thus we end up with inconsistent rev cache state
+	allowImport := true
 	updateRevCache := false
 
 	doc, newRevID, err = db.updateAndReturnDoc(ctx, newDoc.ID, allowImport, &expiry, nil, docUpdateEvent, nil, false, updateRevCache, func(doc *Document) (resultDoc *Document, resultAttachmentData updatedAttachments, createNewRevIDSkipped bool, updatedExpiry *uint32, resultErr error) {
@@ -162,7 +162,7 @@ func (db *DatabaseCollectionWithUser) CreateDocNoHLV(t testing.TB, ctx context.C
 
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
+		if doc != nil && !isSgWrite {
 			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, deleted)
 			if err != nil {
 				if db.ForceAPIForbiddenErrors() {

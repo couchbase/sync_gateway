@@ -656,9 +656,6 @@ func (dbConfig *DbConfig) GetBucketName() string {
 
 func (dbConfig *DbConfig) AutoImportEnabled(ctx context.Context) (bool, error) {
 	if dbConfig.AutoImport == nil {
-		if !dbConfig.UseXattrs() {
-			return false, nil
-		}
 		return base.DefaultAutoImport, nil
 	}
 
@@ -875,16 +872,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		multiError = multiError.Append(fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
 	}
 
-	if dbConfig.AutoImport != nil && autoImportEnabled && !dbConfig.UseXattrs() {
-		multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled"))
-	}
-
 	if dbConfig.ImportPartitions != nil {
 		if !isEnterpriseEdition {
 			base.WarnfCtx(ctx, eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
-		} else if !dbConfig.UseXattrs() {
-			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
 		} else if !autoImportEnabled {
 			multiError = multiError.Append(fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))
 		} else if *dbConfig.ImportPartitions < 1 || *dbConfig.ImportPartitions > 1024 {
@@ -1143,8 +1134,6 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		if dbConfig.Index.NumPartitions != nil {
 			if *dbConfig.Index.NumPartitions < 1 {
 				multiError = multiError.Append(fmt.Errorf("index.num_partitions must be greater than 0"))
-			} else if !dbConfig.UseXattrs() {
-				multiError = multiError.Append(fmt.Errorf("index.num_partitions is incompatible with enable_shared_bucket_access=false"))
 			}
 		}
 	}
@@ -1259,13 +1248,6 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 		return dbConfig.AllowConflicts
 	}
 	return base.Ptr(base.DefaultAllowConflicts)
-}
-
-func (dbConfig *DbConfig) UseXattrs() bool {
-	if dbConfig.EnableXattrs != nil {
-		return *dbConfig.EnableXattrs
-	}
-	return base.DefaultUseXattrs
 }
 
 func (dbConfig *DbConfig) Redacted(ctx context.Context) (*DbConfig, error) {

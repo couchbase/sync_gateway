@@ -129,7 +129,6 @@ func TestQueryPrincipalsDualMetadataStore(t *testing.T) {
 	// sync metadata
 	dbOptions := getDatabaseContextOptions(false)
 	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
-	dbOptions.EnableXattr = true
 	dbOptions.MetadataStore = ms
 
 	database, dbCtx := db.CreateTestDatabase(t, bucket, dbOptions)
@@ -249,7 +248,6 @@ func TestQueryUsersRealDocsDualMetadataStore(t *testing.T) {
 	// sync metadata.
 	dbOptions := getDatabaseContextOptions(false)
 	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
-	dbOptions.EnableXattr = true
 	dbOptions.MetadataStore = ms
 
 	database, dbCtx := db.CreateTestDatabase(t, bucket, dbOptions)
@@ -342,7 +340,6 @@ func TestGetUsersPaginationDualMetadataStore(t *testing.T) {
 
 	dbOptions := getDatabaseContextOptions(false)
 	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
-	dbOptions.EnableXattr = true
 	dbOptions.MetadataStore = ms
 	dbOptions.QueryPaginationLimit = paginationLimit
 
@@ -459,7 +456,6 @@ func TestQueryRolesDualMetadataStore(t *testing.T) {
 
 	dbOptions := getDatabaseContextOptions(false)
 	dbOptions.Scopes = db.GetScopesOptions(t, bucket, 2)
-	dbOptions.EnableXattr = true
 	dbOptions.MetadataStore = ms
 
 	database, dbCtx := db.CreateTestDatabase(t, bucket, dbOptions)

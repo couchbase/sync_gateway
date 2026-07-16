@@ -106,7 +106,7 @@ func (db *Database) PutDesignDoc(ctx context.Context, ddocName string, ddoc sgbu
 		}
 	}
 	if wrap {
-		wrapViews(&ddoc, db.GetUserViewsEnabled(), db.UseXattrs())
+		wrapViews(&ddoc, db.GetUserViewsEnabled())
 	}
 
 	vs, err := getViewStoreForDefaultCollection(db.DatabaseContext)
@@ -219,7 +219,7 @@ const (
 	}`
 )
 
-func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
+func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
 	// add channel filtering.
 	for name, view := range ddoc.Views {

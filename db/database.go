@@ -205,7 +205,6 @@ type DatabaseContextOptions struct {
 	OIDCOptions                      *auth.OIDCOptions
 	LocalJWTConfig                   auth.LocalJWTConfig
 	ImportOptions                    ImportOptions
-	EnableXattr                      bool             // Use xattr for _sync
 	LocalDocExpirySecs               uint32           // The _local doc expiry time in seconds
 	SecureCookieOverride             bool             // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName                string           // Pass-through DbConfig.SessionCookieName
@@ -422,7 +421,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 
-	dbStats, statsError := initDatabaseStats(ctx, dbName, autoImport, options)
+	dbStats, statsError := initDatabaseStats(ctx, dbName, options)
 	if statsError != nil {
 		return nil, statsError
 	}
@@ -1597,11 +1596,6 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 		defer atomic.CompareAndSwapUint32(&db.CompactState, DBCompactRunning, DBCompactNotRunning)
 	}
 
-	// Compact should be a no-op if not running w/ xattrs
-	if !db.UseXattrs() {
-		return 0, nil
-	}
-
 	purgeInterval := db.GetMetadataPurgeInterval(ctx, true)
 	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", purgeInterval.Hours()/24)
 
@@ -2102,10 +2096,6 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 	return false
 }
 
-func (context *DatabaseContext) UseXattrs() bool {
-	return context.Options.EnableXattr
-}
-
 // numIndexPartitions returns the number of index partitions to use for the database's indexes.
 func (context *DatabaseContext) numIndexPartitions() uint32 {
 	if context.Options.NumIndexPartitions != nil {
@@ -2122,15 +2112,6 @@ func (context *DatabaseContext) DeltaSyncEnabled() bool {
 	return context.Options.DeltaSyncOptions.Enabled
 }
 
-func (c *DatabaseCollection) AllowExternalRevBodyStorage() bool {
-
-	// Support unit testing w/out xattrs enabled
-	if base.TestExternalRevStorage {
-		return false
-	}
-	return !c.UseXattrs()
-}
-
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 	if context.Options.UnsupportedOptions == nil {
 		context.Options.UnsupportedOptions = &UnsupportedOptions{}
@@ -2141,10 +2122,10 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
 }
 
-func initDatabaseStats(ctx context.Context, dbName string, autoImport bool, options DatabaseContextOptions) (*base.DbStats, error) {
+func initDatabaseStats(ctx context.Context, dbName string, options DatabaseContextOptions) (*base.DbStats, error) {
 
 	enabledDeltaSync := options.DeltaSyncOptions.Enabled
-	enabledImport := autoImport || options.EnableXattr
+	enabledImport := true
 	enabledViews := options.UseViews
 	enabledMetadataMigration := options.UseSystemMetadataCollection
 
@@ -2527,36 +2508,33 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.LocalJWTProviders[name] = cfg.BuildProvider(ctx, name)
 	}
 
-	if db.UseXattrs() {
-		// Log the purge interval for tombstone compaction
-		mpi := db.GetMetadataPurgeInterval(ctx, true)
-		base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", mpi.Hours()/24)
+	// Log the purge interval for tombstone compaction
+	mpi := db.GetMetadataPurgeInterval(ctx, true)
+	base.InfofCtx(ctx, base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", mpi.Hours()/24)
 
-		if db.Options.CompactInterval != 0 {
-			if db.autoImport {
-				db := Database{DatabaseContext: db}
-				// Wrap the dbContext's terminator in a SafeTerminator for the compaction task
-				bgtTerminator := base.NewSafeTerminator()
-				go func() {
-					<-db.terminator
-					bgtTerminator.Close()
-				}()
-				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
-					_, err := db.Compact(ctx, false, nil, bgtTerminator, true)
-					if err != nil {
-						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", db.Name, err)
-					}
-					return nil
-				}, time.Duration(db.Options.CompactInterval)*time.Second, db.terminator)
+	if db.Options.CompactInterval != 0 {
+		if db.autoImport {
+			db := Database{DatabaseContext: db}
+			// Wrap the dbContext's terminator in a SafeTerminator for the compaction task
+			bgtTerminator := base.NewSafeTerminator()
+			go func() {
+				<-db.terminator
+				bgtTerminator.Close()
+			}()
+			bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
+				_, err := db.Compact(ctx, false, nil, bgtTerminator, true)
 				if err != nil {
-					return err
+					base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", db.Name, err)
 				}
-				db.backgroundTasks = append(db.backgroundTasks, bgt)
-			} else {
-				base.WarnfCtx(ctx, "Automatic compaction can only be enabled on nodes running an Import process")
+				return nil
+			}, time.Duration(db.Options.CompactInterval)*time.Second, db.terminator)
+			if err != nil {
+				return err
 			}
+			db.backgroundTasks = append(db.backgroundTasks, bgt)
+		} else {
+			base.WarnfCtx(ctx, "Automatic compaction can only be enabled on nodes running an Import process")
 		}
-
 	}
 
 	// create a background task to keep track of the number of active replication connections the database has each second
