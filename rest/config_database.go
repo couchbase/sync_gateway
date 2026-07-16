@@ -109,7 +109,7 @@ func DefaultPerDBLogging(bootstrapLoggingCnf base.LoggingConfig) *DbLoggingConfi
 // MergeDatabaseConfigWithDefaults merges the passed in config onto a DefaultDbConfig which results in returned value
 // being populated with defaults when not set
 func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*DbConfig, error) {
-	defaultDbConfig := DefaultDbConfig(sc, dbConfig.UseXattrs())
+	defaultDbConfig := DefaultDbConfig(sc)
 
 	err := base.ConfigMerge(defaultDbConfig, dbConfig)
 	if err != nil {
@@ -122,7 +122,7 @@ func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*Db
 // DefaultDbConfig provides a DbConfig with all the default values populated. Used with MergeDatabaseConfigWithDefaults
 // to provide defaults to  include_runtime config endpoints.
 // Note that this does not include unsupported options
-func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
+func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 	dbConfig := DbConfig{
 		BucketConfig:       BucketConfig{},
 		Name:               "",
@@ -164,7 +164,8 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		SessionCookieHTTPOnly: base.Ptr(false),
 		AllowConflicts:        base.Ptr(base.DefaultAllowConflicts),
 		Index: &IndexConfig{
-			NumReplicas: base.Ptr(DefaultNumIndexReplicas),
+			NumReplicas:   base.Ptr(DefaultNumIndexReplicas),
+			NumPartitions: base.Ptr(db.DefaultNumIndexPartitions),
 		},
 		UseViews:                    base.Ptr(false),
 		SendWWWAuthenticateHeader:   base.Ptr(true),
@@ -190,18 +191,13 @@ func DefaultDbConfig(sc *StartupConfig, useXattrs bool) *DbConfig {
 		Logging:                           DefaultPerDBLogging(sc.Logging),
 		DisablePublicAllDocs:              base.Ptr(false),
 		UseSystemMobileMetadataCollection: base.Ptr(DefaultUseSystemMetadataCollection),
+		AutoImport:                        base.Ptr(base.DefaultAutoImport),
 	}
 
-	if useXattrs {
-		dbConfig.AutoImport = base.Ptr(base.DefaultAutoImport)
-		if base.IsEnterpriseEdition() {
-			dbConfig.ImportPartitions = base.Ptr[uint16](base.DefaultImportPartitions)
-		} else {
-			dbConfig.ImportPartitions = nil
-		}
-		dbConfig.Index.NumPartitions = base.Ptr(db.DefaultNumIndexPartitions)
+	if base.IsEnterpriseEdition() {
+		dbConfig.ImportPartitions = base.Ptr[uint16](base.DefaultImportPartitions)
 	} else {
-		dbConfig.AutoImport = base.Ptr(false)
+		dbConfig.ImportPartitions = nil
 	}
 
 	revsLimit := db.DefaultRevsLimitNoConflicts

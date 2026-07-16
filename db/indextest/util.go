@@ -126,8 +126,6 @@ func setupIndexAndDB(t *testing.T, opts testIndexCreationOptions) *db.Database {
 	} else {
 		dbOptions.Scopes = db.GetScopesOptions(t, bucket, numCollections)
 	}
-	dbOptions.EnableXattr = true
-
 	database, ctx := db.CreateTestDatabase(t, bucket, dbOptions)
 
 	t.Cleanup(func() { database.Close(ctx) })

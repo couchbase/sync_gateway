@@ -13,13 +13,14 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/couchbase/gocbcore/v10/connstr"
 )
 
 const (
 	dcpBufferSizeKey = "dcp_buffer_size"
 	kvBufferSizeKey  = "kv_buffer_size"
 	kvPoolSizeKey    = "kv_pool_size"
+	networkKey       = "network"
 )
 
 // GoCBConnStringParams represents parameters that are passed to gocb when creating a new connection string.
@@ -39,8 +40,8 @@ func DefaultGoCBConnStringParams() *GoCBConnStringParams {
 }
 
 // getGoCBConnSpec returns a gocb connection spec based on the server string. The provided defaults will be used only when the corresponding property is not set in the connection string.
-func getGoCBConnSpec(server string, defaults *GoCBConnStringParams) (*gocbconnstr.ConnSpec, error) {
-	connSpec, err := gocbconnstr.Parse(server)
+func getGoCBConnSpec(server string, defaults *GoCBConnStringParams) (*connstr.ConnSpec, error) {
+	connSpec, err := connstr.Parse(server)
 	if err != nil {
 		return nil, err
 	}
@@ -83,26 +84,38 @@ func GetGoCBConnStringWithDefaults(server string, defaults *GoCBConnStringParams
 	return connSpec.String(), nil
 }
 
+// getConnSpecOption returns a single query parameter value from a connstr.ConnSpec, converted to type T (string or
+// int). If the option isn't set, returns nil and no error. Returns an error if the option is set more than once, or
+// if the value can't be converted to T.
+func getConnSpecOption[T string | int](spec *connstr.ConnSpec, key string) (*T, error) {
+	arg := spec.Options[key]
+	if len(arg) == 0 {
+		return nil, nil
+	}
+	if len(arg) > 1 {
+		return nil, RedactErrorf("multiple %s values found in connection string %q", key, MD(spec.String()))
+	}
+
+	var value any
+	switch any(*new(T)).(type) {
+	case int:
+		i, err := strconv.Atoi(arg[0])
+		if err != nil {
+			return nil, RedactErrorf("invalid %s value %s in connection string %q, must be int", key, arg[0], MD(spec.String()))
+		}
+		value = i
+	case string:
+		value = arg[0]
+	}
+	typed := value.(T)
+	return &typed, nil
+}
+
 // getIntFromConnStr returns a query parameter from a connection string. If it doesn't exist,  return nil and no error. If there's an error in parsing the connection string, return an error.
-func getIntFromConnStr(connstr, key string) (*int, error) {
-	connSpec, err := getGoCBConnSpec(connstr, nil)
+func getIntFromConnStr(server, key string) (*int, error) {
+	connSpec, err := getGoCBConnSpec(server, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	values := url.Values(connSpec.Options)
-
-	arg := values[key]
-
-	if len(arg) == 0 {
-		return nil, nil
-	} else if len(arg) > 1 {
-		return nil, fmt.Errorf("Multiple %s values found in connection string %s", key, connstr)
-	}
-
-	i, err := strconv.Atoi(arg[0])
-	if err != nil {
-		return nil, fmt.Errorf("Invalid %s value %s in connection string %s, must be int", key, arg[0], connstr)
-	}
-	return &i, nil
+	return getConnSpecOption[int](connSpec, key)
 }

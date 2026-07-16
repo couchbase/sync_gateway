@@ -870,20 +870,20 @@ func (doc *Document) pruneRevisions(ctx context.Context, maxDepth uint32, keepRe
 }
 
 // Adds a revision body (as Body) to a document.  Removes special properties first.
-func (doc *Document) setRevisionBody(ctx context.Context, revid string, newDoc *Document, storeInline, hasAttachments bool) {
+func (doc *Document) setRevisionBody(ctx context.Context, revid string, newDoc *Document, hasAttachments bool) {
 	if revid == doc.GetRevTreeID() {
 		doc._body = newDoc._body
 		doc._rawBody = newDoc._rawBody
 	} else {
 		bodyBytes, _ := newDoc.BodyBytes(ctx)
-		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline, hasAttachments)
+		doc.setNonWinningRevisionBody(revid, bodyBytes, hasAttachments)
 	}
 }
 
 // Adds a revision body (as []byte) to a document.  Flags for external storage when appropriate
-func (doc *Document) setNonWinningRevisionBody(revid string, body []byte, storeInline bool, hasAttachments bool) {
+func (doc *Document) setNonWinningRevisionBody(revid string, body []byte, hasAttachments bool) {
 	revBodyKey := ""
-	if !storeInline && len(body) > MaximumInlineBodySize {
+	if len(body) > MaximumInlineBodySize {
 		revBodyKey = generateRevBodyKey(doc.ID, revid)
 		doc.addedRevisionBodies = append(doc.addedRevisionBodies, revid)
 	}

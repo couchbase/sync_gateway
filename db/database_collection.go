@@ -333,11 +333,6 @@ func (c *DatabaseCollection) UserXattrKey() string {
 	return c.dbCtx.Options.UserXattrKey
 }
 
-// UseXattrs specifies whether the collection stores metadata in xattars or inline. This is controlled at a database level.
-func (c *DatabaseCollection) UseXattrs() bool {
-	return c.dbCtx.Options.EnableXattr
-}
-
 // numIndexPartitions returns the number of partitions for the collection's indexes. This is controlled at a database level.
 func (c *DatabaseCollection) numIndexPartitions() uint32 {
 	return c.dbCtx.numIndexPartitions()

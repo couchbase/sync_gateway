@@ -536,8 +536,6 @@ func IsCovered(plan map[string]any) bool {
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	dbcOptions.EnableXattr = true
-
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}

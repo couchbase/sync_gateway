@@ -293,9 +293,7 @@ func TestInitializeIndexes(t *testing.T) {
 			bucket := base.GetTestBucket(t)
 			defer bucket.Close(ctx)
 
-			options := db.DatabaseContextOptions{
-				EnableXattr: true,
-			}
+			options := db.DatabaseContextOptions{}
 			if test.collections {
 				base.TestRequiresCollections(t)
 				options.Scopes = db.GetScopesOptions(t, bucket, 1)
