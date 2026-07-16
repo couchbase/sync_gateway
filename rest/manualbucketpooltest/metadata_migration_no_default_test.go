@@ -38,11 +38,9 @@ func TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection(t *testing.T) {
 
 	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: scope, Collection: collection1}))
 
-	if !sgtest.UnitTestUrlIsWalrus() {
-		require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
-			Scope: base.DefaultScope, Collection: base.DefaultCollection,
-		}), "dropping _default._default should succeed on Couchbase Server")
-	}
+	require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
+		Scope: base.DefaultScope, Collection: base.DefaultCollection,
+	}), "dropping _default._default should succeed on Couchbase Server")
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
