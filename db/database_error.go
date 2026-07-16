@@ -15,38 +15,40 @@ type DatabaseError struct {
 }
 
 var DatabaseErrorMap = map[databaseErrorCode]string{
-	DatabaseBucketConnectionError:       "Error connecting to bucket",
-	DatabaseInvalidDatastore:            "Collection(s) not available",
-	DatabaseInitSyncInfoError:           "Error initializing sync info",
-	DatabaseInitializationIndexError:    "Error initializing database indexes",
-	DatabaseCreateDatabaseContextError:  "Error creating database context",
-	DatabaseSGRClusterError:             "Error with fetching SGR cluster definition",
-	DatabaseCreateReplicationError:      "Error creating replication during database init",
-	DatabaseOnlineProcessError:          "Error attempting to start online process",
-	DatabaseAllowConflictsError:         "Allow conflicts is set to true",
-	DatabaseEnableStarChannelFalseError: "Enable star channel is set to false",
-	DatabaseClusterCompatVersionError:   "Bucket has metadata from a newer Sync Gateway cluster compat version",
-	DatabaseInvalidResyncPartitions:     "resync_partitions exceeds number of vBuckets",
-	DatabaseNoMetadataStore:             "No metadata store for db metadata to be stored in",
+	DatabaseBucketConnectionError:         "Error connecting to bucket",
+	DatabaseInvalidDatastore:              "Collection(s) not available",
+	DatabaseInitSyncInfoError:             "Error initializing sync info",
+	DatabaseInitializationIndexError:      "Error initializing database indexes",
+	DatabaseCreateDatabaseContextError:    "Error creating database context",
+	DatabaseSGRClusterError:               "Error with fetching SGR cluster definition",
+	DatabaseCreateReplicationError:        "Error creating replication during database init",
+	DatabaseOnlineProcessError:            "Error attempting to start online process",
+	DatabaseAllowConflictsError:           "Allow conflicts is set to true",
+	DatabaseEnableStarChannelFalseError:   "Enable star channel is set to false",
+	DatabaseClusterCompatVersionError:     "Bucket has metadata from a newer Sync Gateway cluster compat version",
+	DatabaseInvalidResyncPartitions:       "resync_partitions exceeds number of vBuckets",
+	DatabaseNoMetadataStore:               "No metadata store for db metadata to be stored in",
+	DatabaseSystemCollectionOptInRequired: "Database must enable use_system_metadata_collection on a bucket whose bootstrap metadata has migrated to the system collection",
 }
 
 type databaseErrorCode uint8
 
 // Error codes exposed for each error a database can encounter on load. These codes are consumed by Capella so must remain stable.
 const (
-	DatabaseBucketConnectionError       databaseErrorCode = 1
-	DatabaseInvalidDatastore            databaseErrorCode = 2
-	DatabaseInitSyncInfoError           databaseErrorCode = 3
-	DatabaseInitializationIndexError    databaseErrorCode = 4
-	DatabaseCreateDatabaseContextError  databaseErrorCode = 5
-	DatabaseSGRClusterError             databaseErrorCode = 6
-	DatabaseCreateReplicationError      databaseErrorCode = 7
-	DatabaseOnlineProcessError          databaseErrorCode = 8
-	DatabaseAllowConflictsError         databaseErrorCode = 9
-	DatabaseEnableStarChannelFalseError databaseErrorCode = 10
-	DatabaseClusterCompatVersionError   databaseErrorCode = 11
-	DatabaseInvalidResyncPartitions     databaseErrorCode = 12
-	DatabaseNoMetadataStore             databaseErrorCode = 13
+	DatabaseBucketConnectionError         databaseErrorCode = 1
+	DatabaseInvalidDatastore              databaseErrorCode = 2
+	DatabaseInitSyncInfoError             databaseErrorCode = 3
+	DatabaseInitializationIndexError      databaseErrorCode = 4
+	DatabaseCreateDatabaseContextError    databaseErrorCode = 5
+	DatabaseSGRClusterError               databaseErrorCode = 6
+	DatabaseCreateReplicationError        databaseErrorCode = 7
+	DatabaseOnlineProcessError            databaseErrorCode = 8
+	DatabaseAllowConflictsError           databaseErrorCode = 9
+	DatabaseEnableStarChannelFalseError   databaseErrorCode = 10
+	DatabaseClusterCompatVersionError     databaseErrorCode = 11
+	DatabaseInvalidResyncPartitions       databaseErrorCode = 12
+	DatabaseNoMetadataStore               databaseErrorCode = 13
+	DatabaseSystemCollectionOptInRequired databaseErrorCode = 14
 )
 
 func NewDatabaseError(code databaseErrorCode) *DatabaseError {

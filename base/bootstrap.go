@@ -90,6 +90,16 @@ type BootstrapConnection interface {
 	// CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
 	// The snapshot is not guaranteed to be consistent across concurrent updates.
 	CachedBootstrapTargets() map[string]string
+	// BucketBootstrapTargetIsSystemMobile reports whether the bucket's bootstrap docs (registry,
+	// dbconfig, cbgt cfg) currently reside in _system._mobile — i.e. the bucket's bootstrap
+	// metadata has already migrated, or the bucket was created opted-in from the start. Resolves and
+	// caches the target exactly as SetBucketBootstrapTargetHint does when the bucket is not yet
+	// cached; optInHint governs only the no-registry-yet case. Unlike IsMigrationComplete this does
+	// not depend on a migration status doc ever having been stamped, so it also catches a bucket that
+	// was opted in from the start and never ran a migration. Used to reject loading a database that
+	// has not opted into the system metadata collection on a bucket whose bootstrap metadata already
+	// lives in _system._mobile.
+	BucketBootstrapTargetIsSystemMobile(ctx context.Context, bucket string, optInHint bool) (bool, error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -454,6 +464,20 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(bucketName, target)
 	return nil
+}
+
+// BucketBootstrapTargetIsSystemMobile resolves the bucket's bootstrap-doc target (probing and
+// caching via SetBucketBootstrapTargetHint if not already cached) and reports whether it is
+// _system._mobile. See the interface doc for usage.
+func (cc *CouchbaseCluster) BucketBootstrapTargetIsSystemMobile(ctx context.Context, bucketName string, optInHint bool) (bool, error) {
+	if cc == nil {
+		return false, errors.New("nil CouchbaseCluster")
+	}
+	if err := cc.SetBucketBootstrapTargetHint(ctx, bucketName, optInHint); err != nil {
+		return false, err
+	}
+	target, _ := cc.bucketBootstrapTargets.Load(bucketName)
+	return target == bucketTargetSystemMobile, nil
 }
 
 // CachedBootstrapTargets returns the cached bootstrap doc target for each bucket, for observability purposes. Values are "system_mobile", "default".
