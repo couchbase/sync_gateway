@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -465,6 +466,10 @@ func (h *handler) handlePostResync() error {
 				Reset:               reset,
 			})
 			if err != nil {
+				atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
+				if strings.Contains(err.Error(), "failed to find ID for collection") {
+					return base.HTTPErrorf(http.StatusBadRequest, "%s", err.Error())
+				}
 				return err
 			}
 
@@ -495,16 +500,6 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		// h.db.State is normally reset from DBResyncing back to DBOffline by a deferred call inside
-		// ResyncManagerDCP.Run once it returns - but Run is never invoked when Init failed (leaving the
-		// process in the Error state), so that reset never happens. Capture the status here, before
-		// Stop() changes it, so we can tell afterward whether we're recovering from that case and need to
-		// do the DBState reset ourselves.
-		prevStatus, err := h.db.ResyncManager.GetStatus(h.ctx())
-		if err != nil {
-			return err
-		}
-
 		err = h.db.ResyncManager.Stop(h.ctx())
 		if err != nil {
 			return err
@@ -513,18 +508,6 @@ func (h *handler) handlePostResync() error {
 		status, err := h.db.ResyncManager.GetStatus(h.ctx())
 		if err != nil {
 			return err
-		}
-
-		var clusterStatus struct {
-			Status db.BackgroundProcessState `json:"status"`
-		}
-		if err := base.JSONUnmarshal(prevStatus, &clusterStatus); err != nil {
-			return err
-		}
-
-		// The process never ran, so ResyncManagerDCP.Run's own DBState reset never fired - do it here instead.
-		if clusterStatus.Status == db.BackgroundProcessStateError {
-			atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
 		}
 
 		h.writeRawJSON(status)

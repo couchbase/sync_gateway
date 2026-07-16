@@ -287,10 +287,11 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
-		// markStart already set state to Running before Init ran, so without this the manager would be
-		// stuck reporting Running even though it never actually started. Mirrors the Process.Run error
-		// handling below.
-		b.SetError(err)
+		b.Terminate()
+		b.clearStatus()
+		if b.mode() == backgroundManagerModeSingleNode {
+			_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
+		}
 		return err
 	}
 
@@ -443,6 +444,13 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 	b.setRunState(BackgroundProcessStateRunning)
 	return nil
+}
+
+// clearStatus resets the in-memory status back to its uninitialized zero value, e.g. to undo an aborted start attempt.
+func (b *BackgroundManager[O]) clearStatus() {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	b.status = BackgroundManagerStatus{}
 }
 
 // getClusterStatusState gets the current background process state of the cluster.
@@ -615,13 +623,6 @@ func (b *BackgroundManager[O]) setLastErrorMessage(msg string) {
 //
 // This will return an error if the status is not in a running state, as already stopped or stopping.
 func (b *BackgroundManager[O]) Stop(ctx context.Context) error {
-	// Previously a Stop() call while in the Error state was a silent no-op (markStop treated Error as an
-	// already-terminal state and returned early), leaving the manager stuck reporting Error forever with
-	// no way to recover without a fresh process restart. Route it to StopFromErrorState instead so Stop()
-	// actually transitions Error -> Stopped.
-	if b.GetRunState() == BackgroundProcessStateError {
-		return b.StopFromErrorState(ctx)
-	}
 	if err := b.markStop(ctx); err != nil {
 		if errors.Is(err, errBackgroundManagerProcessAlreadyStopped) || errors.Is(err, errBackgroundManagerStatusAlreadyStopping) {
 			return nil
@@ -629,32 +630,6 @@ func (b *BackgroundManager[O]) Stop(ctx context.Context) error {
 		return err
 	}
 	b.stopProcess(ctx)
-	return nil
-}
-
-func (b *BackgroundManager[O]) StopFromErrorState(ctx context.Context) error {
-
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	// The normal Running -> Stopping -> Stopped transition happens after Process.Run returns (see the
-	// wrapper goroutine in start()). But in several error paths Run is never called at all (e.g. Init
-	// failing), so that transition never happens. Move straight to Stopped here instead of Stopping, since
-	// nothing will ever advance a Stopping state to Stopped for a process that never ran.
-	b.setRunState(BackgroundProcessStateStopped)
-
-	if b.mode() != backgroundManagerModeLocal {
-		// sending an update so that other nodes can detect the change in status
-		err := b.UpdateStatusClusterAware(ctx)
-		if err != nil {
-			base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
-		}
-
-		// Delete the heartbeat doc to allow another process to run
-		// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
-		_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
-	}
-
 	return nil
 }
 

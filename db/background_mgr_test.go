@@ -11,7 +11,6 @@ package db
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -1490,71 +1489,6 @@ func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
 	assert.Equal(t, BackgroundProcessStateCompleted, status.State, "expected the bucket status to remain completed and NOT be overwritten")
 }
 
-// failInitProcess always fails Init, to simulate a synchronous Init error for any BackgroundManager mode.
-type failInitProcess struct {
-	MockProcess
-}
-
-func (f *failInitProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
-	return backgroundManagerInitReset, errors.New("boom")
-}
-
-// TestBackgroundManagerStopAfterInitError verifies that a BackgroundManager whose Init fails synchronously
-// transitions to the Error state, and that a subsequent Stop from that Error state completes without panicking,
-// for each of the three BackgroundManager modes (local, single node cluster aware, multi node cluster aware).
-func TestBackgroundManagerStopAfterInitError(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	ctx := context.Background()
-	defer testBucket.Close(ctx)
-	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-init-error")
-
-	modes := []struct {
-		name                string
-		clusterAwareOptions *ClusterAwareBackgroundManagerOptions
-	}{
-		{
-			name:                "Local",
-			clusterAwareOptions: nil,
-		},
-		{
-			name: "ClusterAware",
-			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-				metadataStore: metadataStore,
-				metaKeys:      metaKeys,
-				processSuffix: "init-error-aware",
-			},
-		},
-		{
-			name: "MultiNode",
-			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-				metadataStore: metadataStore,
-				metaKeys:      metaKeys,
-				processSuffix: "init-error-multi",
-				multiNode:     true,
-			},
-		},
-	}
-
-	for _, mode := range modes {
-		t.Run(mode.name, func(t *testing.T) {
-			mgr := &BackgroundManager[map[string]any]{
-				name:                "init-error-mgr-" + mode.name,
-				clusterAwareOptions: mode.clusterAwareOptions,
-				Process:             &failInitProcess{},
-			}
-
-			err := mgr.Start(ctx, nil)
-			require.Error(t, err)
-			require.Equal(t, BackgroundProcessStateError, mgr.GetRunState())
-
-			err = mgr.Stop(ctx)
-			require.NoError(t, err)
-			require.Equal(t, BackgroundProcessStateStopped, mgr.GetRunState())
-		})
-	}
-}
-
 // TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning reproduces the case where Init succeeds and
 // Process.Run is launched in its own goroutine, but the subsequent persist of the initial cluster status fails.
 // Start() returns that error to the caller, even though Run is already executing in the background.
@@ -1563,6 +1497,7 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
 
+	metadataStore := testBucket.GetMetadataStore()
 	metaKeys := base.NewMetadataKeys("test-start-persist-fail")
 	processSuffix := "multi-persist-fail"
 	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
@@ -1575,13 +1510,13 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 		ForceTimeoutErrorOnUpdateKeys: []string{statusDocID},
 		UpdateCallback:                func(key string) {},
 	})
-	metadataStore := leakyBucket.DefaultDataStore(ctx)
+	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
 
 	process := &MockProcess{}
 	mgr := &BackgroundManager[map[string]any]{
 		name: "persist-fail-mgr",
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			metadataStore: metadataStore,
+			metadataStore: leakyMetadataStore,
 			metaKeys:      metaKeys,
 			processSuffix: processSuffix,
 			multiNode:     true,
@@ -1601,7 +1536,9 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 
-	require.NoError(t, mgr.Stop(ctx))
+	mgr.clusterAwareOptions.metadataStore = metadataStore
+
+	require.NoError(t, mgr.Start(ctx, nil))
 }
 
 // TestUpdateStatusClusterAware checks that UpdateStatusClusterAware surfaces the underlying bucket-closed
