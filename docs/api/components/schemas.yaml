@@ -3217,6 +3217,9 @@ CollectionNames:
         - 9
         - 10
         - 11
+        - 12
+        - 13
+        - 14
       x-enumDescriptions:
         1: "Error connecting to bucket"
         2: "Collection(s) not available"
@@ -3229,6 +3232,9 @@ CollectionNames:
         9: "Allow conflicts is set to true"
         10: "Enable star channel is set to false"
         11: "Bucket has metadata from a newer Sync Gateway cluster compat version"
+        12: "resync_partitions exceeds number of vBuckets"
+        13: "No metadata store for db metadata to be stored in"
+        14: "Database must enable use_system_metadata_collection on a bucket whose bootstrap metadata has migrated to the system collection"
       example: 1
 all_user_channels:
   description: |-

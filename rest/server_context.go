@@ -726,6 +726,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			"Duplicate database name %q", dbName)
 	}
 
+	// A bucket whose bootstrap metadata already lives in _system._mobile (migrated, or opted-in from
+	// the start) keeps its registry/dbconfig docs there. A database that has not opted into the system
+	// metadata collection would persist its bootstrap config into _default._default, where peer nodes
+	// reading the migrated registry from _system._mobile can never find it — leaving the cluster in bad state.
+	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil && !resolveUseSystemMetadataCollection(sc.Config, &config.DbConfig) {
+		targetIsSystemMobile, targetErr := sc.BootstrapContext.Connection.BucketBootstrapTargetIsSystemMobile(ctx, spec.BucketName, false)
+		if targetErr != nil {
+			base.WarnfCtx(ctx, "Unable to determine bootstrap target for bucket %s while validating use_system_metadata_collection for db %s: %v", base.MD(spec.BucketName), base.MD(dbName), targetErr)
+		} else if targetIsSystemMobile {
+			if options.loadFromBucket {
+				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseSystemCollectionOptInRequired))
+			}
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "database %s must enable use_system_metadata_collection: bucket %s bootstrap metadata resides in %s", base.MD(dbName), base.MD(spec.BucketName), base.MD(base.MobileSystemScopeAndCollectionName().String()))
+		}
+	}
+
 	if config.DbConfig.CacheConfig != nil {
 		if config.DbConfig.CacheConfig.ChannelCacheConfig != nil {
 			if config.DbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil && !*config.DbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel {
