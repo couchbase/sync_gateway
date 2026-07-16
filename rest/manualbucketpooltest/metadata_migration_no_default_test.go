@@ -208,9 +208,10 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), `"value":"hello"`)
 
-	// 6. With _default._default gone, a new database that opts OUT of the system metadata collection
-	// can no longer be created — its legacy metadata store no longer exists. CBS only: on rosmar
-	// _default was never dropped, so this database would succeed.
+	// 6. Once the bucket's bootstrap metadata has migrated to _system._mobile, a new database that
+	// opts OUT of the system metadata collection can no longer be created — SG rejects the config up
+	// front rather than falling back to the (now-absent) _default._default legacy store (CBG-5511).
+	// CBS only: on rosmar _default was never dropped, so this database would succeed.
 	if !base.UnitTestUrlIsWalrus() {
 		newDbConfig := rt.NewDbConfig()
 		newDbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
@@ -220,8 +221,8 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 			},
 		}
 		resp = rt.CreateDatabase("newdb", newDbConfig)
-		rest.RequireStatus(t, resp, http.StatusInternalServerError)
-		assert.Contains(t, resp.Body.String(), "_default._default does not exist on bucket")
+		rest.RequireStatus(t, resp, http.StatusBadRequest)
+		assert.Contains(t, resp.Body.String(), "must enable use_system_metadata_collection")
 	}
 }
 
@@ -533,4 +534,60 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 	//    stronger liveness signal than a database-info GET.
 	rt.CreateTestDoc("liveness-doc")
 	rt.GetDoc("liveness-doc")
+}
+
+// TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection verifies that on a bucket with no
+// _default._default, a database that opts OUT of the system metadata collection is rejected at
+// creation with a clear error, and can be recovered by opting back in (CBG-5511). Unlike the
+// migration-then-drop scenarios above, no migration ever runs here — the bucket starts without
+// _default._default, so the legacy metadata store never exists.
+func TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("test requires dropping _default collection")
+	}
+
+	ctx := base.TestCtx(t)
+
+	tb := base.GTestBucketPool.CreateTestBucket(t)
+	t.Cleanup(func() { base.GTestBucketPool.RemoveBucket(tb) })
+
+	const (
+		scope       = "sg_test_0"
+		collection1 = "sg_test_0"
+	)
+
+	require.NoError(t, tb.CreateDataStore(ctx, base.ScopeAndCollectionName{Scope: scope, Collection: collection1}))
+
+	require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
+		Scope: base.DefaultScope, Collection: base.DefaultCollection,
+	}), "dropping _default._default should succeed on Couchbase Server")
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.Scopes = rest.ScopesConfig{
+		scope: rest.ScopeConfig{
+			Collections: rest.CollectionsConfig{collection1: {}},
+		},
+	}
+	resp := rt.CreateDatabase("db1", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "must enable use_system_metadata_collection")
+
+	// recover by opting-in
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	resp = rt.CreateDatabase("db1", dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	summaryResp := rt.GetAllDBsVerbose()
+	require.Len(t, summaryResp, 1)
+	assert.Equal(t, summaryResp[0].DBName, "db1")
+	assert.Nil(t, summaryResp[0].DatabaseError)
+	assert.Equal(t, db.RunStateString[db.DBOnline], summaryResp[0].State)
 }
