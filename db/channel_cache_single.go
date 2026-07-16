@@ -119,9 +119,9 @@ type singleChannelCacheImpl struct {
 
 func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
 	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelID: channel, validFrom: validFrom}
-	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.cacheStats = cacheStats
+	cache.initializeLateLogs()
 	cache.options = &ChannelCacheOptions{
 		ChannelCacheMinLength: DefaultChannelCacheMinLength,
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
@@ -711,6 +711,7 @@ func (c *singleChannelCacheImpl) initializeLateLogs() {
 		listenerCount: 0,
 	}
 	c.lateLogs = append(c.lateLogs, lateEntry)
+	c.cacheStats.NumEntriesInLateFeed.Add(1)
 	c.lateSequenceUUID = uuid.New()
 }
 
@@ -794,6 +795,7 @@ func (c *singleChannelCacheImpl) AddLateSequence(change *LogEntry) {
 	}
 	c.lateLogLock.Lock()
 	c.lateLogs = append(c.lateLogs, lateEntry)
+	c.cacheStats.NumEntriesInLateFeed.Add(1)
 	c.lastLateSequence = change.Sequence
 	// Currently we're only purging on add.  Could also consider a timed purge to handle the case
 	// where all the listeners get caught up, but there aren't any subsequent late entries.  Not
@@ -809,6 +811,7 @@ func (c *singleChannelCacheImpl) AddLateSequence(change *LogEntry) {
 func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
 	for len(c.lateLogs) > 1 && c.lateLogs[0].getListenerCount() == 0 {
 		c.lateLogs = c.lateLogs[1:]
+		c.cacheStats.NumEntriesInLateFeed.Add(-1)
 	}
 }
 
