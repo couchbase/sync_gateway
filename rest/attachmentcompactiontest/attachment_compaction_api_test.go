@@ -137,7 +137,7 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 		CustomTestBucket: noCloseTB,
 	})
 	rt2 := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.LeakyBucketClone(base.LeakyBucketConfig{}),
 	})
 	defer rt2.Close()
 	defer rt1.Close()
@@ -184,14 +184,30 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, rt2AttachmentStatus.State)
 
+	// Add a second legacy attachment now that the run is genuinely stopped. On a real cluster,
+	// stopping isn't instant, so the first attachment may already be marked by this point (the
+	// blocked mark call completes once Release lets it through) -- a fresh doc created after
+	// Stopped is confirmed is guaranteed unmarked, giving the resumed run below something to
+	// genuinely block on.
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, t.Name()+"_resume", []byte("{}"), "att-resume", []byte("att body 2"))
+
+	// Pause again, bound to rt2's own leaky datastore this time -- the resumed run below performs
+	// its writes through rt2, so a pauser bound to rt1 wouldn't intercept them.
+	pauser2 := newCompactionPauser(rt2)
+	defer pauser2.Close()
+	pauser2.Pause()
+
 	// Attempt to start again from rt2 --> Should resume based on aborted state (same compactionID)
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser2.WaitUntilBlocked()
 	status := rt2.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.Equal(t, compactID, status.CompactID)
+	pauser2.Release()
 
 	// Wait for compaction to complete
-	_ = rt1.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
+	status = rt1.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
+	assert.Equal(t, compactID, status.CompactID)
 }
 
 func TestAttachmentCompactionDryRun(t *testing.T) {
