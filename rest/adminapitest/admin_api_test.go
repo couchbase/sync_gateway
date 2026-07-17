@@ -802,7 +802,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
 	// double-close panic from concurrent callback invocations.
-	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
+	docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 5)
 	numDocs := len(docKeys)
 	for _, key := range docKeys {
 		rt.CreateTestDoc(key)
@@ -1467,7 +1467,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 	// The pauser eliminates the race between "DCP finishes all docs → completed" and "stop
 	// command arrives → stopped", so numOfDocs can be kept small for test speed without
 	// risking the process completing before stop is issued.
-	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
+	docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 5)
 	numOfDocs := len(docKeys)
 	for _, key := range docKeys {
 		rt.CreateTestDoc(key)
@@ -4287,7 +4287,7 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 
 // resyncPauser blocks the resync DCP stream at the first user document it encounters. Can be
 // Paused and Released multiple times across a test.
-// Tests using this pauser must ensure all docs are on vBucket 0 (via base.VBucket0DocIDs) so only
+// Tests using this pauser must ensure all docs are on vBucket 0 (via sgtest.VBucketDocIDs) so only
 // a single DCP worker fires the callback.
 type resyncPauser struct {
 	t           testing.TB
