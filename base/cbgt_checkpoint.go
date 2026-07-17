@@ -84,6 +84,11 @@ func (r cbgtCheckpointReader) extractLastSeq() (lastSeq uint64, rawMetadata []by
 		lastSeq = r.SnapStart
 	}
 	delete(r.fields, "lastSeq")
+	// A checkpoint containing only SG's lastSeq (no cbgt metadata) must round-trip back to nil, not "{}", so
+	// OpaqueGet's len(metadata) == 0 check still treats it as "no cbgt checkpoint".
+	if len(r.fields) == 0 {
+		return lastSeq, nil, nil
+	}
 	rawMetadata, err = JSONMarshal(r.fields)
 	return lastSeq, rawMetadata, err
 }

@@ -119,6 +119,11 @@ func TestCbgtCheckpointReaderExtractLastSeq(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, testCase.expectedLastSeq, lastSeq)
 
+			if len(testCase.expectedRemains) == 0 {
+				assert.Len(t, rawMetadata, 0)
+				return
+			}
+
 			var remains map[string]any
 			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
 			assert.Equal(t, testCase.expectedRemains, remains)
@@ -164,10 +169,15 @@ func TestCbgtCheckpointWriterReaderRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, lastSeq, extractedLastSeq)
 
-			var remains map[string]any
-			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
 			var original map[string]any
 			require.NoError(t, JSONUnmarshal([]byte(testCase.raw), &original))
+			if len(original) == 0 {
+				assert.Len(t, rawMetadata, 0)
+				return
+			}
+
+			var remains map[string]any
+			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
 			assert.Equal(t, original, remains)
 		})
 	}
@@ -199,10 +209,15 @@ func TestDCPCommonCheckpointRoundTripShapes(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, lastSeq, extractedLastSeq)
 
-			var remains map[string]any
-			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
 			var original map[string]any
 			require.NoError(t, JSONUnmarshal([]byte(testCase.raw), &original))
+			if len(original) == 0 {
+				assert.Len(t, rawMetadata, 0)
+				return
+			}
+
+			var remains map[string]any
+			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
 			assert.Equal(t, original, remains)
 		})
 	}
@@ -357,8 +372,5 @@ func TestDCPCommonPersistCheckpointNilValue(t *testing.T) {
 	rawMetadata, lastSeq, err := dcpCommon.loadCheckpoint(0)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(42), lastSeq)
-
-	var remains map[string]any
-	require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
-	assert.Equal(t, map[string]any{}, remains)
+	assert.Len(t, rawMetadata, 0)
 }
