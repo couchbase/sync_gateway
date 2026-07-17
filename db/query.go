@@ -371,7 +371,8 @@ var QueryCountDocs = SGQuery{
 			"USE INDEX ($idx) "+
 			"WHERE $sync.`sequence` > 0 AND "+ // Required to use IndexAllDocs
 			"META(%s).id NOT LIKE '%s' "+
-			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
+			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false) "+
+			"AND ($sync.deleted IS MISSING OR $sync.deleted = false)",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard),
 	adhoc: false,
