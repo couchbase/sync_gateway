@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"testing"
@@ -20,6 +21,13 @@ import (
 	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/google/uuid"
 )
+
+// SetupDbConfigForTest runs the internal DbConfig setup (name/bucket defaulting and inheritance from
+// the bootstrap config) so that tests outside the rest package can build a DatabaseConfig suitable
+// for DatabaseInitManager.InitializeDatabase.
+func SetupDbConfigForTest(ctx context.Context, dbConfig *DbConfig, dbName string, bootstrapConfig BootstrapConfig) error {
+	return dbConfig.setup(ctx, dbName, bootstrapConfig, nil, nil)
+}
 
 // BootstrapStartupConfigForTest returns a default config for use to start a Sync Gateway server. It will run APIs on randomly chosen ports.
 func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
