@@ -288,9 +288,10 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
 		b.Terminate()
-		b.clearStatus()
-		if b.mode() == backgroundManagerModeSingleNode {
-			_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
+		b.SetError(err)
+		b.updateTerminalStatus(ctx)
+		if initMode == backgroundManagerInitReset {
+			return base.HTTPErrorf(http.StatusBadRequest, "%w", err)
 		}
 		return err
 	}
@@ -339,16 +340,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
-		if b.mode() != backgroundManagerModeLocal {
-			err := b.UpdateStatusClusterAware(ctx)
-			if err != nil {
-				base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
-			}
-
-			// Delete the heartbeat doc to allow another process to run
-			// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
-			_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
-		}
+		b.updateTerminalStatus(ctx)
 	}()
 
 	if b.mode() != backgroundManagerModeLocal {
@@ -446,11 +438,18 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 	return nil
 }
 
-// clearStatus resets the in-memory status back to its uninitialized zero value, e.g. to undo an aborted start attempt.
-func (b *BackgroundManager[O]) clearStatus() {
-	b.statusLock.Lock()
-	defer b.statusLock.Unlock()
-	b.status = BackgroundManagerStatus{}
+// updateTerminalStatus is used to update the status doc after the completion of background process
+func (b *BackgroundManager[O]) updateTerminalStatus(ctx context.Context) {
+	if b.mode() != backgroundManagerModeLocal {
+		err := b.UpdateStatusClusterAware(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
+		}
+
+		// Delete the heartbeat doc to allow another process to run
+		// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
+		_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
+	}
 }
 
 // getClusterStatusState gets the current background process state of the cluster.

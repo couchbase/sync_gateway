@@ -18,7 +18,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -467,9 +466,6 @@ func (h *handler) handlePostResync() error {
 			})
 			if err != nil {
 				atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
-				if strings.Contains(err.Error(), "failed to find ID for collection") {
-					return base.HTTPErrorf(http.StatusBadRequest, "%s", err.Error())
-				}
 				return err
 			}
 
@@ -500,7 +496,7 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		err = h.db.ResyncManager.Stop(h.ctx())
+		err := h.db.ResyncManager.Stop(h.ctx())
 		if err != nil {
 			return err
 		}

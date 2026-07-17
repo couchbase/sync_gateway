@@ -606,8 +606,8 @@ function sync(doc, oldDoc){
 }
 
 // TestResyncInvalidCollections verifies behavior when _resync is started with collection names not present in the
-// database config: the start fails, the status reflects the error state, a second invalid start is rejected
-// as already-running, a valid start is also rejected until stop is called, and after stop a valid start completes.
+// database config: the start fails with 400, GET /_resync is not left reporting a running state, and a subsequent
+// valid start succeeds and completes.
 func TestResyncInvalidCollections(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -621,18 +621,18 @@ func TestResyncInvalidCollections(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.BodyString(), "nonexistent_collection")
 
-	// Status reflects the error state because Init() failing calls SetError before returning
+	// Status should not be left reporting a running state after Init() fails synchronously.
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_resync", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	var status db.ResyncManagerResponseDCP
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
-	require.Equal(t, db.BackgroundProcessStateCompleted, status.State)
+	require.Equal(t, db.BackgroundProcessStateError, status.State)
 
-	// Second start with invalid collection: rejected as already running (503) because state is in error state
+	// Second start with invalid collection: still fails request validation and returns 400.
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", invalidBody)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 
-	// Starting with valid collections is also rejected (503) while the error state persists
+	// Starting with valid collections should succeed after the failed start resets the db/background-manager state.
 	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 

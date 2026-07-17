@@ -1497,7 +1497,6 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
 
-	metadataStore := testBucket.GetMetadataStore()
 	metaKeys := base.NewMetadataKeys("test-start-persist-fail")
 	processSuffix := "multi-persist-fail"
 	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
@@ -1536,9 +1535,13 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 
-	mgr.clusterAwareOptions.metadataStore = metadataStore
+	mgr.clusterAwareOptions.processSuffix = "multi-persist-pass"
 
 	require.NoError(t, mgr.Start(ctx, nil))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateCompleted, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(t, mgr.Stop(ctx))
 }
 
 // TestUpdateStatusClusterAware checks that UpdateStatusClusterAware surfaces the underlying bucket-closed
