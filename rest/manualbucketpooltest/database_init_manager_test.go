@@ -82,23 +82,23 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 			return
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
-		currentCount := atomic.LoadInt64(&collectionCount)
-		if currentCount == 0 {
+		if atomic.CompareAndSwapInt64(&collectionCount, 0, 1) {
 			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
 			rest.WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))       // wait for the test to unblock before proceeding to the next collection
+			return
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}, nil)
 
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb.GetName(), db1Name, collection1and2ScopesConfig)
-	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db1Config, db1Name, sc.Config.Bootstrap))
 	db1Config.UseSystemMobileMetadataCollection = base.Ptr(true)
+	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db1Config, db1Name, sc.Config.Bootstrap))
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb.GetName(), db2Name, collection3ScopesConfig)
-	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db2Config, db2Name, sc.Config.Bootstrap))
 	db2Config.UseSystemMobileMetadataCollection = base.Ptr(true)
+	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db2Config, db2Name, sc.Config.Bootstrap))
 
 	// Start first async index creation, should block after first collection
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
@@ -131,8 +131,12 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
 	// The distinct collections are _mobile, _default, collection1, collection2, and
 	// collection3, but _default and _mobile are checked for both databases.
+	// On mismatch, snapshot() lists the latest status for every collection, so any
+	// collection not showing Ready (or missing entirely) names the culprit.
 	totalCount := atomic.LoadInt64(&collectionCount)
-	require.Equal(t, int64(7), totalCount)
+	require.Equalf(t, int64(7), totalCount,
+		"expected 7 collection initializations (db1: _default, _mobile, %s, %s; db2: _default, _mobile, %s) but got %d. %s",
+		collection1Name, collection2Name, collection3Name, totalCount, progress.snapshot())
 
 }
 
