@@ -1593,7 +1593,7 @@ func TestShardedDCPCheckpointCleanup(t *testing.T) {
 		exists, err := metadataStore.Exists(ctx, checkpointName)
 		require.NoError(t, err)
 		require.False(t, exists, "Checkpoint should not exist before persistence", checkpointName)
-		require.NoError(t, dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`)))
+		require.NoError(t, dcpDest.persistCheckpoint(vb, []byte(`{"checkpoint": "data"}`), 0))
 		exists, err = metadataStore.Exists(ctx, checkpointName)
 		require.NoError(t, err)
 		require.True(t, exists, "Checkpoint should exist after persistence", checkpointName)

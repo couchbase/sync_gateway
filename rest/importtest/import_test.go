@@ -2145,6 +2145,15 @@ func TestImportFilterTimeout(t *testing.T) {
 	base.WaitWithTimeout(t, &syncFnFinishedWG, time.Second*15)
 }
 
+// testCbgtCheckpoint decodes/encodes a persisted DCP checkpoint including SG's lastSeq tracking field, alongside
+// cbgt's own opaque metadata. base.CbgtOpaqueMetadata alone doesn't model lastSeq - it's SG's own addition to the
+// persisted checkpoint, not part of cbgt's checkpoint shape - so round-tripping through it alone would silently
+// drop the lastSeq field.
+type testCbgtCheckpoint struct {
+	base.CbgtOpaqueMetadata
+	LastSeq uint64 `json:"lastSeq"`
+}
+
 func TestImportRollback(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
@@ -2197,7 +2206,7 @@ func TestImportRollback(t *testing.T) {
 			vbNo, err := base.GetVbucketForKey(ctx, bucket, key)
 			require.NoError(t, err)
 			checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
-			var checkpointData base.ShardedImportDCPMetadata
+			var checkpointData testCbgtCheckpoint
 			checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 			require.NoError(t, err)
 			require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2206,6 +2215,7 @@ func TestImportRollback(t *testing.T) {
 			checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 			checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 			checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+			checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 			if testType == rollbackWithFailover {
 				existingVbUUID := checkpointData.FailOverLog[0][0]
 				checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
@@ -2293,7 +2303,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	// fetch the checkpoint for the vBucket 0 and 800, modify the checkpoint values to a higher sequence to
 	// trigger rollback upon stream open request
 	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, 0)
-	var checkpointData base.ShardedImportDCPMetadata
+	var checkpointData testCbgtCheckpoint
 	checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2301,6 +2311,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 	existingVbUUID := checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2311,7 +2322,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	// vBucket 800
 	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, 800)
-	checkpointData = base.ShardedImportDCPMetadata{}
+	checkpointData = testCbgtCheckpoint{}
 	checkpointBytes, _, err = metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2319,6 +2330,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 	existingVbUUID = checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2536,7 +2548,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	// fetch each vBucket checkpoint, modify the checkpoint values back to the bucket
 	for vbNo := range docPerVBucket {
 		checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
-		var checkpointData base.ShardedImportDCPMetadata
+		var checkpointData testCbgtCheckpoint
 		checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 		require.NoError(t, err)
 		require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2545,6 +2557,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 		checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 		checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+		checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 		existingVbUUID := checkpointData.FailOverLog[0][0]
 		// mutate vbUUID to force rollback
 		checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
