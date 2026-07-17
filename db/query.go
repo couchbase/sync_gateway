@@ -361,7 +361,7 @@ var QueryAllDocs = SGQuery{
 	adhoc: false,
 }
 
-// QueryCountDocs finds documents that are tagged with sync metadata, including tombstones. This ignores any metadata
+// QueryCountDocs finds documents that are tagged with sync metadata, excluding tombstones. This ignores any metadata
 // documents starting with _sync:
 var QueryCountDocs = SGQuery{
 	name: QueryTypeCountDocs,
@@ -370,7 +370,8 @@ var QueryCountDocs = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.`sequence` > 0 AND "+ // Required to use IndexAllDocs
-			"META(%s).id NOT LIKE '%s' ",
+			"META(%s).id NOT LIKE '%s' "+
+			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard),
 	adhoc: false,
@@ -798,9 +799,8 @@ func (c *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, 
 	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 }
 
-// CountAllDocs returns the total number of documents in the collection that contain _sync metadata.
-// When using views, tombstoned documents are excluded.
-func (c *DatabaseCollection) CountAllDocs(ctx context.Context) (uint64, error) {
+// CountAllActiveDocs returns the total number of non-tombstoned documents in the collection that contain _sync metadata.
+func (c *DatabaseCollection) CountAllActiveDocs(ctx context.Context) (uint64, error) {
 	if c.useViews() {
 		opts := Body{"stale": false, "reduce": true}
 		results, err := c.dbCtx.ViewQueryWithStats(ctx, c.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)

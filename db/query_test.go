@@ -534,12 +534,12 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	checkFlags(entries)
 }
 
-func TestCountAllDocs(t *testing.T) {
+func TestCountAllActiveDocs(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	count, err := collection.CountAllDocs(ctx)
+	count, err := collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0), count)
 
@@ -554,7 +554,7 @@ func TestCountAllDocs(t *testing.T) {
 		}
 	}
 
-	count, err = collection.CountAllDocs(ctx)
+	count, err = collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numDocs), count)
 
@@ -571,19 +571,14 @@ func TestCountAllDocs(t *testing.T) {
 	_, _, err = collection.DeleteDoc(ctx, "doc0", docToDelete.ExtractDocVersion())
 	require.NoError(t, err)
 
-	count, err = collection.CountAllDocs(ctx)
+	count, err = collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
-	// Views exclude tombstoned documents from the map function; N1QL counts them until purged.
-	if base.TestsDisableGSI() {
-		assert.Equal(t, uint64(numDocs-1), count)
-	} else {
-		assert.Equal(t, uint64(numDocs), count)
-	}
+	assert.Equal(t, uint64(numDocs-1), count)
 
 	err = collection.Purge(ctx, "doc0", false)
 	require.NoError(t, err)
 
-	count, err = collection.CountAllDocs(ctx)
+	count, err = collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numDocs-1), count)
 
