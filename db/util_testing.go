@@ -421,6 +421,25 @@ func (db *DatabaseContext) GetChannelQueryCount() int64 {
 	return db.DbStats.Query(QueryTypeChannels).QueryCount.Value()
 }
 
+// ImportPartitionInfo describes a single cbgt PIndex currently running on this node's import feed.
+type ImportPartitionInfo struct {
+	UUID             string // physical PIndex UUID - changes if the PIndex/feed is torn down and recreated
+	SourcePartitions string // comma-separated vbucket numbers owned by this PIndex
+}
+
+// ImportPartitionSnapshot returns a snapshot of every import PIndex running on this node, keyed by
+// name. Diff snapshots before/after a topology change to detect unnecessary feed restarts (a
+// PIndex's UUID changes whenever its local instance is torn down and recreated).
+func (db *DatabaseContext) ImportPartitionSnapshot(tb testing.TB) map[string]ImportPartitionInfo {
+	il := db.ImportListener
+	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
+	snapshot := make(map[string]ImportPartitionInfo, len(pindexes))
+	for name, pindex := range pindexes {
+		snapshot[name] = ImportPartitionInfo{UUID: pindex.UUID, SourcePartitions: pindex.SourcePartitions}
+	}
+	return snapshot
+}
+
 // GetLocalActiveReplicatorForTest is a test util for retrieving an Active Replicator for deeper introspection/assertions.
 func (m *sgReplicateManager) GetLocalActiveReplicatorForTest(t testing.TB, replicationID string) (ar *ActiveReplicator, ok bool) {
 	// Check if replication is assigned locally

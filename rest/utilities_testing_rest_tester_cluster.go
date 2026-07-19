@@ -21,16 +21,25 @@ import (
 
 // RestTesterCluster can be used to simulate a multi-node Sync Gateway cluster.
 type RestTesterCluster struct {
+	t               *testing.T
 	testBucket      *base.TestBucket
-	restTesters     []*RestTester
+	restTestersLock sync.RWMutex // guards _restTesters, since AddNode can append after construction, concurrently with round-robin readers
+	_restTesters    []*RestTester
 	roundRobinCount int64
 	config          *RestTesterClusterConfig
 	groupID         string
 }
 
+// nodes returns the current set of RestTester nodes in the cluster.
+func (rtc *RestTesterCluster) nodes() []*RestTester {
+	rtc.restTestersLock.RLock()
+	defer rtc.restTestersLock.RUnlock()
+	return rtc._restTesters
+}
+
 // RefreshClusterDbConfigs will synchronously fetch the latest db configs from each bucket for each RestTester.
 func (rtc *RestTesterCluster) RefreshClusterDbConfigs() (count int, err error) {
-	for _, rt := range rtc.restTesters {
+	for _, rt := range rtc.nodes() {
 		c, err := rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
 		if err != nil {
 			return 0, err
@@ -41,31 +50,57 @@ func (rtc *RestTesterCluster) RefreshClusterDbConfigs() (count int, err error) {
 }
 
 func (rtc *RestTesterCluster) NumNodes() int {
-	return len(rtc.restTesters)
+	return len(rtc.nodes())
 }
 
 // ForEachNode runs the given function on each RestTester node.
 func (rtc *RestTesterCluster) ForEachNode(fn func(rt *RestTester)) {
-	for _, rt := range rtc.restTesters {
+	for _, rt := range rtc.nodes() {
 		fn(rt)
 	}
 }
 
 // RoundRobin returns the next RestTester instance, cycling through all of them sequentially.
 func (rtc *RestTesterCluster) RoundRobin() *RestTester {
-	requestNum := atomic.AddInt64(&rtc.roundRobinCount, 1) % int64(len(rtc.restTesters))
-	node := requestNum % int64(len(rtc.restTesters))
-	return rtc.restTesters[node]
+	nodes := rtc.nodes()
+	requestNum := atomic.AddInt64(&rtc.roundRobinCount, 1) % int64(len(nodes))
+	node := requestNum % int64(len(nodes))
+	return nodes[node]
 }
 
 // Node returns a specific RestTester instance.
 func (rtc *RestTesterCluster) Node(i int) *RestTester {
-	return rtc.restTesters[i]
+	return rtc.nodes()[i]
+}
+
+// AddNode starts a new RestTester node sharing the cluster's bucket and group ID, and waits for
+// it to discover every database already running on the rest of the cluster before returning.
+func (rtc *RestTesterCluster) AddNode() *RestTester {
+	nodes := rtc.nodes()
+	expectedDbNames := nodes[0].ServerContext().AllDatabaseNames()
+
+	rtConfig := &RestTesterConfig{
+		GroupID:             &rtc.groupID,
+		PersistentConfig:    true,
+		CustomTestBucket:    rtc.testBucket.NoCloseClone(),
+		MutateStartupConfig: rtc.config.MutateStartupConfig,
+	}
+	rt := NewRestTester(rtc.t, rtConfig)
+	sc := rt.ServerContext()
+
+	_, err := sc.fetchAndLoadConfigs(rt.Context(), false)
+	require.NoError(rtc.t, err)
+	require.ElementsMatch(rtc.t, expectedDbNames, sc.AllDatabaseNames(), "new node did not discover the same databases as the rest of the cluster")
+
+	rtc.restTestersLock.Lock()
+	rtc._restTesters = append(rtc._restTesters, rt)
+	rtc.restTestersLock.Unlock()
+	return rt
 }
 
 // Close closes all of RestTester nodes and the shared TestBucket.
 func (rtc *RestTesterCluster) Close(ctx context.Context) {
-	for _, rt := range rtc.restTesters {
+	for _, rt := range rtc.nodes() {
 		rt.Close()
 	}
 	rtc.testBucket.Close(ctx)
@@ -115,10 +150,11 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 	wg.Wait()
 
 	return &RestTesterCluster{
-		testBucket:  tb,
-		restTesters: restTesters,
-		config:      config,
-		groupID:     groupID,
+		t:            t,
+		testBucket:   tb,
+		_restTesters: restTesters,
+		config:       config,
+		groupID:      groupID,
 	}
 }
 

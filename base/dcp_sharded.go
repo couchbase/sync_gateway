@@ -253,8 +253,26 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 		NumReplicas:            0,                        // No replicas required for SG sharded feed
 	}
 
-	// Determine index name and UUID
-	indexName, previousIndexUUID := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
+	// Determine index name, UUID, and existing definition (if any)
+	indexName, previousIndexUUID, existingDef := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
+
+	// Skip if already up to date: CreateIndexEx always assigns a new UUID, and since
+	// PlanPIndexName embeds it, a no-op "update" would restart every PIndex/DCP feed on every
+	// node, not just this one joining. createCBGTIndex runs on every node startup.
+	//
+	// existingDef comes from the same manager.GetIndexDefs(true) call used to resolve
+	// previousIndexUUID above, so this doesn't add a new race: another node could still delete/
+	// replace the index between that read and the CreateIndex call below, in which case cbgt
+	// returns "index missing for update" - a string StartManager's tolerated-error checks don't
+	// recognize (only "already exists" and "concurrent index definition update" are), so this
+	// node's database would fail to come online. That race pre-dates this check.
+	if previousIndexUUID != "" && existingDef != nil &&
+		cbgtIndexDefUnchanged(existingDef, sourceType, c.sourceName, c.sourceUUID, sourceParams, opts.IndexType, indexParams, planParams) {
+		InfofCtx(ctx, KeyDCP, "cbgt index %q for db %q is already up to date, skipping redundant update", indexName, MD(opts.DBName))
+		c.Manager.Kick("NewIndexesCreated")
+		return nil
+	}
+
 	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(opts.DBName))
 
 	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
@@ -277,16 +295,39 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 
 }
 
-// getIndexNameAndUUID returns an index name and the uuid of any existing index.
+// cbgtIndexDefUnchanged reports whether existing already matches the given parameters. Like
+// cbgt's unexported sameIndexDefsExceptUUID, but also checks PlanParams and compares
+// SourceParams/Params semantically (jsoniter key order isn't stable).
+func cbgtIndexDefUnchanged(existing *cbgt.IndexDef, sourceType, sourceName, sourceUUID, sourceParams, indexType, indexParams string, planParams cbgt.PlanParams) bool {
+	return existing.Type == indexType &&
+		existing.SourceType == sourceType &&
+		existing.SourceName == sourceName &&
+		existing.SourceUUID == sourceUUID &&
+		existing.PlanParams.MaxPartitionsPerPIndex == planParams.MaxPartitionsPerPIndex &&
+		existing.PlanParams.NumReplicas == planParams.NumReplicas &&
+		SGFeedSourceParamsEqual(existing.SourceParams, sourceParams) &&
+		SGFeedIndexParamsEqual(existing.Params, indexParams)
+}
+
+// getIndexNameAndUUID returns an index name, the uuid of any existing index, and its IndexDef
+// (nil if it doesn't currently exist).
 //
 // Handle upgrade scenarios from an old an legacy index name format ("dbname_import") to the new length-safe format ("db[crc32]_index").
 //
 // Handles removal of legacy index definitions, except for the case where the legacy index is
 // the only index defined, and the name is safe.  In that case, continue using legacy index name
 // to avoid restarting the import processing from zero
-func (c *CbgtContext) getIndexNameAndUUID(ctx context.Context, indexName string, legacyIndexName string) (name string, uuid string) {
-	indexUUID, _ := getCBGTIndexUUID(c.Manager, indexName)
-	legacyIndexUUID, _ := getCBGTIndexUUID(c.Manager, legacyIndexName)
+func (c *CbgtContext) getIndexNameAndUUID(ctx context.Context, indexName string, legacyIndexName string) (name string, uuid string, existingDef *cbgt.IndexDef) {
+	indexDef, _ := getCBGTIndexDef(c.Manager, indexName)
+	legacyDef, _ := getCBGTIndexDef(c.Manager, legacyIndexName)
+
+	var indexUUID, legacyIndexUUID string
+	if indexDef != nil {
+		indexUUID = indexDef.UUID
+	}
+	if legacyDef != nil {
+		legacyIndexUUID = legacyDef.UUID
+	}
 
 	// 200 is the recommended maximum DCP stream name length
 	// cbgt adds 41 characters to index name we provide when naming the DCP stream, rounding up to 50 defensively
@@ -294,7 +335,7 @@ func (c *CbgtContext) getIndexNameAndUUID(ctx context.Context, indexName string,
 
 	// Check for the case where we want to continue using legacy index name:
 	if legacyIndexUUID != "" && indexUUID == "" && len(legacyIndexName) < safeIndexNameLen {
-		return legacyIndexName, legacyIndexUUID
+		return legacyIndexName, legacyIndexUUID, legacyDef
 	}
 
 	// Otherwise, remove legacy if it exists, and return new format
@@ -304,23 +345,17 @@ func (c *CbgtContext) getIndexNameAndUUID(ctx context.Context, indexName string,
 			WarnfCtx(ctx, "Error removing legacy import feed index: %v", deleteErr)
 		}
 	}
-	return indexName, indexUUID
+	return indexName, indexUUID, indexDef
 }
 
-// Check if this CBGT index already exists.
-func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID string, err error) {
-
+// getCBGTIndexDef returns the existing cbgt IndexDef for the given index name. Returns (nil, nil) -
+// not an error - if no index with that name currently exists.
+func getCBGTIndexDef(manager *cbgt.Manager, indexName string) (*cbgt.IndexDef, error) {
 	_, indexDefsMap, err := manager.GetIndexDefs(true)
 	if err != nil {
-		return "", fmt.Errorf("Error calling CBGT GetIndexDefs() on index: %s: %w", indexName, err)
+		return nil, fmt.Errorf("Error calling CBGT GetIndexDefs() on index: %s: %w", indexName, err)
 	}
-
-	indexDef, ok := indexDefsMap[indexName]
-	if ok {
-		return indexDef.UUID, nil
-	} else {
-		return "", nil
-	}
+	return indexDefsMap[indexName], nil
 }
 
 // cbgtManagerOptions builds the options map passed to cbgt.NewManagerEx for the given DCP connection string.

@@ -210,6 +210,137 @@ func TestDestKey(t *testing.T) {
 	}
 }
 
+// TestCbgtIndexDefUnchanged verifies cbgtIndexDefUnchanged only reports a match when every
+// compared field (Type, SourceType, SourceName, SourceUUID, PlanParams, SourceParams, Params)
+// agrees, and that SourceParams/Params are compared semantically rather than byte-for-byte.
+func TestCbgtIndexDefUnchanged(t *testing.T) {
+	const (
+		baseType         = "fulltext-index"
+		baseSourceType   = SOURCE_DCP_SG
+		baseSourceName   = "bucket1"
+		baseSourceUUID   = "bucket1-uuid"
+		baseSourceParams = `{"sg_dbname":"db","includeXAttrs":true}`
+		baseIndexParams  = `{"destKey":"db_import"}`
+	)
+	basePlanParams := cbgt.PlanParams{MaxPartitionsPerPIndex: 16, NumReplicas: 0}
+
+	baseExisting := &cbgt.IndexDef{
+		Type:         baseType,
+		SourceType:   baseSourceType,
+		SourceName:   baseSourceName,
+		SourceUUID:   baseSourceUUID,
+		SourceParams: baseSourceParams,
+		Params:       baseIndexParams,
+		PlanParams:   basePlanParams,
+		UUID:         "some-uuid-that-must-be-ignored",
+	}
+
+	tests := []struct {
+		name            string
+		mutateExisting  func(*cbgt.IndexDef)
+		indexType       string
+		sourceParams    string
+		indexParams     string
+		planParams      cbgt.PlanParams
+		expectUnchanged bool
+	}{
+		{
+			name:            "identical",
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: true,
+		},
+		{
+			name:            "sourceParams reordered but semantically equal",
+			indexType:       baseType,
+			sourceParams:    `{"includeXAttrs":true,"sg_dbname":"db"}`,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: true,
+		},
+		{
+			name:            "different indexType",
+			indexType:       "different-index-type",
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: false,
+		},
+		{
+			name:            "different SourceType",
+			mutateExisting:  func(d *cbgt.IndexDef) { d.SourceType = "different-source-type" },
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: false,
+		},
+		{
+			name:            "different SourceName",
+			mutateExisting:  func(d *cbgt.IndexDef) { d.SourceName = "different-bucket" },
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: false,
+		},
+		{
+			name:            "different SourceUUID",
+			mutateExisting:  func(d *cbgt.IndexDef) { d.SourceUUID = "different-uuid" },
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: false,
+		},
+		{
+			name:            "different MaxPartitionsPerPIndex",
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      cbgt.PlanParams{MaxPartitionsPerPIndex: 32, NumReplicas: 0},
+			expectUnchanged: false,
+		},
+		{
+			name:            "different NumReplicas",
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     baseIndexParams,
+			planParams:      cbgt.PlanParams{MaxPartitionsPerPIndex: 16, NumReplicas: 1},
+			expectUnchanged: false,
+		},
+		{
+			name:            "different SourceParams value",
+			indexType:       baseType,
+			sourceParams:    `{"sg_dbname":"otherdb","includeXAttrs":true}`,
+			indexParams:     baseIndexParams,
+			planParams:      basePlanParams,
+			expectUnchanged: false,
+		},
+		{
+			name:            "different Params value",
+			indexType:       baseType,
+			sourceParams:    baseSourceParams,
+			indexParams:     `{"destKey":"otherdb_import"}`,
+			planParams:      basePlanParams,
+			expectUnchanged: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			existing := *baseExisting
+			if test.mutateExisting != nil {
+				test.mutateExisting(&existing)
+			}
+			unchanged := cbgtIndexDefUnchanged(&existing, baseSourceType, baseSourceName, baseSourceUUID,
+				test.sourceParams, test.indexType, test.indexParams, test.planParams)
+			assert.Equal(t, test.expectUnchanged, unchanged)
+		})
+	}
+}
+
 func TestCfgNodePoller_Register(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close(t.Context())

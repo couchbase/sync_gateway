@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -18,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -546,6 +548,243 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 		managerWg.Wait()
 		close(terminator)
 	}
+}
+
+// TestCreateCBGTIndexIdempotent verifies createCBGTIndex doesn't rotate the index UUID when a node
+// (re-)registers with an index definition that already matches what's persisted - e.g. a second
+// node joining, or a node restarting. Covers both feed types, since they share this code path but
+// use different Cfg wiring (see useNodePoller below).
+func TestCreateCBGTIndexIdempotent(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+	spec := bucket.BucketSpec
+	testDBName := "testDB"
+
+	for _, feedType := range []ShardedDCPFeedType{ShardedDCPFeedTypeImport, ShardedDCPFeedTypeResync} {
+		t.Run(string(feedType), func(t *testing.T) {
+			// Matches production wiring: import's Cfg is driven by DCP-detected doc changes
+			// (database.go), resync's Cfg polls (background_mgr_resync_dcp.go).
+			useNodePoller := feedType == ShardedDCPFeedTypeResync
+			cfg, err := newCfgSG(ctx, dataStore, "", useNodePoller, 10*time.Millisecond)
+			require.NoError(t, err)
+
+			configGroup := "configGroup" + t.Name()
+			indexType := CBGTIndexTypeSyncGatewayImport + configGroup
+			cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{})
+
+			indexName, err := GenerateCBGTIndexName(testDBName, feedType)
+			require.NoError(t, err)
+
+			opts := ShardedDCPOptions{
+				DBName:        testDBName,
+				Bucket:        bucket,
+				NumPartitions: DefaultImportPartitions,
+				IndexType:     indexType,
+				IndexName:     indexName,
+			}
+
+			// First node creates the index.
+			nodeA, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeA-"+t.Name(), testDBName, nil)
+			require.NoError(t, err)
+			defer nodeA.Manager.Stop()
+			require.NoError(t, nodeA.StartManager(ctx, opts))
+
+			_, indexDefsMap, err := nodeA.Manager.GetIndexDefs(true)
+			require.NoError(t, err)
+			require.Contains(t, maps.Keys(indexDefsMap), indexName)
+			firstUUID := indexDefsMap[indexName].UUID
+			require.NotEmpty(t, firstUUID)
+
+			// A second node joins with an identical configuration - must not rotate the index UUID.
+			nodeB, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeB-"+t.Name(), testDBName, nil)
+			require.NoError(t, err)
+			defer nodeB.Manager.Stop()
+			require.NoError(t, nodeB.StartManager(ctx, opts))
+
+			_, indexDefsMap, err = nodeB.Manager.GetIndexDefs(true)
+			require.NoError(t, err)
+			assert.Equal(t, firstUUID, indexDefsMap[indexName].UUID, "second node joining should not rotate the index UUID")
+
+			// The original node re-registering (e.g. a restart) must also be a no-op.
+			require.NoError(t, nodeA.StartManager(ctx, opts))
+			_, indexDefsMap, err = nodeA.Manager.GetIndexDefs(true)
+			require.NoError(t, err)
+			assert.Equal(t, firstUUID, indexDefsMap[indexName].UUID, "node re-registering should not rotate the index UUID")
+
+			// A genuine config change (different partition count, so a different
+			// MaxPartitionsPerPIndex) must NOT be skipped - the skip-check should only suppress
+			// no-op updates, not mask a real change to the index definition.
+			changedOpts := opts
+			changedOpts.NumPartitions = opts.NumPartitions / 4
+			require.NoError(t, nodeA.StartManager(ctx, changedOpts))
+			_, indexDefsMap, err = nodeA.Manager.GetIndexDefs(true)
+			require.NoError(t, err)
+			assert.NotEqual(t, firstUUID, indexDefsMap[indexName].UUID, "a genuine partition-count change should not be skipped")
+		})
+	}
+}
+
+// leakyCfg wraps a cbgt.Cfg and can be told to fail the next Get call for a given key, to
+// simulate a transient error reading cbgt's persisted metadata (e.g. its index defs document).
+type leakyCfg struct {
+	cbgt.Cfg
+	failNextGetKey atomic.Pointer[string]
+}
+
+func (c *leakyCfg) Get(key string, cas uint64) ([]byte, uint64, error) {
+	if failKey := c.failNextGetKey.Load(); failKey != nil && *failKey == key {
+		if c.failNextGetKey.CompareAndSwap(failKey, nil) {
+			return nil, 0, errors.New("simulated transient Cfg read error")
+		}
+	}
+	return c.Cfg.Get(key, cas)
+}
+
+func (c *leakyCfg) failNextGet(key string) {
+	c.failNextGetKey.Store(&key)
+}
+
+// TestCreateCBGTIndexTransientReadErrorTolerated verifies that a transient error reading cbgt's
+// persisted index defs (e.g. a brief Cfg/metadata read hiccup) doesn't abort feed startup on a
+// node re-registering an index that already exists. getIndexNameAndUUID already tolerates this
+// class of error for its legacy-name lookup (discarding it via `_`); this confirms the same
+// tolerance holds for the lookup the "already up to date" skip-check in createCBGTIndex relies on.
+func TestCreateCBGTIndexTransientReadErrorTolerated(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+	spec := bucket.BucketSpec
+	testDBName := "testDB"
+
+	baseCfg, err := newCfgSG(ctx, dataStore, "", false, 10*time.Millisecond)
+	require.NoError(t, err)
+	cfg := &leakyCfg{Cfg: baseCfg}
+
+	configGroup := "configGroup" + t.Name()
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
+	cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{})
+
+	indexName, err := GenerateCBGTIndexName(testDBName, ShardedDCPFeedTypeImport)
+	require.NoError(t, err)
+
+	opts := ShardedDCPOptions{
+		DBName:        testDBName,
+		Bucket:        bucket,
+		NumPartitions: DefaultImportPartitions,
+		IndexType:     indexType,
+		IndexName:     indexName,
+	}
+
+	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
+	require.NoError(t, err)
+	defer node.Manager.Stop()
+	require.NoError(t, node.StartManager(ctx, opts))
+
+	_, indexDefsMap, err := node.Manager.GetIndexDefs(true)
+	require.NoError(t, err)
+	firstUUID := indexDefsMap[indexName].UUID
+	require.NotEmpty(t, firstUUID)
+
+	// Re-register (as if restarting), injecting a transient error into the very next read of
+	// cbgt's persisted index defs - the read the skip-check's existingDef lookup depends on.
+	cfg.failNextGet(cbgt.INDEX_DEFS_KEY)
+	require.NoError(t, node.StartManager(ctx, opts), "a transient index-defs read error should not abort feed startup")
+
+	_, indexDefsMap, err = node.Manager.GetIndexDefs(true)
+	require.NoError(t, err)
+	assert.Equal(t, firstUUID, indexDefsMap[indexName].UUID, "index should be unchanged after tolerating the transient read error")
+}
+
+// TestCreateCBGTIndexUpdateRaceWithConcurrentDelete documents a known, currently-unfixed gap
+// described in the comment above the skip-check in createCBGTIndex: if the index is deleted by
+// another node in the window between this node capturing previousIndexUUID and calling
+// Manager.CreateIndex with it, cbgt returns "index missing for update" - an error string
+// StartManager's tolerated-error checks don't recognize (only "already exists" and "concurrent
+// index definition update" are), so the node's database would fail to come online.
+//
+// Rather than racing goroutines against each other (non-deterministic), this reproduces the same
+// end state deterministically: capture previousIndexUUID exactly as createCBGTIndex does, delete
+// the index out from under it (simulating a concurrent second node), then drive CreateIndex with
+// the now-stale UUID. If this test starts failing, either the race has been closed (update the
+// comment in createCBGTIndex) or cbgt's error text has changed (update StartManager's match).
+func TestCreateCBGTIndexUpdateRaceWithConcurrentDelete(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+	spec := bucket.BucketSpec
+	testDBName := "testDB"
+
+	cfg, err := newCfgSG(ctx, dataStore, "", false, 10*time.Millisecond)
+	require.NoError(t, err)
+
+	configGroup := "configGroup" + t.Name()
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
+	cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{})
+
+	indexName, err := GenerateCBGTIndexName(testDBName, ShardedDCPFeedTypeImport)
+	require.NoError(t, err)
+
+	opts := ShardedDCPOptions{
+		DBName:        testDBName,
+		Bucket:        bucket,
+		NumPartitions: DefaultImportPartitions,
+		IndexType:     indexType,
+		IndexName:     indexName,
+	}
+
+	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
+	require.NoError(t, err)
+	defer node.Manager.Stop()
+	require.NoError(t, node.StartManager(ctx, opts))
+
+	// Capture previousIndexUUID and existingDef exactly as createCBGTIndex does on a node
+	// re-registering.
+	resolvedIndexName, previousIndexUUID, existingDef := node.getIndexNameAndUUID(ctx, indexName, GenerateLegacyImportIndexName(testDBName))
+	require.Equal(t, indexName, resolvedIndexName)
+	require.NotEmpty(t, previousIndexUUID)
+	require.NotNil(t, existingDef)
+
+	// Simulate a concurrent second node deleting the index in the window between that read and
+	// the CreateIndex call below.
+	_, err = node.Manager.DeleteIndexEx(indexName, "")
+	require.NoError(t, err)
+
+	sourceParams, err := cbgtFeedParams(ctx, opts)
+	require.NoError(t, err)
+	indexParams, err := cbgtIndexParams(opts.DestKey)
+	require.NoError(t, err)
+
+	err = node.Manager.CreateIndex(
+		SOURCE_DCP_SG,
+		node.sourceName,
+		node.sourceUUID,
+		sourceParams,
+		opts.IndexType,
+		indexName,
+		indexParams,
+		existingDef.PlanParams,
+		previousIndexUUID,
+	)
+	require.Error(t, err, "expected cbgt to reject an update against a deleted index")
+	assert.Contains(t, err.Error(), "index missing for update")
+	assert.NotContains(t, err.Error(), "an index with the same name already exists")
+	assert.NotContains(t, err.Error(), "concurrent index definition update")
 }
 
 func TestCBGTKvPoolSize(t *testing.T) {
