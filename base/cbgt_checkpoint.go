@@ -10,8 +10,6 @@ licenses/APL2.txt.
 
 package base
 
-import "encoding/json"
-
 // cbgtOpaqueCheckpoint mirrors cbgt's own private metaData struct (feed_dcp_gocbcore.go) - the opaque checkpoint
 // value cbgt itself round-trips through OpaqueSet/OpaqueGet. Its fields (name, type, and json tag) must stay
 // identical to cbgt's - TestCbgtOpaqueMetadataMatchesCbgtMetaData (cbgt_checkpoint_test.go) parses cbgt's actual
@@ -41,21 +39,16 @@ type CbgtCheckpoint struct {
 
 // readCbgtCheckpoint parses a persisted DCP checkpoint value, returning the last sequence SG actually processed
 // for the vbucket alongside cbgt's own opaque checkpoint fields (i.e. without SG's lastSeq), for use by DCPCommon.
-// Checkpoints persisted before lastSeq was tracked have no lastSeq field at all (as opposed to a
-// legitimately-persisted value of zero), so this falls back to the checkpoint's snapStart only in that case.
+// Checkpoints persisted before lastSeq was tracked have no lastSeq field at all, which unmarshals the same as a
+// legitimately-persisted value of zero, so this falls back to the checkpoint's snapStart in either case.
 func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err error) {
 	var checkpoint CbgtCheckpoint
 	if err := JSONUnmarshal(rawValue, &checkpoint); err != nil {
 		return 0, nil, err
 	}
 
-	var fields map[string]json.RawMessage
-	if err := JSONUnmarshal(rawValue, &fields); err != nil {
-		return 0, nil, err
-	}
-	if _, hasLastSeq := fields["lastSeq"]; hasLastSeq {
-		lastSeq = checkpoint.LastSeq
-	} else {
+	lastSeq = checkpoint.LastSeq
+	if lastSeq == 0 {
 		lastSeq = checkpoint.SnapStart
 	}
 
