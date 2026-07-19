@@ -246,6 +246,33 @@ func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
 	return seq <= endSeq
 }
 
+// makeVbucketMetadataForSequence builds the marshalled CbgtCheckpoint for a vbucket that's now at exactly
+// sequence (i.e. seqStart/snapStart/snapEnd/lastSeq all equal sequence), for use as rollback metadata. seqEnd is
+// capped to the vbucket's expected end sequence number for one-shot feeds (endSeqNos), matching
+// shouldProcessSequence, and otherwise left unbounded.
+func (c *DCPCommon) makeVbucketMetadataForSequence(vbNo uint16, vbucketUUID uint64, sequence uint64) ([]byte, error) {
+	seqEnd := uint64(0xFFFFFFFFFFFFFFFF)
+	if c.endSeqNos != nil {
+		endSeq, ok := c.endSeqNos[vbNo]
+		if !ok {
+			AssertfCtx(c.loggingCtx, "makeVbucketMetadataForSequence for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
+		} else {
+			seqEnd = endSeq
+		}
+	}
+	checkpoint := &CbgtCheckpoint{
+		cbgtOpaqueCheckpoint: cbgtOpaqueCheckpoint{
+			SeqStart:    sequence,
+			SeqEnd:      seqEnd,
+			SnapStart:   sequence,
+			SnapEnd:     sequence,
+			FailOverLog: [][]uint64{{vbucketUUID, 0}},
+		},
+		LastSeq: sequence,
+	}
+	return JSONMarshal(checkpoint)
+}
+
 // This updates the value stored in r.seqs with the given seq number for the given partition
 // Setting warnOnLowerSeqNo to true will check
 // if we are setting the seq number to a _lower_ value than we already have stored for that

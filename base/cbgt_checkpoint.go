@@ -10,105 +10,73 @@ licenses/APL2.txt.
 
 package base
 
-import (
-	"encoding/json"
-	"maps"
-)
+import "encoding/json"
 
-// cbgtCheckpointWriter builds the raw JSON persisted for a DCP checkpoint.  cbgt's own checkpoint value (from
-// OpaqueSet) is captured as opaque per-field raw JSON, so no field is lost on persistence, with SG's own LastSeq
-// tracking field - the last sequence SG actually processed for the vbucket - added in.
-type cbgtCheckpointWriter struct {
-	LastSeq uint64
-	fields  map[string]json.RawMessage
+// cbgtOpaqueCheckpoint mirrors cbgt's own private metaData struct (feed_dcp_gocbcore.go) - the opaque checkpoint
+// value cbgt itself round-trips through OpaqueSet/OpaqueGet. Its fields (name, type, and json tag) must stay
+// identical to cbgt's - TestCbgtOpaqueMetadataMatchesCbgtMetaData (cbgt_checkpoint_test.go) parses cbgt's actual
+// source at test time to verify this, rather than relying on a hand-maintained mirror staying in sync.
+type cbgtOpaqueCheckpoint struct {
+	FailOverLog [][]uint64 `json:"failOverLog"`
+	SeqStart    uint64     `json:"seqStart"`
+	SeqEnd      uint64     `json:"seqEnd"`
+	SnapStart   uint64     `json:"snapStart"`
+	SnapEnd     uint64     `json:"snapEnd"`
 }
 
-// newCbgtCheckpointWriter parses a cbgt-supplied checkpoint value for persistence, along with the last sequence SG
-// actually processed for the vbucket.  A nil/empty raw value (e.g. a vbucket with no prior cbgt checkpoint) is
-// treated as an empty set of cbgt fields, rather than a JSON parse error.
-func newCbgtCheckpointWriter(raw []byte, lastSeq uint64) (cbgtCheckpointWriter, error) {
-	var fields map[string]json.RawMessage
-	if len(raw) > 0 {
-		if err := JSONUnmarshal(raw, &fields); err != nil {
-			return cbgtCheckpointWriter{}, err
-		}
-	}
-	return cbgtCheckpointWriter{LastSeq: lastSeq, fields: fields}, nil
+// isEmpty reports whether none of cbgt's own checkpoint fields are populated, i.e. there's no cbgt checkpoint to
+// speak of - in practice cbgt doesn't ever persist a legitimately all-zero checkpoint (a real one always carries
+// at least a non-empty failOverLog).
+func (c cbgtOpaqueCheckpoint) isEmpty() bool {
+	return len(c.FailOverLog) == 0 && c.SeqStart == 0 && c.SeqEnd == 0 && c.SnapStart == 0 && c.SnapEnd == 0
 }
 
-// MarshalJSON flattens LastSeq into fields, so the persisted checkpoint is a single JSON object matching cbgt's own
-// checkpoint shape plus SG's lastSeq, rather than a nested struct.
-func (w cbgtCheckpointWriter) MarshalJSON() ([]byte, error) {
-	out := make(map[string]json.RawMessage, len(w.fields)+1)
-	maps.Copy(out, w.fields)
-	lastSeqRaw, err := JSONMarshal(w.LastSeq)
-	if err != nil {
-		return nil, err
-	}
-	out["lastSeq"] = lastSeqRaw
-	return JSONMarshal(out)
-}
-
-// cbgtCheckpointReader parses a persisted DCP checkpoint for loading.  It exposes cbgt's own checkpoint metadata
-// (mirrored by CbgtOpaqueMetadata) with typed field access for SG's own logic, alongside the raw per-field
-// JSON (fields), so reconstructing the checkpoint to hand back to cbgt doesn't drop fields SG doesn't model.
-type cbgtCheckpointReader struct {
+// CbgtCheckpoint is the full shape of a persisted DCP checkpoint: cbgt's own opaque checkpoint fields, embedded so
+// they marshal/unmarshal at the top level (matching cbgt's own flat JSON shape), plus SG's own LastSeq tracking
+// field - the last sequence SG actually processed for the vbucket, which isn't part of cbgt's own checkpoint shape.
+type CbgtCheckpoint struct {
+	cbgtOpaqueCheckpoint
 	LastSeq uint64 `json:"lastSeq"`
-	*CbgtOpaqueMetadata
-	fields map[string]json.RawMessage
-}
-
-// newCbgtCheckpointReader parses a raw persisted checkpoint value.  The raw bytes are tokenized into per-field raw
-// JSON, for reconstructing cbgt's checkpoint value without dropping fields SG doesn't model, alongside a single
-// typed decode of the fields SG does model, via the json tags on cbgtCheckpointReader/CbgtOpaqueMetadata.
-func newCbgtCheckpointReader(raw []byte) (cbgtCheckpointReader, error) {
-	var fields map[string]json.RawMessage
-	if err := JSONUnmarshal(raw, &fields); err != nil {
-		return cbgtCheckpointReader{}, err
-	}
-	reader := cbgtCheckpointReader{CbgtOpaqueMetadata: &CbgtOpaqueMetadata{}, fields: fields}
-	if err := JSONUnmarshal(raw, &reader); err != nil {
-		return cbgtCheckpointReader{}, err
-	}
-	return reader, nil
-}
-
-// extractLastSeq returns the last sequence SG actually processed for the vbucket, along with the raw JSON for
-// cbgt's own checkpoint fields (i.e. without SG's lastSeq), reconstructed from fields so any field SG doesn't
-// model survives.  Checkpoints persisted before lastSeq was tracked have no lastSeq field at all (as opposed to a
-// legitimately-persisted value of zero), so this falls back to the checkpoint's snapStart only in that case.
-func (r cbgtCheckpointReader) extractLastSeq() (lastSeq uint64, rawMetadata []byte, err error) {
-	if _, ok := r.fields["lastSeq"]; ok {
-		lastSeq = r.LastSeq
-	} else {
-		lastSeq = r.SnapStart
-	}
-	delete(r.fields, "lastSeq")
-	// A checkpoint containing only SG's lastSeq (no cbgt metadata) must round-trip back to nil, not "{}", so
-	// OpaqueGet's len(metadata) == 0 check still treats it as "no cbgt checkpoint".
-	if len(r.fields) == 0 {
-		return lastSeq, nil, nil
-	}
-	rawMetadata, err = JSONMarshal(r.fields)
-	return lastSeq, rawMetadata, err
 }
 
 // readCbgtCheckpoint parses a persisted DCP checkpoint value, returning the last sequence SG actually processed
-// for the vbucket alongside cbgt's own checkpoint metadata (i.e. without SG's lastSeq field), for use by DCPCommon.
+// for the vbucket alongside cbgt's own opaque checkpoint fields (i.e. without SG's lastSeq), for use by DCPCommon.
+// Checkpoints persisted before lastSeq was tracked have no lastSeq field at all (as opposed to a
+// legitimately-persisted value of zero), so this falls back to the checkpoint's snapStart only in that case.
 func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err error) {
-	reader, err := newCbgtCheckpointReader(rawValue)
-	if err != nil {
+	var checkpoint CbgtCheckpoint
+	if err := JSONUnmarshal(rawValue, &checkpoint); err != nil {
 		return 0, nil, err
 	}
-	return reader.extractLastSeq()
+
+	var fields map[string]json.RawMessage
+	if err := JSONUnmarshal(rawValue, &fields); err != nil {
+		return 0, nil, err
+	}
+	if _, hasLastSeq := fields["lastSeq"]; hasLastSeq {
+		lastSeq = checkpoint.LastSeq
+	} else {
+		lastSeq = checkpoint.SnapStart
+	}
+
+	// A checkpoint with no cbgt-owned fields at all must round-trip back to nil, not "{}", so OpaqueGet's
+	// len(metadata) == 0 check still treats it as "no cbgt checkpoint".
+	if checkpoint.cbgtOpaqueCheckpoint.isEmpty() {
+		return lastSeq, nil, nil
+	}
+	metadata, err = JSONMarshal(checkpoint.cbgtOpaqueCheckpoint)
+	return lastSeq, metadata, err
 }
 
 // createCbgtCheckpoint builds the raw JSON to persist for a DCP checkpoint from cbgt's own opaque checkpoint value
-// and the last sequence SG actually processed for the vbucket, for use by DCPCommon.
+// and the last sequence SG actually processed for the vbucket, for use by DCPCommon. A nil/empty opaqueValue (e.g.
+// a vbucket with no prior cbgt checkpoint) is treated as an empty cbgt checkpoint, rather than a JSON parse error.
 func createCbgtCheckpoint(opaqueValue []byte, lastSeq uint64) ([]byte, error) {
-	writer, err := newCbgtCheckpointWriter(opaqueValue, lastSeq)
-	if err != nil {
-		return nil, err
+	checkpoint := CbgtCheckpoint{LastSeq: lastSeq}
+	if len(opaqueValue) > 0 {
+		if err := JSONUnmarshal(opaqueValue, &checkpoint.cbgtOpaqueCheckpoint); err != nil {
+			return nil, err
+		}
 	}
-	return JSONMarshal(writer)
+	return JSONMarshal(checkpoint)
 }
