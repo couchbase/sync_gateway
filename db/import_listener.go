@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"testing"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -265,6 +266,27 @@ func (db *DatabaseContext) ImportPartitionCount() int {
 	il := db.ImportListener
 	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
 	return len(pindexes)
+}
+
+// ImportPartitionInfo describes a single cbgt PIndex currently running on this node's import feed.
+type ImportPartitionInfo struct {
+	UUID             string // physical PIndex UUID - changes if the PIndex/feed is torn down and recreated
+	SourcePartitions string // comma-separated vbucket numbers owned by this PIndex
+}
+
+// ImportPartitionSnapshot returns a snapshot of every import PIndex currently running on this node,
+// keyed by PIndex name. A PIndex's UUID changes whenever cbgt tears down and recreates the local
+// PIndex/feed instance - including cases where the PIndex's vbucket/node assignment hasn't actually
+// changed - so diffing snapshots before/after a cluster topology change reveals unnecessary feed
+// restarts, and SourcePartitions identifies which vbuckets a given PIndex (and its DCP stream) owns.
+func (db *DatabaseContext) ImportPartitionSnapshot(tb testing.TB) map[string]ImportPartitionInfo {
+	il := db.ImportListener
+	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
+	snapshot := make(map[string]ImportPartitionInfo, len(pindexes))
+	for name, pindex := range pindexes {
+		snapshot[name] = ImportPartitionInfo{UUID: pindex.UUID, SourcePartitions: pindex.SourcePartitions}
+	}
+	return snapshot
 }
 
 // getImportDestFactory returns a function to create cbgt.Dest targeting the importListener's ProcessFeedEvent

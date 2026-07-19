@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -255,6 +256,28 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 
 	// Determine index name and UUID
 	indexName, previousIndexUUID := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
+
+	// If an index already exists and already matches what we're about to create, skip the
+	// update entirely. cbgt's Manager.CreateIndexEx unconditionally assigns the index a new
+	// UUID on every call - even when updating with a prevIndexUUID that matches the existing
+	// index exactly - and since PlanPIndexName embeds the index UUID, a redundant "update" here
+	// would invalidate every PlanPIndexName for the index at once, forcing cbgt to tear down and
+	// recreate every PIndex/DCP feed for it across every participating node, not just whichever
+	// partitions actually need to move. This call happens on every node's startup (including a
+	// node simply joining an already-running database), so without this check, each additional
+	// node joining would needlessly restart every other node's already-stable import feeds.
+	if previousIndexUUID != "" {
+		existingDef, defErr := getCBGTIndexDef(c.Manager, indexName)
+		if defErr != nil {
+			return defErr
+		}
+		if existingDef != nil && cbgtIndexDefUnchanged(existingDef, sourceType, c.sourceName, c.sourceUUID, sourceParams, opts.IndexType, indexParams, planParams) {
+			InfofCtx(ctx, KeyDCP, "cbgt index %q for db %q is already up to date, skipping redundant update", indexName, MD(opts.DBName))
+			c.Manager.Kick("NewIndexesCreated")
+			return nil
+		}
+	}
+
 	InfofCtx(ctx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(opts.DBName))
 
 	// Index types are namespaced by configGroupID to support delete and create of a database targeting the
@@ -275,6 +298,36 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 	InfofCtx(ctx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
 	return err
 
+}
+
+// cbgtIndexDefUnchanged returns true if existing already matches the index definition that would
+// be created/updated to with the given parameters.
+func cbgtIndexDefUnchanged(existing *cbgt.IndexDef, sourceType, sourceName, sourceUUID, sourceParams, indexType, indexParams string, planParams cbgt.PlanParams) bool {
+	return existing.Type == indexType &&
+		existing.SourceType == sourceType &&
+		existing.SourceName == sourceName &&
+		existing.SourceUUID == sourceUUID &&
+		existing.PlanParams.MaxPartitionsPerPIndex == planParams.MaxPartitionsPerPIndex &&
+		existing.PlanParams.NumReplicas == planParams.NumReplicas &&
+		jsonStringsEqual(existing.SourceParams, sourceParams) &&
+		jsonStringsEqual(existing.Params, indexParams)
+}
+
+// jsonStringsEqual reports whether two JSON-encoded strings represent the same value, tolerating
+// differences in object key ordering (jsoniter, used in EE builds, does not guarantee a stable
+// key order across separate Marshal calls of the same struct).
+func jsonStringsEqual(a, b string) bool {
+	if a == b {
+		return true
+	}
+	var av, bv any
+	if err := JSONUnmarshal([]byte(a), &av); err != nil {
+		return false
+	}
+	if err := JSONUnmarshal([]byte(b), &bv); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
 }
 
 // getIndexNameAndUUID returns an index name and the uuid of any existing index.
@@ -309,18 +362,23 @@ func (c *CbgtContext) getIndexNameAndUUID(ctx context.Context, indexName string,
 
 // Check if this CBGT index already exists.
 func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (previousUUID string, err error) {
-
-	_, indexDefsMap, err := manager.GetIndexDefs(true)
+	indexDef, err := getCBGTIndexDef(manager, indexName)
 	if err != nil {
-		return "", fmt.Errorf("Error calling CBGT GetIndexDefs() on index: %s: %w", indexName, err)
+		return "", err
 	}
-
-	indexDef, ok := indexDefsMap[indexName]
-	if ok {
-		return indexDef.UUID, nil
-	} else {
+	if indexDef == nil {
 		return "", nil
 	}
+	return indexDef.UUID, nil
+}
+
+// getCBGTIndexDef returns the existing cbgt IndexDef for the given index name, or nil if it doesn't exist.
+func getCBGTIndexDef(manager *cbgt.Manager, indexName string) (*cbgt.IndexDef, error) {
+	_, indexDefsMap, err := manager.GetIndexDefs(true)
+	if err != nil {
+		return nil, fmt.Errorf("Error calling CBGT GetIndexDefs() on index: %s: %w", indexName, err)
+	}
+	return indexDefsMap[indexName], nil
 }
 
 // cbgtManagerOptions builds the options map passed to cbgt.NewManagerEx for the given DCP connection string.
