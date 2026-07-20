@@ -17,9 +17,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbaselabs/rosmar"
 )
 
 type MockProcess struct {
@@ -1475,4 +1477,106 @@ func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
 	var status BackgroundManagerStatus
 	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
 	assert.Equal(t, BackgroundProcessStateCompleted, status.State, "expected the bucket status to remain completed and NOT be overwritten")
+}
+
+// TestUpdateStatusClusterAwareOLD is a scratch copy of the pre-shared-bucket version, for timing comparison only.
+func TestUpdateStatusClusterAwareOLD(t *testing.T) {
+	testCases := []struct {
+		name                string
+		clusterAwareOptions *ClusterAwareBackgroundManagerOptions
+	}{
+		{
+			name: "single node",
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				processSuffix: "update-status-closed-bucket-single-node",
+			},
+		},
+		{
+			name: "multi node",
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				processSuffix: "update-status-closed-bucket-multi-node",
+				multiNode:     true,
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			ctx := base.TestCtx(t)
+			defer testBucket.Close(ctx)
+
+			mgr := &BackgroundManager[map[string]any]{
+				name:                testCase.name + "-mgr",
+				Process:             &MockProcess{},
+				clusterAwareOptions: testCase.clusterAwareOptions,
+				terminator:          base.NewSafeTerminator(),
+			}
+			if mgr.clusterAwareOptions != nil {
+				mgr.clusterAwareOptions.metadataStore = testBucket.DefaultDataStore(ctx)
+				mgr.clusterAwareOptions.metaKeys = base.NewMetadataKeys("test-update-status-closed-bucket")
+			}
+
+			testBucket.Close(ctx)
+
+			err := mgr.UpdateStatusClusterAware(ctx)
+			if base.TestUseCouchbaseServer() {
+				require.ErrorIs(t, err, gocb.ErrShutdown)
+			} else {
+				require.ErrorIs(t, err, rosmar.ErrBucketClosed)
+			}
+		})
+	}
+}
+
+// TestUpdateStatusClusterAware checks that UpdateStatusClusterAware surfaces the underlying bucket-closed
+// error for single-node and multi-node managers.
+func TestUpdateStatusClusterAware(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-update-status-closed-bucket")
+
+	expectedErrBucketClosed := rosmar.ErrBucketClosed
+	if base.TestUseCouchbaseServer() {
+		expectedErrBucketClosed = gocb.ErrShutdown
+	}
+
+	testCases := []struct {
+		name                string
+		clusterAwareOptions *ClusterAwareBackgroundManagerOptions
+	}{
+		{
+			name: "single node",
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				metadataStore: metadataStore,
+				metaKeys:      metaKeys,
+				processSuffix: "update-status-closed-bucket-single-node",
+			},
+		},
+		{
+			name: "multi node",
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				metadataStore: metadataStore,
+				metaKeys:      metaKeys,
+				processSuffix: "update-status-closed-bucket-multi-node",
+				multiNode:     true,
+			},
+		},
+	}
+
+	testBucket.Close(ctx)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mgr := &BackgroundManager[map[string]any]{
+				name:                testCase.name + "-mgr",
+				Process:             &MockProcess{},
+				clusterAwareOptions: testCase.clusterAwareOptions,
+				terminator:          base.NewSafeTerminator(),
+			}
+
+			err := mgr.UpdateStatusClusterAware(ctx)
+			require.ErrorIs(t, err, expectedErrBucketClosed)
+		})
+	}
 }
