@@ -337,7 +337,18 @@ func (lds *LeakyDataStore) GetXattrs(ctx context.Context, k string, xattrKeys []
 }
 
 func (lds *LeakyDataStore) GetSubDocRaw(ctx context.Context, k string, subdocKey string) ([]byte, uint64, error) {
+	if cb := lds.bucket.getSubDocRawCallback(); cb != nil {
+		if err := cb(k, subdocKey); err != nil {
+			return nil, 0, err
+		}
+	}
 	return lds.dataStore.GetSubDocRaw(ctx, k, subdocKey)
+}
+
+// SetGetSubDocRawCallback sets a callback that is invoked prior to running GetSubDocRaw, allowing tests
+// to force an error (e.g. a transient read failure) on a specific sub-document read.
+func (lds *LeakyDataStore) SetGetSubDocRawCallback(callback func(key string, subdocKey string) error) {
+	lds.bucket.setSubDocRawCallback(callback)
 }
 
 func (lds *LeakyDataStore) WriteSubDoc(ctx context.Context, k string, subdocKey string, cas uint64, value []byte) (uint64, error) {

@@ -325,10 +325,13 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.Terminate()
 
 		b.statusLock.Lock()
-		if b.status.State == BackgroundProcessStateStopping {
+		switch b.status.State {
+		case BackgroundProcessStateStopping:
 			b.status.State = BackgroundProcessStateStopped
-		} else if b.status.State != BackgroundProcessStateError {
+		case BackgroundProcessStateRunning:
 			b.status.State = BackgroundProcessStateCompleted
+		default:
+			// already a terminal state; leave it alone
 		}
 		b.statusLock.Unlock()
 
@@ -841,14 +844,28 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 		select {
 		case <-ticker.C:
 			err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate)
-			if err != nil {
-				if errors.Is(err, errBackgroundManagerStatusNotRunning) {
-					b.terminator.Close()
-					return
-				} else {
-					base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
-				}
+			if err == nil {
+				continue
 			}
+			if !errors.Is(err, errBackgroundManagerStatusNotRunning) {
+				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
+				continue
+			}
+			// Another node already moved the cluster status to a terminal state; adopt it
+			// locally so we don't leave our own state as Running.
+			clusterState, err := b.getClusterStatusState(ctx)
+			if err != nil || clusterState == "" {
+				base.DebugfCtx(ctx, base.KeyAll, "Failed to read cluster status state after detecting non-running state, will retry: %v", err)
+				continue
+			}
+			if clusterState == BackgroundProcessStateRunning {
+				// Raced with another node restarting the process - keep polling instead of
+				// tearing down this node's now-current run.
+				continue
+			}
+			b.setRunState(clusterState)
+			terminator.Close()
+			return
 		case <-terminator.Done():
 			ticker.Stop()
 			return
