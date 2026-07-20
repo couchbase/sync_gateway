@@ -1,63 +1,15 @@
-// Builds a Slack-friendly summary of the JUnit results recorded by the 'junit' step in post.always,
-// including up to 10 failed test names (Jenkins runs post.always before success/failure, so results are available here).
-def testSummary() {
-    def testResultAction = currentBuild.rawBuild.getAction(hudson.tasks.test.AbstractTestResultAction)
-    if (testResultAction == null) {
-        return '_No test results found_'
-    }
-    def summary = "*Tests:* ${testResultAction.totalCount} total, ${testResultAction.failCount} failed, ${testResultAction.skipCount} skipped"
-    if (testResultAction.failCount > 0) {
-        def failedTests = testResultAction.getFailedTests()
-        def names = failedTests.take(10).collect { "• ${it.fullDisplayName}" }.join('\n')
-        summary += "\n*Failed tests:*\n${names}"
-        if (failedTests.size() > 10) {
-            summary += "\n• ...and ${failedTests.size() - 10} more"
-        }
-    }
-    return summary
-}
-
-def slackMessage(String status, String link) {
-    def emoji = status == 'passed' ? ':white_check_mark:' : ':x:'
-    return """
-        ${emoji} *E2E tests ${status}* — ${currentBuild.fullDisplayName}
-
-        *SG_COMMIT:* ${params.SG_COMMIT}
-        *BACKING_STORE:* ${params.BACKING_STORE}
-        *TEST_DIRECTORY:* ${params.TEST_DIRECTORY}
-        *COUCHBASE_LITE_VERSION:* ${params.COUCHBASE_LITE_VERSION}
-        *COUCHBASE_SERVER_VERSION:* ${params.COUCHBASE_SERVER_VERSION}
-
-        ${testSummary()}
-
-        ${link}
-    """.stripIndent().trim()
-}
-
-// Looks up the Slack member ID of whoever manually triggered this build in the UI, via
-// .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
-// The 'Run E2E Tests' stage overwrites this file with the latest version from main before this
-// runs, so the map stays current regardless of which SG_COMMIT is under test.
-// Returns null for non-user-triggered builds (e.g. the automatic fan-out from the root Jenkinsfile,
-// which has an UpstreamCause instead) or if the triggering user has no entry/Slack ID in the map.
-def slackUserIdForBuild() {
-    def userIdCauses = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
-    if (!userIdCauses) {
-        echo('No UserIdCause on this build (not manually triggered) - skipping Slack DM')
-        return null
-    }
-    if (!fileExists('.github/slack_usernames.yaml')) {
-        echo('.github/slack_usernames.yaml not present (build likely failed before it could be fetched) - skipping Slack DM')
-        return null
-    }
-    def githubUsername = userIdCauses[0].userId
-    def slackMap = readYaml(file: '.github/slack_usernames.yaml')
-    def slackUserId = slackMap[githubUsername]
-    if (!slackUserId) {
-        echo("No Slack ID mapped for '${githubUsername}' in .github/slack_usernames.yaml")
-        return null
-    }
-    return slackUserId
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+// The 'Run E2E Tests' stage overwrites integration-test/slackUtils.groovy and .github/slack_usernames.yaml
+// with the latest versions from main before this runs, so both stay current regardless of which SG_COMMIT
+// is under test.
+def e2eDetails() {
+    return [
+        SG_COMMIT: params.SG_COMMIT,
+        BACKING_STORE: params.BACKING_STORE,
+        TEST_DIRECTORY: params.TEST_DIRECTORY,
+        COUCHBASE_LITE_VERSION: params.COUCHBASE_LITE_VERSION,
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+    ]
 }
 
 pipeline {
@@ -182,10 +134,10 @@ pipeline {
                 sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                     sh '''
                         set -eu
-                        mkdir -p integration-test/e2e
+                        mkdir -p integration-test/e2e .github
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
-                        # TODO: point back at main once .github/slack_usernames.yaml is merged there
-                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/CBG-5600/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
                         /bin/bash integration-test/e2e/run_e2e_tests.sh
                     '''
                 }
@@ -199,26 +151,19 @@ pipeline {
         }
         success {
             script {
-                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackMessage('passed', env.BUILD_URL))
-                def dmTarget = slackUserIdForBuild()
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def message = slackUtils.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails())
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: message)
+                def dmTarget = slackUtils.slackUserIdForBuild()
                 if (dmTarget) {
-                    slackSend(channel: dmTarget, color: 'good', message: slackMessage('passed', env.BUILD_URL))
+                    slackSend(channel: dmTarget, color: 'good', message: message)
                 }
             }
         }
         failure {
             script {
-                def dmTarget = slackUserIdForBuild()
-                if (dmTarget) {
-                    // A known trigger user exists (this was a manual "Build with Parameters" run):
-                    // DM them privately.
-                    slackSend(channel: dmTarget, color: 'danger', message: slackMessage('failed', "Console: ${env.BUILD_URL}console"))
-                } else {
-                    // This was triggered from a pipeline rather than a user, report to all developers.
-                    slackSend(channel: 'syncgatewaybot-alerts', color: 'danger', message: slackMessage('failed', "Console: ${env.BUILD_URL}console"))
-                }
-                // Always send to #syncgatewaybot
-                slackSend(channel: 'syncgatewaybot', color: 'danger', message: slackMessage('failed', "Console: ${env.BUILD_URL}console"))
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails())
             }
         }
         cleanup {

@@ -19,7 +19,7 @@ pipeline {
             steps {
                 sh 'git rev-parse HEAD > .git/commit-id'
                 script {
-                    env.SG_COMMIT = readFile '.git/commit-id'
+                    env.SG_COMMIT = readFile('.git/commit-id').trim()
                     // Set BRANCH variable to target branch if this build is a PR
                     if (env.CHANGE_TARGET) {
                         env.BRANCH = env.CHANGE_TARGET
@@ -254,7 +254,8 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: 'danger', message: "Failed tests in main SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
+                    def slackUtils = load('integration-test/slackUtils.groovy')
+                    slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
                 }
             }
         }
@@ -263,7 +264,8 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: 'danger', message: "Build failure!!!\nA build failure occurred in the main SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
+                    def slackUtils = load('integration-test/slackUtils.groovy')
+                    slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL)
                 }
             }
         }
@@ -271,7 +273,8 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: 'danger', message: "main SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
+                    def slackUtils = load('integration-test/slackUtils.groovy')
+                    slackUtils.slackSendFailure('main SGW pipeline', 'aborted', env.BUILD_URL)
                 }
             }
         }

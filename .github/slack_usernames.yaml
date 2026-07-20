@@ -7,7 +7,7 @@
 # the file licenses/APL2.txt.
 
 # Maps GitHub usernames to Slack member IDs (Slack profile -> More -> Copy member ID),
-# so Jenkins can DM the commit author on E2E build results.
+# so Jenkins can DM whoever manually triggered a build with its results.
 DragosPetruTaraban: "U0221MMQKJ9"
 JRascagneres: "UC51SKA66"
 RIT3shSapata: "U04EQ6XLSF5"
