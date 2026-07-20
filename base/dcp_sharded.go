@@ -268,7 +268,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 	// node's database would fail to come online. That race pre-dates this check.
 	if previousIndexUUID != "" && existingDef != nil &&
 		cbgtIndexDefUnchanged(existingDef, sourceType, c.sourceName, c.sourceUUID, sourceParams, opts.IndexType, indexParams, planParams) {
-		InfofCtx(ctx, KeyDCP, "cbgt index %q for db %q is already up to date, skipping redundant update", indexName, MD(opts.DBName))
+		InfofCtx(ctx, KeyDCP, "cbgt index %q for db %q is already up to date, skipping redundant update", MD(indexName), MD(opts.DBName))
 		c.Manager.Kick("NewIndexesCreated")
 		return nil
 	}

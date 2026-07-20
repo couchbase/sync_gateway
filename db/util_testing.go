@@ -431,8 +431,11 @@ type ImportPartitionInfo struct {
 // name. Diff snapshots before/after a topology change to detect unnecessary feed restarts (a
 // PIndex's UUID changes whenever its local instance is torn down and recreated).
 func (db *DatabaseContext) ImportPartitionSnapshot(tb testing.TB) map[string]ImportPartitionInfo {
-	il := db.ImportListener
-	_, pindexes := il.cbgtContext.Manager.CurrentMaps()
+	tb.Helper()
+	if db.ImportListener == nil || db.ImportListener.cbgtContext == nil || db.ImportListener.cbgtContext.Manager == nil {
+		tb.Fatalf("ImportPartitionSnapshot requires an active import listener (cbgt manager)")
+	}
+	_, pindexes := db.ImportListener.cbgtContext.Manager.CurrentMaps()
 	snapshot := make(map[string]ImportPartitionInfo, len(pindexes))
 	for name, pindex := range pindexes {
 		snapshot[name] = ImportPartitionInfo{UUID: pindex.UUID, SourcePartitions: pindex.SourcePartitions}

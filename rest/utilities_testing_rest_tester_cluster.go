@@ -30,11 +30,10 @@ type RestTesterCluster struct {
 	groupID         string
 }
 
-// nodes returns the current set of RestTester nodes in the cluster.
 func (rtc *RestTesterCluster) nodes() []*RestTester {
 	rtc.restTestersLock.RLock()
 	defer rtc.restTestersLock.RUnlock()
-	return rtc._restTesters
+	return append([]*RestTester(nil), rtc._restTesters...)
 }
 
 // RefreshClusterDbConfigs will synchronously fetch the latest db configs from each bucket for each RestTester.
