@@ -275,11 +275,10 @@ func TestDCPCommonPersistCheckpointNilValue(t *testing.T) {
 }
 
 // TestMakeVbucketMetadataIncludesLastSeq verifies that makeVbucketMetadataForSequence builds a full CbgtCheckpoint
-// (cbgt's own opaque fields plus SG's lastSeq), not just the bare cbgt fields. This is a change in behavior -
-// previously this returned only cbgt's fields, with no lastSeq at all - so that whatever's cached as the
-// vbucket's in-memory metadata immediately after a rollback (before the next persist/load cycle through
-// createCbgtCheckpoint/readCbgtCheckpoint) already carries a correct, consistent lastSeq value. It also covers
-// seqEnd: unbounded (max uint64) by default, but capped to the vbucket's endSeqNos entry for one-shot feeds.
+// (cbgt's own opaque fields plus SG's lastSeq), so a vbucket's in-memory metadata immediately after a rollback
+// (before the next persist/load cycle through createCbgtCheckpoint/readCbgtCheckpoint) already carries a correct,
+// consistent lastSeq value. It also covers seqEnd: unbounded (max uint64) by default, but capped to the vbucket's
+// endSeqNos entry for one-shot feeds.
 func TestMakeVbucketMetadataIncludesLastSeq(t *testing.T) {
 	const (
 		vbucketUUID = uint64(1234)
@@ -328,12 +327,11 @@ func TestMakeVbucketMetadataIncludesLastSeq(t *testing.T) {
 	}
 }
 
-// TestDCPCommonRollbackExPersistsLastSeq is a regression test for makeVbucketMetadataForSequence now building a
-// full CbgtCheckpoint (including lastSeq) rather than just cbgt's bare opaque fields. It exercises rollbackEx
-// end-to-end through a real metadata bucket - the same path DCPDest.RollbackEx uses - verifying that the
-// persisted checkpoint's lastSeq (read back via loadCheckpoint) reflects the rollback sequence, and that cbgt's
-// own fields still round-trip correctly, i.e. makeVbucketMetadataForSequence's extra lastSeq field doesn't
-// confuse createCbgtCheckpoint (which always derives lastSeq from its own parameter, not from opaqueValue).
+// TestDCPCommonRollbackExPersistsLastSeq exercises rollbackEx end-to-end through a real metadata bucket - the same
+// path DCPDest.RollbackEx uses - verifying that the persisted checkpoint's lastSeq (read back via loadCheckpoint)
+// reflects the rollback sequence, and that cbgt's own fields still round-trip correctly: makeVbucketMetadataForSequence's
+// extra lastSeq field doesn't confuse createCbgtCheckpoint, which always derives lastSeq from its own parameter,
+// not from opaqueValue.
 func TestDCPCommonRollbackExPersistsLastSeq(t *testing.T) {
 	const (
 		vbucketUUID      = uint64(1234)
@@ -370,9 +368,10 @@ func TestDCPCommonRollbackExPersistsLastSeq(t *testing.T) {
 	assert.Equal(t, [][]uint64{{vbucketUUID, 0}}, remains.FailOverLog)
 
 	// setMetaData caches rollbackMetadata verbatim as the vbucket's in-memory metadata (what OpaqueGet hands back
-	// to cbgt) until the next persist/load cycle - so it's expected to carry the extra lastSeq field makeVbucketMetadata
-	// now includes. That's harmless: cbgt's own json.Unmarshal into its metaData struct silently ignores unknown
-	// fields, and createCbgtCheckpoint always derives lastSeq from its own parameter, never from opaqueValue.
+	// to cbgt) until the next persist/load cycle - so it's expected to carry makeVbucketMetadataForSequence's
+	// lastSeq field, which cbgt never writes itself. That's harmless: cbgt's own json.Unmarshal into its metaData
+	// struct silently ignores unknown fields, and createCbgtCheckpoint always derives lastSeq from its own
+	// parameter, never from opaqueValue.
 	cachedMetadata, cachedLastSeq, err := dcpCommon.getMetaData(0)
 	require.NoError(t, err)
 	assert.Equal(t, rollbackSeq, cachedLastSeq)

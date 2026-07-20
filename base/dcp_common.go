@@ -175,9 +175,8 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (rawMetadata []byte, lastSeq uin
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsDocNotFoundError(err) {
 			return nil, 0, nil
-		} else {
-			return nil, 0, err
 		}
+		return nil, 0, err
 	}
 
 	lastSeq, rawMetadata, err = readCbgtCheckpoint(rawValue)
@@ -185,15 +184,23 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (rawMetadata []byte, lastSeq uin
 		return nil, 0, err
 	}
 
-	if c.endSeqNos != nil {
-		endSeq, ok := c.endSeqNos[vbNo]
-		if !ok {
-			AssertfCtx(c.loggingCtx, "loadCheckpoint for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
-		} else if lastSeq > endSeq {
-			lastSeq = endSeq
-		}
+	if endSeq, ok := c.endSeqForVbucket(vbNo); ok && lastSeq > endSeq {
+		lastSeq = endSeq
 	}
 	return rawMetadata, lastSeq, nil
+}
+
+// endSeqForVbucket looks up the configured one-shot-feed end sequence number for a vbucket, if any. It asserts if
+// endSeqNos was specified but doesn't cover this vbucket, which would mean it was built with the wrong vbucket count.
+func (c *DCPCommon) endSeqForVbucket(vbNo uint16) (endSeq uint64, ok bool) {
+	if c.endSeqNos == nil {
+		return 0, false
+	}
+	endSeq, ok = c.endSeqNos[vbNo]
+	if !ok {
+		AssertfCtx(c.loggingCtx, "vbno %d is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
+	}
+	return endSeq, ok
 }
 
 func (c *DCPCommon) InitVbMeta(vbNo uint16) {
@@ -252,15 +259,10 @@ func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
 // shouldProcessSequence, and otherwise left unbounded.
 func (c *DCPCommon) makeVbucketMetadataForSequence(vbNo uint16, vbucketUUID uint64, sequence uint64) ([]byte, error) {
 	seqEnd := uint64(0xFFFFFFFFFFFFFFFF)
-	if c.endSeqNos != nil {
-		endSeq, ok := c.endSeqNos[vbNo]
-		if !ok {
-			AssertfCtx(c.loggingCtx, "makeVbucketMetadataForSequence for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
-		} else {
-			seqEnd = endSeq
-		}
+	if endSeq, ok := c.endSeqForVbucket(vbNo); ok {
+		seqEnd = endSeq
 	}
-	checkpoint := &CbgtCheckpoint{
+	checkpoint := CbgtCheckpoint{
 		cbgtOpaqueCheckpoint: cbgtOpaqueCheckpoint{
 			SeqStart:    sequence,
 			SeqEnd:      seqEnd,

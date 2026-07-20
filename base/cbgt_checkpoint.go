@@ -54,7 +54,7 @@ func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err e
 
 	// A checkpoint with no cbgt-owned fields at all must round-trip back to nil, not "{}", so OpaqueGet's
 	// len(metadata) == 0 check still treats it as "no cbgt checkpoint".
-	if checkpoint.cbgtOpaqueCheckpoint.isEmpty() {
+	if checkpoint.isEmpty() {
 		return lastSeq, nil, nil
 	}
 	metadata, err = JSONMarshal(checkpoint.cbgtOpaqueCheckpoint)
