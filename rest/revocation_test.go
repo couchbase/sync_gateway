@@ -1504,6 +1504,8 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 func TestReplicatorRevocations(t *testing.T) {
 	base.LongRunningTest(t)
 
+	defer db.SuspendSequenceBatching()()
+
 	base.RequireNumTestBuckets(t, 2)
 
 	sgrRunner := NewSGRTestRunner(t)
@@ -1574,6 +1576,8 @@ func TestReplicatorRevocations(t *testing.T) {
 
 func TestReplicatorRevocationsNoRev(t *testing.T) {
 	base.LongRunningTest(t)
+
+	defer db.SuspendSequenceBatching()()
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -1648,6 +1652,8 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 
 func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	base.LongRunningTest(t)
+
+	defer db.SuspendSequenceBatching()()
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -2257,6 +2263,8 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 func TestRevocationMessage(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeyCRUD, base.KeyHTTP, base.KeyCache)
+
+	defer db.SuspendSequenceBatching()()
 
 	btcRunner := NewBlipTesterClientRunner(t)
 
