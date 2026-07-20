@@ -3569,11 +3569,10 @@ func TestBlipPullConflictNoRevLosesBody(t *testing.T) {
 		leakyDataStore.SetGetWithXattrCallback(func(string) error { return gocb.ErrDocumentNotFound })
 
 		btcRunner.StartOneshotPull(btc.id)
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, DocVersion{CV: sgVersion.CV})
 
-		require.Never(t, func() bool {
-			body, _, _ := client.GetDoc(docID)
-			return !bytes.Equal(body, []byte(cblBody))
-		}, 2*time.Second, 100*time.Millisecond, "norev overwrote known-good revision with no body")
+		body, _, _ := client.GetDoc(docID)
+		require.Equal(t, []byte(cblBody), body, "norev overwrote known-good revision with no body")
 	})
 }
 
@@ -3896,7 +3895,7 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
+		msg := btcRunner.WaitForPullNoRevMessage(btc.id, docID, expectedVersion)
 		require.Equal(t, db.MessageNoRev, msg.Profile())
 	})
 }
