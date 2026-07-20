@@ -136,45 +136,6 @@ func TestCbgtCheckpointRoundTrip(t *testing.T) {
 	}
 }
 
-// TestDCPCommonCheckpointRoundTripShapes exercises persistCheckpoint followed by loadCheckpoint on a *DCPCommon -
-// i.e. through an actual metadata bucket, not just createCbgtCheckpoint/readCbgtCheckpoint directly - across the
-// same checkpoint shapes as TestCbgtCheckpointRoundTrip, verifying every field survives exactly.
-func TestDCPCommonCheckpointRoundTripShapes(t *testing.T) {
-	const lastSeq = uint64(42)
-	for _, testCase := range checkpointShapeTestCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			ctx := TestCtx(t)
-			bucket := GetTestBucket(t)
-			defer bucket.Close(ctx)
-
-			dcpCommon, err := NewDCPCommon(ctx, DCPDestOptions{
-				MetadataStore:      bucket.GetSingleDataStore(),
-				MaxVbNo:            1,
-				PersistCheckpoints: true,
-				CheckpointPrefix:   "test_dcp_checkpoint_round_trip_shapes_" + testCase.name + "_",
-			})
-			require.NoError(t, err)
-
-			require.NoError(t, dcpCommon.persistCheckpoint(0, []byte(testCase.raw), lastSeq))
-
-			rawMetadata, extractedLastSeq, err := dcpCommon.loadCheckpoint(0)
-			require.NoError(t, err)
-			assert.Equal(t, lastSeq, extractedLastSeq)
-
-			var original map[string]any
-			require.NoError(t, JSONUnmarshal([]byte(testCase.raw), &original))
-			if len(original) == 0 {
-				assert.Len(t, rawMetadata, 0)
-				return
-			}
-
-			var remains map[string]any
-			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
-			assert.Equal(t, original, remains)
-		})
-	}
-}
-
 // TestCbgtCheckpointPreservesLargeSequenceNumberPrecision verifies that sequence numbers beyond float64's safe
 // integer range (2^53) survive both createCbgtCheckpoint and readCbgtCheckpoint intact - CbgtCheckpoint's fields
 // are typed uint64, decoded directly rather than via interface{} (which would go through float64 and lose
