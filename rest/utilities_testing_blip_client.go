@@ -2081,6 +2081,12 @@ func (btcc *BlipTesterCollectionClient) WaitForPullRevMessage(docID string, vers
 func (btcc *BlipTesterCollectionClient) WaitForPullNoRevMessage(docID string, version DocVersion) *blip.Message {
 	btcc.TB().Helper()
 	var msg *blip.Message
+	var lookupVersion DocVersion
+	if btcc.UseHLV() && !version.CV.IsEmpty() {
+		lookupVersion = DocVersion{CV: version.CV}
+	} else {
+		lookupVersion = DocVersion{RevTreeID: version.RevTreeID}
+	}
 	require.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
 		var matches []*blip.Message
 		for _, m := range btcc.parent.pullReplication.GetMessages() {
@@ -2093,7 +2099,7 @@ func (btcc *BlipTesterCollectionClient) WaitForPullNoRevMessage(docID string, ve
 			} else {
 				incomingVersion = DocVersion{RevTreeID: m.Properties[db.NorevMessageRev]}
 			}
-			if incomingVersion == version {
+			if incomingVersion == lookupVersion {
 				matches = append(matches, m)
 			}
 		}
@@ -2324,10 +2330,16 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			updatedHLV.UpdateWithIncomingHLV(opts.incomingHLV)
 		}
 	}
-	// A bodyless norev must never clobber a document we already have real content for.
-	ignoreNoRevBody := opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil
-	if ignoreNoRevBody {
+	// A bodyless norev must never clobber a document we already have real content for. Leave the doc's active
+	// revision, _seqStore entry, _revisionsBySeq and _seqsByVersions untouched: this norev never applied to
+	// client state, so it must not be discoverable as a revision the client holds (via
+	// getAllRevisions/_proposeChangesEntryForDoc) or as a second, stale-looking _seqStore pointer to the same
+	// doc that would be yielded twice by changes iteration. Waiters use WaitForPullNoRevMessage, which reads
+	// the raw pull replication message log directly.
+	if opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil {
 		require.Equal(btcc.TB(), db.MessageNoRev, opts.msg.Profile(), "only norev messages should hit this bodyless-clobber guard")
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", docID, opts.incomingVersion)
+		return
 	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
@@ -2345,14 +2357,6 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		doc = newClientDocument(docID, newClientSeq, &docRev)
 		btcc._seqStore[newClientSeq] = doc
 		btcc._seqFromDocID[docID] = newClientSeq
-	} else if ignoreNoRevBody {
-		// Record the version/message for waiters without replacing the doc's active content via _addNewRev.
-		// No _seqStore/_seqFromDocID entry is added for newClientSeq: the doc's active revision (and its
-		// existing _seqStore entry) is unchanged, so a new entry here would be a second, stale-looking
-		// pointer to the same doc and would cause it to be yielded twice by changes iteration.
-		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", docID, opts.incomingVersion)
-		doc._revisionsBySeq[newClientSeq] = docRev
-		doc._seqsByVersions[newVersion] = newClientSeq
 	} else {
 		// remove existing entry and replace with new seq
 		delete(btcc._seqStore, doc._latestSeq)

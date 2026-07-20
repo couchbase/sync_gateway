@@ -1950,17 +1950,11 @@ func TestSendReplacementRevision(t *testing.T) {
 					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 0)
 				} else {
 					// requested revision (or any alternative) did not get replicated
-					data := btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version1)
-					assert.Nil(t, data)
+					btcRunner.SingleCollection(btc.id).WaitForPullNoRevMessage(docID, version1)
 
 					// no message for rev 2
 					_, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.False(t, ok)
-
-					// norev message for the requested rev
-					msg, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version1)
-					require.True(t, ok)
-					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
 					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 1)
 					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 0)
@@ -3080,11 +3074,8 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		require.NoError(t, err)
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, version)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
-
-		msg = btcRunner.WaitForPullRevMessage(btc.id, docID2, version2)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, version)
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID2, version2)
 	})
 }
 
@@ -3200,8 +3191,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btcRunner.StartOneshotPull(btc2.id)
 
-				msg := btcRunner.WaitForPullRevMessage(btc2.id, docID, revID)
-				require.Equal(t, db.MessageNoRev, msg.Profile())
+				btcRunner.WaitForPullNoRevMessage(btc2.id, docID, revID)
 			})
 		}
 	})
@@ -3695,8 +3685,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, expectedVersion)
 	})
 }
 

@@ -137,13 +137,10 @@ func testBlipPullConflictNoRevLosesBody(t *testing.T, rt *RestTester) {
 
 		btcRunner.StartOneshotPull(btc.id)
 
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, sgVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, sgVersion)
 
-		require.Never(t, func() bool {
-			body, _, _ := client.GetDoc(docID)
-			return !bytes.Equal(body, []byte(cblBody))
-		}, 2*time.Second, 100*time.Millisecond, "norev overwrote known-good revision with no body")
+		body, _, _ := client.GetDoc(docID)
+		require.Equal(t, []byte(cblBody), body, "norev overwrote known-good revision with no body")
 	})
 }
 
@@ -183,8 +180,7 @@ func testBlipNoRevIgnoredSingleChangesEntry(t *testing.T, rt *RestTester) {
 		})
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, sgVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, sgVersion)
 
 		var matches []proposeChangeBatchEntry
 		for _, change := range client.OneShotChangesSince(rt.Context(), 0) {
@@ -286,7 +282,6 @@ func testBlipNoRevOnCorruptHistoryDelta(t *testing.T, rt *RestTester) {
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, expectedVersion)
 	})
 }
