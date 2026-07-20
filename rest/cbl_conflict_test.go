@@ -137,6 +137,9 @@ func testBlipPullConflictNoRevLosesBody(t *testing.T, rt *RestTester) {
 
 		btcRunner.StartOneshotPull(btc.id)
 
+		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, sgVersion)
+		require.Equal(t, db.MessageNoRev, msg.Profile())
+
 		require.Never(t, func() bool {
 			body, _, _ := client.GetDoc(docID)
 			return !bytes.Equal(body, []byte(cblBody))
