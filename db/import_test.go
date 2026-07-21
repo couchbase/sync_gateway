@@ -13,8 +13,10 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -1030,6 +1032,51 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 
 }
 
+// TestFeedImportExistingMouverifies that a feed-triggered import of a document that
+// already has an _mou xattr will work whether or not the backing store supports _mou.
+func TestFeedImportExistingMou(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	key := t.Name()
+	initialImportCount := db.DbStats.SharedBucketImport().ImportCount.Value()
+
+	startingPCas := "0x1000000000000001"
+	startingMou := &MetadataOnlyUpdate{CAS: "0x1100000000000001", PreviousCAS: startingPCas}
+	writeCas, err := collection.dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{
+		base.MouXattrName: base.MustJSONMarshal(t, startingMou),
+	}, nil, nil)
+	require.NoError(t, err)
+
+	base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportCount.Value, initialImportCount+1)
+	_, mou, importCas := getSyncAndMou(t, collection, key)
+	require.NotNil(t, mou, "expected _mou xattr to be written by the first import")
+	if collection.dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		require.Equal(t, base.CasToString(writeCas), mou.PreviousCAS)
+	} else {
+		require.Equal(t, startingPCas, mou.PreviousCAS)
+	}
+
+	// Direct bucket write that carries over the existing _mou xattr unchanged (the _sync xattr is
+	// left as-is) alongside a modified body, simulating an external SDK write that will be picked up
+	// by the DCP import feed.
+	_, err = collection.dataStore.WriteWithXattrs(ctx, key, 0, importCas, []byte(`{"foo":"baz"}`), map[string][]byte{
+		base.MouXattrName: base.MustJSONMarshal(t, mou),
+	}, nil, nil)
+	require.NoError(t, err)
+	base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportCount.Value, initialImportCount+2)
+
+	_, mou, _ = getSyncAndMou(t, collection, key)
+	assert.NotNil(t, mou)
+}
+
 func TestImportResurrectionMou(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test requires xattrs because it relies on import")
@@ -1154,8 +1201,31 @@ func TestImportConflictWithTombstone(t *testing.T) {
 func getSyncAndMou(t *testing.T, collection *DatabaseCollectionWithUser, key string) (syncData *SyncData, mou *MetadataOnlyUpdate, cas uint64) {
 
 	ctx := base.TestCtx(t)
-	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.MouXattrName})
-	require.NoError(t, err)
+
+	var xattrs map[string][]byte
+	var err error
+	if collection.dataStore.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) {
+		xattrs, cas, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.MouXattrName})
+		require.NoError(t, err)
+	} else {
+		// Servers without multi-xattr subdoc support can't fetch _sync and _mou in a single op, so fetch
+		// them individually and confirm the document wasn't mutated between the two fetches.
+		xattrs = make(map[string][]byte, 2)
+		var syncXattrs, mouXattrs map[string][]byte
+		var syncCas, mouCas uint64
+		syncXattrs, syncCas, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
+		if !errors.Is(err, base.ErrXattrNotFound) {
+			require.NoError(t, err)
+		}
+		mouXattrs, mouCas, err = collection.dataStore.GetXattrs(ctx, key, []string{base.MouXattrName})
+		if !errors.Is(err, base.ErrXattrNotFound) {
+			require.NoError(t, err)
+		}
+		require.Equal(t, syncCas, mouCas, "cas mismatch between _sync and _mou xattr fetches for key %s", key)
+		cas = syncCas
+		maps.Copy(xattrs, syncXattrs)
+		maps.Copy(xattrs, mouXattrs)
+	}
 
 	if syncXattr, ok := xattrs[base.SyncXattrName]; ok {
 		require.NoError(t, base.JSONUnmarshal(syncXattr, &syncData))

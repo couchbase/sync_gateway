@@ -2199,13 +2199,15 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			updatedDoc.IsTombstone = currentRevFromHistory.Deleted
-			if doc.metadataOnlyUpdate != nil {
-				if doc.metadataOnlyUpdate.CAS != "" {
-					updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
-				}
-			} else {
-				if currentXattrs[base.MouXattrName] != nil && !isNewDocCreation {
-					updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.MouXattrName)
+			if db.useMou() {
+				if doc.metadataOnlyUpdate != nil {
+					if doc.metadataOnlyUpdate.CAS != "" {
+						updatedDoc.Spec = append(updatedDoc.Spec, sgbucket.NewMacroExpansionSpec(xattrMouCasPath(), sgbucket.MacroCas))
+					}
+				} else {
+					if currentXattrs[base.MouXattrName] != nil && !isNewDocCreation {
+						updatedDoc.XattrsToDelete = append(updatedDoc.XattrsToDelete, base.MouXattrName)
+					}
 				}
 			}
 
