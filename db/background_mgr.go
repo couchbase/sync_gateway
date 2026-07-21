@@ -692,7 +692,7 @@ func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Co
 		return err
 	}
 
-	doc := map[string]any{
+	doc := map[string]json.RawMessage{
 		"status": status,
 		"meta":   metadata,
 	}
