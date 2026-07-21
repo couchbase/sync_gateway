@@ -62,11 +62,19 @@ func startChangesFeed(ctx context.Context, t *testing.T, collectionWithUser *Dat
 	return feed
 }
 
+// fastFeedBroadcast shrinks the continuous-feed broadcast intervals so the 500ms skipped-sequence slow mode
+// (SkippedSequenceBroadcastChangesTime) doesn't dominate these tests' runtime.
+func fastFeedBroadcast(cacheOptions CacheOptions) CacheOptions {
+	cacheOptions.BroadcastChangesInterval = 5 * time.Millisecond
+	cacheOptions.SkippedSequenceBroadcastInterval = 5 * time.Millisecond
+	return cacheOptions
+}
+
 // shortWaitCacheWithLateLogMax returns the standard short-wait test cache options with a small
 // lateLogs cap, so the length-based force-prune (channel_cache_single.go _purgeLateLogEntries) fires
 // within a short test rather than only after 500 late entries accumulate.
 func shortWaitCacheWithLateLogMax(lateLogMax int) CacheOptions {
-	cacheOptions := shortWaitCache()
+	cacheOptions := fastFeedBroadcast(shortWaitCache())
 	cacheOptions.LateLogMaxLength = lateLogMax
 	return cacheOptions
 }
@@ -284,7 +292,7 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	cacheOptions := shortWaitCache()
+	cacheOptions := fastFeedBroadcast(shortWaitCache())
 	cacheOptions.LateLogMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	cacheOptions.LateLogAge = time.Millisecond
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
@@ -534,7 +542,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	cacheOptions := shortWaitCache()
+	cacheOptions := fastFeedBroadcast(shortWaitCache())
 	cacheOptions.LateLogMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	cacheOptions.LateLogAge = time.Millisecond
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
@@ -653,7 +661,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	// shortWaitCache carries the shipped default late-log caps - deliberately not overridden here.
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
