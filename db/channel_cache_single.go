@@ -127,6 +127,8 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
 		ChannelCacheAge:       DefaultChannelCacheAge,
 		MaxNumChannels:        DefaultChannelCacheMaxNumber,
+		LateLogMaxLength:      DefaultLateLogMaxLength,
+		LateLogAge:            DefaultLateLogAge,
 	}
 	cache.logs = make(LogEntries, 0)
 	cache.recentlyUsed.Set(true)
@@ -157,6 +159,17 @@ func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHa
 	base.DebugfCtx(ctx, base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
 		base.UD(cache.channelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
 
+	if options.LateLogMaxLength > 0 {
+		cache.options.LateLogMaxLength = options.LateLogMaxLength
+	}
+
+	if options.LateLogAge > 0 {
+		cache.options.LateLogAge = options.LateLogAge
+	}
+
+	base.DebugfCtx(ctx, base.KeyCache, "Initialized late-sequence log for channel %q with maxLength:%v age:%v",
+		base.UD(cache.channelID), cache.options.LateLogMaxLength, cache.options.LateLogAge)
+
 	return cache
 }
 
@@ -168,6 +181,8 @@ type ChannelCacheOptions struct {
 	CompactHighWatermarkPercent int           // Compact HWM (as percent of MaxNumChannels)
 	CompactLowWatermarkPercent  int           // Compact LWM (as percent of MaxNumChannels)
 	ChannelQueryLimit           int           // Query limit
+	LateLogMaxLength            int           // Don't hold more than this many late-arriving entries in each per-channel lateLogs
+	LateLogAge                  time.Duration // Force-prune late-arriving entries older than this, even if a feed is still parked on them
 }
 
 func (c *singleChannelCacheImpl) ChannelID() channels.ID {
@@ -746,8 +761,10 @@ func (c *singleChannelCacheImpl) GetLateSequencesSince(sinceSequence uint64) (en
 	}
 
 	// If we didn't find the previous sequence, the consumer may be missing sequences and must rollback
-	// to their last safe sequence
+	// to their last safe sequence.  This is expected when a lagging feed's lastSequence has been pruned
+	// from lateLogs by the length/age cap (_purgeLateLogEntries / pruneLateLogAge).
 	if !previousFound {
+		c.cacheStats.LateFeedForcedRollbacks.Add(1)
 		err = errors.New("Missing previous sequence - rollback required")
 		return nil, 0, err
 	}
@@ -776,6 +793,8 @@ func (c *singleChannelCacheImpl) RegisterLateSequenceClient() (latestLateSeq uin
 
 // Called when a client (a continuous _changes feed) is no longer referencing the sequence number.
 func (c *singleChannelCacheImpl) ReleaseLateSequenceClient(sequence uint64) (success bool) {
+	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
 	for _, log := range c.lateLogs {
 		if log.logEntry.Sequence == sequence {
 			log.removeListener()
@@ -805,13 +824,55 @@ func (c *singleChannelCacheImpl) AddLateSequence(change *LogEntry) {
 	c.lateLogLock.Unlock()
 }
 
+// lateLogCount returns the number of entries currently held in this channel's lateLogs (including the
+// sentinel entry).  Used to keep the NumEntriesInLateFeed stat accurate when a channel cache is evicted or
+// cleared, since those entries are dropped without going through the per-entry purge paths.
+func (c *singleChannelCacheImpl) lateLogCount() int64 {
+	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
+	return int64(len(c.lateLogs))
+}
+
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.  Expects to have a lock on lateLogLock.
 func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
+	// Drop leading entries that no active feed still references.
 	for len(c.lateLogs) > 1 && c.lateLogs[0].getListenerCount() == 0 {
 		c.lateLogs = c.lateLogs[1:]
 		c.cacheStats.NumEntriesInLateFeed.Add(-1)
+	}
+
+	// Bounded-length safeguard: if a stalled or slow feed's listener is pinning the front of the queue
+	// and it has grown past LateLogMaxLength, force-drop leading entries even though a listener still
+	// references them.  Any feed whose lastSequence is dropped will fail its next GetLateSequencesSince
+	// lookup and be reset to its low sequence (see the "Missing previous sequence" path there) - this is
+	// the lateLogs analogue of the channel cache raising validFrom and forcing a query backfill.  Always
+	// keep at least one entry so new listeners can still register.
+	for len(c.lateLogs) > 1 && len(c.lateLogs) > c.options.LateLogMaxLength {
+		c.lateLogs = c.lateLogs[1:]
+		c.cacheStats.NumEntriesInLateFeed.Add(-1)
+	}
+}
+
+// pruneLateLogAge drops late-arriving entries older than LateLogAge from the front of the queue, even if a
+// stalled feed still references them.  Mirrors pruneCacheAge for the primary cache and, unlike
+// _purgeLateLogEntries, runs on a timer (via cleanAgedItems) rather than on add - so it reclaims a stalled
+// feed's lateLogs even when no further late sequences are arriving on the channel.  A feed whose lastSequence
+// is dropped is reset to its low sequence on its next read.  Always keeps at least one entry.
+func (c *singleChannelCacheImpl) pruneLateLogAge(ctx context.Context) {
+	c.lateLogLock.Lock()
+	defer c.lateLogLock.Unlock()
+	pruned := 0
+	for len(c.lateLogs) > 1 && time.Since(c.lateLogs[0].arrived) > c.options.LateLogAge {
+		c.lateLogs = c.lateLogs[1:]
+		pruned++
+	}
+	if pruned > 0 {
+		c.cacheStats.NumEntriesInLateFeed.Add(int64(-pruned))
+		if base.LogDebugEnabled(ctx, base.KeyCache) {
+			base.DebugfCtx(ctx, base.KeyCache, "Pruned %d aged late-sequence entries from channel %q", pruned, base.UD(c.channelID))
+		}
 	}
 }
 

@@ -100,6 +100,8 @@ const (
 
 	NumEntriesInLateFeedDesc = "The total number of entries currently held across all channels' late-arriving-sequence queues (lateLogs), used to let continuous _changes feeds catch up on skipped sequences that resolved out of order. Grows as skipped sequences resolve late while a listener is registered on a channel, and shrinks only when every registered listener on that channel has advanced past or released the entries in question."
 
+	LateFeedForcedRollbacksDesc = "The total number of times a continuous _changes feed was forced to roll back to its low sequence because its lastSequence had been pruned from a channel's lateLogs by the length or age cap. A non-zero and rising value indicates one or more consumers are reading their _changes feed slower than sequences are being produced, causing Sync Gateway to drop their late-sequence position to keep lateLogs bounded; those feeds are reset to their low sequence and continue from there."
+
 	ChanCacheCompactCountDesc = "The total number of channel cache compaction runs."
 
 	ChanCacheCompactTimeDesc = "The total amount of time taken by channel cache compaction across all compaction runs."

@@ -3472,3 +3472,86 @@ func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
 		})
 	}
 }
+
+// TestChannelCacheLateLogConfig covers the cache.channel_cache late-log config surface end to end:
+//   - late_log_max_length / late_log_expiry_seconds are plumbed through to the effective channel cache
+//     options (dbcOptionsFromConfig),
+//   - omitting them yields the package defaults, which DefaultDbConfig also exposes, and
+//   - values below the minimum are rejected by config validation.
+func TestChannelCacheLateLogConfig(t *testing.T) {
+	t.Run("configured values reach cache options", func(t *testing.T) {
+		const lateLogMaxLength = 42
+		const lateLogExpirySeconds = 123
+		rt := NewRestTester(t, &RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				CacheConfig: &CacheConfig{
+					ChannelCacheConfig: &ChannelCacheConfig{
+						LateLogMaxLength:     base.Ptr(lateLogMaxLength),
+						LateLogExpirySeconds: base.Ptr(lateLogExpirySeconds),
+					},
+				},
+			}},
+		})
+		defer rt.Close()
+
+		cacheOptions := rt.GetDatabase().Options.CacheOptions
+		require.NotNil(t, cacheOptions)
+		assert.Equal(t, lateLogMaxLength, cacheOptions.LateLogMaxLength)
+		assert.Equal(t, time.Duration(lateLogExpirySeconds)*time.Second, cacheOptions.LateLogAge)
+	})
+
+	t.Run("defaults when omitted", func(t *testing.T) {
+		rt := NewRestTester(t, nil)
+		defer rt.Close()
+
+		cacheOptions := rt.GetDatabase().Options.CacheOptions
+		require.NotNil(t, cacheOptions)
+		assert.Equal(t, db.DefaultLateLogMaxLength, cacheOptions.LateLogMaxLength)
+		assert.Equal(t, db.DefaultLateLogAge, cacheOptions.LateLogAge)
+	})
+
+	t.Run("DefaultDbConfig exposes defaults", func(t *testing.T) {
+		sc := DefaultStartupConfig("")
+		channelCacheConfig := DefaultDbConfig(&sc).CacheConfig.ChannelCacheConfig
+		require.NotNil(t, channelCacheConfig.LateLogMaxLength)
+		require.NotNil(t, channelCacheConfig.LateLogExpirySeconds)
+		assert.Equal(t, db.DefaultLateLogMaxLength, *channelCacheConfig.LateLogMaxLength)
+		assert.Equal(t, int(db.DefaultLateLogAge.Seconds()), *channelCacheConfig.LateLogExpirySeconds)
+	})
+
+	t.Run("validation rejects values below minimum", func(t *testing.T) {
+		tests := []struct {
+			name             string
+			lateLogMaxLength *int
+			lateLogExpiry    *int
+			errSubstring     string
+		}{
+			{name: "valid values", lateLogMaxLength: base.Ptr(1), lateLogExpiry: base.Ptr(1)},
+			{name: "late_log_max_length zero", lateLogMaxLength: base.Ptr(0), errSubstring: "cache.channel_cache.late_log_max_length"},
+			{name: "late_log_max_length negative", lateLogMaxLength: base.Ptr(-5), errSubstring: "cache.channel_cache.late_log_max_length"},
+			{name: "late_log_expiry_seconds zero", lateLogExpiry: base.Ptr(0), errSubstring: "cache.channel_cache.late_log_expiry_seconds"},
+			{name: "late_log_expiry_seconds negative", lateLogExpiry: base.Ptr(-5), errSubstring: "cache.channel_cache.late_log_expiry_seconds"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				ctx := base.TestCtx(t)
+				dbConfig := DbConfig{
+					Name: "db",
+					CacheConfig: &CacheConfig{
+						ChannelCacheConfig: &ChannelCacheConfig{
+							LateLogMaxLength:     test.lateLogMaxLength,
+							LateLogExpirySeconds: test.lateLogExpiry,
+						},
+					},
+				}
+				err := dbConfig.validate(ctx, false, false)
+				if test.errSubstring != "" {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), test.errSubstring)
+				} else {
+					require.NoError(t, err)
+				}
+			})
+		}
+	})
+}

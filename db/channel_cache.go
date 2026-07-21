@@ -31,6 +31,8 @@ var (
 	DefaultChannelCacheMaxNumber       = 50000            // Default of 50k channel caches
 	DefaultCompactHighWatermarkPercent = 80               // Default compaction high watermark (percent of MaxNumber)
 	DefaultCompactLowWatermarkPercent  = 60               // Default compaction low watermark (percent of MaxNumber)
+	DefaultLateLogMaxLength            = 500              // Don't hold more than this many late-arriving entries per channel
+	DefaultLateLogAge                  = 5 * time.Minute  // Force-prune late-arriving entries older than this, even if a feed is still parked on them
 )
 
 type ChannelCache interface {
@@ -139,6 +141,9 @@ func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOpt
 func (c *channelCacheImpl) Clear() {
 	c.seqLock.Lock()
 	c.channelCaches.Init()
+	// All channel caches (and their lateLogs, including sentinels) have just been dropped, so reset the
+	// late-feed gauge rather than leaking it across change-cache reinitialization.
+	c.cacheStats.NumEntriesInLateFeed.Set(0)
 	c.seqLock.Unlock()
 }
 
@@ -308,6 +313,7 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 			return false
 		}
 		channelCache.pruneCacheAge(ctx)
+		channelCache.pruneLateLogAge(ctx)
 		return true
 	}
 	c.channelCaches.Range(callback)
@@ -545,7 +551,21 @@ func (c *channelCacheImpl) compactChannelCache(ctx context.Context) {
 			}
 		}
 
+		// Evicted channel caches take their lateLogs entries (including the sentinel) with them, and those
+		// entries never go through the per-entry purge paths, so decrement the late-feed gauge here to stop
+		// NumEntriesInLateFeed from leaking upward as channels are evicted.
+		var evictedLateLogs int64
+		for _, elem := range evictionElements {
+			if scc, ok := elem.Value.(*singleChannelCacheImpl); ok {
+				evictedLateLogs += scc.lateLogCount()
+			}
+		}
+
 		cacheSize = c.channelCaches.RemoveElements(evictionElements)
+
+		if evictedLateLogs > 0 {
+			c.cacheStats.NumEntriesInLateFeed.Add(-evictedLateLogs)
+		}
 
 		// Update eviction stats
 		c.updateEvictionStats(inactiveEvictCount, len(evictionElements), compactIterationStart)

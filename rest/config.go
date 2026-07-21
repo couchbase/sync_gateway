@@ -264,6 +264,8 @@ type ChannelCacheConfig struct {
 	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
+	LateLogMaxLength     *int    `json:"late_log_max_length,omitempty"`        // Maximum number of late-arriving (out-of-order) entries retained per channel before a lagging changes feed is forced to roll back
+	LateLogExpirySeconds *int    `json:"late_log_expiry_seconds,omitempty"`    // Time (seconds) after which late-arriving entries are pruned even if a changes feed is still parked on them
 	DeprecatedQueryLimit *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client DEPRECATED in favour of db.QueryPaginationLimit
 }
 
@@ -808,6 +810,12 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds < 1 {
 				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.expiry_seconds", 1))
+			}
+			if dbConfig.CacheConfig.ChannelCacheConfig.LateLogMaxLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.LateLogMaxLength < 1 {
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.late_log_max_length", 1))
+			}
+			if dbConfig.CacheConfig.ChannelCacheConfig.LateLogExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.LateLogExpirySeconds < 1 {
+				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.late_log_expiry_seconds", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < db.MinimumChannelCacheMaxNumber {
 				multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_number", db.MinimumChannelCacheMaxNumber))

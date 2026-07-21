@@ -1387,6 +1387,12 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			if config.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil {
 				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.ExpirySeconds) * time.Second
 			}
+			if config.CacheConfig.ChannelCacheConfig.LateLogMaxLength != nil {
+				cacheOptions.LateLogMaxLength = *config.CacheConfig.ChannelCacheConfig.LateLogMaxLength
+			}
+			if config.CacheConfig.ChannelCacheConfig.LateLogExpirySeconds != nil {
+				cacheOptions.LateLogAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.LateLogExpirySeconds) * time.Second
+			}
 			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
 				cacheOptions.MaxNumChannels = *config.CacheConfig.ChannelCacheConfig.MaxNumber
 			}
