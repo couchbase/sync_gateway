@@ -891,7 +891,7 @@ func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 		"a healthy feed parked on the sentinel must not be force-rolled-back by the age sweep")
 }
 
-// TestLateLogsStatLeakOnConcurrentAddChannelCache is a for ensuring NumEntriesInLateFeed doesn't leak when
+// TestLateLogsStatLeakOnConcurrentAddChannelCache is a guard ensuring NumEntriesInLateFeed doesn't leak when
 // two callers race to first-create the same channel cache. getChannelCache checks channelCaches.Get and, on a
 // miss, calls addChannelCache; two goroutines that both miss the Get both call addChannelCache for the same
 // channel. addChannelCache builds the singleChannelCache (whose initializeLateLogs already did

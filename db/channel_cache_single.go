@@ -869,10 +869,11 @@ func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
 
 	// Bounded-length safeguard: if a stalled or slow feed's listener is pinning the front of the queue
 	// and it has grown past LateLogMaxLength, force-drop leading entries even though a listener still
-	// references them.  Any feed whose lastSequence is dropped will fail its next GetLateSequencesSince
+	// references them. Any feed whose lastSequence is dropped will fail its next GetLateSequencesSince
 	// lookup and be reset to its low sequence (see the "Missing previous sequence" path there) - this is
-	// the lateLogs analogue of the channel cache raising validFrom and forcing a query backfill.  Always
-	// keep at least one entry so new listeners can still register.
+	// the lateLogs analogue of the channel cache raising validFrom and forcing a query backfill. Always
+	// keep at least one entry so new listeners can still register. Note, the cap is inclusive of the sentinel
+	// entry kept at the start of the list.
 	for len(c.lateLogs) > 1 && len(c.lateLogs) > c.options.LateLogMaxLength {
 		c.lateLogs = c.lateLogs[1:]
 		c.cacheStats.NumEntriesInLateFeed.Add(-1)
@@ -881,7 +882,7 @@ func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
 
 // pruneLateLogAge drops late-arriving entries older than LateLogAge from the front of the queue, even if a
 // stalled feed still references them.  Mirrors pruneCacheAge for the primary cache and, unlike
-// _purgeLateLogEntries, runs on a timer (via cleanAgedItems) rather than on add - so it reclaims a stalled
+// _purgeLateLogEntries, runs on a timer (via cleanAgedLateLogs) rather than on add - so it reclaims a stalled
 // feed's lateLogs even when no further late sequences are arriving on the channel.  A feed whose lastSequence
 // is dropped is reset to its low sequence on its next read.  Always keeps at least one entry.
 func (c *singleChannelCacheImpl) pruneLateLogAge(ctx context.Context) {

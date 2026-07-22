@@ -98,7 +98,7 @@ const (
 
 	ChanCacheChannelsEvictedNRUDesc = "The total number of active channel cache channels evicted, based on 'not recently used' criteria."
 
-	NumEntriesInLateFeedDesc = "The total number of entries currently held across all channels' late-arriving-sequence queues (lateLogs), used to let continuous _changes feeds catch up on skipped sequences that resolved out of order. Grows as skipped sequences resolve late while a listener is registered on a channel, and shrinks only when every registered listener on that channel has advanced past or released the entries in question."
+	NumEntriesInLateFeedDesc = "The total number of entries currently held across all channels' late-arriving-sequence queues (lateLogs), used to let continuous _changes feeds catch up on skipped sequences that resolved out of order. Grows as skipped sequences resolve late while a listener is registered on a channel, and shrinks when entries are purged because all listeners advanced/released them, because the length/age caps prune them, or because a channel cache is evicted/cleared."
 
 	LateFeedForcedRollbacksDesc = "The total number of times a continuous _changes feed was forced to roll back to its low sequence because its lastSequence had been pruned from a channel's lateLogs by the length or age cap. A non-zero and rising value indicates one or more consumers are reading their _changes feed slower than sequences are being produced, causing Sync Gateway to drop their late-sequence position to keep lateLogs bounded; those feeds are reset to their low sequence and continue from there."
 
