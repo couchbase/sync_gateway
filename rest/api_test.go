@@ -3323,18 +3323,21 @@ func TestCompactNonImportedDocWithAutoImport(t *testing.T) {
 	doc.SyncData = db.SyncData{History: make(db.RevTree)}
 	unmarshalErr := base.JSONUnmarshal(xattrs[base.SyncXattrName], &doc.SyncData)
 	require.NoError(t, unmarshalErr)
-	var mou db.MetadataOnlyUpdate
-	err = base.JSONUnmarshal(xattrs[base.MouXattrName], &mou)
-	require.NoError(t, err)
+	if rt.GetDatabase().EnableMou {
+		var mou db.MetadataOnlyUpdate
+		err = base.JSONUnmarshal(xattrs[base.MouXattrName], &mou)
+		require.NoError(t, err)
 
-	// History should be compacted
-	assert.Less(t, len(doc.SyncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
-	// sync cas should be equal to doc cas
-	assert.Equal(t, doc.SyncData.Cas, base.CasToString(cas))
-	// verify _mou.cas
-	mouCAS := base.HexCasToUint64(mou.CAS)
-	assert.Equal(t, mouCAS, cas)
-
+		// History should be compacted
+		assert.Less(t, len(doc.SyncData.ChannelSetHistory), len(syncDataBefore.ChannelSetHistory))
+		// sync cas should be equal to doc cas
+		assert.Equal(t, doc.SyncData.Cas, base.CasToString(cas))
+		// verify _mou.cas
+		mouCAS := base.HexCasToUint64(mou.CAS)
+		assert.Equal(t, mouCAS, cas)
+	} else {
+		require.NotContains(t, xattrs, base.MouXattrName)
+	}
 	// Step 10: Verify document is still accessible and intact
 	docFromBucket, _, err := rt.GetSingleDataStore().GetRaw(nonImportedDocID)
 	require.NoError(t, err)

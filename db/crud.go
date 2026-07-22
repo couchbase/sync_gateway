@@ -336,15 +336,20 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	opts := &sgbucket.MutateInOptions{}
 	// Only update _sync.cas and _mou.cas if the pre-compaction doc had already been imported by SGW
 	opts.MacroExpansion = []sgbucket.MacroExpansionSpec{
-		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.MouXattrName), sgbucket.MacroCas),
 		sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
 	}
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 
 	updatedXattr := map[string][]byte{
 		base.SyncXattrName: rawSyncXattr,
-		base.MouXattrName:  rawMouXattr,
 	}
+
+	if c.useMou() {
+		updatedXattr[base.MouXattrName] = rawMouXattr
+		opts.MacroExpansion = append(opts.MacroExpansion,
+			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.MouXattrName), sgbucket.MacroCas))
+	}
+
 	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
 	compactedChannelArray := compactedChannels.ToArray()
 	slices.Sort(compactedChannelArray)

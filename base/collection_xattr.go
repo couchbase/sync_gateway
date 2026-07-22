@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
@@ -428,7 +430,7 @@ func (c *Collection) UpdateXattrs(ctx context.Context, k string, exp uint32, cas
 
 func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrs map[string][]byte, xattrsToDelete []string, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
 	if !c.IsSupported(sgbucket.BucketStoreFeatureMultiXattrSubdocOperations) && len(xattrs) >= 2 {
-		return 0, fmt.Errorf("UpdateXattrs: more than 1 xattr %v not supported in UpdateXattrs in this version of Couchbase Server", xattrs)
+		return 0, fmt.Errorf("UpdateXattrs: more than 1 xattr %v not supported in UpdateXattrs in this version of Couchbase Server", slices.Collect(maps.Keys(xattrs)))
 	}
 	if cas == 0 && len(xattrsToDelete) > 0 {
 		return 0, sgbucket.ErrDeleteXattrOnDocumentInsert
