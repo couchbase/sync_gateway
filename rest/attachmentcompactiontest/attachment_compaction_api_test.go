@@ -293,11 +293,15 @@ func TestAttachmentCompactionReset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, attachmentStatus.State)
 
+	pauser.Pause()
+
 	// Start compaction again but with reset=true --> meaning it shouldn't try to resume
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&reset=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 	status := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, compactID, status.CompactID)
+	pauser.Release()
 
 	// Wait for completion and verify the completed run also carries a different compactID
 	status = rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
