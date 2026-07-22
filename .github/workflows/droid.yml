@@ -11,6 +11,7 @@ on:
     types: [submitted]
   pull_request:
     types: [opened, edited]
+  workflow_dispatch:
 
 concurrency:
   # factory-droid[bot] dispatches get a unique per-run suffix so the bot's own status comments cannot cancel an in-flight @droid run.
