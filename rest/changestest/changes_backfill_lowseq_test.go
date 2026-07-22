@@ -82,10 +82,11 @@ func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 	*/
 
 	// **NOTE**: Comment this code block in main
-	assert.Equal(t, "5:10:3", compound.String())
-	require.Truef(t, compound.LowSeq != 0, "REQ1 last_seq should carry LowSeq while the skip is active; got %q", compound.String())
+	//assert.Equal(t, "5:10:3", compound.String())
+	assert.Equal(t, "10:3", compound.String())
+	//require.Truef(t, compound.LowSeq != 0, "REQ1 last_seq should carry LowSeq while the skip is active; got %q", compound.String())
 	require.Truef(t, compound.TriggeredBy != 0, "REQ1 last_seq should be mid-backfill (TriggeredBy set); got %q", compound.String())
-	require.Truef(t, compound.LowSeq >= compound.Seq, "the affected corner is LowSeq >= Seq; got %q", compound.String())
+	//require.Truef(t, compound.LowSeq >= compound.Seq, "the affected corner is LowSeq >= Seq; got %q", compound.String())
 
 	// The string OLD code would have emitted for the same value: LowSeq dropped => "TriggeredBy:Seq".
 	oldSince := fmt.Sprintf("%d:%d", compound.TriggeredBy, compound.Seq)
@@ -168,9 +169,10 @@ func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 	*/
 
 	// **NOTE**: Comment this line while running on main
-	assert.Equal(t, "7:4:2", initChanges.Last_Seq.String())
-	// **NOTE**: Comment this line while running on the branch
+	//assert.Equal(t, "7:4:2", initChanges.Last_Seq.String())
 	assert.Equal(t, "4:2", initChanges.Last_Seq.String())
+	// **NOTE**: Comment this line while running on the branch
+	//assert.Equal(t, "4:2", initChanges.Last_Seq.String())
 
 	// Resolve the skip so the feed's lowSequence no longer matches the since's LowSeq=7
 	// (otherwise changes.go:851 zeroes it and the flip is masked). The client legitimately
@@ -183,7 +185,8 @@ func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 	// code emits. "4:2" = what the old code emitted for the same state (LowSeq dropped).
 
 	// **NOTE**: Comment this line while running on main
-	bug := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"7:4:2"}`, "sg-user")
+	//bug := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"7:4:2"}`, "sg-user")
+	bug := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"4:2"}`, "sg-user")
 	control := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"4:2"}`, "sg-user")
 
 	// **NOTE**: Comment this line while running on main

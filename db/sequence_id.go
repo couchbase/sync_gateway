@@ -56,6 +56,9 @@ func (s SequenceID) intSeqToString() string {
 
 	if s.LowSeq > 0 {
 		if s.TriggeredBy > 0 {
+			if s.TriggeredBy < s.LowSeq || s.Seq < s.LowSeq {
+				return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
+			}
 			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
 		} else {
 			if s.LowSeq < s.Seq {
@@ -171,11 +174,11 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 {
-		if s.LowSeq < s.Seq {
-			return s.LowSeq
-		} else {
-			return s.Seq
-		}
+		//if s.LowSeq < s.Seq {
+		return s.LowSeq
+		//} else {
+		//	return s.Seq
+		//}
 	} else {
 		return s.Seq
 	}
