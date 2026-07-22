@@ -51,13 +51,21 @@ func drainUntilWait(t *testing.T, feed <-chan *ChangeEntry) (drained []uint64) {
 func startChangesFeed(ctx context.Context, t *testing.T, collectionWithUser *DatabaseCollectionWithUser) <-chan *ChangeEntry {
 	feedCtx, cancel := context.WithCancelCause(ctx)
 	t.Cleanup(func() { cancel(errors.New("test teardown")) })
+	// Give each feed its own DatabaseCollectionWithUser, exactly as production does - every changes feed / BLIP
+	// handler copies it via copyDatabaseCollectionWithUser. MultiChangesFeed's goroutine calls ReloadUser, which
+	// reassigns the user field and is explicitly documented as unsafe to call from concurrent goroutines, so two
+	// feeds sharing a single collectionWithUser would race on that field under -race.
+	feedCollection := &DatabaseCollectionWithUser{
+		DatabaseCollection: collectionWithUser.DatabaseCollection,
+		user:               collectionWithUser.user,
+	}
 	options := ChangesOptions{
 		Since:      SequenceID{Seq: 0},
 		ChangesCtx: feedCtx,
 		Continuous: true,
 		Wait:       true,
 	}
-	feed, err := collectionWithUser.MultiChangesFeed(feedCtx, base.SetOf(channels.AllChannelWildcard), options)
+	feed, err := feedCollection.MultiChangesFeed(feedCtx, base.SetOf(channels.AllChannelWildcard), options)
 	require.NoError(t, err, "feed initialization error")
 	return feed
 }
@@ -94,7 +102,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
@@ -170,7 +178,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
@@ -283,7 +291,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 }
 
 // TestLateLogsAgedPruneReclaimsStalledFeed covers the age-based reclaim path (pruneLateLogAge, run by
-// the cleanAgedItems background task). Unlike the length cap, this fires on a timer rather than on add,
+// the cleanAgedLateLogs background task). Unlike the length cap, this fires on a timer rather than on add,
 // so it is the only mechanism that reclaims a stalled feed's lateLogs once the channel goes quiet and no
 // further late sequences arrive. Here the length cap is set high so it never fires, a stalled feed's
 // pinned entries accumulate, and then running the age sweep after they exceed LateLogAge reclaims them -
@@ -294,12 +302,15 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 
 	cacheOptions := fastFeedBroadcast(shortWaitCache())
 	cacheOptions.LateLogMaxLength = 100000 // large: isolate the age path so the length cap never fires
-	cacheOptions.LateLogAge = time.Millisecond
+	// Large LateLogAge so the CleanAgedLateLogs background task (which runs on this interval) doesn't fire
+	// during the test and reclaim the entries before we can assert they accumulated. The manual sweep below
+	// lowers ABC's own threshold to force the age-based reclaim deterministically.
+	cacheOptions.LateLogAge = time.Hour
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
@@ -345,13 +356,15 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	require.Greater(t, beforeSweep, int64(2),
 		"stalled feed2 should have accumulated several pinned late entries in ABC that the (high) length cap leaves in place")
 
-	// Channel goes quiet: no more late sequences arrive, so _purgeLateLogEntries never runs again. Poll the
-	// age sweep (as the cleanAgedItems background task would) until ABC's entries - now older than the 1ms
-	// LateLogAge - are reclaimed down to the tail, even though feed2 still references them. Check ABC's own
-	// queue rather than the global gauge, whose floor is the variable number of live channel caches.
+	// Channel goes quiet: no more late sequences arrive, so _purgeLateLogEntries never runs again. Drop ABC's
+	// age threshold and let its accumulated entries exceed it, then run the age sweep (as the cleanAgedLateLogs
+	// background task does on its timer). It must reclaim feed2's pinned ABC entries down to the tail even
+	// though feed2 still references them. Check ABC's own queue rather than the global gauge, whose floor is
+	// the variable number of live channel caches.
+	abcCache.options.LateLogAge = time.Millisecond
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.NoError(c, cc.cleanAgedItems(ctx))
-		assert.Equal(c, int64(1), abcCache.lateLogCount(),
+		require.NoError(t, cc.cleanAgedLateLogs(ctx))
+		require.Equal(t, int64(1), abcCache.lateLogCount(),
 			"age sweep must reclaim stalled feed2's pinned ABC late entries down to the tail once older than LateLogAge")
 	}, 10*time.Second, 10*time.Millisecond)
 
@@ -480,16 +493,19 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 		}()
 	}
 
-	// Reader: concurrently walk the late feed, resetting to the low sequence on the rollback error.
+	// Reader: concurrently walk the late feed as a real feed does - registering a listener first (which pins
+	// the entry it parks on) and re-registering on the rollback error, rather than resetting to a bare since=0.
+	// This keeps every GetLateSequencesSince removeListener balanced against a prior addListener, matching the
+	// production changes-feed lifecycle (newLateSequenceFeed -> getLateFeed -> newLateSequenceFeed on rollback).
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var since uint64
+		since := cache.RegisterLateSequenceClient()
 		for range iterations {
 			if _, last, feedErr := cache.GetLateSequencesSince(since); feedErr == nil {
 				since = last
 			} else {
-				since = 0
+				since = cache.RegisterLateSequenceClient()
 			}
 		}
 	}()
@@ -534,7 +550,7 @@ func TestLateLogOptionsPropagation(t *testing.T) {
 
 // TestLateLogsAgedForcedRollbackResetsSlowFeed is the age-based counterpart to
 // TestLateLogsForcedRollbackResetsSlowFeed. Here the length cap is set high so it never fires; instead the
-// age sweep (pruneLateLogAge, run by the cleanAgedItems background task) drops a slow feed's parked
+// age sweep (pruneLateLogAge, run by the cleanAgedLateLogs background task) drops a slow feed's parked
 // late-sequence position once it is older than LateLogAge. When that feed returns to read, its
 // GetLateSequencesSince lookup fails and it is rolled back to its low sequence and recovers - it must
 // increment LateFeedForcedRollbacks and still deliver every written sequence with no data loss.
@@ -549,7 +565,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
@@ -600,13 +616,13 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 
 	// Age sweep: with LateLogAge=1ms every accumulated entry is now old, so the sweep collapses ABC's
 	// lateLogs to its tail even though feed2 still references an interior entry - exactly what the
-	// cleanAgedItems background task does on its timer. Check ABC's own queue rather than the global gauge,
+	// cleanAgedLateLogs background task does on its timer. Check ABC's own queue rather than the global gauge,
 	// whose floor is the (variable) number of live channel caches. Poll until ABC has collapsed.
 	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
 	abcCache := abcCacheIface.(*singleChannelCacheImpl)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.NoError(c, cc.cleanAgedItems(ctx))
+		assert.NoError(c, cc.cleanAgedLateLogs(ctx))
 		assert.Equal(c, int64(1), abcCache.lateLogCount(),
 			"age sweep must collapse ABC's lateLogs to just its tail, aging out feed2's parked position")
 	}, 10*time.Second, 10*time.Millisecond)
@@ -665,7 +681,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
@@ -823,4 +839,108 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		require.Equal(t, cacheStats.NumEntriesInLateFeed.Value(), int64(1), "stat must never go negative")
 		require.Equal(t, sc.lateLogCount(), cacheStats.NumEntriesInLateFeed.Value())
 	})
+}
+
+// TestLateLogsAgedPrunePreservesParkedSentinel
+//
+// The sentinel entry created by initializeLateLogs should set its `arrived` field, so it doesn't hold the zero
+// time.Time. pruneLateLogAge drops leading entries whose time.Since(arrived) > LateLogAge; for a zero time
+// that comparison is ~always true, so the sentinel is force-pruned whenever any other late entry sits behind
+// it.
+func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	cacheStats := dbstats.Cache()
+
+	sc := newSingleChannelCache(collection, channels.NewID("sentinel", collection.GetCollectionID()), 0, cacheStats)
+	// Large age and length caps so neither the length force-prune nor a legitimate age-out of the (fresh)
+	// non-sentinel entry can fire - the only thing that could drop the sentinel here is the zero-arrived bug.
+	sc.options.LateLogAge = 5 * time.Minute
+	sc.options.LateLogMaxLength = 100000
+
+	// A continuous feed that connected before any late sequence arrived parks on the sentinel (Sequence 0).
+	since := sc.RegisterLateSequenceClient()
+	require.Equal(t, uint64(0), since, "a feed connecting before any late sequence parks on the seq-0 sentinel")
+
+	// One late sequence resolves, arriving just now (well within LateLogAge). Queue is now [sentinel, seq7];
+	// the sentinel is pinned by the parked feed's listener so the zero-listener purge leaves it in place.
+	sc.AddLateSequence(&LogEntry{Sequence: 7})
+	require.Equal(t, int64(2), sc.lateLogCount(), "queue should hold the pinned sentinel plus the one fresh late entry")
+
+	// The age sweep runs (as cleanAgedLateLogs would on its timer). The only non-sentinel entry is fresh, so
+	// nothing has legitimately aged past the 5-minute LateLogAge; the sentinel must be retained.
+	sc.pruneLateLogAge(ctx)
+
+	// Behavioural assertion: the parked feed reads from its since=0 position and must be served seq 7, not
+	// rolled back. With the bug the sentinel was pruned, so this lookup fails and LateFeedForcedRollbacks fires.
+	entries, last, err := sc.GetLateSequencesSince(since)
+	require.NoError(t, err, "feed parked on the sentinel must still be served after the age sweep - the never-arrived "+
+		"sentinel must not be treated as infinitely old and force-pruned")
+	require.Equal(t, uint64(7), last)
+	require.Equal(t, 1, len(entries))
+	require.Equal(t, uint64(7), entries[0].Sequence)
+	require.Equal(t, int64(0), cacheStats.LateFeedForcedRollbacks.Value(),
+		"a healthy feed parked on the sentinel must not be force-rolled-back by the age sweep")
+}
+
+// TestLateLogsStatLeakOnConcurrentAddChannelCache is a for ensuring NumEntriesInLateFeed doesn't leak when
+// two callers race to first-create the same channel cache. getChannelCache checks channelCaches.Get and, on a
+// miss, calls addChannelCache; two goroutines that both miss the Get both call addChannelCache for the same
+// channel. addChannelCache builds the singleChannelCache (whose initializeLateLogs already did
+// NumEntriesInLateFeed.Add(1) for its sentinel) BEFORE GetOrInsert, so the loser of the insert has its
+// freshly-built cache discarded by GetOrInsert without ever decrementing that +1 - permanently over-reporting
+// the gauge by one per lost race, since the discarded cache is never in channelCaches for compaction to evict.
+func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+
+	options := DefaultCacheOptions().ChannelCacheOptions
+	options.MaxNumChannels = 20
+
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
+	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
+	ctx := base.TestCtx(t)
+	cache, err := newChannelCache(ctx, "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
+	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop(ctx)
+
+	numEntriesInLateFeed := func() int64 { return testStats.NumEntriesInLateFeed.Value() }
+	sumLateLogs := func() int64 {
+		var total int64
+		cache.channelCaches.Range(func(value any) bool {
+			if scc := AsSingleChannelCache(ctx, value); scc != nil {
+				total += scc.lateLogCount()
+			}
+			return true
+		})
+		return total
+	}
+
+	ch := channels.NewID("contended", base.DefaultCollectionID)
+
+	// First caller wins the insert.
+	first, ok := cache.addChannelCache(ctx, ch)
+	require.True(t, ok)
+
+	// Second caller (the other goroutine that also missed the Get check) builds a fresh cache - incrementing
+	// the shared gauge for its sentinel - then GetOrInsert returns the existing cache and discards the new one.
+	second, ok := cache.addChannelCache(ctx, ch)
+	require.True(t, ok)
+	require.True(t, first == second, "both callers must resolve to the single inserted cache")
+	require.Equal(t, 1, cache.channelCaches.Length(), "only one cache for the contended channel is ever inserted")
+
+	require.Equal(t, sumLateLogs(), numEntriesInLateFeed(),
+		"NumEntriesInLateFeed must equal the real lateLogs total held by inserted caches; the discarded loser "+
+			"cache's sentinel increment must not leak into the gauge")
 }

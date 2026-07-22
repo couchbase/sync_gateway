@@ -133,6 +133,18 @@ func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOpt
 		return nil, err
 	}
 	channelCache.backgroundTasks = append(channelCache.backgroundTasks, bgt)
+
+	// Late-log pruning runs on its own task at LateLogAge, independent of the (potentially much larger)
+	// ChannelCacheAge, so that late_log_expiry_seconds is honored regardless of how expiry_seconds is set.
+	lateLogAge := options.LateLogAge
+	if lateLogAge <= 0 {
+		lateLogAge = DefaultLateLogAge
+	}
+	lateLogBGT, err := NewBackgroundTask(ctx, "CleanAgedLateLogs", channelCache.cleanAgedLateLogs, lateLogAge, channelCache.terminator)
+	if err != nil {
+		return nil, err
+	}
+	channelCache.backgroundTasks = append(channelCache.backgroundTasks, lateLogBGT)
 	base.DebugfCtx(ctx, base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil
@@ -313,6 +325,23 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 			return false
 		}
 		channelCache.pruneCacheAge(ctx)
+		return true
+	}
+	c.channelCaches.Range(callback)
+
+	return nil
+}
+
+// cleanAgedLateLogs prunes each channel's late-arriving sequence queue by LateLogAge.  It runs on its own
+// background task (separate from cleanAgedItems) so late_log_expiry_seconds is honored on its own cadence,
+// independent of the channel cache's expiry_seconds.  Error returned to fulfill BackgroundTaskFunc signature.
+func (c *channelCacheImpl) cleanAgedLateLogs(ctx context.Context) error {
+
+	callback := func(v any) bool {
+		channelCache := AsSingleChannelCache(ctx, v)
+		if channelCache == nil {
+			return false
+		}
 		channelCache.pruneLateLogAge(ctx)
 		return true
 	}
@@ -401,6 +430,14 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 		newChannelCacheWithOptions(ctx, queryHandler, channel, validFrom, c.options, c.cacheStats)
 	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channel, singleChannelCache)
 	c.validFromLock.Unlock()
+
+	if !created {
+		// Another goroutine won the insert race for this channel, so our freshly-built cache is discarded.
+		// Undo the NumEntriesInLateFeed increment its initializeLateLogs added for its sentinel - otherwise the
+		// discarded cache's contribution leaks into the gauge forever (it is never in channelCaches for
+		// compaction to evict).
+		c.cacheStats.NumEntriesInLateFeed.Add(-singleChannelCache.lateLogCount())
+	}
 
 	singleChannelCache = AsSingleChannelCache(ctx, cacheValue)
 
@@ -551,20 +588,18 @@ func (c *channelCacheImpl) compactChannelCache(ctx context.Context) {
 			}
 		}
 
-		// Evicted channel caches take their lateLogs entries (including the sentinel) with them, and those
-		// entries never go through the per-entry purge paths, so decrement the late-feed gauge here to stop
-		// NumEntriesInLateFeed from leaking upward as channels are evicted.
-		var evictedLateLogs int64
-		for _, elem := range evictionElements {
-			if scc, ok := elem.Value.(*singleChannelCacheImpl); ok {
-				evictedLateLogs += scc.lateLogCount()
-			}
-		}
-
 		cacheSize = c.channelCaches.RemoveElements(evictionElements)
 
-		if evictedLateLogs > 0 {
-			c.cacheStats.NumEntriesInLateFeed.Add(-evictedLateLogs)
+		// Evicted channel caches take their lateLogs entries (including the sentinel) with them, and those
+		// entries never go through the per-entry purge paths, so release each cache's contribution to the
+		// late-feed gauge here to stop NumEntriesInLateFeed from leaking upward as channels are evicted.
+		// releaseLateLogsForEviction reads-and-decrements atomically under the cache's lateLogLock (and runs
+		// after RemoveElements, so any add that landed just before removal is captured by the count read),
+		// rather than subtracting a pre-removal snapshot that could race concurrent adds/prunes.
+		for _, elem := range evictionElements {
+			if scc, ok := elem.Value.(*singleChannelCacheImpl); ok {
+				scc.releaseLateLogsForEviction()
+			}
 		}
 
 		// Update eviction stats
