@@ -678,17 +678,27 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
+			rt := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+				LeakyBucketConfig: &base.LeakyBucketConfig{},
+			}, 3)
 			defer rt.Close()
 			scopeName := "sg_test_0"
 
-			// create documents in DB to cause resync to take a few seconds
-			for i := range 1000 {
-				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+fmt.Sprint(i), `{"value":1}`)
+			// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
+			// double-close panic from concurrent callback invocations.
+			docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 3)
+			for _, key := range docKeys {
+				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+key, `{"value":1}`)
 				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
 
 			rt.TakeDbOffline()
+
+			// Pause resync at the first user document so stop arrives while genuinely in-flight,
+			// letting us reliably observe "running" before it completes.
+			pauser := newResyncPauser(rt)
+			defer pauser.Close()
+			pauser.Pause()
 
 			if !testCase.specifyCollection {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -698,8 +708,10 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
 				rest.RequireStatus(t, resp, http.StatusOK)
 			}
+			pauser.WaitUntilBlocked()
 			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
+			pauser.Release()
 
 			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
@@ -4285,8 +4297,17 @@ type resyncPauser struct {
 	callbackSet atomic.Bool
 }
 
+// newResyncPauser binds to the first collection (lexicographically, matching {{.keyspace1}}) so it
+// also works against multi-collection databases where GetSingleDataStore doesn't apply.
 func newResyncPauser(rt *rest.RestTester) *resyncPauser {
-	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+	collections := rt.GetDbCollections()
+	require.NotEmpty(rt.TB(), collections, "database must have at least one collection")
+	ds, err := rt.GetDatabase().Bucket.NamedDataStore(rt.Context(), base.ScopeAndCollectionName{
+		Scope:      collections[0].ScopeName,
+		Collection: collections[0].Name,
+	})
+	require.NoError(rt.TB(), err)
+	leakyDS, ok := base.AsLeakyDataStore(ds)
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
 	return &resyncPauser{
 		t:  rt.TB(),
