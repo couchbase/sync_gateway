@@ -789,11 +789,17 @@ func (c *singleChannelCacheImpl) GetLateSequencesSince(sinceSequence uint64) (en
 func (c *singleChannelCacheImpl) RegisterLateSequenceClient() (latestLateSeq uint64) {
 
 	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
 	latestLog := c._mostRecentLateLog()
+	if latestLog == nil {
+		// lateLogs is only empty once the cache has been evicted by compaction (releaseLateLogsForEviction
+		// releases the slice). Don't register a listener on a detached cache - a feed still holding this
+		// reference will obtain a fresh cache and re-register on its next iteration, via the
+		// LateSequenceUUID-mismatch rollback in getLateFeed. Guards against a nil deref on _mostRecentLateLog.
+		return 0
+	}
 	latestLog.addListener()
-	latestLateSeq = latestLog.logEntry.Sequence
-	c.lateLogLock.RUnlock()
-	return latestLateSeq
+	return latestLog.logEntry.Sequence
 }
 
 // Called when a client (a continuous _changes feed) is no longer referencing the sequence number.
