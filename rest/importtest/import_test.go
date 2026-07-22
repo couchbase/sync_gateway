@@ -2263,9 +2263,9 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		},
 	})
 
-	// ImportPartitions=2 splits vBuckets into two contiguous halves; pick a doc ID from each half so
+	// ImportPartitions=2 splits vBuckets into two contiguous halves; pick a doc ID from each partition so
 	// each partition rolls back independently.
-	alternatePartitionVB := numVBuckets / 2
+	alternatePartitionVB := numVBuckets - 1
 	vb0DocIDs := sgtest.VBucketDocIDs(t, bucket, 0, 10)
 	alternatePartitionVBDocIDs := sgtest.VBucketDocIDs(t, bucket, alternatePartitionVB, 10)
 	// vBucket 1 stays in the first partition but is never rolled back, confirming a sibling vBucket's
