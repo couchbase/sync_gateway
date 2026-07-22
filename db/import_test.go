@@ -1032,7 +1032,7 @@ func TestMetadataOnlyUpdate(t *testing.T) {
 
 }
 
-// TestFeedImportExistingMouverifies that a feed-triggered import of a document that
+// TestFeedImportExistingMou verifies that a feed-triggered import of a document that
 // already has an _mou xattr will work whether or not the backing store supports _mou.
 func TestFeedImportExistingMou(t *testing.T) {
 	if !base.TestUseXattrs() {
