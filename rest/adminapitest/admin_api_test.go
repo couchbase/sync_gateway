@@ -686,7 +686,7 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 
 			// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
 			// double-close panic from concurrent callback invocations.
-			docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 3)
+			docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 3)
 			for _, key := range docKeys {
 				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+key, `{"value":1}`)
 				rest.RequireStatus(t, resp, http.StatusCreated)
