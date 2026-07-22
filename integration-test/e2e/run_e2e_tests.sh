@@ -28,7 +28,11 @@ fi
 
 if [[ "$BACKING_STORE" == "cbs" ]]; then
     : "${COUCHBASE_SERVER_VERSION:?COUCHBASE_SERVER_VERSION must be set when BACKING_STORE=cbs}"
-    "${REPO_DIR}/integration-test/start_server.sh" "${COUCHBASE_SERVER_VERSION}"
+    CBS_ENV_FILE="$(mktemp)"
+    "${REPO_DIR}/integration-test/start_cbs.py" --version "${COUCHBASE_SERVER_VERSION}" --purpose sync_gateway_e2e --env-file "${CBS_ENV_FILE}"
+    # shellcheck disable=SC1090
+    source "${CBS_ENV_FILE}"
+    rm -f "${CBS_ENV_FILE}"
 fi
 
 export GIT_CONFIG_GLOBAL="${SCRIPT_DIR}/.gitconfig.e2e"
@@ -45,8 +49,17 @@ git checkout --detach FETCH_HEAD
 git submodule sync --recursive
 git submodule update --init --recursive --force
 
-uv run -- ./environment/local/start_local.py --build-testserver "${COUCHBASE_LITE_VERSION}"
-uv run -- ./environment/local/build_sync_gateway.py --repo-path "${REPO_DIR}"
-uv run -- ./environment/local/run_sync_gateway.py --start --server "${BACKING_STORE}"
+# start_local.py builds/starts the test server and Sync Gateway in one go, and (for
+# --server cbs) patches the cbltest topology config's Couchbase Server hostname with
+# --connstr, since cbdinocluster clusters are reachable at their docker-network
+# address, not localhost. cbltest's CouchbaseServer accepts either a bare host or a
+# full connection string in the "hostname" field.
+START_LOCAL_ARGS=(--server "${BACKING_STORE}" --build-testserver "${COUCHBASE_LITE_VERSION}" --repo-path "${REPO_DIR}")
+if [[ "$BACKING_STORE" == "cbs" ]]; then
+    START_LOCAL_ARGS+=(--connstr "${SG_TEST_COUCHBASE_SERVER_URL}")
+fi
+uv run -- ./environment/local/start_local.py "${START_LOCAL_ARGS[@]}"
+
+TOPOLOGY_CONFIG="$(cat environment/local/topology_config)"
 # shellcheck disable=SC2086
-uv run pytest --config "./environment/local/${BACKING_STORE}_config.json" --junitxml="${TEST_DIRECTORY}/junit_report.xml" -o junit_logging=all -o junit_log_passing_tests=false "./${TEST_DIRECTORY}" ${PYTEST_EXTRA_ARGS:-}
+uv run pytest --config "${TOPOLOGY_CONFIG}" --junitxml="${TEST_DIRECTORY}/junit_report.xml" -o junit_logging=all -o junit_log_passing_tests=false "./${TEST_DIRECTORY}" ${PYTEST_EXTRA_ARGS:-}
