@@ -3359,19 +3359,13 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 	_ = rt.Bucket()
 	defer rt.Close()
 
-	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
-	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
-	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
-	// Initial DB config
-	dbConfig := fmt.Sprintf(`{
-    "index": {"num_replicas": 0},
-    	"bucket": "%s",
-    		"scopes": {
-			  	"%s": {
-					"collections": {
-            			"%s": {
-				   		"sync":`, rt.Bucket().GetName(), scopeName, collectionName) + "`" +
-		`function(doc, oldDoc, meta) {
+	tests := []struct {
+		name         string
+		syncFunction string
+	}{
+		{
+			name: "single-quoted sync function",
+			syncFunction: `function(doc, oldDoc, meta) {
 							var owner = doc._deleted ? oldDoc.owner : doc.owner;
 							requireUser(owner);
 							var listChannel = 'lists.' + doc._id;
@@ -3379,20 +3373,48 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 							role(owner, contributorRole);
 							access(contributorRole, listChannel);
 							channel(listChannel);
-						}` + "`" + `
-         			}
-				}
-      		}
-		}
- 	}`
+						}`,
+		},
+		{
+			name:         "sync function with a literal backtick character",
+			syncFunction: "function(doc) {\n\tvar listChannel = 'lists.`' + doc._id;\n\tchannel(listChannel);\n}",
+		},
+		{
+			name:         "sync function with multiple literal backticks",
+			syncFunction: "function(doc) {\n\tvar s = '`a`' + '`b`' + doc._id;\n\tchannel(s);\n}",
+		},
+		{
+			name:         "sync function with an escaped backtick",
+			syncFunction: "function(doc) {\n\tvar s = 'it\\`s a test';\n\tchannel(s);\n}",
+		},
+		{
+			name:         "sync function with backticks in a comment and double quotes",
+			syncFunction: "function (doc, oldDoc, meta) {\n  // Test`ing` comment \n  channel(\"airline\");\n}",
+		},
+	}
 
-	// Create initial database
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/", dbConfig)
-	assert.Equal(t, resp.Code, http.StatusCreated)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Start each subtest from a clean slate.
+			_ = rt.SendAdminRequest(http.MethodDelete, "/db/", "")
 
-	// Update database config
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", dbConfig)
-	assert.Equal(t, resp.Code, http.StatusCreated)
+			dbConfig := rt.NewDbConfig()
+			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(t, rt.TestBucket, 1, &test.syncFunction, nil)
+
+			resp := rt.CreateDatabase("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			resp = rt.UpsertDbConfig("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			resp = rt.ReplaceDbConfig("db", dbConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
+			rest.RequireStatus(t, resp, http.StatusOK)
+			require.Equal(t, test.syncFunction, resp.Body.String())
+		})
+	}
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {

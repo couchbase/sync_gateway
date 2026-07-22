@@ -31,7 +31,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
@@ -1079,25 +1078,82 @@ func SplitHostPort(hostport string) (string, string, error) {
 	return host, port, nil
 }
 
-var backquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
-
-// ConvertBackQuotedStrings sanitises a string containing `...`-delimited strings.
-// - Converts the backquotes into double-quotes
-// - Escapes literal backslashes, newlines or double-quotes with backslashes.
+// ConvertBackQuotedStrings converts `...`-delimited values into escaped JSON strings, so config
+// files can use backquotes instead of escaping quotes/newlines/tabs. Backquotes inside an existing
+// JSON string are left alone, since they're just data there, not a delimiter.
 func ConvertBackQuotedStrings(data []byte) []byte {
-	return backquoteStringRegexp.ReplaceAllFunc(data, func(b []byte) []byte {
+	out := make([]byte, 0, len(data))
 
-		b = bytes.Replace(b, []byte(`\`), []byte(`\\`), -1)
-		b = bytes.Replace(b, []byte("\r"), []byte(""), -1)
-		b = bytes.Replace(b, []byte("\n"), []byte(`\n`), -1)
-		b = bytes.Replace(b, []byte("\t"), []byte(`\t`), -1)
-		b = bytes.Replace(b, []byte(`"`), []byte(`\"`), -1)
+	inString := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
 
-		// Replace the backquotes with double-quotes
-		b[0] = '"'
-		b[len(b)-1] = '"'
-		return b
-	})
+		if inString {
+			out = append(out, c)
+			if c == '\\' && i+1 < len(data) {
+				i++
+				out = append(out, data[i])
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		switch c {
+		case '"':
+			inString = true
+			out = append(out, c)
+		case '`':
+			end := closingBackquote(data, i+1)
+			if end < 0 {
+				// No closing backquote - leave as-is.
+				out = append(out, c)
+				continue
+			}
+			out = append(out, '"')
+			out = appendEscapedBackquoteValue(out, data[i+1:end])
+			out = append(out, '"')
+			i = end
+		default:
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// closingBackquote returns the index of the closing backquote for a value starting at start, or -1
+// if there is none. A backslash-preceded backquote is literal content, not the closing delimiter.
+func closingBackquote(data []byte, start int) int {
+	for i := start; i < len(data); i++ {
+		if data[i] == '`' && i > start && data[i-1] != '\\' {
+			return i
+		}
+	}
+	return -1
+}
+
+// appendEscapedBackquoteValue appends value to out as an escaped JSON string body: backslashes are
+// doubled, \n/\t become escape sequences, " is escaped, and \r is dropped.
+func appendEscapedBackquoteValue(out []byte, value []byte) []byte {
+	for _, c := range value {
+		switch c {
+		case '\\':
+			out = append(out, '\\', '\\')
+		case '\r':
+			// dropped
+		case '\n':
+			out = append(out, '\\', 'n')
+		case '\t':
+			out = append(out, '\\', 't')
+		case '"':
+			out = append(out, '\\', '"')
+		default:
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // FindPrimaryAddr returns the primary outbound IP of this machine.

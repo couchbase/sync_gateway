@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -127,6 +128,172 @@ func TestConvertBackQuotedStrings(t *testing.T) {
 			input:    "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}",
 			expected: `{"foo": "bar\\baz", "something": "else\\is\\here"}`,
 		},
+		{
+			input:    "",
+			expected: "",
+		},
+		{
+			input:    "no backquotes or quotes here at all",
+			expected: "no backquotes or quotes here at all",
+		},
+		{
+			input:    `{"a":1,"b":true,"c":null}`,
+			expected: `{"a":1,"b":true,"c":null}`,
+		},
+		{
+			// Unclosed backquote is left as-is.
+			input:    "`abc",
+			expected: "`abc",
+		},
+		{
+			// Empty backquote pair needs at least one content char, so it's left as-is.
+			input:    "``",
+			expected: "``",
+		},
+		{
+			input:    "`a`",
+			expected: `"a"`,
+		},
+		{
+			input:    "{\"foo\": `a\\b`}",
+			expected: `{"foo": "a\\b"}`,
+		},
+		{
+			// Backslash-escaped backquote is content, not the close; the real close is later.
+			input:    "{\"foo\": `pre\\`post`}",
+			expected: "{\"foo\": \"pre\\\\`post\"}",
+		},
+		{
+			// Sync function with an escaped backquote, in legacy backquote-delimited value syntax.
+			input:    "{\"sync\": `function(doc) { var s = 'it\\`s a test'; }`}",
+			expected: "{\"sync\": \"function(doc) { var s = 'it\\\\`s a test'; }\"}",
+		},
+		{
+			// Multiple independent backquoted values, some adjacent to plain quoted strings.
+			input:    "[`one`, \"two\", `three`, `fo\\`ur`]",
+			expected: "[\"one\", \"two\", \"three\", \"fo\\\\`ur\"]",
+		},
+		{
+			// Backquote pair inside an existing JSON string (the original bug) must be untouched.
+			input:    "{\"foo\": \"back`tick`inside\"}",
+			expected: "{\"foo\": \"back`tick`inside\"}",
+		},
+		{
+			// Adjacent backquotes inside a JSON string aren't treated as an empty value.
+			input:    "{\"foo\": \"a``b\"}",
+			expected: "{\"foo\": \"a``b\"}",
+		},
+		{
+			// Escaped quote inside a JSON string doesn't end the string early.
+			input:    "{\"foo\": \"he said \\\"hi\\\" then `left`\"}",
+			expected: "{\"foo\": \"he said \\\"hi\\\" then `left`\"}",
+		},
+		{
+			// Escaped backslash before the closing quote doesn't escape the quote itself.
+			input:    "{\"foo\": \"ends in backslash\\\\\"}",
+			expected: "{\"foo\": \"ends in backslash\\\\\"}",
+		},
+		{
+			// Backquoted value followed by a real string containing a backquote.
+			input:    "{\"a\": `x`, \"b\": \"y`z\"}",
+			expected: "{\"a\": \"x\", \"b\": \"y`z\"}",
+		},
+		{
+			// Two separate elements, each independently backquoted.
+			input:    "{\"a\": `one`, \"b\": `two`}",
+			expected: `{"a": "one", "b": "two"}`,
+		},
+		{
+			// Backquoted field followed by a real string field with an embedded backquote.
+			input:    "{\"a\": `one`, \"b\": \"two`three\"}",
+			expected: "{\"a\": \"one\", \"b\": \"two`three\"}",
+		},
+		{
+			// Same as above, reversed order.
+			input:    "{\"a\": \"one`two\", \"b\": `three`}",
+			expected: "{\"a\": \"one`two\", \"b\": \"three\"}",
+		},
+		{
+			// Single quotes have no meaning to JSON, so pass through untouched inside a backquote.
+			input:    "{\"sync\": `channel('a')`}",
+			expected: `{"sync": "channel('a')"}`,
+		},
+		{
+			// Single quote and backquote together inside a real JSON string, both untouched.
+			input:    "{\"sync\": \"channel('it`s here')\"}",
+			expected: "{\"sync\": \"channel('it`s here')\"}",
+		},
+		{
+			// Backquoted single-quoted JS, adjacent to a real string with a single quote and backquote.
+			input:    "{\"a\": `'x' + 'y'`, \"b\": \"it's a `test`\"}",
+			expected: "{\"a\": \"'x' + 'y'\", \"b\": \"it's a `test`\"}",
+		},
+		{
+			// Backquoted value nested several objects deep.
+			input:    "{\"a\": {\"b\": {\"c\": `hello`}}}",
+			expected: `{"a": {"b": {"c": "hello"}}}`,
+		},
+		{
+			// Original bug reproduced at depth: backquote inside a real string, nested.
+			input:    "{\"a\": {\"b\": {\"c\": \"hel`lo\"}}}",
+			expected: "{\"a\": {\"b\": {\"c\": \"hel`lo\"}}}",
+		},
+		{
+			// Backquoted value inside an array inside an object.
+			input:    "{\"list\": [`a`, `b`]}",
+			expected: `{"list": ["a", "b"]}`,
+		},
+		{
+			// Array of objects mixing a backquoted field and a real-string field with a backquote.
+			input:    "[{\"x\": `one`}, {\"y\": \"two`three\"}]",
+			expected: "[{\"x\": \"one\"}, {\"y\": \"two`three\"}]",
+		},
+		{
+			// Sibling fields at the same depth: backquoted, real-string-with-backquote, and
+			// backquoted-with-single-quotes.
+			input:    "{\"a\": {\"x\": `one`, \"y\": \"two`three\", \"z\": `'four'`}}",
+			expected: "{\"a\": {\"x\": \"one\", \"y\": \"two`three\", \"z\": \"'four'\"}}",
+		},
+		{
+			// Nested backquoted content can still contain literal newlines/tabs/quotes.
+			input:    "{\"a\": {\"b\": `bar\n\"baz\n\tboo`}}",
+			expected: `{"a": {"b": "bar\n\"baz\n\tboo"}}`,
+		},
+		{
+			// Deeply nested (DbConfig scopes/collections/sync shape) with an escaped backquote.
+			input:    "{\"scopes\": {\"scope1\": {\"collections\": {\"col1\": {\"sync\": `function(doc) { var s = 'it\\`s nested'; }`}}}}}",
+			expected: "{\"scopes\": {\"scope1\": {\"collections\": {\"col1\": {\"sync\": \"function(doc) { var s = 'it\\\\`s nested'; }\"}}}}}",
+		},
+		{
+			// Backquoted object key, not just a value.
+			input:    "{`sync`: \"value\"}",
+			expected: `{"sync": "value"}`,
+		},
+		{
+			// Both key and value backquoted, for two separate fields.
+			input:    "{`a`: `one`, `b`: `two`}",
+			expected: `{"a": "one", "b": "two"}`,
+		},
+		{
+			// Backquoted value nested only inside arrays.
+			input:    "[[[`a`]]]",
+			expected: `[[["a"]]]`,
+		},
+		{
+			// Non-uniform nesting chain: object -> array -> array -> object.
+			input:    "{\"a\": [[{\"b\": `c`}]]}",
+			expected: `{"a": [[{"b": "c"}]]}`,
+		},
+		{
+			// Multi-byte UTF-8 in a nested backquoted value passes through untouched.
+			input:    "{\"a\": {\"b\": `héllo 日本`}}",
+			expected: "{\"a\": {\"b\": \"héllo 日本\"}}",
+		},
+		{
+			// CRLF handling inside a nested backquoted value, not just top-level.
+			input:    "{\"a\": {\"b\": `bar\r\n`}}",
+			expected: `{"a": {"b": "bar\n"}}`,
+		},
 	}
 
 	for _, test := range tests {
@@ -135,6 +302,191 @@ func TestConvertBackQuotedStrings(t *testing.T) {
 			assert.Equal(t, test.expected, string(output))
 		})
 	}
+}
+
+// TestConvertBackQuotedStringsIsIdempotent verifies a second pass over the output is a no-op.
+func TestConvertBackQuotedStringsIsIdempotent(t *testing.T) {
+	inputs := []string{
+		`{"foo": "bar"}`,
+		"{\"foo\": `bar`}",
+		"`abc",
+		"``",
+		"{\"foo\": `pre\\`post`}",
+		"{\"foo\": \"back`tick`inside\"}",
+		"[`one`, \"two\", `three`, `fo\\`ur`]",
+		"{\"a\": `one`, \"b\": `two`}",
+		"{\"a\": `one`, \"b\": \"two`three\"}",
+		"{\"a\": `'x' + 'y'`, \"b\": \"it's a `test`\"}",
+		"{\"a\": {\"b\": {\"c\": `hello`}}}",
+		"{\"a\": {\"b\": {\"c\": \"hel`lo\"}}}",
+		"[{\"x\": `one`}, {\"y\": \"two`three\"}]",
+		"{\"scopes\": {\"scope1\": {\"collections\": {\"col1\": {\"sync\": `function(doc) { var s = 'it\\`s nested'; }`}}}}}",
+		"{`sync`: \"value\"}",
+		"{`a`: `one`, `b`: `two`}",
+		"[[[`a`]]]",
+		"{\"a\": [[{\"b\": `c`}]]}",
+		"{\"a\": {\"b\": `héllo 日本`}}",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			once := ConvertBackQuotedStrings([]byte(input))
+			twice := ConvertBackQuotedStrings(once)
+			assert.Equal(t, string(once), string(twice))
+		})
+	}
+}
+
+// TestConvertBackQuotedStringsPreservesValidJSON verifies that backquotes inside an existing JSON
+// string are left untouched: the output must be byte-for-byte identical to the (valid) input.
+func TestConvertBackQuotedStringsPreservesValidJSON(t *testing.T) {
+	inputs := []string{
+		`{"sync": "function(doc) { var s = '` + "`a`" + `' + '` + "`b`" + `' + doc._id; channel(s); }"}`,
+		`{"sync": "function (doc, oldDoc, meta) {\n  // Test` + "`ing`" + ` comment \n  channel(\"airline\");\n}"}`,
+		`{"a": "` + "`" + `"}`,
+		`{"a": "` + "``" + `"}`,
+		`{"a": "` + "```" + `"}`,
+		`{"a": "one` + "`" + `two", "b": "` + "`" + `three` + "`" + `"}`,
+		`{"a": "it's a ` + "`" + `test` + "`" + `"}`,
+		`{"a": {"b": {"c": "hel` + "`" + `lo"}}}`,
+		`[{"x": "one` + "`" + `two"}, {"y": "three` + "`" + `four"}]`,
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			require.True(t, json.Valid([]byte(input)), "test input must itself be valid JSON")
+
+			output := ConvertBackQuotedStrings([]byte(input))
+			assert.Equal(t, input, string(output))
+
+			var decoded any
+			require.NoError(t, json.Unmarshal(output, &decoded))
+		})
+	}
+}
+
+// FuzzConvertBackQuotedStrings checks that ConvertBackQuotedStrings never panics, is idempotent, and
+// preserves valid JSON input.
+func FuzzConvertBackQuotedStrings(f *testing.F) {
+	seeds := []string{
+		`{"foo": "bar"}`,
+		"{\"foo\": `bar`}",
+		"{\"foo\": `bar\nbaz\nboo`}",
+		"{\"foo\": `bar\n\"baz\n\tboo`}",
+		"{\"foo\": `bar\n`, \"baz\": `howdy`}",
+		"{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}",
+		"{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}",
+		"",
+		"`",
+		"``",
+		"```",
+		"`abc",
+		"\\`",
+		"{\"foo\": `pre\\`post`}",
+		"{\"foo\": \"back`tick`inside\"}",
+		"{\"foo\": \"a``b\"}",
+		"{\"foo\": \"he said \\\"hi\\\" then `left`\"}",
+		"{\"foo\": \"ends in backslash\\\\\"}",
+		"[`one`, \"two\", `three`, `fo\\`ur`]",
+		"{\"sync\": `function(doc) { var s = 'it\\`s a test'; }`}",
+		"{\"a\": `one`, \"b\": `two`}",
+		"{\"a\": `one`, \"b\": \"two`three\"}",
+		"{\"a\": \"one`two\", \"b\": `three`}",
+		"{\"sync\": `channel('a')`}",
+		"{\"sync\": \"channel('it`s here')\"}",
+		"{\"a\": `'x' + 'y'`, \"b\": \"it's a `test`\"}",
+		"{\"a\": {\"b\": {\"c\": `hello`}}}",
+		"{\"a\": {\"b\": {\"c\": \"hel`lo\"}}}",
+		"{\"list\": [`a`, `b`]}",
+		"[{\"x\": `one`}, {\"y\": \"two`three\"}]",
+		"{\"a\": {\"b\": `bar\n\"baz\n\tboo`}}",
+		"{\"scopes\": {\"scope1\": {\"collections\": {\"col1\": {\"sync\": `function(doc) { var s = 'it\\`s nested'; }`}}}}}",
+		"{`sync`: \"value\"}",
+		"{`a`: `one`, `b`: `two`}",
+		"[[[`a`]]]",
+		"{\"a\": [[{\"b\": `c`}]]}",
+		"{\"a\": {\"b\": `héllo 日本`}}",
+		"{\"a\": {\"b\": `bar\r\n`}}",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+
+	f.Fuzz(func(t *testing.T, s string) {
+		data := []byte(s)
+
+		once := ConvertBackQuotedStrings(data)
+		twice := ConvertBackQuotedStrings(once)
+		require.Equal(t, string(once), string(twice), "ConvertBackQuotedStrings is not idempotent for %q -> %q", s, once)
+
+		// Valid JSON input must decode to the same value after conversion - the invariant the
+		// original bug violated.
+		var want any
+		if err := json.Unmarshal(data, &want); err == nil {
+			var got any
+			err := json.Unmarshal(once, &got)
+			require.NoError(t, err, "valid JSON input became invalid after ConvertBackQuotedStrings: %q -> %q", s, once)
+			require.Equal(t, want, got)
+		}
+	})
+}
+
+// FuzzConvertBackQuotedStringsNested checks backquote/quoted-string tracking at varying nesting
+// depths. A plain byte-mutation fuzzer is unlikely to stumble onto well-formed nesting on its own, so
+// this target builds the nesting itself and fuzzes only the leaf value and depth.
+func FuzzConvertBackQuotedStringsNested(f *testing.F) {
+	f.Add(uint8(0), false, "leaf")
+	f.Add(uint8(1), false, "leaf")
+	f.Add(uint8(3), false, "leaf")
+	f.Add(uint8(5), false, "leaf")
+	f.Add(uint8(0), true, "leaf")
+	f.Add(uint8(2), true, "back`tick")
+	f.Add(uint8(3), true, "pre\\`post")
+	f.Add(uint8(4), true, "'single' and a `backquote`")
+	// Backquoted content may contain literal newlines/tabs/quotes unescaped.
+	f.Add(uint8(5), true, "line one\nline two\ttabbed \"quoted\"")
+
+	f.Fuzz(func(t *testing.T, depth uint8, useBackquote bool, leaf string) {
+		depth %= 6 // bound recursion depth
+
+		if useBackquote {
+			// Other control chars aren't handled by this legacy syntax (a pre-existing gap, out of
+			// scope here), so skip them to keep the focus on backquote/quote nesting.
+			for _, r := range leaf {
+				if r < 0x20 && r != '\n' && r != '\t' && r != '\r' {
+					t.Skip()
+				}
+			}
+		}
+
+		var leafText string
+		if useBackquote {
+			leafText = "`" + leaf + "`"
+		} else {
+			// leaf may itself contain backquotes - encoding it properly quotes them.
+			encoded, err := json.Marshal(leaf)
+			require.NoError(t, err)
+			leafText = string(encoded)
+		}
+
+		nested := leafText
+		for i := uint8(0); i < depth; i++ {
+			if i%2 == 0 {
+				nested = `{"k": ` + nested + `}`
+			} else {
+				nested = `[` + nested + `]`
+			}
+		}
+		input := []byte(nested)
+
+		once := ConvertBackQuotedStrings(input)
+		twice := ConvertBackQuotedStrings(once)
+		require.Equal(t, string(once), string(twice), "not idempotent for %q -> %q", input, once)
+
+		if !useBackquote {
+			// A real JSON string leaf must round-trip untouched, at any nesting depth.
+			require.Equal(t, string(input), string(once))
+			require.NoError(t, json.Unmarshal(once, new(any)))
+		}
+	})
 }
 
 func TestCouchbaseUrlWithAuth(t *testing.T) {
