@@ -71,6 +71,12 @@ pipeline {
                     )
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
                 }
+                // SG_COMMIT can be an arbitrary developer branch, whose copy of slackUtils.groovy may be
+                // stale or missing helpers the post blocks below need - always load the current one from
+                // main instead (same fix as integration-test/e2e/Jenkinsfile uses for the same reason).
+                // TODO: temporarily pointed at switch-to-pipeline for testing before it merges to main -
+                // revert to main once this branch is merged.
+                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/switch-to-pipeline/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
             }
         }
         stage('Integration Tests') {
