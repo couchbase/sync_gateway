@@ -2026,6 +2026,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 		// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
 		resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{}, nil))
 		RequireStatus(t, resp, http.StatusOK)
+		rt2.WaitForPendingChanges()
 
 		require.NoError(t, ar.Stop())
 
@@ -2112,6 +2113,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		// Revoke A and ensure docA, docAB, docABC get purged from local
 		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{}, nil))
 		RequireStatus(t, resp, http.StatusOK)
+		rt2.WaitForPendingChanges()
 
 		assert.NoError(t, ar.Stop())
 
@@ -2229,6 +2231,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
 		RequireStatus(t, resp, http.StatusOK)
+		rt2.WaitForPendingChanges()
 
 		require.NoError(t, ar.Start(ctx1))
 
