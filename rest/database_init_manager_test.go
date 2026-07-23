@@ -48,7 +48,7 @@ func TestDatabaseInitManager(t *testing.T) {
 	base.DropAllBucketIndexes(t, tb)
 
 	// Async index creation
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	select {
@@ -58,6 +58,73 @@ func TestDatabaseInitManager(t *testing.T) {
 		require.Fail(t, "InitializeDatabase didn't complete in 10s")
 	}
 
+}
+
+// TestDatabaseInitPostMigrationExcludesDefault verifies that once a system-metadata database has completed its
+// metadata migration (migrationComplete=true), DatabaseInitManager does not initialize indexes on
+// _default._default — its metadata indexes there are vestigial, and building them would be wasteful (or fail if
+// the customer has since dropped the collection). This is the DatabaseInitManager-level counterpart to the
+// TestBuildCollectionIndexData "migration complete" cases.
+func TestDatabaseInitPostMigrationExcludesDefault(t *testing.T) {
+	RequireN1QLIndexes(t)
+	base.TestRequiresCollections(t)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
+
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	// Drop all test indexes so we can test InitializeDatabase
+	base.DropAllBucketIndexes(t, tb)
+
+	// Two named data collections with system metadata opted in; _default is NOT a configured collection.
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	initMgr := sc.DatabaseInitManager
+
+	// Record every collection the manager initializes.
+	var seenLock sync.Mutex
+	seen := make(map[base.ScopeAndCollectionName]struct{})
+	initMgr.testCollectionStatusUpdateCallback = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+		if status != db.CollectionIndexStatusReady {
+			return
+		}
+		seenLock.Lock()
+		defer seenLock.Unlock()
+		seen[scName] = struct{}{}
+	}
+
+	dbName := "dbName"
+	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
+	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
+
+	// migrationComplete=true models a system-metadata database that has finished migrating off _default.
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, true)
+	require.NoError(t, err)
+	WaitForChannel(t, doneChan, "post-migration init done chan")
+
+	seenLock.Lock()
+	defer seenLock.Unlock()
+
+	// _default must be excluded: its metadata indexes are vestigial post-migration.
+	_, defaultSeen := seen[base.DefaultScopeAndCollectionName()]
+	require.False(t, defaultSeen, "expected _default._default to be excluded from index init post-migration, got collections: %v", seen)
+
+	// The metadata collection and both configured data collections must still be initialized.
+	expected := []base.ScopeAndCollectionName{
+		base.MobileSystemScopeAndCollectionName(),
+		{Scope: dataStoreNames[0].ScopeName(), Collection: dataStoreNames[0].CollectionName()},
+		{Scope: dataStoreNames[1].ScopeName(), Collection: dataStoreNames[1].CollectionName()},
+	}
+	for _, scName := range expected {
+		_, ok := seen[scName]
+		require.True(t, ok, "expected collection %s to be initialized, got collections: %v", scName, seen)
+	}
+	require.Len(t, seen, len(expected), "unexpected collection set: %v", seen)
 }
 
 // TestDatabaseInitConfigChangeSameCollections tests modifications made to the database config while init is running.
@@ -113,14 +180,14 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
 
 	// Start first async index creation, blocks after first collection
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, singleCollectionInitChannel, "first collection init")
 
 	// Make a duplicate call to initialize database, should reuse the existing agent
-	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Unblock collection callback to process all remaining collections
@@ -137,7 +204,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	waitForWorkerDone(t, initMgr, "dbName")
 
 	// Rerun init, should start a new worker for the database and re-verify init for each collection
-	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 	WaitForChannel(t, rerunDoneChan, "repeated init done chan")
 	totalCount = atomic.LoadInt64(&collectionCount)
@@ -203,7 +270,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	// Start first async index creation, should block after first collection
-	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
@@ -213,7 +280,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
 	require.NoError(t, modifiedDbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
 	modifiedDbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
-	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -307,14 +374,14 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	db2Config.UseSystemMobileMetadataCollection = base.Ptr(true)
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
-	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel
@@ -386,14 +453,14 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 		if databaseCompleteCount.Add(1) == 1 {
 			defer wg.Done()
 			log.Printf("invoking InitializeDatabase again during teardown")
-			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 			require.NoError(t, err)
 			WaitForChannel(t, doneChan2, "done chan 2")
 		}
 	}
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	WaitForChannel(t, doneChan1, "done chan 1")
@@ -439,6 +506,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 		name                    string
 		config                  *DatabaseConfig
 		defaultCollectionExists bool
+		migrationComplete       bool
 		want                    CollectionInitData
 		startupConfig           *StartupConfig
 	}{
@@ -487,6 +555,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 					Scopes: makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
 				},
 			},
+			// a configured _default necessarily exists; callers never report it as absent
+			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName(): db.IndexesAll,
 			},
@@ -512,6 +582,8 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
 				UseSystemMobileMetadataCollection: base.Ptr(true),
 			}},
+			// a configured _default necessarily exists; callers never report it as absent
+			defaultCollectionExists: true,
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():                             db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
@@ -585,11 +657,99 @@ func TestBuildCollectionIndexData(t *testing.T) {
 				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
 			},
 		},
+		// migrationComplete gating — verifies _default is included only while it's still serving
+		// metadata (legacy store, or dual-read fallback during migration) and excluded once a
+		// system-metadata database has migrated off it.
+		{
+			// Legacy metadata (system metadata disabled): _default._default IS the metadata store, so
+			// it must be indexed even though it's not a configured collection. Regression guard: a
+			// system-metadata-only gate would wrongly drop it here.
+			name: "legacy metadata: named collection, _default is metadata store",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+				},
+			},
+			defaultCollectionExists: true,
+			migrationComplete:       false,
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			// migrationComplete has no effect in legacy mode — _default is still the metadata store and
+			// stays indexed regardless. Locks the invariant-independence of the migratedOffDefault gate.
+			name: "legacy metadata: migrationComplete ignored, _default still indexed",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes: makeScopesConfig("scope1", []string{"collection1"}),
+				},
+			},
+			defaultCollectionExists: true,
+			migrationComplete:       true,
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                    db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			// System metadata in use and migration complete: _default's metadata indexes are vestigial
+			// and must be dropped even though _default still physically exists.
+			name: "system metadata: migration complete, _default still exists",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
+				},
+			},
+			defaultCollectionExists: true,
+			migrationComplete:       true,
+			want: CollectionInitData{
+				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			// Both gates agree _default should be excluded: migration complete AND the collection dropped.
+			name: "system metadata: migration complete, _default dropped",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
+				},
+			},
+			defaultCollectionExists: false,
+			migrationComplete:       true,
+			want: CollectionInitData{
+				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			// _default is a configured data collection but metadata has migrated to _system._mobile, so it
+			// needs only its data indexes — its metadata indexes would be vestigial. The data role
+			// (configured) and metadata role (migrated off) are independent, hence IndexesWithoutMetadata.
+			name: "system metadata: migration complete, _default is a configured data collection",
+			config: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
+					UseSystemMobileMetadataCollection: base.Ptr(true),
+				},
+			},
+			defaultCollectionExists: true,
+			migrationComplete:       true,
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():                             db.IndexesWithoutMetadata,
+				base.MobileSystemScopeAndCollectionName():                        db.IndexesMetadataOnly,
+				base.NewScopeAndCollectionName(base.DefaultScope, "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := buildCollectionIndexData(test.startupConfig, test.config, test.defaultCollectionExists)
-			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(startup=%v, config=%v, defaultCollectionExists=%v)", test.startupConfig, test.config, test.defaultCollectionExists)
+			actual := buildCollectionIndexData(test.startupConfig, test.config, test.defaultCollectionExists, test.migrationComplete)
+			assert.Equalf(t, test.want, actual, "buildCollectionIndexData(startup=%v, config=%v, defaultCollectionExists=%v, migrationComplete=%v)", test.startupConfig, test.config, test.defaultCollectionExists, test.migrationComplete)
 		})
 	}
 }

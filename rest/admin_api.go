@@ -521,7 +521,11 @@ func (h *handler) handlePostIndexInit() error {
 	} else {
 		defaultCollectionPresent = exists
 	}
-	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex, defaultCollectionPresent)
+	migrationComplete := false
+	if dual, isDual := h.db.MetadataStore.(*base.MetadataStore); isDual {
+		migrationComplete = dual.MigrationComplete()
+	}
+	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex, defaultCollectionPresent, migrationComplete)
 	if err != nil {
 		return err
 	}
