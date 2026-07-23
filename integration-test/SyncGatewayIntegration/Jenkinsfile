@@ -75,11 +75,18 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
         stage('Checkout') {
             steps {
                 cleanWs(disableDeferredWipeout: true)
-                checkout scmGit(
-                    branches: [[name: params.SG_COMMIT]],
-                    extensions: [cleanBeforeCheckout(deleteUntrackedNestedRepositories: false)],
-                    userRemoteConfigs: [[url: 'git@github.com:couchbase/sync_gateway.git', credentialsId: 'CB_SG_Robot_Github_SSH_Key']]
-                )
+                script {
+                    // checkout (unlike the simplified `git` step used elsewhere) does not auto-populate
+                    // env.GIT_COMMIT/env.GIT_BRANCH for an explicit/secondary checkout like this one - it
+                    // only returns them, so assign them into env manually for later stages/post blocks to use.
+                    def scmVars = checkout(scmGit(
+                        branches: [[name: params.SG_COMMIT]],
+                        extensions: [cleanBeforeCheckout(deleteUntrackedNestedRepositories: false)],
+                        userRemoteConfigs: [[url: 'git@github.com:couchbase/sync_gateway.git', credentialsId: 'CB_SG_Robot_Github_SSH_Key']]
+                    ))
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                    env.GIT_BRANCH = scmVars.GIT_BRANCH
+                }
                 script {
                     // Approximates the freestyle job's BuildNameSetter templates:
                     //   name:        #${BUILD_NUMBER} ${PARENT_JOB_NAME}${GIT_BRANCH}:${GIT_REVISION,length=8}

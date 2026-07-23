@@ -45,11 +45,18 @@ pipeline {
         stage('Checkout') {
             steps {
                 cleanWs(disableDeferredWipeout: false)
-                git(
-                    url: 'git@github.com:couchbase/sync_gateway.git',
-                    branch: "${params.SG_COMMIT}",
-                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
-                )
+                script {
+                    // The `git` step does not auto-populate env.GIT_COMMIT/env.GIT_BRANCH for an
+                    // explicit/secondary checkout like this one - it only returns them, so assign them
+                    // into env manually for later stages/post blocks to use.
+                    def scmVars = git(
+                        url: 'git@github.com:couchbase/sync_gateway.git',
+                        branch: "${params.SG_COMMIT}",
+                        credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                    )
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                    env.GIT_BRANCH = scmVars.GIT_BRANCH
+                }
                 script {
                     // Approximates the freestyle job's BuildNameSetter template:
                     //   name: #${BUILD_NUMBER} ${GIT_BRANCH}:${GIT_REVISION,length=8}
