@@ -31,9 +31,9 @@ pipeline {
     }
 
     triggers {
-        // Fires after every completed MainIntegration build (threshold FAILURE = SUCCESS, UNSTABLE, or
-        // FAILURE), i.e. anything except ABORTED/NOT_BUILT.
-        upstream(upstreamProjects: 'MainIntegration', threshold: hudson.model.Result.FAILURE)
+        // Fires after every completed MainIntegration-Pipeline build (threshold FAILURE = SUCCESS,
+        // UNSTABLE, or FAILURE), i.e. anything except ABORTED/NOT_BUILT.
+        upstream(upstreamProjects: 'MainIntegration-Pipeline', threshold: hudson.model.Result.FAILURE)
     }
 
     parameters {
