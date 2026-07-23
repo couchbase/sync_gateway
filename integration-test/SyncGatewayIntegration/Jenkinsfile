@@ -1,6 +1,21 @@
 // Converted from the "SyncGatewayIntegration" freestyle job.
 // Intended to be run adhoc by developers against arbitrary commits/branches. Coverage is not meaningful
 // here (unlike MainIntegration, which combines Rosmar + Couchbase Server runs).
+
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+def slackDetails(slackUtils) {
+    def details = [
+        SG_COMMIT: params.SG_COMMIT,
+        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+    ]
+    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    if (ticketLink) {
+        details['Ticket'] = ticketLink
+    }
+    return details
+}
+
 pipeline {
     agent { label 'integration-test' }
 
@@ -88,13 +103,13 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     env.GIT_BRANCH = scmVars.GIT_BRANCH
                 }
                 script {
-                    // Approximates the freestyle job's BuildNameSetter templates:
-                    //   name:        #${BUILD_NUMBER} ${PARENT_JOB_NAME}${GIT_BRANCH}:${GIT_REVISION,length=8}
-                    //   description: ${GIT_BRANCH} for ${PARENT_JOB_NAME%: }${BUILD_USER#<Unknown>} on ${COUCHBASE_SERVER_VERSION}
+                    // Approximates the freestyle job's BuildNameSetter description template:
+                    //   ${GIT_BRANCH} for ${PARENT_JOB_NAME%: }${BUILD_USER#<Unknown>} on ${COUCHBASE_SERVER_VERSION}
+                    // The name template's git branch/revision suffix is dropped here - it's already
+                    // covered by the SG_COMMIT/GIT_COMMIT fields in the Slack message (see slackDetails above).
                     def buildUser = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').collect { it.userId }[0] ?: '<Unknown>'
                     def parentJobPrefix = params.PARENT_JOB_NAME ? (params.PARENT_JOB_NAME - ~/: $/) : ''
-                    def gitRevisionShort = env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : ''
-                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.PARENT_JOB_NAME}${env.GIT_BRANCH}:${gitRevisionShort}"
+                    currentBuild.displayName = params.PARENT_JOB_NAME ? "#${env.BUILD_NUMBER} ${params.PARENT_JOB_NAME}" : "#${env.BUILD_NUMBER}"
                     currentBuild.description = "${env.GIT_BRANCH} for ${parentJobPrefix}${buildUser} on ${params.COUCHBASE_SERVER_VERSION}"
                 }
             }
@@ -129,22 +144,19 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
         success {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
-                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('SyncGatewayIntegration', 'passed', env.BUILD_URL, details))
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('SyncGatewayIntegration', 'passed', env.BUILD_URL, slackDetails(slackUtils)))
             }
         }
         unstable {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
-                slackUtils.slackSendFailure('SyncGatewayIntegration', 'unstable', env.BUILD_URL, details)
+                slackUtils.slackSendFailure('SyncGatewayIntegration', 'unstable', env.BUILD_URL, slackDetails(slackUtils))
             }
         }
         failure {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
-                slackUtils.slackSendFailure('SyncGatewayIntegration', 'build failure', env.BUILD_URL, details)
+                slackUtils.slackSendFailure('SyncGatewayIntegration', 'build failure', env.BUILD_URL, slackDetails(slackUtils))
             }
         }
         cleanup {

@@ -46,6 +46,29 @@ def slackMessage(String title, String status, String link, Map details = [:]) {
     return lines.join('\n')
 }
 
+// Formats a commit SHA as a Slack link to its GitHub commit page, showing the short SHA as the
+// link text. Returns 'n/a' if commit is null/empty (e.g. GIT_COMMIT wasn't captured).
+def githubCommitLink(String commit) {
+    if (!commit) {
+        return 'n/a'
+    }
+    return "<https://github.com/couchbase/sync_gateway/commit/${commit}|${commit.take(8)}>"
+}
+
+// Looks for a CBG-<digits> ticket reference (e.g. from a branch name like 'torcolvin/CBG-1234-fix')
+// and formats it as a Slack link to the corresponding Jira issue. Returns null if no match is found.
+def jiraLinkForBranch(String branch) {
+    if (!branch) {
+        return null
+    }
+    def matcher = (branch =~ /(?i)CBG-(\d+)/)
+    if (!matcher.find()) {
+        return null
+    }
+    def ticket = "CBG-${matcher.group(1)}"
+    return "<https://jira.issues.couchbase.com/browse/${ticket}|${ticket}>"
+}
+
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
 // .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,

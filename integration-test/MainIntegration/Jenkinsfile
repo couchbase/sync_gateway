@@ -2,6 +2,22 @@
 // Automatically run for every commit to main (within a 1 hour quiet period, see the "Integration" stage
 // in the top-level Jenkinsfile). Coverage takes into account Rosmar and Couchbase Server runs in combination
 // for a complete summary.
+
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+def slackDetails(slackUtils) {
+    def details = [
+        SG_COMMIT: params.SG_COMMIT,
+        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+        SG_EDITION: params.SG_EDITION,
+    ]
+    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    if (ticketLink) {
+        details['Ticket'] = ticketLink
+    }
+    return details
+}
+
 pipeline {
     agent { label 'integration-test' }
 
@@ -37,11 +53,17 @@ pipeline {
         stage('Checkout') {
             steps {
                 cleanWs(disableDeferredWipeout: false)
-                git(
-                    url: 'git@github.com:couchbase/sync_gateway.git',
-                    branch: "${params.SG_COMMIT}",
-                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
-                )
+                script {
+                    // The `git` step does not auto-populate env.GIT_COMMIT for an explicit/secondary
+                    // checkout like this one - it only returns it, so assign it into env manually for
+                    // the Slack GitHub commit link in post blocks below.
+                    def scmVars = git(
+                        url: 'git@github.com:couchbase/sync_gateway.git',
+                        branch: "${params.SG_COMMIT}",
+                        credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                    )
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                }
             }
         }
         stage('Integration Tests') {
@@ -62,22 +84,19 @@ pipeline {
         success {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION, SG_EDITION: params.SG_EDITION]
-                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('MainIntegration', 'passed', env.BUILD_URL, details))
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('MainIntegration', 'passed', env.BUILD_URL, slackDetails(slackUtils)))
             }
         }
         unstable {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION, SG_EDITION: params.SG_EDITION]
-                slackUtils.slackSendFailure('MainIntegration', 'unstable', env.BUILD_URL, details)
+                slackUtils.slackSendFailure('MainIntegration', 'unstable', env.BUILD_URL, slackDetails(slackUtils))
             }
         }
         failure {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION, SG_EDITION: params.SG_EDITION]
-                slackUtils.slackSendFailure('MainIntegration', 'build failure', env.BUILD_URL, details)
+                slackUtils.slackSendFailure('MainIntegration', 'build failure', env.BUILD_URL, slackDetails(slackUtils))
             }
         }
         cleanup {

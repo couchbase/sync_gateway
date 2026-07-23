@@ -2,6 +2,21 @@
 // Runs topologytests, which exercise real XDCR and Couchbase Lite. They are slow enough that it's
 // worth splitting out from MainIntegration; this job fires after every MainIntegration build (success
 // or failure) via the upstream trigger below.
+
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+def slackDetails(slackUtils) {
+    def details = [
+        SG_COMMIT: params.SG_COMMIT,
+        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+    ]
+    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    if (ticketLink) {
+        details['Ticket'] = ticketLink
+    }
+    return details
+}
+
 pipeline {
     agent { label 'integration-test' }
 
@@ -46,22 +61,15 @@ pipeline {
             steps {
                 cleanWs(disableDeferredWipeout: false)
                 script {
-                    // The `git` step does not auto-populate env.GIT_COMMIT/env.GIT_BRANCH for an
-                    // explicit/secondary checkout like this one - it only returns them, so assign them
-                    // into env manually for later stages/post blocks to use.
+                    // The `git` step does not auto-populate env.GIT_COMMIT for an explicit/secondary
+                    // checkout like this one - it only returns it, so assign it into env manually for
+                    // the Slack GitHub commit link in post blocks below.
                     def scmVars = git(
                         url: 'git@github.com:couchbase/sync_gateway.git',
                         branch: "${params.SG_COMMIT}",
                         credentialsId: 'CB_SG_Robot_Github_SSH_Key'
                     )
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
-                    env.GIT_BRANCH = scmVars.GIT_BRANCH
-                }
-                script {
-                    // Approximates the freestyle job's BuildNameSetter template:
-                    //   name: #${BUILD_NUMBER} ${GIT_BRANCH}:${GIT_REVISION,length=8}
-                    def gitRevisionShort = env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : ''
-                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.GIT_BRANCH}:${gitRevisionShort}"
                 }
             }
         }
@@ -82,22 +90,19 @@ pipeline {
         success {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
-                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('TopologyTests', 'passed', env.BUILD_URL, details))
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('TopologyTests', 'passed', env.BUILD_URL, slackDetails(slackUtils)))
             }
         }
         unstable {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
-                slackUtils.slackSendFailure('TopologyTests', 'unstable', env.BUILD_URL, details)
+                slackUtils.slackSendFailure('TopologyTests', 'unstable', env.BUILD_URL, slackDetails(slackUtils))
             }
         }
         failure {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
-                slackUtils.slackSendFailure('TopologyTests', 'build failure', env.BUILD_URL, details)
+                slackUtils.slackSendFailure('TopologyTests', 'build failure', env.BUILD_URL, slackDetails(slackUtils))
             }
         }
         cleanup {
