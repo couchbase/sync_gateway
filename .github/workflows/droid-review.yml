@@ -1,0 +1,56 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+name: Droid Review
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, ready_for_review, reopened]
+
+concurrency:
+  # factory-droid[bot] dispatches get a unique per-run suffix so the bot's own status comments cannot cancel an in-flight @droid run.
+  group: >-
+    ${{ github.workflow }}-${{
+    github.event.pull_request.number ||
+    github.event.issue.number ||
+    github.ref
+    }}${{
+    github.actor == 'factory-droid[bot]' &&
+    format('-bot-{0}', github.run_id) || ''
+    }}
+  cancel-in-progress: true
+
+jobs:
+  droid:
+    if: |
+      (
+        github.event_name == 'issue_comment' && contains(github.event.comment.body, '@droid')
+      ) || (
+        github.event_name == 'pull_request' && github.event.pull_request.draft == false
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Run Droid Review
+        uses: Factory-AI/droid-action@07a08ac9ba352c395d921fbc4c310e6d1ee850a1 # v4.0.0
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          review_model: gpt-5.2
+          automatic_review: ${{ github.event_name == 'pull_request' }}
