@@ -1,0 +1,147 @@
+// Converted from the "SyncGatewayIntegration" freestyle job.
+// Intended to be run adhoc by developers against arbitrary commits/branches. Coverage is not meaningful
+// here (unlike MainIntegration, which combines Rosmar + Couchbase Server runs).
+pipeline {
+    agent { label 'integration-test' }
+
+    options {
+        skipDefaultCheckout()
+        buildDiscarder(logRotator(daysToKeepStr: '-1', numToKeepStr: '30', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    tools {
+        go '1.25.7'
+    }
+
+    parameters {
+        string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        string(name: 'TARGET_PACKAGE', defaultValue: '...', description: '')
+        string(
+            name: 'COUCHBASE_SERVER_VERSION',
+            defaultValue: 'enterprise-8.0.2',
+            description: '''Version of couchbase server to run with. This is docker images:
+enterprise-7.6.7 : couchbase/server:enterprise-7.6.7
+community-7.6.7 : couchbase/server:community-7.6.7
+To use pre-release versions, find the number on https://github.com/orgs/cb-vanilla/packages/container/package/server and use ghcr.io/cb-vanilla/server:enterprise-8.1.0'''
+        )
+        choice(
+            name: 'COUCHBASE_SERVER_PROTOCOL',
+            choices: ['couchbase', 'couchbases'],
+            description: 'Use couchbase to connect to Couchbase Server without TLS and couchbases to connect with TLS.'
+        )
+        booleanParam(name: 'FAIL_FAST', defaultValue: false, description: 'If checked, run go test with -failfast to fail as soon as a test fails.')
+        booleanParam(name: 'GSI', defaultValue: true, description: 'Run tests with GSI. Uncheck this box to run tests with views.')
+        booleanParam(name: 'DISABLE_REV_CACHE', defaultValue: false, description: 'If set integration test will run without rev cache enabled. ')
+        choice(
+            name: 'SG_EDITION',
+            choices: ['EE', 'CE'],
+            description: 'Version of Sync Gateway to run. EE - Enterprise Edition CE - Community Edition'
+        )
+        string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets to create in by the test harness.')
+        string(name: 'RUN_COUNT', defaultValue: '', description: 'Adds -count <n> parameter to test runs. Default is not specified.')
+        booleanParam(name: 'RUN_WALRUS', defaultValue: false, description: 'Run rosmar tests in addition to the Couchbase Server tests.')
+        booleanParam(name: 'SG_TEST_BUCKET_POOL_DEBUG', defaultValue: false, description: 'This will log the test bucket pool creation and cleanup.')
+        booleanParam(
+            name: 'SG_TEST_SKIP_SERVER_VERSION_CHECK',
+            defaultValue: false,
+            description: 'allows tests to run against a server version that is not presumed compatible with version of Couchbase Server running'
+        )
+        string(
+            name: 'TARGET_TEST',
+            defaultValue: 'ALL',
+            description: 'This should be ALL to run all tests but can be any expression used by the go test -run option to run specific tests.'
+        )
+        booleanParam(
+            name: 'TEST_DEBUG',
+            defaultValue: false,
+            description: 'If true, sets SG_TEST_LOG_LEVEL=debug and SG_TEST_BUCKET_POOL_DEBUG=true. This can be used to force all tests to use debug logging and overwrite SetUpTestLogging as well as debug bucket pool issues.'
+        )
+        booleanParam(
+            name: 'TLS_SKIP_VERIFY',
+            defaultValue: true,
+            description: 'Do not verify certificates when talking to Couchbase Server. This only has an effect if COUCHBASE_SERVER_PROTOCOL is set to couchbases://'
+        )
+        string(name: 'PARENT_JOB_NAME', defaultValue: '', description: 'If set, uses this in some build names as a helpful indication of what triggered this job.')
+    }
+
+    environment {
+        // Both hardcoded in the build step, overriding/duplicating the RUN_WALRUS parameter above.
+        RUN_WALRUS = 'false'
+        XATTRS = 'true'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs(disableDeferredWipeout: true)
+                checkout scmGit(
+                    branches: [[name: params.SG_COMMIT]],
+                    extensions: [cleanBeforeCheckout(deleteUntrackedNestedRepositories: false)],
+                    userRemoteConfigs: [[url: 'git@github.com:couchbase/sync_gateway.git', credentialsId: 'CB_SG_Robot_Github_SSH_Key']]
+                )
+                script {
+                    // Approximates the freestyle job's BuildNameSetter templates:
+                    //   name:        #${BUILD_NUMBER} ${PARENT_JOB_NAME}${GIT_BRANCH}:${GIT_REVISION,length=8}
+                    //   description: ${GIT_BRANCH} for ${PARENT_JOB_NAME%: }${BUILD_USER#<Unknown>} on ${COUCHBASE_SERVER_VERSION}
+                    def buildUser = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').collect { it.userId }[0] ?: '<Unknown>'
+                    def parentJobPrefix = params.PARENT_JOB_NAME ? (params.PARENT_JOB_NAME - ~/: $/) : ''
+                    def gitRevisionShort = env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : ''
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.PARENT_JOB_NAME}${env.GIT_BRANCH}:${gitRevisionShort}"
+                    currentBuild.description = "${env.GIT_BRANCH} for ${parentJobPrefix}${buildUser} on ${params.COUCHBASE_SERVER_VERSION}"
+                }
+            }
+        }
+        stage('Integration Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+                        sh '''#!/bin/bash
+                            set -eu
+                            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+                            # ensure any image tag being used is up to date before running
+                            IMAGE=${COUCHBASE_SERVER_VERSION}
+                            if [[ ! "${COUCHBASE_SERVER_VERSION}" =~ ghcr.io/* ]]; then
+                                IMAGE="couchbase/server:${COUCHBASE_SERVER_VERSION}"
+                            fi
+                            docker pull "$IMAGE"
+                            ./jenkins-integration-build.sh
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'verbose*.out', allowEmptyArchive: false, fingerprint: false
+            junit testResults: 'verbose*.xml', allowEmptyResults: false
+            recordCoverage(tools: [[parser: 'GO_COV', pattern: 'coverage*.out']])
+        }
+        success {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('SyncGatewayIntegration', 'passed', env.BUILD_URL, details))
+            }
+        }
+        unstable {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
+                slackUtils.slackSendFailure('SyncGatewayIntegration', 'unstable', env.BUILD_URL, details)
+            }
+        }
+        failure {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
+                slackUtils.slackSendFailure('SyncGatewayIntegration', 'build failure', env.BUILD_URL, details)
+            }
+        }
+        cleanup {
+            cleanWs(disableDeferredWipeout: true)
+        }
+    }
+}

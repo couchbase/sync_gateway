@@ -1,0 +1,100 @@
+// Converted from the "TopologyTests" freestyle job.
+// Runs topologytests, which exercise real XDCR and Couchbase Lite. They are slow enough that it's
+// worth splitting out from MainIntegration; this job fires after every MainIntegration build (success
+// or failure) via the upstream trigger below.
+pipeline {
+    agent { label 'integration-test' }
+
+    options {
+        skipDefaultCheckout()
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '30'))
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    tools {
+        go '1.25.5'
+    }
+
+    triggers {
+        // Fires after every completed MainIntegration build (threshold FAILURE = SUCCESS, UNSTABLE, or
+        // FAILURE), i.e. anything except ABORTED/NOT_BUILT.
+        upstream(upstreamProjects: 'MainIntegration', threshold: hudson.model.Result.FAILURE)
+    }
+
+    parameters {
+        string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-7.6.7', description: '')
+        booleanParam(name: 'GSI', defaultValue: true, description: '')
+        string(name: 'TARGET_TEST', defaultValue: 'ALL', description: '')
+        string(name: 'COUCHBASE_SERVER_PROTOCOL', defaultValue: 'couchbase', description: '')
+        booleanParam(name: 'TLS_SKIP_VERIFY', defaultValue: true, description: '')
+        string(name: 'SG_EDITION', defaultValue: 'EE', description: '')
+        string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: '')
+        booleanParam(name: 'SG_TEST_BUCKET_POOL_DEBUG', defaultValue: false, description: '')
+    }
+
+    environment {
+        // All hardcoded in the build step - this job always targets the topologytest package.
+        RUN_WALRUS = 'false'
+        XATTRS = 'true'
+        TARGET_PACKAGE = 'topologytest'
+        SG_TEST_TOPOLOGY_TESTS = 'true'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs(disableDeferredWipeout: false)
+                git(
+                    url: 'git@github.com:couchbase/sync_gateway.git',
+                    branch: "${params.SG_COMMIT}",
+                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                )
+                script {
+                    // Approximates the freestyle job's BuildNameSetter template:
+                    //   name: #${BUILD_NUMBER} ${GIT_BRANCH}:${GIT_REVISION,length=8}
+                    def gitRevisionShort = env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : ''
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.GIT_BRANCH}:${gitRevisionShort}"
+                }
+            }
+        }
+        stage('Integration Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    sh './jenkins-integration-build.sh'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'verbose*', allowEmptyArchive: false, fingerprint: false
+            junit testResults: 'verbose*.xml', allowEmptyResults: false
+        }
+        success {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('TopologyTests', 'passed', env.BUILD_URL, details))
+            }
+        }
+        unstable {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
+                slackUtils.slackSendFailure('TopologyTests', 'unstable', env.BUILD_URL, details)
+            }
+        }
+        failure {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, GIT_COMMIT: env.GIT_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION]
+                slackUtils.slackSendFailure('TopologyTests', 'build failure', env.BUILD_URL, details)
+            }
+        }
+        cleanup {
+            cleanWs(disableDeferredWipeout: true)
+        }
+    }
+}

@@ -1,0 +1,87 @@
+// Converted from the "MainIntegration" freestyle job.
+// Automatically run for every commit to main (within a 1 hour quiet period, see the "Integration" stage
+// in the top-level Jenkinsfile). Coverage takes into account Rosmar and Couchbase Server runs in combination
+// for a complete summary.
+pipeline {
+    agent { label 'integration-test' }
+
+    options {
+        skipDefaultCheckout()
+        buildDiscarder(logRotator(daysToKeepStr: '-1', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '30'))
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    tools {
+        go '1.25.7'
+    }
+
+    parameters {
+        string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        string(name: 'TARGET_PACKAGE', defaultValue: '...', description: '')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-7.6.7', description: '')
+        booleanParam(name: 'GSI', defaultValue: true, description: '')
+        string(name: 'TARGET_TEST', defaultValue: 'ALL', description: '')
+        string(name: 'COUCHBASE_SERVER_PROTOCOL', defaultValue: 'couchbase', description: '')
+        booleanParam(name: 'TLS_SKIP_VERIFY', defaultValue: true, description: '')
+        string(name: 'SG_EDITION', defaultValue: 'EE', description: '')
+        string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: '')
+        booleanParam(name: 'SG_TEST_BUCKET_POOL_DEBUG', defaultValue: false, description: '')
+    }
+
+    environment {
+        // Hardcoded in the build step (not a job parameter) - xattrs is the only supported mode on main.
+        XATTRS = 'true'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs(disableDeferredWipeout: false)
+                git(
+                    url: 'git@github.com:couchbase/sync_gateway.git',
+                    branch: "${params.SG_COMMIT}",
+                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                )
+            }
+        }
+        stage('Integration Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    sh './jenkins-integration-build.sh -m'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'verbose*', allowEmptyArchive: false, fingerprint: false
+            junit testResults: 'verbose*.xml', allowEmptyResults: false
+            recordCoverage(tools: [[parser: 'GO_COV', pattern: 'coverage_*.out']])
+        }
+        success {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION, SG_EDITION: params.SG_EDITION]
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: slackUtils.slackMessage('MainIntegration', 'passed', env.BUILD_URL, details))
+            }
+        }
+        unstable {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION, SG_EDITION: params.SG_EDITION]
+                slackUtils.slackSendFailure('MainIntegration', 'unstable', env.BUILD_URL, details)
+            }
+        }
+        failure {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def details = [SG_COMMIT: params.SG_COMMIT, COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION, SG_EDITION: params.SG_EDITION]
+                slackUtils.slackSendFailure('MainIntegration', 'build failure', env.BUILD_URL, details)
+            }
+        }
+        cleanup {
+            cleanWs(disableDeferredWipeout: true)
+        }
+    }
+}
