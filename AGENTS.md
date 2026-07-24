@@ -13,7 +13,7 @@ Sync Gateway is a horizontally scalable web server that securely manages access 
 - Run integration tests (requires local Couchbase Server): `SG_TEST_BACKING_STORE=Couchbase go test ./...`
 - Run a specific benchmark: `go test -bench=^BenchmarkSomething$ -run=- ./...`
 - Lint: `golangci-lint run`
-- Python tooling lint/typecheck: `uv run ruff check tools/ tools-tests/` and `uv run mypy`
+- Python tooling lint/typecheck: `uv run ruff check tools/ tools-tests/` and `uvx ty check`
 - Python tests: `uv run pytest`
 
 ## Architecture Overview
@@ -30,7 +30,7 @@ The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime objec
 | `xdcr/` | Cross-datacenter replication (CBS and Rosmar backends) |
 | `topologytest/` | Multi-actor topology integration tests |
 | `service/` | OS service install/upgrade scripts |
-| `tools/` | Python tooling: `sgcollect.py` (log collection), `password_remover.py` |
+| `tools/` | Python tooling & diagnostics (see [tools/AGENTS.md](tools/AGENTS.md)) |
 
 ## Key Concepts
 

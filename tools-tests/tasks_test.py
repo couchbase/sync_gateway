@@ -212,7 +212,7 @@ def test_task_logging(verbosity, task_platform, tmp_path):
     taskrunner = tasks.TaskRunner(verbosity=verbosity, tmp_dir=tmp_path)
     task = tasks.AllOsTask("echo", "echo")
     # fake the platform for a test
-    task.platforms = [task_platform]
+    task.platforms = (task_platform,)
     taskrunner.run(task)
 
 
@@ -314,7 +314,8 @@ def test_log_redact_file(tmp_path):
     ]
     updated_text = os.linesep.join(output_log_lines).encode("utf-8")
 
-    redacted_text = gzip.open(redacted_file).read()
+    with gzip.open(redacted_file) as f:
+        redacted_text = f.read()
     assert redacted_text == updated_text
 
 
