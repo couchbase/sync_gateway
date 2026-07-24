@@ -61,12 +61,11 @@ func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 	initial := rt.GetChanges("/{{.keyspace}}/_changes", "sg-user")
 	require.Equal(t, "5::7", initial.Last_Seq.String())
 
-	// WriteDirect bypasses the sequence allocator, so _sync:seq is still 1. Advance it past the
-	// WriteDirect region so the DEF grant (a normal SG write, below) doesn't reuse one of those
-	// sequences. The grant then reserves a fresh batch and lands after seq 7 (at maxBatchSize=10
-	// in Rosmar). The exact grant sequence is allocator-batch dependent — and the count of
-	// AllocateTestSequence calls does not change it — so we read the resulting since back rather
-	// than hard-coding it. (The unused sequences between seq 7 and the grant are a benign artifact.)
+	// WriteDirect bypasses the sequence allocator, so the next normal SG write could reuse one of the
+	// explicitly-assigned WriteDirect sequences. Advance the allocator's _sync:seq counter past the
+	// WriteDirect region so the subsequent user update (a normal SG write) lands at a fresh sequence.
+	// With sequence batching suspended, each increment reserves a single sequence, so 8 increments
+	// moves the counter to 9 and the grant allocates seq 10.
 	for range 8 {
 		_, err := db.AllocateTestSequence(ctx, testDb)
 		require.NoError(t, err)
