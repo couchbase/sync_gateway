@@ -11,7 +11,6 @@ package db
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -580,7 +579,7 @@ func TestBackgroundManagerJoinNoDoc(t *testing.T) {
 		terminator: base.NewSafeTerminator(),
 	}
 
-	require.ErrorIs(t, mgr.Join(ctx), errBackgroundManagerStatusNotRunning)
+	require.ErrorAsType[errBackgroundManagerStatusNotRunning](t, mgr.Join(ctx))
 }
 
 // TestBackgroundManagerJoinSingleNodeError verifies that Join returns an error for single-node managers
@@ -832,7 +831,7 @@ func TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenNotRunning(t *testing.
 
 	// No status doc exists → Join must return errBackgroundManagerStatusNotRunning.
 	err := mgr.Join(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	require.ErrorAsType[errBackgroundManagerStatusNotRunning](t, err)
 
 	mu.Lock()
 	calls := make([]bool, len(dbStateCalls))
@@ -1115,7 +1114,7 @@ func TestUpdateDatabaseStateJoinOverwritesRunningState(t *testing.T) {
 
 	// B's Join will see no cluster status doc → errBackgroundManagerStatusNotRunning → callUpdateDatabaseState(false).
 	err := mgrB.Join(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	require.ErrorAsType[errBackgroundManagerStatusNotRunning](t, err)
 
 	// B wrote false to the shared state doc, even though A is still running.
 	// A's next UpdateStatusClusterAware call must restore true.
@@ -1400,17 +1399,14 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 
 // TestBackgroundManagerMultiNodePollingConverges verifies that when another node moves the shared
 // cluster status to a terminal state, a still-running node that only observes this via polling
-// converges to that same state - without overwriting it - even if its follow-up read of the
-// cluster status (getClusterStatusState) hits a transient error along the way.
+// converges to that same state - without overwriting it.
 func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 	tests := []struct {
-		name                 string
-		externalState        BackgroundProcessState
-		injectTransientError bool
+		name          string
+		externalState BackgroundProcessState
 	}{
 		{name: "Completed", externalState: BackgroundProcessStateCompleted},
 		{name: "Error", externalState: BackgroundProcessStateError},
-		{name: "Error/TransientReadError", externalState: BackgroundProcessStateError, injectTransientError: true},
 	}
 
 	for _, test := range tests {
@@ -1419,16 +1415,7 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 			ctx := base.TestCtx(t)
 			defer testBucket.Close(ctx)
 
-			var failNextStatusRead atomic.Bool
-			leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{
-				GetSubDocRawCallback: func(key string, subdocKey string) error {
-					if subdocKey == "status" && failNextStatusRead.CompareAndSwap(true, false) {
-						return errors.New("leaky bucket: forced transient GetSubDocRaw error")
-					}
-					return nil
-				},
-			})
-			metadataStore := leakyBucket.DefaultDataStore(ctx)
+			metadataStore := testBucket.DefaultDataStore(ctx)
 			metaKeys := base.NewMetadataKeys("test-polling-converge")
 
 			clusterOpts := &ClusterAwareBackgroundManagerOptions{
@@ -1491,14 +1478,7 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			if test.injectTransientError {
-				// Force the poller's follow-up read (getClusterStatusState, invoked after it detects
-				// errBackgroundManagerStatusNotRunning) to fail transiently exactly once.
-				failNextStatusRead.Store(true)
-			}
-
-			// Wait for mgr2's polling loop to detect the terminal status (retrying through any
-			// injected transient error) and close its terminator.
+			// Wait for mgr2's polling loop to detect the terminal status and close its terminator.
 			require.Eventually(t, func() bool {
 				return mgr2.terminator.IsClosed()
 			}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects "+string(test.externalState)+" status")
@@ -1511,10 +1491,6 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 			var status BackgroundManagerStatus
 			require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
 			assert.Equal(t, test.externalState, status.State, "expected the bucket status to remain "+string(test.externalState)+" and NOT be overwritten")
-
-			if test.injectTransientError {
-				assert.False(t, failNextStatusRead.Load(), "expected the injected transient error to actually have been triggered during the test")
-			}
 		})
 	}
 }
@@ -1623,4 +1599,70 @@ func TestUpdateStatusClusterAware(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBackgroundManagerConcurrentStopStartRace stress-tests starting, stopping, and updating status
+// concurrently across multiple goroutines to verify there are no deadlocks, panics, or race conditions.
+func TestBackgroundManagerConcurrentStopStartRace(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-stop-start-race")
+
+	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		processSuffix: "stop-start-race",
+		multiNode:     true,
+	}
+
+	mgr := &BackgroundManager[map[string]any]{
+		name:                "race-mgr",
+		Process:             &MockProcess{},
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	numGoroutines := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines * 3)
+
+	// Worker group 1: Concurrently start
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.Start(ctx, nil)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	// Worker group 2: Concurrently stop
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.Stop(ctx)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	// Worker group 3: Concurrently update status
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.UpdateStatusClusterAware(ctx)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	wg.Wait()
 }

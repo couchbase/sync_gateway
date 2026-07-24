@@ -142,10 +142,6 @@ type LeakyBucketConfig struct {
 	GetRawCallback       func(key string) error
 	GetWithXattrCallback func(key string) error
 
-	// GetSubDocRawCallback issues a callback prior to running GetSubDocRaw. Allows tests to force an error
-	// (e.g. a transient read failure) on a specific sub-document read.
-	GetSubDocRawCallback func(key string, subdocKey string) error
-
 	PostUpdateCallback func(key string)
 
 	SetXattrCallback func(key string) error
@@ -227,18 +223,6 @@ func (b *LeakyBucket) setWithXattrCallback(fn func(string) error) {
 	b.configLock.Lock()
 	defer b.configLock.Unlock()
 	b._config.GetWithXattrCallback = fn
-}
-
-func (b *LeakyBucket) getSubDocRawCallback() func(string, string) error {
-	b.configLock.RLock()
-	defer b.configLock.RUnlock()
-	return b._config.GetSubDocRawCallback
-}
-
-func (b *LeakyBucket) setSubDocRawCallback(fn func(string, string) error) {
-	b.configLock.Lock()
-	defer b.configLock.Unlock()
-	b._config.GetSubDocRawCallback = fn
 }
 
 func (b *LeakyBucket) getTouchCallback() func(string) error {

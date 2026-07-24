@@ -44,7 +44,21 @@ const (
 var errBackgroundManagerStatusAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
 
 // errBackgroundManagerStatusNotRunning is returned when the bucket status is not running but the local status is.
-var errBackgroundManagerStatusNotRunning = errors.New("status in bucket is not running, but local status is, avoiding overwriting local status to bucket")
+type errBackgroundManagerStatusNotRunning struct {
+	state   BackgroundProcessState
+	message string
+}
+
+func (e errBackgroundManagerStatusNotRunning) Error() string {
+	return e.message
+}
+
+func newErrBackgroundManagerStatusNotRunning(state BackgroundProcessState, message string) errBackgroundManagerStatusNotRunning {
+	return errBackgroundManagerStatusNotRunning{
+		state:   state,
+		message: message,
+	}
+}
 
 // errBackgroundManagerProcessAlreadyRunning is returned when an action to Start a process occurs but it is already running.
 var errBackgroundManagerProcessAlreadyRunning = base.HTTPErrorf(http.StatusServiceUnavailable, "Process already running")
@@ -202,7 +216,9 @@ func (b *BackgroundManager[O]) Join(ctx context.Context) error {
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			b.callUpdateDatabaseState(ctx, false)
-			return errBackgroundManagerStatusNotRunning
+			// The status document does not exist, meaning the background process is not running yet on the cluster.
+			// We report BackgroundProcessStateCompleted as the state since it is currently not running.
+			return newErrBackgroundManagerStatusNotRunning(BackgroundProcessStateCompleted, fmt.Sprintf("failed to join background process %q: no cluster status document found in bucket", b.name))
 		}
 		return fmt.Errorf("failed to read status doc for background process %q: %w", b.name, err)
 	}
@@ -325,13 +341,10 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.Terminate()
 
 		b.statusLock.Lock()
-		switch b.status.State {
-		case BackgroundProcessStateStopping:
+		if b.status.State == BackgroundProcessStateStopping {
 			b.status.State = BackgroundProcessStateStopped
-		case BackgroundProcessStateRunning:
+		} else if b.status.State == BackgroundProcessStateRunning {
 			b.status.State = BackgroundProcessStateCompleted
-		default:
-			// already a terminal state; leave it alone
 		}
 		b.statusLock.Unlock()
 
@@ -340,7 +353,9 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		if b.mode() != backgroundManagerModeLocal {
 			err := b.UpdateStatusClusterAware(ctx)
 			if err != nil {
-				base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
+				if _, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); !ok {
+					base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
+				}
 			}
 
 			// Delete the heartbeat doc to allow another process to run
@@ -761,8 +776,9 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			if err := base.JSONUnmarshal(current, &output); err != nil {
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
-			// If the local status is running, but another node stopped or errored, do not serialize status and report
-			// not running so that caller can terminate the background manager on this node
+			// If the local status is running, but another node stopped or errored, adopt that state locally so
+			// that we transition properly when our process terminates, and report not running so that caller can
+			// terminate the background manager on this node.
 			if mode == backgroundManagerStatusUpdate {
 				if status, ok := output["status"]; ok {
 					bucketState, err := unmarshalBackgroundProcessState(status)
@@ -770,7 +786,7 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 						return nil, nil, false, err
 					}
 					if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
-						return nil, nil, false, errBackgroundManagerStatusNotRunning
+						return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling update: another node already transitioned background process %q to terminal state %q", b.name, bucketState))
 					}
 				}
 			}
@@ -843,29 +859,14 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 	for {
 		select {
 		case <-ticker.C:
-			err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate)
-			if err == nil {
-				continue
-			}
-			if !errors.Is(err, errBackgroundManagerStatusNotRunning) {
+			if err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate); err != nil {
+				if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
+					b.setRunState(stateErr.state)
+					terminator.Close()
+					return
+				}
 				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
-				continue
 			}
-			// Another node already moved the cluster status to a terminal state; adopt it
-			// locally so we don't leave our own state as Running.
-			clusterState, err := b.getClusterStatusState(ctx)
-			if err != nil || clusterState == "" {
-				base.DebugfCtx(ctx, base.KeyAll, "Failed to read cluster status state after detecting non-running state, will retry: %v", err)
-				continue
-			}
-			if clusterState == BackgroundProcessStateRunning {
-				// Raced with another node restarting the process - keep polling instead of
-				// tearing down this node's now-current run.
-				continue
-			}
-			b.setRunState(clusterState)
-			terminator.Close()
-			return
 		case <-terminator.Done():
 			ticker.Stop()
 			return
@@ -883,7 +884,9 @@ func (b *BackgroundManager[O]) stopProcess(ctx context.Context) {
 	if b.mode() == backgroundManagerModeMultiNode {
 		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
-			base.WarnfCtx(ctx, "Failed to update cluster status to stopping: %v", err)
+			if _, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); !ok {
+				base.WarnfCtx(ctx, "Failed to update cluster status to stopping: %v", err)
+			}
 		}
 	}
 

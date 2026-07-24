@@ -9,6 +9,8 @@
 package require
 
 import (
+	"errors"
+	"fmt"
 	"iter"
 	"net/http"
 	"net/url"
@@ -856,6 +858,19 @@ func ErrorAsf(t TestingT, err error, target any, msg string, args ...any) {
 		h.Helper()
 	}
 	require.ErrorAsf(t, err, target, msg, args...)
+}
+
+// ErrorAsType asserts that at least one of the errors in err's chain matches
+// target of type T. This is a wrapper for errors.AsType.
+func ErrorAsType[T error](t TestingT, err error, msgAndArgs ...any) {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+	_, ok := errors.AsType[T](err)
+	if !ok {
+		var zero T
+		Fail(t, fmt.Sprintf("An error of type %T was expected in chain, but got: %v", zero, err), msgAndArgs...)
+	}
 }
 
 // ErrorContains asserts that a function returned an error (i.e. not `nil`) and
