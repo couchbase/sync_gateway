@@ -372,13 +372,13 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 }
 
 // TestLateLogsStatReleasedOnChannelEviction verifies that when channel caches are evicted by compaction the
-// NumEntriesInLateFeed gauge is decremented by the evicted channels' lateLogs entries (including their
-// sentinels). Those entries are dropped wholesale on eviction without going through the per-entry purge
-// paths, so without an explicit decrement the gauge would leak upward as channels churn. Several channels
-// are seeded with extra late sequences (behind a registered listener, so they aren't immediately purged) to
-// prove the full per-channel count is released, not merely one entry per evicted channel. The invariant
-// checked throughout is that NumEntriesInLateFeed always equals the real total held by the channels that
-// are still present in the cache.
+// NumEntriesInLateFeed gauge is decremented by the evicted channels' counted (non-sentinel) lateLogs entries.
+// Those entries are dropped wholesale on eviction without going through the per-entry purge paths, so without
+// an explicit decrement the gauge would leak upward as channels churn. Every channel is seeded with late
+// sequences (behind a registered listener, so they aren't immediately purged) to prove the full per-channel
+// count is released. The invariant checked throughout is that NumEntriesInLateFeed always equals the real
+// (non-sentinel) total held by the channels that are still present in the cache - and, since the seq-0 sentinels
+// aren't counted, the gauge is exactly the seeded late entries rather than carrying a per-channel floor.
 func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
@@ -398,51 +398,52 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 
 	numEntriesInLateFeed := func() int64 { return testStats.NumEntriesInLateFeed.Value() }
 
-	// sumLateLogs returns the true number of lateLogs entries currently held across all channel caches still
-	// present in the collection - the value NumEntriesInLateFeed must always equal.
+	// sumLateLogs returns the true number of counted (non-sentinel) lateLogs entries currently held across all
+	// channel caches still present in the collection - the value NumEntriesInLateFeed must always equal.
 	sumLateLogs := func() int64 {
 		var total int64
 		cache.channelCaches.Range(func(value any) bool {
 			if scc := AsSingleChannelCache(ctx, value); scc != nil {
-				total += scc.lateLogCount()
+				total += scc.countedLateLogCount()
 			}
 			return true
 		})
 		return total
 	}
 
-	// Add 16 channels (the high watermark) so compaction isn't triggered yet. Each new channel contributes
-	// its sentinel entry; every 4th channel is additionally seeded with 3 late sequences (behind a
-	// registered listener that pins the sentinel so _purgeLateLogEntries doesn't immediately drop them).
+	// Add 16 channels (the high watermark) so compaction isn't triggered yet. Each channel's seq-0 sentinel is
+	// not counted; each is seeded with 3 late sequences (behind a registered listener that pins the sentinel so
+	// _purgeLateLogEntries doesn't immediately drop them) so that every channel contributes counted entries and
+	// any eviction is guaranteed to decrement the gauge.
+	const seededPerChannel = 3
 	for i := 1; i <= 16; i++ {
 		scc, _ := cache.addChannelCache(ctx, channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID))
-		if i%4 == 0 {
-			scc.RegisterLateSequenceClient() // pin the sentinel so the seeded late entries survive the purge
-			for seq := uint64(1); seq <= 3; seq++ {
-				scc.AddLateSequence(&LogEntry{Sequence: seq})
-			}
+		scc.RegisterLateSequenceClient() // pin the sentinel so the seeded late entries survive the purge
+		for seq := uint64(1); seq <= seededPerChannel; seq++ {
+			scc.AddLateSequence(&LogEntry{Sequence: seq})
 		}
 	}
 	require.Equal(t, 16, cache.channelCaches.Length())
 
-	// Invariant before compaction: the gauge equals the real total (16 sentinels + 4*3 seeded late seqs).
+	// The gauge counts only the seeded late entries (16 channels x 3), with no per-channel floor - the sentinels
+	// are excluded. Under the old sentinel-counting behaviour this would have been 16 + 16*3.
+	require.Equal(t, int64(16*seededPerChannel), numEntriesInLateFeed(),
+		"gauge should count only the seeded late entries, not the per-channel sentinels")
 	require.Equal(t, sumLateLogs(), numEntriesInLateFeed(),
-		"NumEntriesInLateFeed should equal the real lateLogs total before compaction")
+		"NumEntriesInLateFeed should equal the real non-sentinel lateLogs total before compaction")
 	beforeCompaction := numEntriesInLateFeed()
-	require.Greater(t, beforeCompaction, int64(16),
-		"seeded late sequences should push the gauge above one-entry-per-channel")
 
 	// Add another channel to exceed the high watermark and trigger compaction down to the low watermark.
 	cache.addChannelCache(ctx, channels.NewID("chan_17", base.DefaultCollectionID))
 	require.True(t, waitForCompaction(cache), "compaction didn't complete in expected time")
 	require.Equal(t, 12, cache.channelCaches.Length(), "compaction should evict down to the low watermark")
 
-	// The decisive assertion: after eviction the gauge must have been decremented to exactly the lateLogs
-	// still held by the surviving channels - none of the evicted channels' entries leaked.
+	// The decisive assertion: after eviction the gauge must have been decremented to exactly the non-sentinel
+	// lateLogs still held by the surviving channels - none of the evicted channels' entries leaked.
 	require.Equal(t, sumLateLogs(), numEntriesInLateFeed(),
-		"NumEntriesInLateFeed must equal the surviving channels' lateLogs total after eviction (no leak)")
+		"NumEntriesInLateFeed must equal the surviving channels' non-sentinel lateLogs total after eviction (no leak)")
 	require.Less(t, numEntriesInLateFeed(), beforeCompaction,
-		"eviction must have decremented NumEntriesInLateFeed")
+		"eviction must have decremented NumEntriesInLateFeed by the evicted channels' late entries")
 
 	t.Logf("num_entries_in_late_feed before compaction: %d, after: %d (%d channels remain)",
 		beforeCompaction, numEntriesInLateFeed(), cache.channelCaches.Length())
@@ -514,8 +515,8 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 
 	require.GreaterOrEqual(t, testStats.NumEntriesInLateFeed.Value(), int64(0),
 		"NumEntriesInLateFeed must never go negative under concurrent churn")
-	require.LessOrEqualf(t, testStats.NumEntriesInLateFeed.Value(), int64(cache.options.LateLogMaxLength)+1,
-		"lateLogs must stay bounded by the length cap (%d) under concurrent churn", cache.options.LateLogMaxLength)
+	require.LessOrEqualf(t, testStats.NumEntriesInLateFeed.Value(), int64(cache.options.LateLogMaxLength),
+		"lateLogs must stay bounded by the length cap (%d) under concurrent churn - the sentinel isn't counted", cache.options.LateLogMaxLength)
 }
 
 // TestLateLogOptionsPropagation verifies that the LateLogMaxLength / LateLogAge cache options are propagated
@@ -716,8 +717,8 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	writeSeq(3) // skips 2
 	writeSeq(2) // resolves 2 late
 
-	// Baseline once both feeds are caught up: the count the healthy path should hover around (sentinels plus
-	// the single entry both feeds are parked on), independent of how many cycles follow.
+	// Baseline once both feeds are caught up: the count the healthy path should hover around (the single entry
+	// both feeds are parked on; sentinels aren't counted), independent of how many cycles follow.
 	baseline := numEntriesInLateFeed()
 
 	const numCycles = 30
@@ -786,7 +787,7 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 			require.LessOrEqualf(t, sc.lateLogCount(), int64(5),
 				"force-prune must never let lateLogs exceed the cap, even with a listener pinning the front (i=%d)", i)
 		}
-		require.Equal(t, sc.lateLogCount(), cacheStats.NumEntriesInLateFeed.Value(), "stat must match the actual queue length")
+		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value(), "stat must match the counted (non-sentinel) queue length")
 		// Once the queue hit the cap the pinned sentinel was force-dropped, so the caller must be rolled back
 		// rather than served from a position that no longer exists.
 		_, _, err := sc.GetLateSequencesSince(since)
@@ -804,10 +805,10 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		require.Error(t, err, "the caller's pruned position must force a rollback rather than silently skipping")
 	})
 
-	t.Run("fresh cache reports one sentinel entry", func(t *testing.T) {
+	t.Run("fresh cache reports one sentinel entry but a zero gauge", func(t *testing.T) {
 		sc, cacheStats := newCache(t, 5)
 		require.Equal(t, int64(1), sc.lateLogCount(), "a fresh channel cache holds exactly its sentinel entry")
-		require.Equal(t, int64(1), cacheStats.NumEntriesInLateFeed.Value())
+		require.Equal(t, int64(0), cacheStats.NumEntriesInLateFeed.Value(), "the sentinel is not counted, so a fresh cache contributes nothing to the gauge")
 	})
 
 	t.Run("release of a pruned sequence returns false without corrupting counts", func(t *testing.T) {
@@ -817,17 +818,18 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 			sc.AddLateSequence(&LogEntry{Sequence: i}) // force-prunes the sentinel out from under the listener
 		}
 		require.False(t, sc.ReleaseLateSequenceClient(since), "releasing an already-pruned sequence must report not-found")
-		require.Equal(t, sc.lateLogCount(), cacheStats.NumEntriesInLateFeed.Value(), "stat stays consistent with the queue")
+		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value(), "stat stays consistent with the counted (non-sentinel) queue")
 	})
 
 	t.Run("age prune keeps at least one entry and never drives the stat negative", func(t *testing.T) {
 		sc, cacheStats := newCache(t, 100000) // length cap out of the way, isolate the age path
 		sc.options.LateLogAge = time.Millisecond
 
-		// No-op on a minimal queue: pruning a sentinel-only cache leaves the sentinel and the stat at one.
+		// No-op on a minimal queue: pruning a sentinel-only cache leaves the (uncounted) sentinel in place, so the
+		// queue length is one but the gauge stays at zero.
 		sc.pruneLateLogAge(ctx)
 		require.Equal(t, int64(1), sc.lateLogCount())
-		require.Equal(t, int64(1), cacheStats.NumEntriesInLateFeed.Value())
+		require.Equal(t, int64(0), cacheStats.NumEntriesInLateFeed.Value())
 
 		sc.RegisterLateSequenceClient()
 		for i := uint64(1); i <= 10; i++ {
@@ -836,8 +838,10 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		time.Sleep(2 * time.Millisecond) // let the entries exceed LateLogAge
 		sc.pruneLateLogAge(ctx)
 		require.Equal(t, int64(1), sc.lateLogCount(), "age prune collapses to the tail but always keeps one entry")
-		require.Equal(t, cacheStats.NumEntriesInLateFeed.Value(), int64(1), "stat must never go negative")
-		require.Equal(t, sc.lateLogCount(), cacheStats.NumEntriesInLateFeed.Value())
+		// The surviving tail entry here is a real late arrival (seq 10), so it is counted: the stat lands at one,
+		// never negative, and matches the counted queue.
+		require.Equal(t, int64(1), cacheStats.NumEntriesInLateFeed.Value(), "stat must never go negative")
+		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value())
 	})
 }
 
@@ -894,10 +898,10 @@ func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 // TestLateLogsStatLeakOnConcurrentAddChannelCache is a guard ensuring NumEntriesInLateFeed doesn't leak when
 // two callers race to first-create the same channel cache. getChannelCache checks channelCaches.Get and, on a
 // miss, calls addChannelCache; two goroutines that both miss the Get both call addChannelCache for the same
-// channel. addChannelCache builds the singleChannelCache (whose initializeLateLogs already did
-// NumEntriesInLateFeed.Add(1) for its sentinel) BEFORE GetOrInsert, so the loser of the insert has its
-// freshly-built cache discarded by GetOrInsert without ever decrementing that +1 - permanently over-reporting
-// the gauge by one per lost race, since the discarded cache is never in channelCaches for compaction to evict.
+// channel, and the loser of the GetOrInsert has its freshly-built cache discarded. Because the seq-0 sentinel
+// is not counted (initializeLateLogs doesn't touch the gauge) and the discarded cache is never in channelCaches
+// (so no late arrival can be added to it), the loser contributes nothing to the gauge - and this test guards
+// that the gauge stays at the real non-sentinel total (zero here) rather than over-reporting per lost race.
 func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
@@ -920,7 +924,7 @@ func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 		var total int64
 		cache.channelCaches.Range(func(value any) bool {
 			if scc := AsSingleChannelCache(ctx, value); scc != nil {
-				total += scc.lateLogCount()
+				total += scc.countedLateLogCount()
 			}
 			return true
 		})
@@ -933,14 +937,318 @@ func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 	first, ok := cache.addChannelCache(ctx, ch)
 	require.True(t, ok)
 
-	// Second caller (the other goroutine that also missed the Get check) builds a fresh cache - incrementing
-	// the shared gauge for its sentinel - then GetOrInsert returns the existing cache and discards the new one.
+	// Second caller (the other goroutine that also missed the Get check) builds a fresh cache, then GetOrInsert
+	// returns the existing cache and discards the new one.
 	second, ok := cache.addChannelCache(ctx, ch)
 	require.True(t, ok)
 	require.True(t, first == second, "both callers must resolve to the single inserted cache")
 	require.Equal(t, 1, cache.channelCaches.Length(), "only one cache for the contended channel is ever inserted")
 
 	require.Equal(t, sumLateLogs(), numEntriesInLateFeed(),
-		"NumEntriesInLateFeed must equal the real lateLogs total held by inserted caches; the discarded loser "+
-			"cache's sentinel increment must not leak into the gauge")
+		"NumEntriesInLateFeed must equal the real non-sentinel lateLogs total held by inserted caches; the "+
+			"discarded loser cache must not leak into the gauge")
+	require.Equal(t, int64(0), numEntriesInLateFeed(),
+		"both caches hold only their uncounted sentinels, so the gauge must be zero after the race")
+}
+
+// TestLateLogsSpikeNotPrunedUntilNewLateSequence reproduces the tricky-to-time scenario where a large spike of
+// previously-skipped sequences all resolve (arrive late) near-simultaneously while a continuous _changes feed
+// is parked, floods a channel's lateLogs, is then served to the feed in a catch-up, and verifies the decisive
+// property: those served late entries are NOT reclaimed until the next skipped sequence arrives to trigger the
+// purge. The length force-prune (_purgeLateLogEntries) runs only on AddLateSequence, and the age sweep only on
+// its timer - so with both caps set arbitrarily large, a channel that goes quiet after a spike holds the whole
+// spike indefinitely, and only the next late arrival collapses it.
+func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
+	base.LongRunningTest(t)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is parked.
+	const spikeSize = 2000
+
+	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions.LateLogMaxLength = 10 * spikeSize // large: the length force-prune must never fire during the spike
+	cacheOptions.LateLogAge = time.Hour            // large: the age sweep must never reclaim entries during the test
+	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer db.Close(ctx)
+
+	authenticator := db.Authenticator(ctx)
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collectionWithUser.user = user // the feed inherits this user's ABC access via the wildcard, as a real client would
+	collection := collectionWithUser.DatabaseCollection
+	cCache := collection.changeCache()
+
+	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+
+	// Prime: start a real continuous feed and let it catch up. On its first iteration it creates ABC's channel
+	// cache (marking it active, so late arrivals are recorded there) and registers a late-sequence listener on
+	// ABC's seq-0 sentinel, then parks waiting.
+	feed := startChangesFeed(ctx, t, collectionWithUser)
+	seen := make(map[uint64]bool) // every sequence the feed delivers across its lifetime
+	collectSeen := func(seqs []uint64) {
+		for _, s := range seqs {
+			seen[s] = true
+		}
+	}
+	collectSeen(drainUntilWait(t, feed)) // initial caught-up marker
+
+	// One in-order write so the feed is streaming normally and the cache's nextSequence advances to 2.
+	WriteDirect(t, collection, []string{"ABC"}, 1)
+	collectSeen(drainUntilWait(t, feed))
+
+	cc, ok := cCache.getChannelCache().(*channelCacheImpl)
+	require.True(t, ok)
+	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	require.NoError(t, err)
+	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	require.Equal(t, int64(1), abcCache.lateLogCount(), "ABC starts with just its sentinel entry")
+
+	// Hold an extra listener on ABC's sentinel for the duration of the spike. While this front listener is held,
+	// the zero-listener purge can never advance past the head of the queue, so every late arrival accumulates
+	// regardless of how much the real feed reads - making the otherwise timing-sensitive accumulation
+	// deterministic. Released before the final assertions.
+	pinnedSentinel := abcCache.RegisterLateSequenceClient()
+	require.Equal(t, uint64(0), pinnedSentinel, "the extra listener parks on the seq-0 sentinel before any late sequence arrives")
+
+	// Create the skip: a single write far ahead (seq spikeSize+2) leaves 2..spikeSize+1 with no arrivals. Once
+	// that lone pending entry ages out (shortWaitCache flushes pending after 5ms) the whole gap is pushed to the
+	// skipped list in one range, so 2..spikeSize+1 are now previously-skipped sequences.
+	gapWriteSeq := uint64(spikeSize + 2)
+	firstSkipped := uint64(2)
+	lastSkipped := uint64(spikeSize + 1)
+	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, cCache.WasSkipped(firstSkipped) && cCache.WasSkipped(lastSkipped),
+			"the gap %d..%d should have been pushed to the skipped list", firstSkipped, lastSkipped)
+	}, 10*time.Second, 5*time.Millisecond)
+
+	// The spike: every skipped sequence resolves (arrives late) in a tight loop. The feed is deliberately not
+	// drained here, so it stays parked (its output buffer fills and it blocks) while the arrivals flood into
+	// ABC's lateLogs. Each arrival calls AddLateSequence -> _purgeLateLogEntries, but the pinned sentinel and the
+	// large caps mean nothing is ever dropped.
+	for seq := firstSkipped; seq <= lastSkipped; seq++ {
+		WriteDirect(t, collection, []string{"ABC"}, seq)
+	}
+
+	// All spikeSize late arrivals land in ABC's lateLogs (plus the sentinel), and none are pruned.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(spikeSize+1), abcCache.lateLogCount(),
+			"all %d late arrivals plus the sentinel should be held in ABC's lateLogs", spikeSize)
+	}, 60*time.Second, 20*time.Millisecond)
+	require.Equal(t, int64(0), forcedRollbacks(),
+		"nothing should have been pruned out from under the parked feed while the spike accumulated")
+	t.Logf("spike loaded: ABC lateLogs=%d (sentinel + %d late arrivals)", abcCache.lateLogCount(), spikeSize)
+
+	// Wake the feed and let it drain the entire spike from lateLogs. Read across broadcast cycles until the feed
+	// has delivered every late sequence in the spike.
+	drainDeadline := time.After(30 * time.Second)
+	for {
+		allSeen := true
+		for s := firstSkipped; s <= lastSkipped; s++ {
+			if !seen[s] {
+				allSeen = false
+				break
+			}
+		}
+		if allSeen {
+			break
+		}
+		select {
+		case <-drainDeadline:
+			t.Fatalf("feed did not deliver the full late-sequence spike from lateLogs")
+		default:
+		}
+		collectSeen(drainUntilWait(t, feed))
+	}
+
+	// Serving the spike moved the feed's listener to the newest late entry but pruned nothing - reading late
+	// sequences never triggers a purge. The full spike is still resident in lateLogs.
+	require.Equal(t, int64(spikeSize+1), abcCache.lateLogCount(),
+		"serving the spike to the feed must not prune lateLogs - only a new late sequence triggers the purge")
+
+	// Release the extra sentinel listener. Now every entry the feed has already passed carries a zero listener
+	// count and is fully eligible for the zero-listener purge - yet still nothing reclaims it, because no new late
+	// sequence has arrived to run _purgeLateLogEntries (and the age sweep and length cap are configured never to
+	// fire). This is the decisive assertion: absent another skipped sequence, the served spike is not pruned.
+	require.True(t, abcCache.ReleaseLateSequenceClient(pinnedSentinel), "the extra sentinel listener should still be present to release")
+	require.Never(t, func() bool {
+		return abcCache.lateLogCount() < int64(spikeSize+1)
+	}, 1*time.Second, 50*time.Millisecond,
+		"with no new skipped sequence arriving, the served spike must remain in lateLogs (no length cap, no age sweep, no purge trigger)")
+
+	// Now a single new skipped sequence resolves. This one AddLateSequence call runs _purgeLateLogEntries, which
+	// finally reclaims the whole now-unreferenced spike, collapsing lateLogs down to the feed's parked entry plus
+	// the new arrival.
+	gapWriteSeq2 := uint64(spikeSize + 4)
+	newlySkipped := uint64(spikeSize + 3)
+	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq2)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, cCache.WasSkipped(newlySkipped), "seq %d should have been pushed to the skipped list", newlySkipped)
+	}, 10*time.Second, 5*time.Millisecond)
+	WriteDirect(t, collection, []string{"ABC"}, newlySkipped)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.LessOrEqual(c, abcCache.lateLogCount(), int64(3),
+			"the next skipped sequence's AddLateSequence must purge the whole served spike from lateLogs")
+	}, 10*time.Second, 20*time.Millisecond)
+	require.Equal(t, int64(0), forcedRollbacks(),
+		"the feed's parked entry is retained by the purge, so no forced rollback should ever occur")
+
+	t.Logf("after one new late sequence: ABC lateLogs collapsed to %d, forced_rollbacks=%d",
+		abcCache.lateLogCount(), forcedRollbacks())
+}
+
+// TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback
+// The scenario: a continuous feed registers its late-sequence listener on a channel's seq-0 sentinel and then
+// stalls without reading (a hung/abandoned client). A spike of thousands of skipped sequences then all resolve
+// (arrive late) at once while it is stalled. With the default caps:
+//
+//   - lateLogs stay bounded by LateLogMaxLength instead of growing with the spike (the leak this branch fixes:
+//     before compaction the stalled feed pinned the front and the queue grew unbounded with every arrival);
+//   - the length force-prune drops even the stalled feed's referenced sentinel, so when the feed next reads that
+//     position its getLateFeed call fails and the changes loop rolls it back (LateFeedForcedRollbacks) - the
+//     safety net that resets a feed whose position was compacted away rather than silently skipping sequences;
+//   - the feed recovers and catches up to the latest sequence rather than staying stuck.
+//
+// Timing is the usual hazard - a continuous feed woken by the broadcast ticker would ordinarily read the late
+// arrivals as they trickle in and advance its listener off the sentinel, so the sentinel would never be the
+// referenced position that gets force-pruned. We remove that race by first filling the feed's fixed 50-entry
+// output buffer (changes.go) with in-order writes we never drain: the feed goroutine blocks on the output send
+// with its late-sequence listener still parked on the sentinel (getLateFeed returns early without advancing
+// lastSequence while no late sequences exist), and stays blocked. We detect that state precisely with
+// len(feed) == cap(feed) - no timing guess - then run the spike while the feed is provably stalled, so the
+// length cap is the only thing that can drop the referenced sentinel. Draining afterwards makes the feed's next
+// getLateFeed hit the pruned sentinel and roll back inside the real loop.
+func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
+	base.LongRunningTest(t)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is stalled. Must
+	// exceed the length cap so the force-prune fires.
+	const spikeSize = 2000
+	require.Greater(t, spikeSize, DefaultLateLogMaxLength,
+		"the spike must exceed LateLogMaxLength for the length force-prune to fire")
+
+	// In-order writes used only to fill the feed's output buffer so the goroutine blocks. Must exceed the feed's
+	// hard-coded output buffer capacity (50 in changes.go); the exact block point is confirmed via len==cap below.
+	const bufferFillers = 60
+
+	// Shipped default late-log caps (LateLogMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
+	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
+	// never fires.
+	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
+	defer db.Close(ctx)
+
+	authenticator := db.Authenticator(ctx)
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collectionWithUser.user = user // the feed inherits this user's ABC access via the wildcard, as a real client would
+	collection := collectionWithUser.DatabaseCollection
+	cCache := collection.changeCache()
+
+	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+
+	// Prime: start a real continuous feed and let it catch up. On its first iteration it creates ABC's channel
+	// cache (marking it active, so late arrivals are recorded there) and registers a late-sequence listener on
+	// ABC's seq-0 sentinel, then parks waiting.
+	feed := startChangesFeed(ctx, t, collectionWithUser)
+	seen := make(map[uint64]bool) // every sequence the feed delivers across its lifetime
+	collectSeen := func(seqs []uint64) {
+		for _, s := range seqs {
+			seen[s] = true
+		}
+	}
+	collectSeen(drainUntilWait(t, feed)) // initial caught-up marker
+
+	// One in-order write so the feed is streaming normally and the cache's nextSequence advances to 2.
+	WriteDirect(t, collection, []string{"ABC"}, 1)
+	collectSeen(drainUntilWait(t, feed))
+
+	cc, ok := cCache.getChannelCache().(*channelCacheImpl)
+	require.True(t, ok)
+	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	require.NoError(t, err)
+	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	require.Equal(t, int64(1), abcCache.lateLogCount(), "ABC starts with just its sentinel entry")
+
+	// Stall the feed with its late-sequence listener still on the sentinel. Writing more in-order sequences than
+	// the feed's output buffer holds, and never draining them, blocks the feed goroutine on its output send.
+	// These writes are contiguous so nothing is skipped, so getLateFeed keeps returning early without advancing
+	// the feed's late position - it stays parked on the seq-0 sentinel. We wait until the buffer is provably full
+	// (len==cap) and every filler is cached (nextSequence advanced) before starting the spike.
+	for seq := uint64(2); seq <= bufferFillers+1; seq++ {
+		WriteDirect(t, collection, []string{"ABC"}, seq)
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, cap(feed), len(feed), "the feed's output buffer must fill so the goroutine blocks with its late listener still on the sentinel")
+		assert.GreaterOrEqual(c, cCache.getNextSequence(), uint64(bufferFillers+2), "all in-order fillers must be cached before the spike")
+	}, 30*time.Second, 20*time.Millisecond)
+	require.Equal(t, int64(0), forcedRollbacks(), "no rollback should have occurred yet - the stalled feed has not read a late sequence")
+
+	// Create the skip: a single write far ahead leaves the whole spike range with no arrivals. Once that lone
+	// pending entry ages out (shortWaitCache flushes pending after 5ms) the gap is pushed to the skipped list in
+	// one range, so those sequences are now previously-skipped.
+	firstSkipped := uint64(bufferFillers + 2)
+	lastSkipped := uint64(bufferFillers + 1 + spikeSize)
+	gapWriteSeq := lastSkipped + 1
+	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, cCache.WasSkipped(firstSkipped) && cCache.WasSkipped(lastSkipped),
+			"the gap %d..%d should have been pushed to the skipped list", firstSkipped, lastSkipped)
+	}, 10*time.Second, 5*time.Millisecond)
+
+	// The spike: every skipped sequence resolves (arrives late) in a tight loop while the feed is provably
+	// stalled (blocked on its full output buffer). Each arrival calls AddLateSequence -> _purgeLateLogEntries;
+	// the length force-prune keeps the queue bounded and force-drops the sentinel that the stalled feed still
+	// references, since only the length cap can reclaim a referenced entry.
+	for seq := firstSkipped; seq <= lastSkipped; seq++ {
+		WriteDirect(t, collection, []string{"ABC"}, seq)
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, uint64(0), cCache.getOldestSkippedSequence(ctx),
+			"all %d skipped sequences should have resolved (arrived late)", spikeSize)
+	}, 60*time.Second, 20*time.Millisecond)
+
+	// FIX 1 - bounded: despite thousands of late arrivals behind a stalled feed, lateLogs never grew past the
+	// length cap. Without compaction (the pre-fix behaviour, TestLateLogsSpikeNotPrunedUntilNewLateSequence) the
+	// stalled feed would have pinned the spike in place and the queue would hold spikeSize+1 entries.
+	require.LessOrEqualf(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
+		"the length force-prune must bound ABC's lateLogs at LateLogMaxLength (%d) even under a %d-sequence spike behind a stalled feed",
+		DefaultLateLogMaxLength, spikeSize)
+	t.Logf("spike resolved with feed stalled: ABC lateLogs bounded at %d (cap %d, spike %d), forced_rollbacks=%d",
+		abcCache.lateLogCount(), DefaultLateLogMaxLength, spikeSize, forcedRollbacks())
+
+	// FIX 2 - the forced rollback happens inside the real changes loop: the stalled feed's referenced sentinel
+	// was force-compacted away by the length cap. Nothing has rolled back yet (the feed hasn't read a late
+	// sequence). Now write a fresh in-order sequence and drain the feed: it unblocks, and its next getLateFeed
+	// reads the pruned sentinel, fails, and the changes loop rolls it back (incrementing LateFeedForcedRollbacks)
+	// then recovers it - eventually catching up to the latest sequence. Draining to finalSeq proves it isn't
+	// left stuck.
+	require.Equal(t, int64(0), forcedRollbacks(), "the stalled feed must not have rolled back before it is drained")
+	finalSeq := gapWriteSeq + 1
+	WriteDirect(t, collection, []string{"ABC"}, finalSeq)
+	drainDeadline := time.After(60 * time.Second)
+	for !seen[finalSeq] {
+		select {
+		case <-drainDeadline:
+			t.Fatalf("feed did not recover to the latest sequence %d after the spike (rollback recovery)", finalSeq)
+		default:
+		}
+		collectSeen(drainUntilWait(t, feed))
+	}
+	require.Greater(t, forcedRollbacks(), int64(0),
+		"the feed's sentinel was force-compacted away by the length cap; its getLateFeed must have rolled back inside the changes loop")
+
+	// FIX 3 - lateLogs remain bounded after recovery: the spike left no residue on the channel cache.
+	require.LessOrEqual(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
+		"ABC's lateLogs must remain bounded by the length cap after the feed recovers")
+
+	t.Logf("feed recovered to seq %d; ABC lateLogs=%d, forced_rollbacks=%d",
+		finalSeq, abcCache.lateLogCount(), forcedRollbacks())
 }

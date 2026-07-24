@@ -431,13 +431,9 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channel, singleChannelCache)
 	c.validFromLock.Unlock()
 
-	if !created {
-		// Another goroutine won the insert race for this channel, so our freshly-built cache is discarded.
-		// Undo the NumEntriesInLateFeed increment its initializeLateLogs added for its sentinel - otherwise the
-		// discarded cache's contribution leaks into the gauge forever (it is never in channelCaches for
-		// compaction to evict).
-		c.cacheStats.NumEntriesInLateFeed.Add(-singleChannelCache.lateLogCount())
-	}
+	// If another goroutine won the insert race our freshly-built cache is discarded, but it never contributed to
+	// NumEntriesInLateFeed: initializeLateLogs doesn't count the seq-0 sentinel, and since the discarded instance
+	// was never in channelCaches no late arrival could have been added to it. So there's nothing to release here.
 
 	singleChannelCache = AsSingleChannelCache(ctx, cacheValue)
 
