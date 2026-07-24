@@ -19,6 +19,9 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
+// TestParseSequenceID verifies parseIntegerSequenceID handles all valid sequence string formats
+// (simple, TriggeredBy:Seq, and LowSeq:TriggeredBy:Seq, including an empty TriggeredBy component)
+// as well as malformed inputs that should return an error.
 func TestParseSequenceID(t *testing.T) {
 	s, err := parseIntegerSequenceID("1234")
 	assert.NoError(t, err, "parseIntegerSequenceID")
@@ -60,6 +63,8 @@ func TestParseSequenceID(t *testing.T) {
 	require.Equal(t, SequenceID{}, s)
 }
 
+// BenchmarkParseSequenceID measures parseIntegerSequenceID's performance across the same set of
+// valid and invalid sequence string formats exercised by TestParseSequenceID.
 func BenchmarkParseSequenceID(b *testing.B) {
 	tests := []string{
 		"1234",
@@ -85,6 +90,8 @@ func BenchmarkParseSequenceID(b *testing.B) {
 	}
 }
 
+// TestMarshalSequenceID verifies String() and JSON marshal/unmarshal round-trip a simple sequence
+// (no TriggeredBy or LowSeq) as a bare integer.
 func TestMarshalSequenceID(t *testing.T) {
 	s := SequenceID{Seq: 1234}
 	assert.Equal(t, "1234", s.String())
@@ -98,6 +105,8 @@ func TestMarshalSequenceID(t *testing.T) {
 	assert.Equal(t, s, s2)
 }
 
+// TestSequenceIDUnmarshalJSON verifies UnmarshalJSON accepts both a bare JSON number and a quoted
+// string for simple, TriggeredBy:Seq, and LowSeq::Seq sequence forms.
 func TestSequenceIDUnmarshalJSON(t *testing.T) {
 
 	str := "123"
@@ -137,6 +146,9 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 	assert.Equal(t, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
 }
 
+// TestMarshalTriggeredSequenceID verifies String() and JSON marshaling for a TriggeredBy:Seq
+// sequence, plus the case where LowSeq is set but greater than Seq - LowSeq should still be
+// dropped from the output.
 func TestMarshalTriggeredSequenceID(t *testing.T) {
 	s := SequenceID{TriggeredBy: 5678, Seq: 1234}
 	assert.Equal(t, "5678:1234", s.String())
@@ -150,9 +162,11 @@ func TestMarshalTriggeredSequenceID(t *testing.T) {
 	assert.Equal(t, s, s2)
 
 	s = SequenceID{LowSeq: 5000, TriggeredBy: 5678, Seq: 1234}
-	assert.Equal(t, "5000:5678:1234", s.String())
+	assert.Equal(t, "5678:1234", s.String())
 }
 
+// TestCompareSequenceIDs verifies Before() produces a strict total order over a mix of simple and
+// TriggeredBy:Seq sequences, checking every pair in orderedSeqs.
 func TestCompareSequenceIDs(t *testing.T) {
 	orderedSeqs := []SequenceID{
 		{Seq: 1234},
@@ -171,6 +185,8 @@ func TestCompareSequenceIDs(t *testing.T) {
 	}
 }
 
+// TestCompareSequenceIDsLowSeq verifies Before() produces a strict total order over sequences that
+// include LowSeq, TriggeredBy, and combinations of both, checking every pair in orderedSeqs.
 func TestCompareSequenceIDsLowSeq(t *testing.T) {
 	orderedSeqs := []SequenceID{
 		{LowSeq: 1200, Seq: 1233},
@@ -192,5 +208,48 @@ func TestCompareSequenceIDsLowSeq(t *testing.T) {
 				assert.Equalf(t, i < j, orderedSeqs[i].Before(orderedSeqs[j]), "expected %v < %v", orderedSeqs[i], orderedSeqs[j])
 			})
 		}
+	}
+}
+
+// TestIntSeqToString exercises intSeqToString's formatting rules directly: simple, TriggeredBy:Seq,
+// LowSeq::Seq, the full LowSeq:TriggeredBy:Seq compound, and the corner case where Seq < LowSeq
+// causes LowSeq to be dropped even though TriggeredBy is set.
+func TestIntSeqToString(t *testing.T) {
+	test_cases := []struct {
+		name   string
+		seq    SequenceID
+		seqStr string
+	}{
+		{
+			name:   "simple sequence",
+			seq:    SequenceID{Seq: 123},
+			seqStr: "123",
+		},
+		{
+			name:   "compound sequence with triggeredBy seq and seq",
+			seq:    SequenceID{TriggeredBy: 100, Seq: 66},
+			seqStr: "100:66",
+		},
+		{
+			name:   "compound sequence with lowSeq seq and seq",
+			seq:    SequenceID{LowSeq: 100, Seq: 105},
+			seqStr: "100::105",
+		},
+		{
+			name:   "compound sequence with lowSeq, triggeredBy seq and seq",
+			seq:    SequenceID{LowSeq: 100, TriggeredBy: 105, Seq: 103},
+			seqStr: "100:105:103",
+		},
+		{
+			name:   "compound sequence with lowSeq, triggeredBy seq and seq and seq < lowSeq",
+			seq:    SequenceID{LowSeq: 100, TriggeredBy: 105, Seq: 90},
+			seqStr: "105:90",
+		},
+	}
+
+	for _, tc := range test_cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.seqStr, tc.seq.String())
+		})
 	}
 }

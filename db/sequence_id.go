@@ -52,29 +52,34 @@ func (s SequenceID) String() string {
 	return s.intSeqToString()
 }
 
+// intSeqToString implements the formatting rules documented on String() above.
 func (s SequenceID) intSeqToString() string {
-
-	if s.LowSeq > 0 {
+	// LowSeq is omitted from the output here for two independent reasons: it's zero (there's
+	// nothing to report), or it's stale - greater than Seq. LowSeq is stale when this entry is a
+	// previously-skipped sequence being delivered after the feed's lowest contiguous sequence has
+	// already moved past it, so including it here would misrepresent this entry's position.
+	// TriggeredBy, if set, reflects an in-progress channel backfill and is unrelated to which of
+	// those two reasons applies.
+	if s.LowSeq == 0 || s.Seq < s.LowSeq {
 		if s.TriggeredBy > 0 {
-			if s.TriggeredBy < s.LowSeq || s.Seq < s.LowSeq {
-				return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
-			}
-			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
-		} else {
-			if s.LowSeq < s.Seq {
-				return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
-			} else {
-				return strconv.FormatUint(s.Seq, 10)
-			}
-
+			return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
 		}
-	} else if s.TriggeredBy > 0 {
-		return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
-	} else {
 		return strconv.FormatUint(s.Seq, 10)
 	}
+
+	// From here, LowSeq is non-zero and still relevant (not stale).
+	if s.TriggeredBy > 0 {
+		return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
+	}
+
+	if s.LowSeq < s.Seq {
+		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+	}
+	return strconv.FormatUint(s.Seq, 10)
 }
 
+// seqStr converts a decoded JSON sequence value - a string or json.Number - to its string form,
+// for use with ParseJSONSequenceID/ParsePlainSequenceID. Returns "" for any other type.
 func seqStr(ctx context.Context, seq any) string {
 	switch seq := seq.(type) {
 	case string:
@@ -98,6 +103,9 @@ func ParsePlainSequenceID(str string) (s SequenceID, err error) {
 	return parseIntegerSequenceID(str)
 }
 
+// parseIntegerSequenceID parses a colon-delimited sequence string into a SequenceID. A single
+// component is Seq; two components are TriggeredBy:Seq; three are LowSeq:TriggeredBy:Seq. An
+// empty string returns a zero-value SequenceID.
 func parseIntegerSequenceID(str string) (SequenceID, error) {
 	if str == "" {
 		return SequenceID{}, nil
@@ -136,6 +144,9 @@ func parseIntegerSequenceID(str string) (SequenceID, error) {
 	return s, nil
 }
 
+// ParseIntSequenceComponent parses a single colon-delimited component of a sequence string. When
+// allowEmpty is true, an empty component parses as 0 instead of returning an error - used for the
+// optional TriggeredBy component in the LowSeq:TriggeredBy:Seq form (e.g. "5::10").
 func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error) {
 	value := uint64(0)
 	if allowEmpty && component == "" {
@@ -146,6 +157,8 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 
 }
 
+// MarshalJSON implements json.Marshaler, encoding a SequenceID via String() when TriggeredBy or
+// LowSeq is set (any compound form), or as a bare integer for a simple sequence.
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
 	if s.TriggeredBy > 0 || s.LowSeq > 0 {
@@ -156,10 +169,13 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 
 }
 
+// UnmarshalJSON implements json.Unmarshaler for SequenceID.
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
 	return s.unmarshalIntSequence(data)
 }
 
+// unmarshalIntSequence parses a SequenceID from JSON data that may be either a quoted string
+// (e.g. `"5:10"`) or a bare JSON number (e.g. `10`).
 func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	var raw string
 	err := base.JSONUnmarshal(data, &raw)
@@ -172,6 +188,8 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 
 }
 
+// SafeSequence returns the safe sequence after which the changes have to be sent. If LowSeq is
+// set, then LowSeq is the SafeSequence, since it's the last contiguous sequence; else it's Seq.
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 {
 		//if s.LowSeq < s.Seq {
@@ -184,6 +202,8 @@ func (s SequenceID) SafeSequence() uint64 {
 	}
 }
 
+// IsNonZero reports whether the sequence's Seq value is non-zero. TriggeredBy and LowSeq are not
+// considered.
 func (s SequenceID) IsNonZero() bool {
 	return s.Seq > 0
 }

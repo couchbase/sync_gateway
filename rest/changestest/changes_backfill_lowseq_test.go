@@ -19,9 +19,15 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestChangesBackfillContinuationSkippedByCompoundLowSeq proves finding #1: a limit-paginated
-// backfill that CONTINUES on a follow-up request skips backfill docs because the compound
-// since starts the channel query at SafeSequence()=LowSeq.
+// TestChangesBackfillContinuationSkippedByCompoundLowSeq covers CBG-5429 finding #1: a
+// limit-paginated backfill that continues on a follow-up request must not skip pending backfill
+// docs because of a compound since value carrying LowSeq.
+//
+// The since value produced mid-backfill here has Seq < LowSeq, so intSeqToString drops LowSeq
+// from the wire representation (see the String() doc comment in db/sequence_id.go) - the compound
+// "LowSeq:TriggeredBy:Seq" form is never actually sent to the client for this data layout. This
+// test verifies the resulting since value still resumes the backfill correctly and delivers the
+// pending doc.
 func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	pendingMaxWait := uint32(5) // promote pending sequences to the skipped queue quickly
@@ -70,54 +76,36 @@ func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	rt.WaitForPendingChanges()
 
-	// REQ1: limit=2 splits the DEF backfill mid-stream (sends doc-2, doc-3). Its last_seq is a
-	// compound {LowSeq, TriggeredBy, Seq} with LowSeq(5) >= Seq — the corner CBG-5429 changed.
+	// REQ1: limit=2 splits the DEF backfill mid-stream (sends doc-2, doc-3).
 	req1 := rt.PostChanges("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":"%s","limit":2}`, initial.Last_Seq.String()), "sg-user")
 	compound := req1.Last_Seq
-
-	/*
-		>>>>>>>>>>>>>>>>>>>>>>>
-		**NOTE**: perform the assertions for compound sequence in the branch and not in main
-		>>>>>>>>>>>>>>>>>>>>>>>
-	*/
-
-	// **NOTE**: Comment this code block in main
-	//assert.Equal(t, "5:10:3", compound.String())
 	assert.Equal(t, "10:3", compound.String())
-	//require.Truef(t, compound.LowSeq != 0, "REQ1 last_seq should carry LowSeq while the skip is active; got %q", compound.String())
 	require.Truef(t, compound.TriggeredBy != 0, "REQ1 last_seq should be mid-backfill (TriggeredBy set); got %q", compound.String())
-	//require.Truef(t, compound.LowSeq >= compound.Seq, "the affected corner is LowSeq >= Seq; got %q", compound.String())
 
-	// The string OLD code would have emitted for the same value: LowSeq dropped => "TriggeredBy:Seq".
-	oldSince := fmt.Sprintf("%d:%d", compound.TriggeredBy, compound.Seq)
-
-	// Resolve the skip so the feed's lowSequence changes; the client replays the compound since
-	// it just received. changes.go:851 will now NOT zero the LowSeq (it no longer matches lowSequence).
+	// Resolve the skip so the feed's lowSequence changes; the client replays the since it just
+	// received.
 	db.WriteDirect(t, collection, []string{"ABC"}, 6)
 	rt.WaitForSequenceNotSkipped(6)
 	rt.WaitForPendingChanges()
 
-	// REQ2: continue the backfill with the compound since. CONTROL: identical feed state, but with
-	// the old-serialization since (LowSeq dropped) — which still delivers the pending backfill doc.
-
-	// **NOTE**: Comment this line in main
+	// REQ2: continue the backfill with the since value from REQ1. The pending DEF backfill doc
+	// (doc-4) must still be delivered.
 	req2 := rt.PostChanges("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":"%s","limit":20}`, compound.String()), "sg-user")
-	fmt.Println("req", req2.Results)
-	control := rt.PostChanges("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":"%s","limit":20}`, oldSince), "sg-user")
-	fmt.Println("old", control.Results)
 
 	delivered := changeDocIDSet(req1, req2)
-	require.Truef(t, changesHaveDoc(control, "doc-4"),
-		"control (old since %q) should deliver the pending DEF backfill doc-4; got %v", oldSince, changeDocIDs(control))
-	// **NOTE**: Comment this line in main
 	require.Truef(t, delivered["doc-4"],
-		"FINDING #1: DEF backfill doc-4 was skipped across the paginated compound-since requests (compound since=%q; REQ1=%v REQ2=%v)",
+		"DEF backfill doc-4 was skipped across the paginated since requests (since=%q; REQ1=%v REQ2=%v)",
 		compound.String(), changeDocIDs(req1), changeDocIDs(req2))
 }
 
-// TestChangesBackfillGrantSuppressedByCompoundLowSeq proves finding #2: a second channel's
-// FRESH backfill is suppressed because the compound since flips backfillRequired
-// (changes.go:929) to false, so that channel is queried from SafeSequence()=LowSeq.
+// TestChangesBackfillGrantSuppressedByCompoundLowSeq covers CBG-5429 finding #2: a fresh backfill
+// for a channel granted access while LowSeq mode is active must not be suppressed by the compound
+// since.
+//
+// As with TestChangesBackfillContinuationSkippedByCompoundLowSeq, the since value produced here
+// has Seq < LowSeq, so intSeqToString drops LowSeq from the wire representation and the compound
+// "LowSeq:TriggeredBy:Seq" form is never sent to the client for this data layout. This test
+// verifies the resulting since value still delivers the GHI backfill doc.
 func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 	pendingMaxWait := uint32(5)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
@@ -161,44 +149,18 @@ func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 	rt.WaitForSequenceNotSkipped(9)
 
 	initChanges := rt.GetChanges("/{{.keyspace}}/_changes?limit=1", "sg-user")
-
-	/*
-		>>>>>>>>>>>>>>>>>>>>>>>
-		**NOTE**: use "7:4:2" in the branch containing the fix for seqID, and use "4:2" in the main branch
-		>>>>>>>>>>>>>>>>>>>>>>>
-	*/
-
-	// **NOTE**: Comment this line while running on main
-	//assert.Equal(t, "7:4:2", initChanges.Last_Seq.String())
 	assert.Equal(t, "4:2", initChanges.Last_Seq.String())
-	// **NOTE**: Comment this line while running on the branch
-	//assert.Equal(t, "4:2", initChanges.Last_Seq.String())
 
 	// Resolve the skip so the feed's lowSequence no longer matches the since's LowSeq=7
 	// (otherwise changes.go:851 zeroes it and the flip is masked). The client legitimately
-	// replays a "7:4:2" since it received while the skip was still active.
+	// replays the "4:2" since it received while the skip was still active.
 	db.WriteDirect(t, collection, []string{"ABC"}, 8)
 	rt.WaitForSequenceNotSkipped(8)
 	rt.WaitForPendingChanges()
 
-	// "7:4:2" = {LowSeq:7, TriggeredBy:4 (mid DEF backfill), Seq:2} — the compound since the new
-	// code emits. "4:2" = what the old code emitted for the same state (LowSeq dropped).
-
-	// **NOTE**: Comment this line while running on main
-	//bug := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"7:4:2"}`, "sg-user")
-	bug := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"4:2"}`, "sg-user")
-	control := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"4:2"}`, "sg-user")
-
-	// **NOTE**: Comment this line while running on main
-	fmt.Println("bug", bug.Results)
-	fmt.Println("control", control.Results)
-
-	require.Truef(t, changesHaveDoc(control, "doc-3"),
-		"control (old since \"4:2\") should deliver the GHI backfill doc-3; got %v", changeDocIDs(control))
-	// **NOTE**: Comment this line while running on main
-	require.Truef(t, changesHaveDoc(bug, "doc-3"),
-		"FINDING #2: GHI backfill doc-3 was skipped with the compound since \"7:4:2\" (got %v) — its fresh backfill was suppressed by the backfillRequired flip",
-		changeDocIDs(bug))
+	changes := rt.PostChanges("/{{.keyspace}}/_changes", `{"since":"4:2"}`, "sg-user")
+	require.Truef(t, changesHaveDoc(changes, "doc-3"),
+		"GHI backfill doc-3 was skipped for since \"4:2\"; got %v", changeDocIDs(changes))
 }
 
 func changeDocIDs(cr rest.ChangesResults) []string {
