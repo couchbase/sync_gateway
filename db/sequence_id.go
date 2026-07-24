@@ -192,11 +192,7 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 // set, then LowSeq is the SafeSequence, since it's the last contiguous sequence; else it's Seq.
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 {
-		//if s.LowSeq < s.Seq {
 		return s.LowSeq
-		//} else {
-		//	return s.Seq
-		//}
 	} else {
 		return s.Seq
 	}

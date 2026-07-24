@@ -215,7 +215,7 @@ func TestCompareSequenceIDsLowSeq(t *testing.T) {
 // LowSeq::Seq, the full LowSeq:TriggeredBy:Seq compound, and the corner case where Seq < LowSeq
 // causes LowSeq to be dropped even though TriggeredBy is set.
 func TestIntSeqToString(t *testing.T) {
-	test_cases := []struct {
+	testCases := []struct {
 		name   string
 		seq    SequenceID
 		seqStr string
@@ -247,7 +247,7 @@ func TestIntSeqToString(t *testing.T) {
 		},
 	}
 
-	for _, tc := range test_cases {
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.seqStr, tc.seq.String())
 		})

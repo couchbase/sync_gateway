@@ -107,6 +107,7 @@ func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 // "LowSeq:TriggeredBy:Seq" form is never sent to the client for this data layout. This test
 // verifies the resulting since value still delivers the GHI backfill doc.
 func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
 	pendingMaxWait := uint32(5)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {channel(doc.channels);}`,
@@ -214,6 +215,7 @@ func changesHaveDoc(cr rest.ChangesResults, id string) bool {
 //	9    ABC
 //	10+  (user update granting DEF access, after allocator is advanced)
 func TestMultiChannelChangesWithTriggeredSequence(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyHTTP)
 
 	// MaxWaitPending: reduce from the 5 s default to 5 ms so the cache promotes pending
