@@ -31,9 +31,6 @@ These tools are configured and run via the modern **Astral Python ecosystem (`uv
   uvx ty check
   ```
 
-  ```
-
-  ```
 
 - **Lint Python files (Ruff):**
 

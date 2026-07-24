@@ -46,7 +46,7 @@ from tasks import (
 )
 
 # Don't validate HTTPS by default.
-# mypy 1.19.1 has mismatched types for these functions
+# The type checker has mismatched types for these functions
 ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
 # Collects the following info from Sync Gateway
