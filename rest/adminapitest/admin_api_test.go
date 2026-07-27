@@ -3359,13 +3359,18 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 	_ = rt.Bucket()
 	defer rt.Close()
 
+	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
+
 	tests := []struct {
 		name         string
-		syncFunction string
+		expected     string
+		asJSONString bool
 	}{
 		{
 			name: "single-quoted sync function",
-			syncFunction: `function(doc, oldDoc, meta) {
+			expected: `function(doc, oldDoc, meta) {
 							var owner = doc._deleted ? oldDoc.owner : doc.owner;
 							requireUser(owner);
 							var listChannel = 'lists.' + doc._id;
@@ -3376,43 +3381,67 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 						}`,
 		},
 		{
-			name:         "sync function with a literal backtick character",
-			syncFunction: "function(doc) {\n\tvar listChannel = 'lists.`' + doc._id;\n\tchannel(listChannel);\n}",
+			name:         "sync function with a literal backtick character, already JSON-quoted",
+			expected:     "function(doc) {\n\tvar listChannel = 'lists.`' + doc._id;\n\tchannel(listChannel);\n}",
+			asJSONString: true,
 		},
 		{
-			name:         "sync function with multiple literal backticks",
-			syncFunction: "function(doc) {\n\tvar s = '`a`' + '`b`' + doc._id;\n\tchannel(s);\n}",
+			name:         "sync function with multiple literal backticks, already JSON-quoted",
+			expected:     "function(doc) {\n\tvar s = '`a`' + '`b`' + doc._id;\n\tchannel(s);\n}",
+			asJSONString: true,
 		},
 		{
-			name:         "sync function with an escaped backtick",
-			syncFunction: "function(doc) {\n\tvar s = 'it\\`s a test';\n\tchannel(s);\n}",
+			name:     "sync function with an escaped backtick, in legacy backquote syntax",
+			expected: "function(doc) {\n\tvar s = 'it\\`s a test';\n\tchannel(s);\n}",
 		},
 		{
-			name:         "sync function with backticks in a comment and double quotes",
-			syncFunction: "function (doc, oldDoc, meta) {\n  // Test`ing` comment \n  channel(\"airline\");\n}",
+			name:         "sync function with backticks in a comment and double quotes, already JSON-quoted",
+			expected:     "function (doc, oldDoc, meta) {\n  // Test`ing` comment \n  channel(\"airline\");\n}",
+			asJSONString: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Start each subtest from a clean slate.
-			_ = rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+			var rawSync string
+			if test.asJSONString {
+				b, err := base.JSONMarshal(test.expected)
+				require.NoError(t, err)
+				rawSync = string(b)
+			} else {
+				rawSync = "`" + test.expected + "`"
+			}
 
-			dbConfig := rt.NewDbConfig()
-			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(t, rt.TestBucket, 1, &test.syncFunction, nil)
+			dbConfig := fmt.Sprintf(`{
+    "index": {"num_replicas": 0},
+    "bucket": "%s",
+    "scopes": {
+        "%s": {
+            "collections": {
+                "%s": {
+                    "sync": %s
+                }
+            }
+        }
+    }
+}`, rt.Bucket().GetName(), scopeName, collectionName, rawSync)
 
-			resp := rt.CreateDatabase("db", dbConfig)
+			defer func() {
+				if resp := rt.SendAdminRequest(http.MethodGet, "/db/", ""); resp.Code == http.StatusOK {
+					resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+					rest.RequireStatus(t, resp, http.StatusOK)
+				}
+			}()
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
-			resp = rt.UpsertDbConfig("db", dbConfig)
-			rest.RequireStatus(t, resp, http.StatusCreated)
-
-			resp = rt.ReplaceDbConfig("db", dbConfig)
+			resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_config/sync", "")
 			rest.RequireStatus(t, resp, http.StatusOK)
-			require.Equal(t, test.syncFunction, resp.Body.String())
+			require.Equal(t, test.expected, resp.Body.String())
 		})
 	}
 }

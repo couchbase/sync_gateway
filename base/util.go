@@ -1085,6 +1085,9 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 	out := make([]byte, 0, len(data))
 
 	inString := false
+	// Once a search for a closing backquote fails, no later search can succeed either: that search
+	// already scanned every remaining byte through EOF.
+	noMoreClosers := false
 	for i := 0; i < len(data); i++ {
 		c := data[i]
 
@@ -1106,9 +1109,12 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 			inString = true
 			out = append(out, c)
 		case '`':
-			end := closingBackquote(data, i+1)
+			end := -1
+			if !noMoreClosers {
+				end = closingBackquote(data, i+1)
+			}
 			if end < 0 {
-				// No closing backquote - leave as-is.
+				noMoreClosers = true
 				out = append(out, c)
 				continue
 			}

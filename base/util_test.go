@@ -489,6 +489,37 @@ func FuzzConvertBackQuotedStringsNested(f *testing.F) {
 	})
 }
 
+// BenchmarkConvertBackQuotedStrings covers a plain baseline, a large legitimately-backquoted value,
+// and an adversarial shape with many escaped, never-closing backquotes.
+func BenchmarkConvertBackQuotedStrings(b *testing.B) {
+	benchmarks := []struct {
+		name string
+		data []byte
+	}{
+		{
+			name: "plain JSON, no backquotes",
+			data: []byte(strings.Repeat(`{"a": "b"}, `, 10000) + `{"z": "end"}`),
+		},
+		{
+			name: "single large backquoted value",
+			data: []byte(`{"sync": ` + "`" + strings.Repeat("channel(doc.type);\n", 10000) + "`" + `}`),
+		},
+		{
+			name: "many escaped backquotes, unclosed",
+			data: []byte(`{"sync": ` + "`" + `function(doc, oldDoc, meta) {` + "\n" +
+				strings.Repeat("if (/\\`/.test(doc._id)) { channel('has_tick'); }\n", 10000)),
+		},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			for b.Loop() {
+				ConvertBackQuotedStrings(bm.data)
+			}
+		})
+	}
+}
+
 func TestCouchbaseUrlWithAuth(t *testing.T) {
 
 	// normal bucket
