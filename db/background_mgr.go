@@ -439,7 +439,7 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 	return b.terminator, nil
 }
 
-// updateTerminalStatus is used to update the status doc after the completion of background process
+// updateTerminalStatus persists the current (terminal) status and removes the heartbeat doc to allow a subsequent run.
 func (b *BackgroundManager[O]) updateTerminalStatus(ctx context.Context) {
 	if b.mode() != backgroundManagerModeLocal {
 		err := b.UpdateStatusClusterAware(ctx)
