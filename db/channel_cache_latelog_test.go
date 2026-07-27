@@ -838,9 +838,9 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		time.Sleep(2 * time.Millisecond) // let the entries exceed LateLogAge
 		sc.pruneLateLogAge(ctx)
 		require.Equal(t, int64(1), sc.lateLogCount(), "age prune collapses to the tail but always keeps one entry")
-		// The surviving tail entry here is a real late arrival (seq 10), so it is counted: the stat lands at one,
-		// never negative, and matches the counted queue.
-		require.Equal(t, int64(1), cacheStats.NumEntriesInLateFeed.Value(), "stat must never go negative")
+		// The surviving tail entry is now the always-retained placeholder (the seq-0 sentinel was pruned off the
+		// front), so it is not counted: the gauge collapses to zero, never negative, and matches the counted queue.
+		require.Equal(t, int64(0), cacheStats.NumEntriesInLateFeed.Value(), "stat collapses to zero (only the retained placeholder remains) and never goes negative")
 		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value())
 	})
 }

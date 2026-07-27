@@ -432,8 +432,9 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 	c.validFromLock.Unlock()
 
 	// If another goroutine won the insert race our freshly-built cache is discarded, but it never contributed to
-	// NumEntriesInLateFeed: initializeLateLogs doesn't count the seq-0 sentinel, and since the discarded instance
-	// was never in channelCaches no late arrival could have been added to it. So there's nothing to release here.
+	// NumEntriesInLateFeed: initializeLateLogs doesn't count the retained placeholder, and since the discarded
+	// instance was never in channelCaches no late arrival could have been added to it. So there's nothing to
+	// release here.
 
 	singleChannelCache = AsSingleChannelCache(ctx, cacheValue)
 
@@ -586,8 +587,8 @@ func (c *channelCacheImpl) compactChannelCache(ctx context.Context) {
 
 		cacheSize = c.channelCaches.RemoveElements(evictionElements)
 
-		// Evicted channel caches take their lateLogs entries (including the sentinel) with them, and those
-		// entries never go through the per-entry purge paths, so release each cache's contribution to the
+		// Evicted channel caches take their lateLogs entries (including the retained placeholder) with them, and
+		// those entries never go through the per-entry purge paths, so release each cache's contribution to the
 		// late-feed gauge here to stop NumEntriesInLateFeed from leaking upward as channels are evicted.
 		// releaseLateLogsForEviction reads-and-decrements atomically under the cache's lateLogLock (and runs
 		// after RemoveElements, so any add that landed just before removal is captured by the count read),

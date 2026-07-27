@@ -719,10 +719,11 @@ func (l *lateLogEntry) getListenerCount() (count uint64) {
 }
 
 // Initialize the late-arriving log queue with a zero entry, used to track listeners.  This is needed
-// to support purging later entries once everyone has seen them.  The seq-0 sentinel is channel-cache
-// infrastructure (an empty LogEntry used only for listener tracking), not a real late arrival, so it is
-// deliberately not counted in NumEntriesInLateFeed - otherwise the gauge would never fall below the number of
-// live channel caches and misrepresent the actual late-arriving backlog.
+// to support purging later entries once everyone has seen them.  The queue always retains exactly one front
+// entry as listener-tracking infrastructure - the seq-0 sentinel initially, then (once the sentinel is
+// purged/pruned off the front) whichever late entry survives as the tail.  That single retained entry, whatever
+// it is, is deliberately not counted in NumEntriesInLateFeed: the gauge tracks len(lateLogs)-1, the real
+// late-arriving backlog, so it can fall to zero rather than carrying a floor of one per live channel cache.
 func (c *singleChannelCacheImpl) initializeLateLogs() {
 	log := &LogEntry{Sequence: 0}
 	// Stamp arrived so the sentinel ages like any other entry.  Left unset (zero time) it would read as
@@ -842,9 +843,9 @@ func (c *singleChannelCacheImpl) AddLateSequence(change *LogEntry) {
 	c._purgeLateLogEntries()
 }
 
-// lateLogCount returns the number of entries currently held in this channel's lateLogs, including the seq-0
-// sentinel.  This is the raw queue length (what the length cap bounds); for the value that contributes to
-// NumEntriesInLateFeed - which excludes the sentinel - use countedLateLogCount.
+// lateLogCount returns the number of entries currently held in this channel's lateLogs, including the
+// always-retained front placeholder.  This is the raw queue length (what the length cap bounds); for the value
+// that contributes to NumEntriesInLateFeed - which excludes that placeholder - use countedLateLogCount.
 func (c *singleChannelCacheImpl) lateLogCount() int64 {
 	c.lateLogLock.RLock()
 	defer c.lateLogLock.RUnlock()
@@ -852,33 +853,33 @@ func (c *singleChannelCacheImpl) lateLogCount() int64 {
 }
 
 // countedLateLogCount returns the number of lateLogs entries that contribute to NumEntriesInLateFeed - the real
-// late-arriving entries, excluding the seq-0 sentinel.  Used when releasing a cache's contribution to the gauge
-// (eviction, or a discarded insert-race loser) without going through the per-entry purge paths.
+// late-arriving entries, excluding the single always-retained front placeholder.  Used when releasing a cache's
+// contribution to the gauge (eviction) without going through the per-entry purge paths, and by tests asserting
+// the gauge matches the queue.
 func (c *singleChannelCacheImpl) countedLateLogCount() int64 {
 	c.lateLogLock.RLock()
 	defer c.lateLogLock.RUnlock()
 	return c._countedLateLogs()
 }
 
-// _countedLateLogs returns the number of lateLogs entries counted in NumEntriesInLateFeed, excluding the seq-0
-// sentinel.  The sentinel, when present, is always the front entry (it is created first and the purge paths only
-// drop from the front), so this is the queue length less one when the front is the sentinel.  Caller must hold
-// lateLogLock.
+// _countedLateLogs returns the number of lateLogs entries counted in NumEntriesInLateFeed - the real late
+// arrivals, excluding the single always-retained front placeholder.  The purge/prune paths always keep at
+// least one entry to track listeners (the seq-0 sentinel at first, then whichever entry survives as the tail
+// once the sentinel is dropped), and that retained entry is not a real backlog item, so the counted total is
+// the queue length less one (zero when the queue is empty after eviction).  Caller must hold lateLogLock.
 func (c *singleChannelCacheImpl) _countedLateLogs() int64 {
-	n := int64(len(c.lateLogs))
-	if n > 0 && c.lateLogs[0].logEntry.Sequence == 0 {
-		n--
+	if n := int64(len(c.lateLogs)); n > 0 {
+		return n - 1
 	}
-	return n
+	return 0
 }
 
-// _dropLeadingLateLog removes the front entry of lateLogs, decrementing NumEntriesInLateFeed unless the dropped
-// entry is the seq-0 sentinel (infrastructure, not counted - see initializeLateLogs).  Caller must hold
-// lateLogLock and have already confirmed len(c.lateLogs) > 0.
+// _dropLeadingLateLog removes the front entry of lateLogs and decrements NumEntriesInLateFeed.  The purge/prune
+// callers only drop from the front while len(c.lateLogs) > 1, so the always-retained placeholder is never
+// dropped and the entry removed here is always a counted late arrival - keeping the gauge equal to
+// len(lateLogs)-1.  Caller must hold lateLogLock and have already confirmed len(c.lateLogs) > 1.
 func (c *singleChannelCacheImpl) _dropLeadingLateLog() {
-	if c.lateLogs[0].logEntry.Sequence != 0 {
-		c.cacheStats.NumEntriesInLateFeed.Add(-1)
-	}
+	c.cacheStats.NumEntriesInLateFeed.Add(-1)
 	c.lateLogs = c.lateLogs[1:]
 }
 
