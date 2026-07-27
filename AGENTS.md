@@ -4,33 +4,21 @@ Sync Gateway is a horizontally scalable web server that securely manages access 
 
 ## Build & Test
 
-- Git: `main` branch is the current in-development version. Released versions and backports end up in `release/x.y.z` branches. Feature branches are typically just named `CBG-xxxx` after the Jira ticket.
-- Build: `go build -o bin/sync_gateway .`
-- Building or testing EE (requires private repo SSH access) must use the `cb_sg_enterprise, cb_sg_devmode` build tags for all Go commands. E.g: `go build -tags cb_sg_enterprise,cb_sg_devmode .`
-- Run all unit tests (Rosmar/in-memory, no Couchbase Server): `go test ./...`
-- Run a single test: `go test -run ^TestFunctionName$ github.com/couchbase/sync_gateway/rest`
-- Run a single package: `go test github.com/couchbase/sync_gateway/rest`
-- Run integration tests (requires local Couchbase Server): `SG_TEST_BACKING_STORE=Couchbase go test ./...`
-- Run a specific benchmark: `go test -bench=^BenchmarkSomething$ -run=- ./...`
-- Lint: `golangci-lint run`
-- Python tooling lint/typecheck: `uv run ruff check tools/ tools-tests/` and `uvx ty check`
-- Python tests: `uv run pytest`
+```sh
+go build -o bin/sync_gateway .   # Community Edition (default)
+go test ./...                    # unit tests, in-memory Rosmar backing store
+```
+
+- **Enterprise Edition** builds and tests need the `cb_sg_enterprise,cb_sg_devmode` build tags on every Go command, plus SSH access to a private repo — see [docs/BUILD.md](docs/BUILD.md). Don't add these tags unless you specifically intend to test EE.
+- **Integration tests** against a real Couchbase Server, the `SG_TEST_*` environment variables, and the bucket pool are covered in [docs/TESTING.md](docs/TESTING.md).
+- **Python tooling** (`tools/`): See [tools/AGENTS.md](tools/AGENTS.md).
+- **Lint**: CI enforces `.golangci-strict.yml`; reproduce it locally with `pre-commit run golangci-lint --all-files`. Some conventions are enforced here rather than written down — the linter message explains the fix.
+
+Git: `main` is the current in-development version. Released versions and backports live in `release/x.y.z` branches. Feature branches are named `CBG-xxxx` after the Jira ticket.
 
 ## Architecture Overview
 
 The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime object hierarchy is `ServerContext` → `DatabaseContext` → `DatabaseCollection`. Each HTTP request is handled by a short-lived `handler` struct; BLIP (WebSocket) replication uses `BlipSyncContext`/`blipHandler`. Three listener ports: Public (:4984), Admin (:4985), Metrics (:4986).
-
-| Package | Purpose |
-|---------|---------|
-| `rest/` | REST API handlers, routing (gorilla/mux), config management, server context |
-| `db/` | Core database logic: CRUD, documents, revisions, changes feed, BLIP sync, replication, import |
-| `base/` | Shared utilities: logging, bucket abstraction, stats, DCP, test infrastructure |
-| `auth/` | Authentication: users, roles, sessions, OIDC, JWT |
-| `channels/` | Channel mapping, sync function runner, channel sets |
-| `xdcr/` | Cross-datacenter replication (CBS and Rosmar backends) |
-| `topologytest/` | Multi-actor topology integration tests |
-| `service/` | OS service install/upgrade scripts |
-| `tools/` | Python tooling & diagnostics (see [tools/AGENTS.md](tools/AGENTS.md)) |
 
 ## Key Concepts
 
@@ -43,98 +31,33 @@ The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime objec
 - **Caching** — `RevisionCache` (LRU, sharded) + `ChannelCache` (per-channel change feeds).
 - **Database states** — Offline → Starting → Online → Stopping (+ Resyncing).
 - **Configuration** — `StartupConfig` (server-level, file/CLI) vs `DbConfig` (per-database); persistent config stored in Couchbase Server.
+- **Editions** — CE is the default; EE is gated behind the `cb_sg_enterprise` build tag. Edition-specific implementations live in paired `*_ce.go` / `*_ee.go` files.
 
-## Key Files
+## Conventions
 
-| File | Contents |
-|------|----------|
-| `rest/handler.go` | REST handler struct, privilege levels |
-| `rest/routing.go` | Route registration (Gorilla mux) |
-| `rest/server_context.go` | ServerContext |
-| `rest/config.go` | DbConfig |
-| `rest/config_startup.go` | StartupConfig |
-| `db/database.go` | DatabaseContext, database states |
-| `db/database_collection.go` | DatabaseCollection, DatabaseCollectionWithUser |
-| `db/document.go` | Document, SyncData, revision structures |
-| `db/blip_sync_context.go` | BlipSyncContext (BLIP session) |
-| `db/blip_handler.go` | blipHandler (per-message BLIP handling) |
-| `db/active_replicator.go` | ActiveReplicator (inter-SG replication) |
-| `db/changes.go` | Changes feed |
-| `channels/sync_runner.go` | Sync function execution |
-| `base/dcp_receiver.go` | DCP feed processing |
+### JSON
 
-## Editions: CE vs EE
-
-Sync Gateway ships two editions controlled by the `cb_sg_enterprise` build tag:
-- **CE** (Community Edition): default, no build tag needed. Files: `*_ce.go`
-- **EE** (Enterprise Edition): `go build -tags cb_sg_enterprise`. Files: `*_ee.go`
-
-Never add the `cb_sg_enterprise` tag to test commands unless intentionally testing EE features.
-
-## Conventions & Patterns
-
-### Go style
-- Use the Go version declared in `go.mod`. Tabs for indentation (standard `goimports`).
-- 120-char soft line limit (`.editorconfig`).
-- Use `github.com/stretchr/testify` for assertions (`require` for fatal, `assert` for non-fatal).
-- Use stdlib and base utilities where possible unless a module is already referenced by `go.mod`.
-- JSON marshaling uses `base.JSONMarshal`, `base.JSONUnmarshal`, and `base.JSONDecoder` wrappers — never `encoding/json` directly. (EE builds use `jsoniter` under the hood; CE uses the standard library.)
+Call `base.JSONMarshal`, `base.JSONUnmarshal`, and `base.JSONDecoder` rather than `json.Marshal`, `json.Unmarshal`, and `json.NewDecoder` — EE swaps in `jsoniter` underneath, and direct calls silently bypass that. Importing `encoding/json` for types such as `json.RawMessage` or to implement `json.Marshaler` is fine and common.
 
 ### Logging
-- Use `base.InfofCtx`, `base.WarnfCtx`, `base.DebugfCtx`, `base.TracefCtx` — never `fmt.Printf` or `log.Printf`.
-- Wrap User Data (doc IDs, usernames, PII) with `base.UD()`.
-- Wrap Metadata (db names, config keys) with `base.MD()`.
 
-### Testing patterns
-- Each top-level package has a `main_test.go` with `TestMain` that sets up `TestBucketPool`.
-- Default test backing store is **Rosmar** (in-memory). Set `SG_TEST_BACKING_STORE=Couchbase` for CBS.
-- REST tests use `rest.NewRestTester(t, &RestTesterConfig{...})`.
-- Bucket tests use `base.GetTestBucket(t)`.
-- Tests run with `-shuffle=on` by default.
-- Go tests timeout at 10 minutes per package, but should be increased to 45 minutes if using `SG_TEST_BACKING_STORE=Couchbase`
-- If running more than one test, pipe the test output to a temp file for later analysis and ONLY READ SMALL PARTS OF THIS FILE in the event of a failure, it will be very large! Make sure to clean up the temp log file once you're done with it too.
+Use the context-aware wrappers — `base.InfofCtx`, `base.WarnfCtx`, `base.DebugfCtx`, `base.TracefCtx` — so log keys and redaction are applied. Wrap User Data (doc IDs, document contents, usernames, PII) in `base.UD()` and metadata (db names, config keys) in `base.MD()`. Never log credentials, tokens, or keys. Auth flows are basic auth, session-based auth, and OIDC (`auth/oidc.go`).
+
+### Testing
+
+Rosmar (in-memory) is the default backing store.
+Assertions use the wrapper packages `github.com/couchbase/sync_gateway/testing/require` and `github.com/couchbase/sync_gateway/testing/assert` (thin wrappers around testify) — `require` to stop the test, `assert` to continue.
+REST-level tests use `rest.NewRestTester(t, &rest.RestTesterConfig{...})`; bucket-level tests use `base.GetTestBucket(t)`.
+Rosmar is not fully feature-compatible with Couchbase Server, so anything leaning on server behaviour (DCP, XDCR, GSI, xattrs, collections) should be exercised in both modes.
 
 ### REST API changes
-- When modifying REST handlers, query parameters, or response schemas, update the OpenAPI specs in `docs/api/`.
 
-### Code review conventions
-- Use `context.WithCancelCause` instead of `context.WithCancel` so cancellation reasons propagate.
-- Prefer expressing loop exit conditions in the `for` declaration itself rather than relying on `break` inside the body; ensure loops have a clear termination condition.
-- Comments should explain *why* / intent, not restate *what* the code does.
-- Watch for concurrency hazards (mutex contention, races) when reviewing.
+Changing a handler, query parameter, or response schema means updating the OpenAPI specs in [docs/api/](docs/api/README.md). `redocly lint` and `yamllint` gate this in both pre-commit and CI.
 
 ### Xattrs are mandatory (SG 4.0+)
-- Xattr mode is the only supported mode on `main`. New code must assume xattrs are enabled — do not add `UseXattrs` checks, non-xattr write/read branches, or config surfaces that let xattr-mode be turned off.
-- The one preserved carve-out is **read-side migration of pre-existing non-xattr documents** already present in a bucket: that gradual-migration path must still work so older data is upgraded on access. No new code paths should *produce* non-xattr data.
-- When touching existing `UseXattrs` checks, prefer simplifying toward the xattrs-on branch and deleting the alternative, unless the code is part of the read/migration path described above.
 
-## Security
+Xattr mode is the only supported mode on `main`. New code must assume xattrs are enabled — do not add `UseXattrs` checks, non-xattr write/read branches, or config surfaces that let xattr mode be turned off.
 
-- NEVER log credentials, tokens, or keys.
-- User Data must be redacted via `base.UD()` in all log output.
-- System/Metadata must use `base.MD()`.
-- Auth flows include basic auth, session-based auth, OIDC (`auth/oidc.go`)
+The one preserved carve-out is **read-side migration of pre-existing non-xattr documents** already in a bucket: that gradual-migration path must keep working so older data is upgraded on access. No new code path should *produce* non-xattr data.
 
-## Test Environment Variables
-
-These variables are read by Go test code via `os.Getenv` and work with `go test`.
-
-**Core configuration:**
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `SG_TEST_BACKING_STORE` | Set to `Couchbase` to test against a real CBS cluster instead of Rosmar | Rosmar (in-memory) |
-| `SG_TEST_COUCHBASE_SERVER_URL` | Couchbase Server URL for integration tests | `couchbase://127.0.0.1` |
-
-**Integration test tuning** (only relevant with `SG_TEST_BACKING_STORE=Couchbase`):
-
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `SG_TEST_BUCKET_POOL_SIZE` | Number of buckets to pre-create in the test pool. Single tests usually only need one or two buckets and will speed up testing. Leave this as default if running more than one test. | `4` |
-
-## Gotchas
-
-- EE build requires SSH access to `github.com/couchbaselabs/go-fleecedelta` private repo.
-- Integration tests must always force `-count=1 -p 1` (serial execution) to avoid cross-package interference.
-- Rosmar is an in-memory Couchbase bucket simulator used for unit tests; it lives in `github.com/couchbaselabs/rosmar`.
-  - It does not have 100% feature-parity, so any features heavily using Couchbase-Server should be tested in both modes to ensure compatibility.
+When touching an existing `UseXattrs` check, prefer simplifying toward the xattrs-on branch and deleting the alternative, unless the code is part of the read/migration path above.
