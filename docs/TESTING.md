@@ -119,7 +119,7 @@ EE tests need build tags. See [BUILD.md](BUILD.md).
 Writing tests
 -------------
 
-- Assertions use [testify](https://github.com/stretchr/testify): `require` to stop the test, `assert` to
+- Assertions use the wrapper packages `github.com/couchbase/sync_gateway/testing/require` and `github.com/couchbase/sync_gateway/testing/assert` (thin wrappers around [testify](https://github.com/stretchr/testify)): `require` to stop the test, `assert` to
   continue.
 - REST-level tests use `rest.NewRestTester(t, &rest.RestTesterConfig{...})`.
 - Bucket-level tests use `base.GetTestBucket(t)`.

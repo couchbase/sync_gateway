@@ -45,7 +45,10 @@ Use the context-aware wrappers — `base.InfofCtx`, `base.WarnfCtx`, `base.Debug
 
 ### Testing
 
-Rosmar (in-memory) is the default backing store. Assertions use testify — `require` to stop the test, `assert` to continue. REST-level tests use `rest.NewRestTester(t, &rest.RestTesterConfig{...})`; bucket-level tests use `base.GetTestBucket(t)`. Rosmar is not fully feature-compatible with Couchbase Server, so anything leaning on server behaviour (DCP, XDCR, GSI, xattrs, collections) should be exercised in both modes.
+Rosmar (in-memory) is the default backing store.
+Assertions use the wrapper packages `github.com/couchbase/sync_gateway/testing/require` and `github.com/couchbase/sync_gateway/testing/assert` (thin wrappers around testify) — `require` to stop the test, `assert` to continue.
+REST-level tests use `rest.NewRestTester(t, &rest.RestTesterConfig{...})`; bucket-level tests use `base.GetTestBucket(t)`.
+Rosmar is not fully feature-compatible with Couchbase Server, so anything leaning on server behaviour (DCP, XDCR, GSI, xattrs, collections) should be exercised in both modes.
 
 ### REST API changes
 
