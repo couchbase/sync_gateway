@@ -189,6 +189,10 @@ func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, cal
 
 	casOut, err = lds.dataStore.Update(ctx, k, exp, callback)
 
+	if lds.bucket.consumeOnceUpdateTimeoutKey(k) {
+		return 0, ErrTimeout
+	}
+
 	if postUpdateCb := lds.bucket.getPostUpdateCallback(); postUpdateCb != nil {
 		postUpdateCb(k)
 	}

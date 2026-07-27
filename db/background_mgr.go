@@ -287,12 +287,8 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
-		b.Terminate()
 		b.SetError(err)
 		b.updateTerminalStatus(ctx)
-		if initMode == backgroundManagerInitReset {
-			return base.HTTPErrorf(http.StatusBadRequest, "%w", err)
-		}
 		return err
 	}
 

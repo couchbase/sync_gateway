@@ -1502,12 +1502,12 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
 	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
 
-	// ForceTimeoutErrorOnUpdateKeys returns a timeout error to the caller after the write has actually been sent
-	// to the server - i.e. the write succeeds, but start() still sees an error and returns it, exactly like a
-	// transient bucket blip would. UpdateCallback must also be set for ForceTimeoutErrorOnUpdateKeys to take effect.
+	// ForceTimeoutErrorOnUpdateKeysOnce returns a timeout error to the caller only on the first Update call for
+	// this key - i.e. the write succeeds, but start() still sees an error and returns it, exactly like a
+	// transient bucket blip would. Every call after that behaves normally, so the manager can be reused as-is
+	// for the recovery Start() below without needing a different key or a fresh metadataStore.
 	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{
-		ForceTimeoutErrorOnUpdateKeys: []string{statusDocID},
-		UpdateCallback:                func(key string) {},
+		ForceTimeoutErrorOnUpdateKeysOnce: []string{statusDocID},
 	})
 	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
 
@@ -1534,8 +1534,6 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 		assert.NotEqual(c, BackgroundProcessStateRunning, mgr.GetRunState())
 		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
-
-	mgr.clusterAwareOptions.processSuffix = "multi-persist-pass"
 
 	require.NoError(t, mgr.Start(ctx, nil))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
