@@ -4012,6 +4012,11 @@ func TestDisableXattrs(t *testing.T) {
 
 			dbConfig := rt.NewDbConfig()
 			dbConfig.EnableXattrs = base.Ptr(true)
+			if !persistent {
+				// legacy (non-persistent) config does not inherit bootstrap credentials
+				dbConfig.Username = base.TestClusterUsername()
+				dbConfig.Password = base.TestClusterPassword()
+			}
 
 			rest.RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
 
