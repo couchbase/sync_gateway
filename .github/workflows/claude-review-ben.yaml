@@ -1,0 +1,58 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+name: Claude Review (Ben)
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  # Claude posts as github-actions[bot] (see github_token below) and GitHub does not re-trigger
+  # workflows for events raised by GITHUB_TOKEN, so a run cannot cancel itself with its own status
+  # comment. If this moves to the Claude GitHub App or a PAT, copy droid-review.yml's per-run
+  # suffix for bot actors.
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review-ben:
+    # issue_comment always runs in the base repo with access to secrets, including for comments on
+    # pull requests from forks, so gate on the commenter rather than on the PR head.
+    if: |
+      github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    environment: claude-review-ben
+    permissions:
+      contents: read
+      # Covers both the inline review comments (pulls API) and the tracking comment, which goes
+      # through the issues comments endpoint - that endpoint accepts either issues:write or
+      # pull-requests:write, and the if: above guarantees the target is always a PR. Add
+      # issues:write only if this is ever widened to trigger on non-PR issues.
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Run Claude Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The Claude GitHub App is not installed on this repo, so Claude authenticates to GitHub
+          # with the run's own ephemeral token instead. Comments post as github-actions[bot], and
+          # use_sticky_comment will not work because it looks for the claude[bot] username.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Lets Claude read workflow run status and job logs, so "@claude why did CI fail" can
+          # inspect the actual output rather than guessing from the diff.
+          additional_permissions: |
+            actions: read
