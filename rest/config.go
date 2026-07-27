@@ -1598,7 +1598,7 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 		if err := config.SetupAndValidateLogging(ctx); err != nil {
 			// If we didn't set up logging correctly, we *probably* can't log via normal means...
 			// as a best-effort, last-ditch attempt, we'll log to stderr as well.
-			log.Printf("[ERR] Error setting up logging: %v", err)
+			log.Printf("[ERR] Error setting up logging: %v", err) //nolint:forbidigo // the base loggers are what just failed to initialise
 			return nil, fmt.Errorf("error setting up logging: %v", err)
 		}
 		base.FlushLoggerBuffers()
