@@ -7,30 +7,13 @@ Sync Gateway is a horizontally scalable web server that securely manages access 
 - Git: `main` branch is the current in-development version. Released versions and backports end up in `release/x.y.z` branches. Feature branches are typically just named `CBG-xxxx` after the Jira ticket.
 - Build: `go build -o bin/sync_gateway .`
 - Building or testing EE (requires private repo SSH access) must use the `cb_sg_enterprise, cb_sg_devmode` build tags for all Go commands. E.g: `go build -tags cb_sg_enterprise,cb_sg_devmode .`
-- Run all unit tests (Rosmar/in-memory, no Couchbase Server): `go test ./...`
-- Run a single test: `go test -run ^TestFunctionName$ github.com/couchbase/sync_gateway/rest`
-- Run a single package: `go test github.com/couchbase/sync_gateway/rest`
 - Run integration tests (requires local Couchbase Server): `SG_TEST_BACKING_STORE=Couchbase go test ./...`
-- Run a specific benchmark: `go test -bench=^BenchmarkSomething$ -run=- ./...`
-- Lint: `golangci-lint run`
 - Python tooling lint/typecheck: `uv run ruff check tools/ tools-tests/` and `uv run mypy`
 - Python tests: `uv run pytest`
 
 ## Architecture Overview
 
 The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime object hierarchy is `ServerContext` → `DatabaseContext` → `DatabaseCollection`. Each HTTP request is handled by a short-lived `handler` struct; BLIP (WebSocket) replication uses `BlipSyncContext`/`blipHandler`. Three listener ports: Public (:4984), Admin (:4985), Metrics (:4986).
-
-| Package | Purpose |
-|---------|---------|
-| `rest/` | REST API handlers, routing (gorilla/mux), config management, server context |
-| `db/` | Core database logic: CRUD, documents, revisions, changes feed, BLIP sync, replication, import |
-| `base/` | Shared utilities: logging, bucket abstraction, stats, DCP, test infrastructure |
-| `auth/` | Authentication: users, roles, sessions, OIDC, JWT |
-| `channels/` | Channel mapping, sync function runner, channel sets |
-| `xdcr/` | Cross-datacenter replication (CBS and Rosmar backends) |
-| `topologytest/` | Multi-actor topology integration tests |
-| `service/` | OS service install/upgrade scripts |
-| `tools/` | Python tooling: `sgcollect.py` (log collection), `password_remover.py` |
 
 ## Key Concepts
 
@@ -44,25 +27,6 @@ The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime objec
 - **Database states** — Offline → Starting → Online → Stopping (+ Resyncing).
 - **Configuration** — `StartupConfig` (server-level, file/CLI) vs `DbConfig` (per-database); persistent config stored in Couchbase Server.
 
-## Key Files
-
-| File | Contents |
-|------|----------|
-| `rest/handler.go` | REST handler struct, privilege levels |
-| `rest/routing.go` | Route registration (Gorilla mux) |
-| `rest/server_context.go` | ServerContext |
-| `rest/config.go` | DbConfig |
-| `rest/config_startup.go` | StartupConfig |
-| `db/database.go` | DatabaseContext, database states |
-| `db/database_collection.go` | DatabaseCollection, DatabaseCollectionWithUser |
-| `db/document.go` | Document, SyncData, revision structures |
-| `db/blip_sync_context.go` | BlipSyncContext (BLIP session) |
-| `db/blip_handler.go` | blipHandler (per-message BLIP handling) |
-| `db/active_replicator.go` | ActiveReplicator (inter-SG replication) |
-| `db/changes.go` | Changes feed |
-| `channels/sync_runner.go` | Sync function execution |
-| `base/dcp_receiver.go` | DCP feed processing |
-
 ## Editions: CE vs EE
 
 Sync Gateway ships two editions controlled by the `cb_sg_enterprise` build tag:
@@ -74,8 +38,6 @@ Never add the `cb_sg_enterprise` tag to test commands unless intentionally testi
 ## Conventions & Patterns
 
 ### Go style
-- Use the Go version declared in `go.mod`. Tabs for indentation (standard `goimports`).
-- 120-char soft line limit (`.editorconfig`).
 - Use `github.com/stretchr/testify` for assertions (`require` for fatal, `assert` for non-fatal).
 - Use stdlib and base utilities where possible unless a module is already referenced by `go.mod`.
 - JSON marshaling uses `base.JSONMarshal`, `base.JSONUnmarshal`, and `base.JSONDecoder` wrappers — never `encoding/json` directly. (EE builds use `jsoniter` under the hood; CE uses the standard library.)
@@ -86,7 +48,6 @@ Never add the `cb_sg_enterprise` tag to test commands unless intentionally testi
 - Wrap Metadata (db names, config keys) with `base.MD()`.
 
 ### Testing patterns
-- Each top-level package has a `main_test.go` with `TestMain` that sets up `TestBucketPool`.
 - Default test backing store is **Rosmar** (in-memory). Set `SG_TEST_BACKING_STORE=Couchbase` for CBS.
 - REST tests use `rest.NewRestTester(t, &RestTesterConfig{...})`.
 - Bucket tests use `base.GetTestBucket(t)`.
