@@ -10,6 +10,7 @@ version: "2"
 linters:
   enable:
     - exhaustive
+    - forbidigo # Forbids identifiers - used here to keep dev-time printing out of shipping code
     - gocritic # The most opinionated Go source code linter
     #- goprintffuncname # Checks that printf-like functions are named with `f` at the end
     #- gosec # Inspects source code for security problems
@@ -32,6 +33,13 @@ linters:
       default-signifies-exhaustive: true
       explicit-exhaustive-map: true
       ignore-enum-members: "(auditdSyncGatewayEndID|levelCount)" # these mark end of an enum
+    forbidigo:
+      # Listed explicitly rather than relying on forbidigo's defaults, which don't cover log.Print*.
+      forbid:
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: use the context-aware base logging wrappers (base.InfofCtx, base.WarnfCtx, base.DebugfCtx, base.TracefCtx) so log keys and redaction are applied
+        - pattern: ^log\.Print(f|ln)?$
+          msg: use the context-aware base logging wrappers (base.InfofCtx, base.WarnfCtx, base.DebugfCtx, base.TracefCtx) so log keys and redaction are applied
     gocritic:
       enabled-checks:
         - ruleguard
@@ -103,6 +111,11 @@ linters:
       - linters:
           - unused
         path: rest/debug.go
+      # The logging implementation itself, the standalone CLIs under tools/, and tests (which print
+      # diagnostics and generate data) write to stdout by design.
+      - linters:
+          - forbidigo
+        path: (base/logging\.go|base/redactor\.go|^tools/|_test.*\.go)
       - text: "ST1000:" # at least one file in a package should have a package comment
         linters:
           - staticcheck
