@@ -315,6 +315,9 @@ func (b *LeakyBucket) getForceTimeoutErrorOnUpdateKeys() []string {
 func (b *LeakyBucket) consumeOnceUpdateTimeoutKey(key string) bool {
 	b.configLock.Lock()
 	defer b.configLock.Unlock()
+	if !slices.Contains(b._config.ForceTimeoutErrorOnUpdateKeysOnce, key) {
+		return false
+	}
 	if _, fired := b.firedOnceUpdateTimeoutKeys[key]; fired {
 		return false
 	}

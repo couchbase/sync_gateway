@@ -181,7 +181,7 @@ func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, cal
 			return updated, expiry, isDelete, err
 		}
 		casOut, err = lds.dataStore.Update(ctx, k, exp, wrapperCallback)
-		if slices.Contains(forceTimeoutKeys, k) {
+		if slices.Contains(forceTimeoutKeys, k) || lds.bucket.consumeOnceUpdateTimeoutKey(k) {
 			return 0, ErrTimeout
 		}
 		return casOut, err

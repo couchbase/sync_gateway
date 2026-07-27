@@ -285,9 +285,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.setStartTime(previousStatus.StartTime)
 	}
 
+	// Capture the terminator markStart just created rather than reading the mutable b.terminator field later on -
+	// a subsequent Start() call can reassign b.terminator once this one returns, and this goroutine tree must keep
+	//operating on the instance created for THIS run, not whatever b.terminator happens to be by the time it runs.
+	terminator := b.terminator
+
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
-		b.SetError(err)
+		b.SetError(err, terminator)
 		b.updateTerminalStatus(ctx)
 		return err
 	}
@@ -309,22 +314,22 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 					return
 				}
 			}
-		}(b.terminator)
+		}(terminator)
 
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
-			b.startPollingMultiNodeStatus(ctx, b.terminator)
+			b.startPollingMultiNodeStatus(ctx, terminator)
 		})
 	}
-	go func() {
-		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
+	go func(terminator *base.SafeTerminator) {
+		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, terminator)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error: %v", err)
-			b.SetError(err)
+			b.SetError(err, terminator)
 		}
 
-		b.Terminate()
+		b.Terminate(terminator)
 
 		b.statusLock.Lock()
 		if b.status.State == BackgroundProcessStateStopping {
@@ -337,7 +342,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
 		b.updateTerminalStatus(ctx)
-	}()
+	}(terminator)
 
 	if b.mode() != backgroundManagerModeLocal {
 		var err error
@@ -355,7 +360,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			// Process.Run's goroutine is already launched by this point, so without this the caller would
 			// get an error back while the process keeps running in the background unbeknownst to them.
 			// SetError both marks the state as Error and terminates the already-running process.
-			b.SetError(err)
+			b.SetError(err, terminator)
 			return err
 		}
 	}
@@ -400,7 +405,7 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 					err = b.UpdateHeartbeatDocClusterAware(ctx)
 					if err != nil {
 						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
-						b.SetError(err)
+						b.SetError(err, terminator)
 					}
 				case <-terminator.Done():
 					ticker.Stop()
@@ -630,8 +635,8 @@ func (b *BackgroundManager[O]) Stop(ctx context.Context) error {
 
 // Terminate stops the process via terminator channel
 // Only to be used internally to this file and by tests.
-func (b *BackgroundManager[O]) Terminate() {
-	b.terminator.Close()
+func (b *BackgroundManager[O]) Terminate(terminator *base.SafeTerminator) {
+	terminator.Close()
 	b.backgroundManagerStatusUpdateWaitGroup.Wait()
 }
 
@@ -705,11 +710,11 @@ func (b *BackgroundManager[O]) setStartTime(startTime time.Time) {
 }
 
 // SetError sets the last known error, transitions the state to BackgroundManagerStateError and terminates the process.
-func (b *BackgroundManager[O]) SetError(err error) {
+func (b *BackgroundManager[O]) SetError(err error, terminator *base.SafeTerminator) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	b.setLastErrorMessage(err.Error())
-	b.Terminate()
+	b.Terminate(terminator)
 }
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.

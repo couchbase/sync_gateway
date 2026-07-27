@@ -1537,7 +1537,7 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 
 	require.NoError(t, mgr.Start(ctx, nil))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, BackgroundProcessStateCompleted, mgr.GetRunState())
+		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 	require.NoError(t, mgr.Stop(ctx))
 }
