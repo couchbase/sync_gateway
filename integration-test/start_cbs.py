@@ -16,6 +16,7 @@
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -204,9 +205,11 @@ def main() -> None:
     connstr = connstr_result.stdout.strip()
     print(f"Connection string: {connstr}", flush=True)
 
+    # Connection strings can contain characters the shell would interpret (e.g. ?/& in query
+    # params), so quote the values to keep the output safe to source.
     env_lines = [
-        f"export SG_TEST_COUCHBASE_SERVER_URL={connstr}",
-        f"export CBS_CLUSTER_ID={cluster_id}",
+        f"export SG_TEST_COUCHBASE_SERVER_URL={shlex.quote(connstr)}",
+        f"export CBS_CLUSTER_ID={shlex.quote(cluster_id)}",
     ]
 
     print("\nExport for tests:")

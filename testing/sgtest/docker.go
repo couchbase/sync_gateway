@@ -22,12 +22,12 @@ import (
 const EnvCouchbaseServerDockerName = "SG_TEST_COUCHBASE_SERVER_DOCKER_NAME"
 
 // GetServerDockerContainer returns whether the Couchbase Server under test is running in a local Docker
-// container, and if so, the container's name. EnvCouchbaseServerDockerName overrides the lookup when set.
-// Otherwise, the container is found by matching the host of serverURL against the docker network
-// IP addresses of currently running containers. If more than one running container matches, the result
-// is ambiguous and (\"\", false) is returned rather than guessing.
+// container, and if so, the container's name. EnvCouchbaseServerDockerName overrides the lookup when set
+// to a non-empty value; if it is unset or blank, the container is found by matching the host of serverURL
+// against the docker network IP addresses of currently running containers. If more than one running
+// container matches, the result is ambiguous and (\"\", false) is returned rather than guessing.
 func GetServerDockerContainer(serverURL string) (string, bool) {
-	if name, isSet := os.LookupEnv(EnvCouchbaseServerDockerName); isSet {
+	if name := strings.TrimSpace(os.Getenv(EnvCouchbaseServerDockerName)); name != "" {
 		return name, true
 	}
 
