@@ -715,31 +715,23 @@ func (b *BackgroundManager[O]) UpdateStatusClusterAware(ctx context.Context) err
 	}
 }
 
-// UpdateSingleNodeClusterAwareStatus gets the current local status from the running process and updates the status document in
-// the bucket. Implements a retry. Used for Cluster Aware operations
+// UpdateSingleNodeClusterAwareStatus gets the current local status from the running process and writes the status
+// document in the bucket. Used for Cluster Aware operations
 func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Context) error {
 	if b.clusterAwareOptions == nil {
 		return nil
 	}
-	err, _ := base.RetryLoop(ctx, "UpdateStatusClusterAware", func() (shouldRetry bool, err error, value any) {
-		status, metadata, err := b.getStatusLocalWithoutPrevious()
-		if err != nil {
-			return true, err, nil
-		}
+	status, metadata, err := b.getStatusLocalWithoutPrevious()
+	if err != nil {
+		return err
+	}
 
-		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "status", 0, status)
-		if err != nil {
-			return true, err, nil
-		}
+	doc := map[string]json.RawMessage{
+		"status": status,
+		"meta":   metadata,
+	}
 
-		_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(ctx, b.clusterAwareOptions.StatusDocID(), "meta", 0, metadata)
-		if err != nil {
-			return true, err, nil
-		}
-
-		return false, nil, nil
-	}, base.CreateSleeperFunc(5, 100))
-	return err
+	return b.clusterAwareOptions.metadataStore.Set(ctx, b.clusterAwareOptions.StatusDocID(), 0, nil, doc)
 }
 
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status.

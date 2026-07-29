@@ -37,12 +37,11 @@ repos:
         entry: uv run -- ruff format
         types: [python]
 
-      - id: mypy
-        name: mypy
+      - id: ty
+        name: ty
         language: system
-        entry: uv run -- mypy
-        pass_filenames: false
-        files: ^(pyproject\.toml|.*\.py)$
+        entry: uvx ty check
+        types: [python]
 
       - id: manifest-product-config-sorted
         name: manifest/product-config.json keys sorted

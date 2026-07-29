@@ -630,6 +630,7 @@ func TestRetryLoopContextCancellation(t *testing.T) {
 		return true, nil, nil
 	}
 
+	//nolint:gocritic // deliberately covers the causeless cancellation path; TestRetryLoopContextCancellationWithCause covers WithCancelCause
 	ctx, cancelFunc := context.WithCancel(TestCtx(t))
 
 	go func() {

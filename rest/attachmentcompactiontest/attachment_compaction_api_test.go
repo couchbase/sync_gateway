@@ -60,7 +60,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	// Create some legacy attachments to be marked but not compacted. Both doc keys and attachment
 	// bodies land on vBucket 0 so the mark phase stays serial on a single DCP worker — otherwise
 	// concurrent SetXattrs calls race to close the pauser channel.
-	docIDs := base.VBucket0DocIDs(t, rt.Bucket(), 3)
+	docIDs := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 3)
 	attBodies := base.VBucket0AttachmentBodies(t, rt.Bucket(), 3)
 	for i, attBody := range attBodies {
 		attID := fmt.Sprintf("testAtt-%d", i)
@@ -293,11 +293,15 @@ func TestAttachmentCompactionReset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, attachmentStatus.State)
 
+	pauser.Pause()
+
 	// Start compaction again but with reset=true --> meaning it shouldn't try to resume
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&reset=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 	status := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateRunning)
 	assert.NotEqual(t, compactID, status.CompactID)
+	pauser.Release()
 
 	// Wait for completion and verify the completed run also carries a different compactID
 	status = rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
@@ -476,7 +480,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 
 // compactionPauser blocks the compaction mark phase at the first attachment it encounters. Can be
 // Paused and Released multiple times across a test.
-// With more than one legacy attachment doc, both the parent doc keys (base.VBucket0DocIDs) and the
+// With more than one legacy attachment doc, both the parent doc keys (sgtest.VBucketDocIDs) and the
 // attachment bodies (base.VBucket0AttachmentBodies) must land on vBucket 0: the mark phase's
 // SetXattrs calls run on whichever goroutine processes the parent doc's mutation, not one keyed
 // off the attachment's own vBucket, so constraining only the bodies still allows concurrent calls.
