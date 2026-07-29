@@ -31,15 +31,15 @@ func TestBlipSequenceProperty(t *testing.T) {
 		},
 		{
 			name:                 "compound sequenceID",
-			seq:                  SequenceID{LowSeq: 5, TriggeredBy: 10, Seq: 15},
-			expectedString:       `"5:10:15"`,
-			expectedISGRV2String: `5:10:15`,
+			seq:                  SequenceID{LowSeq: 5, TriggeredBy: 20, Seq: 15},
+			expectedString:       `"5:20:15"`,
+			expectedISGRV2String: `5:20:15`,
 		},
 		{
 			name:                 "TriggeredBy only",
-			seq:                  SequenceID{TriggeredBy: 20, Seq: 25},
-			expectedString:       `"20:25"`,
-			expectedISGRV2String: `20:25`,
+			seq:                  SequenceID{TriggeredBy: 30, Seq: 25},
+			expectedString:       `"30:25"`,
+			expectedISGRV2String: `30:25`,
 		},
 		{
 			name:                 "LowSeq and Seq",

@@ -52,31 +52,55 @@ func (s SequenceID) String() string {
 	return s.intSeqToString()
 }
 
-// intSeqToString implements the formatting rules documented on String() above.
 func (s SequenceID) intSeqToString() string {
-	// LowSeq is omitted from the output here for two independent reasons: it's zero (there's
-	// nothing to report), or it's stale - greater than Seq. LowSeq is stale when this entry is a
-	// previously-skipped sequence being delivered after the feed's lowest contiguous sequence has
-	// already moved past it, so including it here would misrepresent this entry's position.
-	// TriggeredBy, if set, reflects an in-progress channel backfill and is unrelated to which of
-	// those two reasons applies.
-	if s.LowSeq == 0 || s.Seq < s.LowSeq {
-		if s.TriggeredBy > 0 {
-			return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
-		}
-		return strconv.FormatUint(s.Seq, 10)
-	}
+	seqStrHasTriggeredBy := false
+	seqStr := fmt.Sprintf("%d", s.Seq)
 
-	// From here, LowSeq is non-zero and still relevant (not stale).
 	if s.TriggeredBy > 0 {
-		return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
+		if s.Seq < s.TriggeredBy {
+			seqStrHasTriggeredBy = true
+			seqStr = fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
+		} else {
+			seqStr = fmt.Sprintf("%d", s.Seq)
+		}
 	}
 
-	if s.LowSeq < s.Seq {
-		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+	if s.LowSeq > 0 {
+		if seqStrHasTriggeredBy && s.LowSeq < s.TriggeredBy {
+			seqStr = fmt.Sprintf("%d:%s", s.LowSeq, seqStr)
+		} else if s.LowSeq < s.Seq {
+			seqStr = fmt.Sprintf("%d::%s", s.LowSeq, seqStr)
+		}
 	}
-	return strconv.FormatUint(s.Seq, 10)
+
+	return seqStr
 }
+
+// intSeqToString implements the formatting rules documented on String() above.
+//func (s SequenceID) intSeqToString() string {
+//	// LowSeq is omitted from the output here for two independent reasons: it's zero (there's
+//	// nothing to report), or it's stale - greater than Seq. LowSeq is stale when this entry is a
+//	// previously-skipped sequence being delivered after the feed's lowest contiguous sequence has
+//	// already moved past it, so including it here would misrepresent this entry's position.
+//	// TriggeredBy, if set, reflects an in-progress channel backfill and is unrelated to which of
+//	// those two reasons applies.
+//	if s.LowSeq == 0 || s.Seq < s.LowSeq {
+//		if s.TriggeredBy > 0 {
+//			return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
+//		}
+//		return strconv.FormatUint(s.Seq, 10)
+//	}
+//
+//	// From here, LowSeq is non-zero and still relevant (not stale).
+//	if s.TriggeredBy > 0 {
+//		return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
+//	}
+//
+//	if s.LowSeq < s.Seq {
+//		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+//	}
+//	return strconv.FormatUint(s.Seq, 10)
+//}
 
 // seqStr converts a decoded JSON sequence value - a string or json.Number - to its string form,
 // for use with ParseJSONSequenceID/ParsePlainSequenceID. Returns "" for any other type.

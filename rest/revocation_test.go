@@ -843,7 +843,7 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 
 	// Get changes and ensure doc is revoked through ID-only revocation
 	changes = revocationTester.getChanges(10, 1)
-	assert.Equal(t, "15:20", changes.Last_Seq.String())
+	assert.Equal(t, "20", changes.Last_Seq.String())
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -875,7 +875,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	_ = rt.UpdateDoc(docID, version, `{"channels": "A"}`)
 
 	changes = revocationTester.getChanges(5, 1)
-	assert.Equal(t, "8:10", changes.Last_Seq.String())
+	assert.Equal(t, "10", changes.Last_Seq.String())
 	assert.True(t, changes.Results[0].Revoked)
 }
 

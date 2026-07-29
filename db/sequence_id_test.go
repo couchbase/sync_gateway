@@ -162,7 +162,7 @@ func TestMarshalTriggeredSequenceID(t *testing.T) {
 	assert.Equal(t, s, s2)
 
 	s = SequenceID{LowSeq: 5000, TriggeredBy: 5678, Seq: 1234}
-	assert.Equal(t, "5678:1234", s.String())
+	assert.Equal(t, "5000:5678:1234", s.String())
 }
 
 // TestCompareSequenceIDs verifies Before() produces a strict total order over a mix of simple and
@@ -222,28 +222,48 @@ func TestIntSeqToString(t *testing.T) {
 	}{
 		{
 			name:   "simple sequence",
-			seq:    SequenceID{Seq: 123},
-			seqStr: "123",
+			seq:    SequenceID{Seq: 100},
+			seqStr: "100",
 		},
 		{
 			name:   "compound sequence with triggeredBy seq and seq",
-			seq:    SequenceID{TriggeredBy: 100, Seq: 66},
-			seqStr: "100:66",
+			seq:    SequenceID{TriggeredBy: 110, Seq: 20},
+			seqStr: "110:20",
 		},
 		{
 			name:   "compound sequence with lowSeq seq and seq",
-			seq:    SequenceID{LowSeq: 100, Seq: 105},
-			seqStr: "100::105",
+			seq:    SequenceID{LowSeq: 80, Seq: 100},
+			seqStr: "80::100",
+		},
+		{
+			name:   "compound sequence with lowSeq seq greater than seq",
+			seq:    SequenceID{LowSeq: 110, Seq: 100},
+			seqStr: "100",
 		},
 		{
 			name:   "compound sequence with lowSeq, triggeredBy seq and seq",
-			seq:    SequenceID{LowSeq: 100, TriggeredBy: 105, Seq: 103},
-			seqStr: "100:105:103",
+			seq:    SequenceID{LowSeq: 105, TriggeredBy: 110, Seq: 20},
+			seqStr: "105:110:20",
 		},
 		{
 			name:   "compound sequence with lowSeq, triggeredBy seq and seq and seq < lowSeq",
-			seq:    SequenceID{LowSeq: 100, TriggeredBy: 105, Seq: 90},
-			seqStr: "105:90",
+			seq:    SequenceID{LowSeq: 120, TriggeredBy: 110, Seq: 20},
+			seqStr: "110:20",
+		},
+		{
+			name:   "backfill is complete, triggeredBy is less than lowseq",
+			seq:    SequenceID{TriggeredBy: 110, Seq: 150},
+			seqStr: "150",
+		},
+		{
+			name:   "backfill is complete and seq is less than lowSeq, triggeredBy is less than lowseq",
+			seq:    SequenceID{LowSeq: 120, TriggeredBy: 100, Seq: 110},
+			seqStr: "110",
+		},
+		{
+			name:   "backfill is complete and lowseq is less than seq, triggeredBy is greater than lowseq",
+			seq:    SequenceID{LowSeq: 120, TriggeredBy: 130, Seq: 150},
+			seqStr: "120::150",
 		},
 	}
 

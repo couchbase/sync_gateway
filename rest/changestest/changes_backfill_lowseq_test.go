@@ -78,7 +78,7 @@ func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 	// REQ1: limit=2 splits the DEF backfill mid-stream (sends doc-2, doc-3).
 	req1 := rt.PostChanges("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":"%s","limit":2}`, initial.Last_Seq.String()), "sg-user")
 	compound := req1.Last_Seq
-	assert.Equal(t, "10:3", compound.String())
+	assert.Equal(t, "5:10:3", compound.String())
 	require.Truef(t, compound.TriggeredBy != 0, "REQ1 last_seq should be mid-backfill (TriggeredBy set); got %q", compound.String())
 
 	// Resolve the skip so the feed's lowSequence changes; the client replays the since it just
