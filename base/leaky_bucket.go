@@ -161,6 +161,10 @@ type LeakyBucketConfig struct {
 	// TouchCallback issues a callback during touch.
 	TouchCallback func(key string) error
 
+	// GetAndTouchRawCallback issues a callback prior to running GetAndTouchRaw. Useful for injecting
+	// transient errors, e.g. to simulate a heartbeat write failure.
+	GetAndTouchRawCallback func(key string) error
+
 	// AddCallback issues a callback during Add.
 	AddCallback func(key string) (bool, error)
 
@@ -235,6 +239,18 @@ func (b *LeakyBucket) getAddCallback() func(string) (bool, error) {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
 	return b._config.AddCallback
+}
+
+func (b *LeakyBucket) getGetAndTouchRawCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.GetAndTouchRawCallback
+}
+
+func (b *LeakyBucket) setGetAndTouchRawCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.GetAndTouchRawCallback = fn
 }
 
 func (b *LeakyBucket) getForceErrorSetRawKeys() []string {

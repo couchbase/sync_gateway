@@ -809,7 +809,7 @@ func (b *BackgroundManager[O]) UpdateHeartbeatDocClusterAware(ctx context.Contex
 		// If we've hit an error, and we haven't had a successful heartbeat in just under its TTL then we need to quit
 		// out. If we fail to write heartbeat for this time we can no longer ensure that this would be the only process
 		// running and another could end up starting.
-		if time.Now().Sub(time.Unix(b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Value(), 0)) > (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs) {
+		if time.Since(time.Unix(b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Value(), 0)) > (BackgroundManagerHeartbeatExpirySecs-BackgroundManagerHeartbeatIntervalSecs)*time.Second {
 			return err
 		}
 		return nil
