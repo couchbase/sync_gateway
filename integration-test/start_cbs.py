@@ -31,11 +31,42 @@ DEFAULT_NODES = 1
 # local invocations (e.g. re-running tests) reuse the running cluster instead of allocating a
 # new one every time.
 STATE_FILE_NAME = ".cbdinocluster-sg-cluster-id"
+# cbdinocluster keeps its configuration in a single file in the user's home directory, written by
+# 'cbdinocluster init'. Every other subcommand fails to load its config until that file exists.
+CBDINOCLUSTER_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".cbdinocluster")
 
 
 def run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
     print(f"+ {' '.join(args)}", flush=True)
     return subprocess.run(args, check=True, **kwargs)
+
+
+def ensure_initialized() -> None:
+    """Run 'cbdinocluster init' if it hasn't been run before, since no other subcommand works
+    without the config file it writes. Existing configuration is left alone."""
+    if os.path.exists(CBDINOCLUSTER_CONFIG_PATH):
+        return
+    print(
+        f"{CBDINOCLUSTER_CONFIG_PATH} not found, initializing cbdinocluster for docker",
+        flush=True,
+    )
+    # Sync Gateway only ever uses the docker deployer, so skip the cloud/k8s providers - they
+    # default to enabled under --auto and would otherwise probe for credentials we don't have.
+    run(
+        [
+            "go",
+            "run",
+            CBDINOCLUSTER,
+            "init",
+            "--auto",
+            "--disable-k8s",
+            "--disable-capella",
+            "--disable-aws",
+            "--disable-azure",
+            "--disable-gcp",
+            "--disable-dns",
+        ]
+    )
 
 
 def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None:
@@ -154,6 +185,8 @@ def main() -> None:
         "'export CBS_CLUSTER_ID=...' lines to this path.",
     )
     opts = parser.parse_args()
+
+    ensure_initialized()
 
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
     cluster_id = find_reusable_cluster(opts.version, opts.nodes, opts.services)
