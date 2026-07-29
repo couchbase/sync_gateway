@@ -11,7 +11,7 @@ go test ./...                    # unit tests, in-memory Rosmar backing store
 
 - **Enterprise Edition** builds and tests need the `cb_sg_enterprise,cb_sg_devmode` build tags on every Go command, plus SSH access to a private repo — see [docs/BUILD.md](docs/BUILD.md). Don't add these tags unless you specifically intend to test EE.
 - **Integration tests** against a real Couchbase Server, the `SG_TEST_*` environment variables, and the bucket pool are covered in [docs/TESTING.md](docs/TESTING.md).
-- **Python tooling** (`tools/`): `uv run ruff check tools/ tools-tests/`, `uv run mypy`, `uv run pytest`.
+- **Python tooling** (`tools/`): See [tools/AGENTS.md](tools/AGENTS.md).
 - **Lint**: CI enforces `.golangci-strict.yml`; reproduce it locally with `pre-commit run golangci-lint --all-files`. Some conventions are enforced here rather than written down — the linter message explains the fix.
 
 Git: `main` is the current in-development version. Released versions and backports live in `release/x.y.z` branches. Feature branches are named `CBG-xxxx` after the Jira ticket.
