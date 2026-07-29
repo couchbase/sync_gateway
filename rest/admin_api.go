@@ -526,9 +526,9 @@ func (h *handler) handlePostIndexInit() error {
 		return err
 	}
 
-	opts := map[string]any{
-		"statusMap": &statusMap,
-		"doneChan":  done,
+	opts := db.AsyncIndexInitOptions{
+		StatusMap: &statusMap,
+		DoneChan:  done,
 	}
 	err = h.db.AsyncIndexInitManager.Start(h.ctx(), opts)
 	if err != nil {

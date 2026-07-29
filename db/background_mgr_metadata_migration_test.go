@@ -190,7 +190,7 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 	}
 	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
 
-	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
+	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, MetadataMigrationOptions{}))
 	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
 
 	rawStatus, err := dbCtx.MetadataMigrationManager.GetStatus(ctx)
@@ -276,7 +276,7 @@ func TestMetadataMigrationCompletesWithCollectionScopedDataInFallback(t *testing
 	}
 	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
 
-	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
+	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, MetadataMigrationOptions{}))
 	// Must complete — the collection-scoped data docs are out-of-scope, not blockers. If any wedges
 	// the job it exhausts maxPasses and lands in Error instead.
 	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
@@ -346,7 +346,7 @@ func TestMetadataMigrationManagerCompletesWithUnknownPrefixLeftInPlace(t *testin
 	}
 	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
 
-	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
+	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, MetadataMigrationOptions{}))
 	// Unknown-prefix docs no longer block completion — the manager reaches the Completed state.
 	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
 
@@ -407,7 +407,7 @@ func TestMetadataMigrationManagerDCPCheckpointGroupIDCollisionCompletesEndToEnd(
 	}
 	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
 
-	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, nil))
+	require.NoError(t, dbCtx.MetadataMigrationManager.Start(ctx, MetadataMigrationOptions{}))
 	// The collision yields an out-of-scope (not unknown-prefix) classification, so the run
 	// still reaches Completed rather than the bounded-pass Errored give-up branch.
 	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
