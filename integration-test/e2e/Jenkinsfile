@@ -135,7 +135,7 @@ pipeline {
                     sh '''
                         set -eu
                         mkdir -p integration-test/e2e .github
-                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/CBG-5636/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
                         /bin/bash integration-test/e2e/run_e2e_tests.sh
