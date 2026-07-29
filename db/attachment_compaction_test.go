@@ -518,7 +518,8 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	// get a 'process already running' error
 	if err != nil {
 		err = testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2})
-		assert.ErrorContains(t, err, "Process already running")
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "Process already running")
 	}
 }
 
