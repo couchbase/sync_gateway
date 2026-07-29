@@ -1530,3 +1530,57 @@ func TestUpdateStatusClusterAware(t *testing.T) {
 		})
 	}
 }
+
+// TestUpdateHeartbeatDocClusterAwareTransientError reproduces a bug in UpdateHeartbeatDocClusterAware: the
+// grace-period check compares an elapsed time.Duration (nanoseconds) against
+// (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs), which is an untyped
+// constant representing *seconds* (29) that is never multiplied by time.Second. Since any measurable elapsed
+// time comfortably exceeds 29 nanoseconds, a single transient heartbeat write error is treated as if the
+// ~29 second grace period had already elapsed, and the error is propagated (causing the caller to call
+// SetError and terminate the background process) instead of being tolerated.
+func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+
+	metaKeys := base.NewMetadataKeys("test-heartbeat-transient-error")
+	processSuffix := "heartbeat-transient-error"
+	heartbeatDocID := metaKeys.BackgroundProcessHeartbeatPrefix(processSuffix)
+
+	var injectError atomic.Bool
+	injectError.Store(true)
+	leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
+		GetAndTouchRawCallback: func(key string) error {
+			if key == heartbeatDocID && injectError.Load() {
+				return fmt.Errorf("injected transient heartbeat write error")
+			}
+			return nil
+		},
+	})
+	defer leakyBucket.Close(ctx)
+	metadataStore := leakyBucket.DefaultDataStore(ctx)
+
+	// Write the heartbeat doc up front, as markStart would, so a heartbeat update that isn't intercepted by
+	// the injected error above can succeed for real against the underlying bucket.
+	require.NoError(t, metadataStore.SetRaw(ctx, heartbeatDocID, BackgroundManagerHeartbeatExpirySecs, nil, []byte("{}")))
+
+	mgr := &BackgroundManager[map[string]any]{
+		name:    "test-heartbeat-transient-error-mgr",
+		Process: &MockProcess{},
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
+			processSuffix: processSuffix,
+		},
+		terminator: base.NewSafeTerminator(),
+	}
+
+	// Simulate a heartbeat that succeeded moments ago, well within the ~29 second grace period.
+	mgr.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
+
+	err := mgr.UpdateHeartbeatDocClusterAware(ctx)
+	require.NoError(t, err, "a transient heartbeat write error should be tolerated within the grace period")
+
+	// Once the injected error clears, the next heartbeat should succeed for real and record a new success time.
+	injectError.Store(false)
+	require.NoError(t, mgr.UpdateHeartbeatDocClusterAware(ctx))
+}
