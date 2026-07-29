@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -1502,12 +1503,17 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
 	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
 
-	// ForceTimeoutErrorOnUpdateKeysOnce returns a timeout error to the caller only on the first Update call for
-	// this key - i.e. the write succeeds, but start() still sees an error and returns it, exactly like a
-	// transient bucket blip would. Every call after that behaves normally, so the manager can be reused as-is
-	// for the recovery Start() below without needing a different key or a fresh metadataStore.
+	// The first Update call for statusDocID fails outright, so start() sees an error and returns it, exactly
+	// like a transient bucket blip would. Every call after that behaves normally, so the manager can be reused
+	// as-is for the recovery Start() below without needing a different key or a fresh metadataStore.
+	var updateCount atomic.Int32
 	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{
-		ForceTimeoutErrorOnUpdateKeysOnce: []string{statusDocID},
+		PreUpdateCallback: func(key string) error {
+			if key == statusDocID && updateCount.Add(1) == 1 {
+				return errors.New("simulated write failure")
+			}
+			return nil
+		},
 	})
 	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
 

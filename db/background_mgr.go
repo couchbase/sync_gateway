@@ -269,7 +269,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		}
 	}
 
-	err := b.markStart(ctx, previousStatus)
+	terminator, err := b.markStart(ctx, previousStatus)
 	if err != nil {
 		if b.mode() == backgroundManagerModeMultiNode && errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
 			return nil
@@ -288,7 +288,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	// Capture the terminator markStart just created rather than reading the mutable b.terminator field later on -
 	// a subsequent Start() call can reassign b.terminator once this one returns, and this goroutine tree must keep
 	//operating on the instance created for THIS run, not whatever b.terminator happens to be by the time it runs.
-	terminator := b.terminator
+	//terminator := b.terminator
 
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
@@ -374,7 +374,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 // Returns:
 //   - errBackgroundManagerProcessAlreadyRunning if already running in local or single node cluster aware mode
 //   - errBackgroundManagerStatusAlreadyStopping if in the process of stopping
-func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus BackgroundManagerStatus) error {
+func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus BackgroundManagerStatus) (*base.SafeTerminator, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -386,9 +386,9 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 			var status HeartbeatDoc
 			_, err := b.clusterAwareOptions.metadataStore.Get(ctx, b.clusterAwareOptions.HeartbeatDocID(), &status)
 			if err == nil && status.ShouldStop {
-				return base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
+				return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
 			}
-			return errBackgroundManagerProcessAlreadyRunning
+			return nil, errBackgroundManagerProcessAlreadyRunning
 		}
 
 		// Now we know that we're the only running process we should instantiate these values
@@ -415,28 +415,28 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 		}(b.terminator)
 
 		b.setRunState(BackgroundProcessStateRunning)
-		return nil
+		return b.terminator, nil
 	}
 
 	if b.mode() == backgroundManagerModeMultiNode {
 		if previousStatus.State == BackgroundProcessStateStopping {
-			return errBackgroundManagerStatusAlreadyStopping
+			return nil, errBackgroundManagerStatusAlreadyStopping
 		}
 	}
 
 	if b.GetRunState() == BackgroundProcessStateRunning {
-		return errBackgroundManagerProcessAlreadyRunning
+		return nil, errBackgroundManagerProcessAlreadyRunning
 	}
 
 	if b.GetRunState() == BackgroundProcessStateStopping {
-		return errBackgroundManagerStatusAlreadyStopping
+		return nil, errBackgroundManagerStatusAlreadyStopping
 	}
 
 	// Now we know that we're the only running process we should instantiate these values
 	b.terminator = base.NewSafeTerminator()
 
 	b.setRunState(BackgroundProcessStateRunning)
-	return nil
+	return b.terminator, nil
 }
 
 // updateTerminalStatus is used to update the status doc after the completion of background process

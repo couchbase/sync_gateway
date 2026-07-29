@@ -27,10 +27,6 @@ type LeakyBucket struct {
 	_config     *LeakyBucketConfig
 	configLock  sync.RWMutex
 	collections map[string]*LeakyDataStore
-
-	// firedOnceUpdateTimeoutKeys tracks which ForceTimeoutErrorOnUpdateKeysOnce keys have already had
-	// their single forced timeout consumed, guarded by configLock alongside the rest of the config state.
-	firedOnceUpdateTimeoutKeys map[string]struct{}
 }
 
 var _ sgbucket.BucketStore = &LeakyBucket{}
@@ -39,10 +35,9 @@ var _ sgbucket.DynamicDataStoreBucket = &LeakyBucket{}
 // NewLeakyBucket creates a wrapper around a Bucket to support forced errors. The configuration will be shared by all DataStores that belong to this bucket.
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 	return &LeakyBucket{
-		bucket:                     bucket,
-		_config:                    &config,
-		collections:                make(map[string]*LeakyDataStore),
-		firedOnceUpdateTimeoutKeys: make(map[string]struct{}),
+		bucket:      bucket,
+		_config:     &config,
+		collections: make(map[string]*LeakyDataStore),
 	}
 }
 
@@ -127,10 +122,6 @@ type LeakyBucketConfig struct {
 
 	ForceTimeoutErrorOnUpdateKeys []string // Specified keys will return timeout error AFTER write is sent to server
 
-	// ForceTimeoutErrorOnUpdateKeysOnce is like ForceTimeoutErrorOnUpdateKeys, but only fails the first
-	// Update call for each key; every call after that (for the same key) behaves normally.
-	ForceTimeoutErrorOnUpdateKeysOnce []string
-
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError bool
 
@@ -145,6 +136,11 @@ type LeakyBucketConfig struct {
 	// UpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
 	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
 	UpdateCallback func(key string)
+
+	// PreUpdateCallback is invoked before Update calls into the underlying dataStore. If it returns an error,
+	// Update returns that error immediately without ever calling into the underlying dataStore - allows tests
+	// to simulate a write that fails before it reaches the server.
+	PreUpdateCallback func(key string) error
 
 	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
 	// to GetRaw being ran.
@@ -292,6 +288,18 @@ func (b *LeakyBucket) setUpdateCallback(fn func(string)) {
 	b._config.UpdateCallback = fn
 }
 
+func (b *LeakyBucket) getPreUpdateCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.PreUpdateCallback
+}
+
+func (b *LeakyBucket) setPreUpdateCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.PreUpdateCallback = fn
+}
+
 func (b *LeakyBucket) getPostUpdateCallback() func(string) {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
@@ -308,21 +316,6 @@ func (b *LeakyBucket) getForceTimeoutErrorOnUpdateKeys() []string {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
 	return slices.Clone(b._config.ForceTimeoutErrorOnUpdateKeys)
-}
-
-// consumeOnceUpdateTimeoutKey returns true the first time it's called for a key listed in
-// ForceTimeoutErrorOnUpdateKeysOnce, and false on every subsequent call (or if the key isn't configured).
-func (b *LeakyBucket) consumeOnceUpdateTimeoutKey(key string) bool {
-	b.configLock.Lock()
-	defer b.configLock.Unlock()
-	if !slices.Contains(b._config.ForceTimeoutErrorOnUpdateKeysOnce, key) {
-		return false
-	}
-	if _, fired := b.firedOnceUpdateTimeoutKeys[key]; fired {
-		return false
-	}
-	b.firedOnceUpdateTimeoutKeys[key] = struct{}{}
-	return true
 }
 
 func (b *LeakyBucket) getIncrTemporaryFailCount() uint16 {
