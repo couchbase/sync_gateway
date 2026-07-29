@@ -32,8 +32,8 @@ type TombstoneCompactionOptions struct {
 	Database *Database
 }
 
-// Validate returns an error if the options are not usable by Init/Run.
-func (o TombstoneCompactionOptions) Validate() error {
+// validate returns an error if the options are not usable by Init/Run.
+func (o TombstoneCompactionOptions) validate() error {
 	if o.Database == nil {
 		return errors.New("tombstone compaction requires a Database")
 	}
@@ -51,7 +51,7 @@ func NewTombstoneCompactionManager() *BackgroundManager[TombstoneCompactionOptio
 }
 
 func (t *TombstoneCompactionManager) Init(ctx context.Context, options TombstoneCompactionOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
-	if err := options.Validate(); err != nil {
+	if err := options.validate(); err != nil {
 		return backgroundManagerInitReset, err
 	}
 
@@ -61,7 +61,7 @@ func (t *TombstoneCompactionManager) Init(ctx context.Context, options Tombstone
 }
 
 func (t *TombstoneCompactionManager) Run(ctx context.Context, options TombstoneCompactionOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	if err := options.Validate(); err != nil {
+	if err := options.validate(); err != nil {
 		return err
 	}
 

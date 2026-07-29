@@ -33,8 +33,8 @@ type AsyncIndexInitOptions struct {
 	DoneChan chan error
 }
 
-// Validate returns an error if the options are not usable by Init/Run.
-func (o AsyncIndexInitOptions) Validate() error {
+// validate returns an error if the options are not usable by Init/Run.
+func (o AsyncIndexInitOptions) validate() error {
 	if o.StatusMap == nil {
 		return errors.New("async index init requires a StatusMap")
 	}
@@ -46,7 +46,7 @@ func (o AsyncIndexInitOptions) Validate() error {
 
 // Init is called synchronously to set up a run for the background manager process. See Run() for the async part.
 func (a *AsyncIndexInitManager) Init(ctx context.Context, options AsyncIndexInitOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
-	if err := options.Validate(); err != nil {
+	if err := options.validate(); err != nil {
 		return backgroundManagerInitReset, err
 	}
 
@@ -59,7 +59,7 @@ func (a *AsyncIndexInitManager) Init(ctx context.Context, options AsyncIndexInit
 
 // Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
 func (a *AsyncIndexInitManager) Run(ctx context.Context, options AsyncIndexInitOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	if err := options.Validate(); err != nil {
+	if err := options.validate(); err != nil {
 		return err
 	}
 
