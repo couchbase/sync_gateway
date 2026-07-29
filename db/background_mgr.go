@@ -393,6 +393,8 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 		// We need to instantiate these before we setup the below goroutine as it relies upon the terminator
 		b.terminator = base.NewSafeTerminator()
 
+		b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
+
 		go func(terminator *base.SafeTerminator) {
 			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
 			for {
