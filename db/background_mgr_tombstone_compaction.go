@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,14 @@ type TombstoneCompactionOptions struct {
 	Database *Database
 }
 
+// Validate returns an error if the options are not usable by Init/Run.
+func (o TombstoneCompactionOptions) Validate() error {
+	if o.Database == nil {
+		return errors.New("tombstone compaction requires a Database")
+	}
+	return nil
+}
+
 var _ BackgroundManagerProcessI[TombstoneCompactionOptions] = &TombstoneCompactionManager{}
 
 func NewTombstoneCompactionManager() *BackgroundManager[TombstoneCompactionOptions] {
@@ -42,12 +51,19 @@ func NewTombstoneCompactionManager() *BackgroundManager[TombstoneCompactionOptio
 }
 
 func (t *TombstoneCompactionManager) Init(ctx context.Context, options TombstoneCompactionOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
+	if err := options.Validate(); err != nil {
+		return backgroundManagerInitReset, err
+	}
+
 	options.Database.DbStats.Database().CompactionTombstoneStartTime.Set(uint64(time.Now().UTC().Unix()))
 
 	return backgroundManagerInitReset, nil
 }
 
 func (t *TombstoneCompactionManager) Run(ctx context.Context, options TombstoneCompactionOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	if err := options.Validate(); err != nil {
+		return err
+	}
 
 	defer atomic.CompareAndSwapUint32(&options.Database.CompactState, DBCompactRunning, DBCompactNotRunning)
 	updateStatusCallback := func(docsPurged *int) {

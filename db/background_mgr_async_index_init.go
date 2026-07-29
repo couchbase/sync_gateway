@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -32,8 +33,23 @@ type AsyncIndexInitOptions struct {
 	DoneChan chan error
 }
 
+// Validate returns an error if the options are not usable by Init/Run.
+func (o AsyncIndexInitOptions) Validate() error {
+	if o.StatusMap == nil {
+		return errors.New("async index init requires a StatusMap")
+	}
+	if o.DoneChan == nil {
+		return errors.New("async index init requires a DoneChan")
+	}
+	return nil
+}
+
 // Init is called synchronously to set up a run for the background manager process. See Run() for the async part.
 func (a *AsyncIndexInitManager) Init(ctx context.Context, options AsyncIndexInitOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
+	if err := options.Validate(); err != nil {
+		return backgroundManagerInitReset, err
+	}
+
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a._statusMap = options.StatusMap
@@ -43,6 +59,10 @@ func (a *AsyncIndexInitManager) Init(ctx context.Context, options AsyncIndexInit
 
 // Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
 func (a *AsyncIndexInitManager) Run(ctx context.Context, options AsyncIndexInitOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	if err := options.Validate(); err != nil {
+		return err
+	}
+
 	a.lock.Lock()
 	doneChan := a._doneChan
 	a.lock.Unlock()
