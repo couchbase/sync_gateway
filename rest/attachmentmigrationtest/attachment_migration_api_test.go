@@ -169,7 +169,7 @@ func TestAttachmentMigrationReset(t *testing.T) {
 
 	// On a real cluster, stopping isn't instant, so any number of legacyKeys may already be
 	// migrated by now. Use a fresh doc instead of guessing which legacyKey is still unmigrated.
-	resetDocID := base.VBucket0DocIDs(t, rt.Bucket(), 6)[5]
+	resetDocID := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 6)[5]
 	rest.CreateLegacyAttachmentDoc(t, ctx, collection, resetDocID, []byte(`{"value":1234}`), "att", []byte("att body"))
 	numDocs++
 
@@ -215,7 +215,7 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	// Create legacy attachment docs all on vBucket 0. This ensures the DCP worker for vBucket 0
 	// processes them sequentially: blocking the first doc keeps the rest queued, so doneChan
 	// cannot close before the terminator fires and the select can reliably pick "stopped".
-	vb0IDs := base.VBucket0DocIDs(t, rt1.Bucket(), 5)
+	vb0IDs := sgtest.VBucketDocIDs(t, rt1.Bucket(), 0, 5)
 	for _, id := range vb0IDs {
 		rest.CreateLegacyAttachmentDoc(t, ctx, collection, id, []byte(`{}`), "att", []byte("att body"))
 	}
@@ -256,7 +256,7 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	// even Rosmar), stopping isn't instant, so the original vBucket 0 docs may already be migrated
 	// by this point -- a doc created after Stopped is confirmed is guaranteed unmigrated, giving the
 	// resumed run below something to genuinely block on.
-	resumeDocID := base.VBucket0DocIDs(t, rt1.Bucket(), 6)[5]
+	resumeDocID := sgtest.VBucketDocIDs(t, rt1.Bucket(), 0, 6)[5]
 	rest.CreateLegacyAttachmentDoc(t, ctx, collection, resumeDocID, []byte(`{}`), "att", []byte("att body"))
 
 	// Pause again, bound to rt2's own leaky datastore this time -- the resumed run below performs
@@ -292,7 +292,7 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 	// Put the legacy docs on vBucket 0 so a single DCP worker processes them serially — required
 	// by tests that pause migration on one legacy doc and expect the rest to stay unmigrated
 	// until released; otherwise other DCP workers could migrate them concurrently.
-	copy(keys, base.VBucket0DocIDs(t, bucket, int(legacyCount)))
+	copy(keys, sgtest.VBucketDocIDs(t, bucket, 0, int(legacyCount)))
 	legacyKeys := keys[:legacyCount]
 
 	for _, key := range keys {
