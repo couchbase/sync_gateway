@@ -12,7 +12,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -211,10 +210,7 @@ func TestAllFleetManagerMetricsPopulated(t *testing.T) {
 
 func TestFleetManagerReporterLoop(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		ctx, cancel := context.WithCancelCause(base.TestCtx(t))
-		t.Cleanup(func() {
-			cancel(nil)
-		})
+		ctx := t.Context()
 
 		var mutex sync.Mutex
 		var reports []base.FleetManagerCollectorSettings
@@ -258,9 +254,13 @@ func TestFleetManagerReporterLoop(t *testing.T) {
 		current.ReportingInterval = 2
 		current.Enabled = true
 		mutex.Unlock()
-		time.Sleep(2 * time.Hour)
-		synctest.Wait()                    // wait for report goroutine to block again after another report interval
-		require.Equal(t, 3, reportCount()) // should only report once (on the next 1 hour tick, then tick resets to 2 hours so no 4th report on second hour)
+		time.Sleep(1 * time.Hour)
+		synctest.Wait() // first tick after update uses the previous 1h ticker interval
+		require.Equal(t, 3, reportCount())
+
+		time.Sleep(1 * time.Hour)
+		synctest.Wait() // ticker should have been reset to 2h on the prior tick
+		require.Equal(t, 3, reportCount())
 
 		// assert reports only contain entries of enabled=true
 		mutex.Lock()
