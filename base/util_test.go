@@ -520,6 +520,21 @@ func BenchmarkConvertBackQuotedStrings(b *testing.B) {
 	}
 }
 
+func BenchmarkConvertBackQuotedStringsScaling(b *testing.B) {
+	openerCounts := []int{25_000, 50_000, 100_000, 200_000}
+
+	for _, n := range openerCounts {
+		data := []byte(`{"sync": ` + "`" + `function(doc, oldDoc, meta) {` + "\n" +
+			strings.Repeat("if (/\\`/.test(doc._id)) { channel('has_tick'); }\n", n))
+		b.Run(fmt.Sprintf("%d_openers", n), func(b *testing.B) {
+			b.SetBytes(int64(len(data)))
+			for b.Loop() {
+				ConvertBackQuotedStrings(data)
+			}
+		})
+	}
+}
+
 func TestCouchbaseUrlWithAuth(t *testing.T) {
 
 	// normal bucket
