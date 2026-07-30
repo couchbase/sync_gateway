@@ -31,6 +31,9 @@ DEFAULT_NODES = 1
 # local invocations (e.g. re-running tests) reuse the running cluster instead of allocating a
 # new one every time.
 STATE_FILE_NAME = ".cbdinocluster-sg-cluster-id"
+# Written next to the state file unless --env-file says otherwise, so that a plain invocation
+# leaves something sourceable behind rather than only printing the exports to stdout.
+DEFAULT_ENV_FILE_NAME = "cbs.env"
 # cbdinocluster keeps its configuration in a single file in the user's home directory, written by
 # 'cbdinocluster init'. Every other subcommand fails to load its config until that file exists.
 CBDINOCLUSTER_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".cbdinocluster")
@@ -181,8 +184,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--env-file",
-        help="If set, write shell-sourceable 'export SG_TEST_COUCHBASE_SERVER_URL=...' and "
-        "'export CBS_CLUSTER_ID=...' lines to this path.",
+        default=os.path.join(os.getcwd(), DEFAULT_ENV_FILE_NAME),
+        help="Path to write shell-sourceable 'export SG_TEST_COUCHBASE_SERVER_URL=...' and "
+        f"'export CBS_CLUSTER_ID=...' lines to (default: ./{DEFAULT_ENV_FILE_NAME})",
     )
     opts = parser.parse_args()
 
@@ -249,10 +253,9 @@ def main() -> None:
     for line in env_lines:
         print(f"  {line}", flush=True)
 
-    if opts.env_file:
-        with open(opts.env_file, "w") as f:
-            f.write("\n".join(env_lines) + "\n")
-        print(f"\nWrote connection details to {opts.env_file}", flush=True)
+    with open(opts.env_file, "w") as f:
+        f.write("\n".join(env_lines) + "\n")
+    print(f"\nWrote connection details to {opts.env_file}", flush=True)
 
 
 if __name__ == "__main__":

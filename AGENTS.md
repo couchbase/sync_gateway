@@ -19,12 +19,12 @@ go test ./...                    # unit tests, in-memory Rosmar backing store
 `integration-test/start_cbs.py` allocates a single-node cluster via [cbdinocluster](https://github.com/couchbaselabs/cbdinocluster) (Docker + Go are the only prerequisites; it runs `cbdinocluster init` for you on first use). This is what CI uses.
 
 ```sh
-./integration-test/start_cbs.py --env-file cbs.env    # allocate/reuse a cluster
-source cbs.env                                        # SG_TEST_COUCHBASE_SERVER_URL, CBS_CLUSTER_ID
+./integration-test/start_cbs.py   # allocate/reuse a cluster, write ./cbs.env
+source cbs.env                    # SG_TEST_COUCHBASE_SERVER_URL, CBS_CLUSTER_ID
 SG_TEST_BACKING_STORE=Couchbase go test -count=1 -p 1 -timeout 45m ./...
 ```
 
-Useful flags: `--version` (default 8.0.1), `--nodes`, `--services` (default `kv,n1ql,index`), `--kv-memory-mb`/`--index-memory-mb`, `--tls`, `--purpose`.
+Useful flags: `--env-file` (default `./cbs.env`), `--version` (default 8.0.1), `--nodes`, `--services` (default `kv,n1ql,index`), `--kv-memory-mb`/`--index-memory-mb`, `--tls`, `--purpose`.
 
 The allocated cluster ID is recorded in `.cbdinocluster-sg-cluster-id` in the working directory (gitignored), so re-running the script reuses the running cluster when the version/node count/services still match. Tear down with `go run github.com/couchbaselabs/cbdinocluster@latest remove "$CBS_CLUSTER_ID"` (or `list` / `remove-all`); clusters expire on their own but hold Docker memory until then.
 
