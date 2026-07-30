@@ -89,6 +89,45 @@ func TestDCPNameLength(t *testing.T) {
 	}
 }
 
+// TestDCPCommonCheckpointRoundTripShapes exercises persistCheckpoint followed by loadCheckpoint on a *DCPCommon -
+// i.e. through an actual metadata bucket, not just createCbgtCheckpoint/readCbgtCheckpoint directly - across the
+// same checkpoint shapes as TestCbgtCheckpointRoundTrip, verifying every field survives exactly.
+func TestDCPCommonCheckpointRoundTripShapes(t *testing.T) {
+	const lastSeq = uint64(18)
+	for _, testCase := range checkpointShapeTestCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			dcpCommon, err := NewDCPCommon(ctx, DCPDestOptions{
+				MetadataStore:      bucket.GetSingleDataStore(),
+				MaxVbNo:            1,
+				PersistCheckpoints: true,
+				CheckpointPrefix:   "test_dcp_checkpoint_round_trip_shapes_" + testCase.name + "_",
+			})
+			require.NoError(t, err)
+
+			require.NoError(t, dcpCommon.persistCheckpoint(0, []byte(testCase.raw), lastSeq))
+
+			rawMetadata, extractedLastSeq, err := dcpCommon.loadCheckpoint(0)
+			require.NoError(t, err)
+			assert.Equal(t, lastSeq, extractedLastSeq)
+
+			var original map[string]any
+			require.NoError(t, JSONUnmarshal([]byte(testCase.raw), &original))
+			if len(original) == 0 {
+				assert.Len(t, rawMetadata, 0)
+				return
+			}
+
+			var remains map[string]any
+			require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
+			assert.Equal(t, original, remains)
+		})
+	}
+}
+
 // TestFeedEventByteSliceCopy( ensures that the byte slices in the FeedEvent are copies and not the original ones - CBG-4540
 func TestFeedEventByteSliceCopy(t *testing.T) {
 	const (
