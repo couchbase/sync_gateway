@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// MetadataMigrationManager manages the process of migrating system metadata.
 type MetadataMigrationManager struct {
 	docsProcessed  atomic.Int64 // cumulative successful moves/deletes across all passes
 	docsFailed     atomic.Int64 // cumulative per-doc errors across all passes
@@ -34,15 +35,21 @@ type MetadataMigrationManager struct {
 
 const MetadataMigrationManagerName = "metadata_migration"
 
-var _ BackgroundManagerProcessI[map[string]any] = &MetadataMigrationManager{}
+// MetadataMigrationOptions defines options for configuring a metadata migration run.
+type MetadataMigrationOptions struct {
+	// Reset indicates whether to start the metadata migration process from scratch rather than resuming.
+	Reset bool
+}
+
+var _ BackgroundManagerProcessI[MetadataMigrationOptions] = &MetadataMigrationManager{}
 
 // errMetadataMigrationTerminated is the cancellation cause propagated to the run context when
 // the BackgroundManager terminator fires, so ops blocked on ctx (seq-counter retry loop, range
 // scan iteration) can distinguish an operator stop from a parent-context cancellation.
 var errMetadataMigrationTerminated = errors.New("metadata migration terminated by stop request")
 
-func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager[map[string]any] {
-	return &BackgroundManager[map[string]any]{
+func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager[MetadataMigrationOptions] {
+	return &BackgroundManager[MetadataMigrationOptions]{
 		name:    MetadataMigrationManagerName,
 		Process: &MetadataMigrationManager{dbContext: dbContext},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -68,7 +75,7 @@ type MigrationManagerStatusDoc struct {
 	MigrationManagerResponse `json:"status"`
 }
 
-func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
+func (m *MetadataMigrationManager) Init(ctx context.Context, options MetadataMigrationOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -84,14 +91,13 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 		var status MigrationManagerStatusDoc
 		err := base.JSONUnmarshal(clusterStatus, &status)
 
-		reset, _ := options["reset"].(bool)
-		if reset {
+		if options.Reset {
 			base.InfofCtx(ctx, base.KeyAll, "Metadata Migration: Resetting migration process. Will not resume any partially completed process")
 		}
 
 		// If the previous run completed, there was an error during unmarshalling the status, or
 		// the caller requested a reset, start again with a fresh migration ID and zeroed counters.
-		if status.State == BackgroundProcessStateCompleted || err != nil || reset {
+		if status.State == BackgroundProcessStateCompleted || err != nil || options.Reset {
 			return backgroundManagerInitReset, newRunInit()
 		}
 		m.docsProcessed.Store(status.DocsProcessed)
@@ -105,7 +111,7 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options map[string]
 	return backgroundManagerInitReset, newRunInit()
 }
 
-func (m *MetadataMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigrationOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	metadataMigrationLoggingID := "Metadata Migration: " + m.MigrationID
 
 	persistClusterStatus := func() {

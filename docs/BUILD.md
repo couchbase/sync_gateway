@@ -16,6 +16,41 @@ go build -o bin/sync_gateway_ce .
 SG_EDITION=CE ./build.sh
 ```
 
+Community and Enterprise Editions
+---------------------------------
+
+Sync Gateway ships two editions, selected by the `cb_sg_enterprise` build tag. Edition-specific
+implementations live in `*_ce.go` and `*_ee.go` files.
+
+**Community Edition (CE)** is the default and needs no build tag:
+
+```bash
+go build -o bin/sync_gateway .
+```
+
+**Enterprise Edition (EE)** requires the `cb_sg_enterprise` and `cb_sg_devmode` tags, and the tags must
+be passed to *every* Go command — `build`, `test`, `vet`:
+
+```bash
+go build -tags cb_sg_enterprise,cb_sg_devmode -o bin/sync_gateway .
+go test -tags cb_sg_enterprise,cb_sg_devmode ./...
+```
+
+EE builds depend on [couchbaselabs/go-fleecedelta](https://github.com/couchbaselabs/go-fleecedelta),
+which is a private repository, so you need SSH access to it. Configure Git to use SSH for those
+fetches and mark the module private:
+
+```bash
+git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
+export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
+```
+
+This is the same rewrite `build.sh` applies. It is scoped to the one repository rather than
+redirecting every GitHub fetch over SSH.
+
+Do not add `cb_sg_enterprise` to a command unless you specifically intend to build or test EE — CE is
+what runs by default in most CI jobs, and a CE-only regression is easy to miss otherwise.
+
 Building Older Versions (via repo)
 ----------------------------------
 

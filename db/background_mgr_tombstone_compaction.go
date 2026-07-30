@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
@@ -20,36 +21,56 @@ import (
 // Tombstone Compaction Implementation of Background Manager Process
 // =====================================================================
 
+// TombstoneCompactionManager implements the tombstone compaction background process.
 type TombstoneCompactionManager struct {
 	PurgedDocCount int64
 }
 
-var _ BackgroundManagerProcessI[map[string]any] = &TombstoneCompactionManager{}
+// TombstoneCompactionOptions defines options for running the tombstone compaction process.
+type TombstoneCompactionOptions struct {
+	// Database is the reference to the Database context compaction is running on.
+	Database *Database
+}
 
-func NewTombstoneCompactionManager() *BackgroundManager[map[string]any] {
-	return &BackgroundManager[map[string]any]{
+// validate returns an error if the options are not usable by Init/Run.
+func (o TombstoneCompactionOptions) validate() error {
+	if o.Database == nil {
+		return errors.New("tombstone compaction requires a Database")
+	}
+	return nil
+}
+
+var _ BackgroundManagerProcessI[TombstoneCompactionOptions] = &TombstoneCompactionManager{}
+
+func NewTombstoneCompactionManager() *BackgroundManager[TombstoneCompactionOptions] {
+	return &BackgroundManager[TombstoneCompactionOptions]{
 		name:       "tombstone_compaction",
 		Process:    &TombstoneCompactionManager{},
 		terminator: base.NewSafeTerminator(),
 	}
 }
 
-func (t *TombstoneCompactionManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
-	database := options["database"].(*Database)
-	database.DbStats.Database().CompactionTombstoneStartTime.Set(uint64(time.Now().UTC().Unix()))
+func (t *TombstoneCompactionManager) Init(ctx context.Context, options TombstoneCompactionOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
+	if err := options.validate(); err != nil {
+		return backgroundManagerInitReset, err
+	}
+
+	options.Database.DbStats.Database().CompactionTombstoneStartTime.Set(uint64(time.Now().UTC().Unix()))
 
 	return backgroundManagerInitReset, nil
 }
 
-func (t *TombstoneCompactionManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
-	database := options["database"].(*Database)
+func (t *TombstoneCompactionManager) Run(ctx context.Context, options TombstoneCompactionOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	if err := options.validate(); err != nil {
+		return err
+	}
 
-	defer atomic.CompareAndSwapUint32(&database.CompactState, DBCompactRunning, DBCompactNotRunning)
+	defer atomic.CompareAndSwapUint32(&options.Database.CompactState, DBCompactRunning, DBCompactNotRunning)
 	updateStatusCallback := func(docsPurged *int) {
 		atomic.StoreInt64(&t.PurgedDocCount, int64(*docsPurged))
 	}
 
-	_, err := database.Compact(ctx, true, updateStatusCallback, terminator, false)
+	_, err := options.Database.Compact(ctx, true, updateStatusCallback, terminator, false)
 	if err != nil {
 		return err
 	}

@@ -277,15 +277,12 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_ruff_version
         with:
-          version: "0.15.22"
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
       - uses: *actions_ruff_version
-        with:
-          version: "0.15.22"
   test-sgcollect:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -298,9 +295,9 @@ jobs:
       - name: Run test
         run: |
           uv run -- pytest
-      - name: Run mypy
+      - name: Run ty
         run: |
-          uv run -- mypy
+          uvx ty check
 
   test-stats-definition-exporter:
     runs-on: ${{ matrix.os }}

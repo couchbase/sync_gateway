@@ -148,8 +148,8 @@ func (h *handler) handleAttachmentMigration() error {
 	}
 
 	if action == string(db.BackgroundProcessActionStart) {
-		err := h.db.AttachmentMigrationManager.Start(h.ctx(), map[string]any{
-			"reset": reset,
+		err := h.db.AttachmentMigrationManager.Start(h.ctx(), db.AttachmentMigrationOptions{
+			Reset: reset,
 		})
 		if err != nil {
 			return err
@@ -233,8 +233,8 @@ func (h *handler) handleMetadataMigration() error {
 		// An explicit reset=true is still honored as an operator override to force a fresh run.
 		if h.db.MetadataMigrationComplete(h.ctx()) && !reset {
 			base.InfofCtx(h.ctx(), base.KeyAll, "Metadata migration already complete for database %s, returning current status without restarting", base.MD(h.db.Name))
-		} else if err := h.db.MetadataMigrationManager.Start(h.ctx(), map[string]any{
-			"reset": reset,
+		} else if err := h.db.MetadataMigrationManager.Start(h.ctx(), db.MetadataMigrationOptions{
+			Reset: reset,
 		}); err != nil {
 			return err
 		}
@@ -287,8 +287,8 @@ func (h *handler) handleCompact() error {
 	if compactionType == compactionTypeTombstone {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
-				err := h.db.TombstoneCompactionManager.Start(h.ctx(), map[string]any{
-					"database": h.db,
+				err := h.db.TombstoneCompactionManager.Start(h.ctx(), db.TombstoneCompactionOptions{
+					Database: h.db,
 				})
 				if err != nil {
 					return err
@@ -325,10 +325,10 @@ func (h *handler) handleCompact() error {
 
 	if compactionType == compactionTypeAttachment {
 		if action == string(db.BackgroundProcessActionStart) {
-			err := h.db.AttachmentCompactionManager.Start(h.ctx(), map[string]any{
-				"database": h.db,
-				"reset":    h.getBoolQuery("reset"),
-				"dryRun":   h.getBoolQuery("dry_run"),
+			err := h.db.AttachmentCompactionManager.Start(h.ctx(), db.AttachmentCompactionOptions{
+				Database: h.db,
+				Reset:    h.getBoolQuery("reset"),
+				DryRun:   h.getBoolQuery("dry_run"),
 			})
 			if err != nil {
 				return err

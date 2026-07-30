@@ -903,27 +903,6 @@ func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (uint32, e
 	return sgbucket.VBHash(key, maxVbNo), nil
 }
 
-// VBucket0DocIDs returns count doc IDs that all hash to vBucket 0 for every supported vBucket count
-// (32, 64, 100, 128, 1024). Placing multiple test docs on the same vBucket ensures they are processed
-// sequentially by a single DCP worker, which is required when a test pauses one doc and needs the
-// remaining docs to stay unprocessed until the pause is released.
-//
-// Keys were pre-computed using sgbucket.VBHash and are verified at runtime.
-// count must be between 1 and 6 inclusive.
-func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
-	all := []string{"abbacomes", "baba", "ob", "rz", "aex", "fbz"}
-	require.GreaterOrEqual(t, count, 1, "VBucket0DocIDs: count must be at least 1")
-	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
-	keys := all[:count]
-	ctx := TestCtx(t)
-	for _, key := range keys {
-		vbNo, err := GetVbucketForKey(ctx, bucket, key)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
-	}
-	return keys
-}
-
 // VBucket0AttachmentBodies returns count attachment body byte slices whose v1 attachment data
 // keys (_sync:att:sha1-<digest>) all hash to vBucket 0 for every supported vBucket count
 // (32, 64, 100, 128, 1024). Using these bodies with CreateLegacyAttachmentDoc ensures the

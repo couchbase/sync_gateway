@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Copyright 2016-Present Couchbase, Inc.
 
@@ -13,7 +11,6 @@ licenses/APL2.txt.
 # -*- python -*-
 import gzip
 import hashlib
-import http
 import optparse
 import os
 import pathlib
@@ -28,12 +25,21 @@ import types
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from copy import copy
-from typing import Callable, List, Optional, Union
+from datetime import UTC
+from http.client import HTTPResponse
+from typing import Any
+
+
+def running_as_root_user() -> bool:
+    if sys.platform == "win32":
+        return False
+    return os.getuid() == 0
 
 
 class LogRedactor:
-    def __init__(self, salt: str, tmpdir: Union[str, pathlib.Path]):
+    def __init__(self, salt: str, tmpdir: str | pathlib.Path):
         self.target_dir = os.path.join(tmpdir, "redacted")
         os.makedirs(self.target_dir)
 
@@ -42,20 +48,22 @@ class LogRedactor:
 
     def _process_file(self, ifile, ofile, processor):
         try:
-            with get_open_fn(ifile)(
-                ifile,
-                "rb",
-            ) as inp:
-                with get_open_fn(ofile)(
+            with (
+                get_open_fn(ifile)(
+                    ifile,
+                    "rb",
+                ) as inp,
+                get_open_fn(ofile)(
                     ofile,
                     "wb+",
-                ) as out:
-                    # Write redaction header
-                    out.write(self.couchbase_log.do(b"RedactLevel"))
-                    for line in inp:
-                        out.write(processor.do(line))
-        except IOError as e:
-            log("I/O error(%s): %s" % (e.errno, e.strerror))
+                ) as out,
+            ):
+                # Write redaction header
+                out.write(self.couchbase_log.do(b"RedactLevel"))
+                for line in inp:
+                    out.write(processor.do(line))
+        except OSError as e:
+            log(f"I/O error({e.errno}): {e.strerror}")
 
     def redact_file(self, name, ifile):
         _, filename = os.path.split(name)
@@ -116,11 +124,14 @@ def log(message, end="\n"):
     sys.stderr.flush()
 
 
-class Task(object):
+class Task:
     privileged = False
     no_header = False
     num_samples = 1
     interval = 0
+    literal: str
+    addenv: dict[str, str]
+    platforms: tuple[str, ...] = ()
 
     def __init__(self, description, command, timeout=None, **kwargs):
         self.description = description
@@ -163,8 +174,9 @@ class Task(object):
             # setting non-zero status code. It's might also
             # automatically handle things like "failed to fork due
             # to some system limit".
-            fp.write(f"Failed to execute {self.command}: {e}".encode("utf-8"))
+            fp.write(f"Failed to execute {self.command}: {e}".encode())
             return 127, ""
+        assert p.stdin is not None
         p.stdin.close()
 
         timer = None
@@ -180,6 +192,7 @@ class Task(object):
             timer.start()
 
         try:
+            assert p.stdout is not None
             while True:
                 data = p.stdout.read(64 * 1024)
                 if not data:
@@ -196,9 +209,7 @@ class Task(object):
                 # message
                 if timer_fired.is_set():
                     fp.write(
-                        f"`{self.command}` timed out after {self.timeout} seconds".encode(
-                            "utf-8"
-                        )
+                        f"`{self.command}` timed out after {self.timeout} seconds".encode()
                     )
 
         return p.wait(), ""
@@ -208,7 +219,7 @@ class Task(object):
         return sys.platform.startswith(tuple(self.platforms))
 
 
-class PythonTask(object):
+class PythonTask:
     """
     A task that takes a python function as an argument rather than an OS command.
     These will run on any platform.
@@ -218,6 +229,7 @@ class PythonTask(object):
     no_header = False
     num_samples = 1
     interval = 0
+    log_file: str
 
     def __init__(self, description, callable, timeout=None, **kwargs):
         self.description = description
@@ -236,7 +248,7 @@ class PythonTask(object):
         error_message is empty on success; on failure it describes the problem
         and is also printed to stdout.
         """
-        print("log_file: {0}. ".format(self.log_file))
+        print(f"log_file: {self.log_file}. ")
         try:
             result = self.callable()
             if not result:
@@ -248,9 +260,9 @@ class PythonTask(object):
             else:
                 fp.write(result.encode())
             return 0, ""
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             if self.log_exception:
-                print("Exception executing python task: {0}".format(e))
+                print(f"Exception executing python task: {e}")
             return 1, ""
 
     def will_run(self):
@@ -258,7 +270,7 @@ class PythonTask(object):
         return True
 
 
-class TaskRunner(object):
+class TaskRunner:
     """
     TaskRunner manages running tasks and collecting their output into files. Use as a context manager to cleanup the
     temporary files when finished.
@@ -279,7 +291,7 @@ class TaskRunner(object):
         try:
             self.tmpdir = tempfile.mkdtemp(dir=tmp_dir, prefix="sgcollect")
         except OSError as e:
-            print("Could not use temporary dir {0}: {1}".format(tmp_dir, e))
+            print(f"Could not use temporary dir {tmp_dir}: {e}")
             sys.exit(1)
 
         # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
@@ -288,17 +300,17 @@ class TaskRunner(object):
             and os.getenv("TMPDIR")
             and os.path.split(self.tmpdir)[0] != os.getenv("TMPDIR")
         ):
-            log("Could not use TMPDIR {0}".format(os.getenv("TMPDIR")))
-            log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
+            log("Could not use TMPDIR {}".format(os.getenv("TMPDIR")))
+            log(f"Using temporary dir {os.path.split(self.tmpdir)[0]}")
 
     def __enter__(self):
         return self
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_value: Optional[type[BaseException]],
-        traceback: Optional[types.TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: types.TracebackType | None,
     ):
         self.close_all_files()
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -309,15 +321,15 @@ class TaskRunner(object):
         filename - Absolute path to file to collect.
         """
         if filename not in self.files:
-            self.files[filename] = open(filename, "r")
+            self.files[filename] = open(filename, "r")  # noqa: SIM115
         else:
-            log("Unable to collect file '{0}' - already collected.".format(filename))
+            log(f"Unable to collect file '{filename}' - already collected.")
 
     def get_file(self, filename):
         if filename in self.files:
             fp = self.files[filename]
         else:
-            fp = open(os.path.join(self.tmpdir, filename), "wb+")
+            fp = open(os.path.join(self.tmpdir, filename), "wb+")  # noqa: SIM115
             self.files[filename] = fp
 
         return fp
@@ -340,8 +352,8 @@ class TaskRunner(object):
         """Run a task with a file descriptor corresponding to its log file"""
         command_to_print = getattr(task, "command_to_print", task.command)
         if task.will_run():
-            log("%s (%s) - " % (task.description, command_to_print), end="")
-            if task.privileged and os.getuid() != 0:
+            log(f"{task.description} ({command_to_print}) - ", end="")
+            if task.privileged and not running_as_root_user():
                 log("skipped (needs root privs)")
                 return
 
@@ -357,7 +369,7 @@ class TaskRunner(object):
             for i in range(task.num_samples):
                 if i > 0:
                     log(
-                        "Taking sample %d after %f seconds - " % (i + 1, task.interval),
+                        f"Taking sample {i + 1} after {task.interval:f} seconds - ",
                         end="",
                     )
                     time.sleep(task.interval)
@@ -367,8 +379,7 @@ class TaskRunner(object):
 
         elif self.verbosity >= 2:
             log(
-                'Skipping "%s" (%s): not for platform %s'
-                % (task.description, command_to_print, sys.platform)
+                f'Skipping "{task.description}" ({command_to_print}): not for platform {sys.platform}'
             )
 
     def redact_and_zip(self, filename: str, log_type: str, salt: str, node: str):
@@ -398,7 +409,7 @@ class TaskRunner(object):
         self.__make_zip(prefix, filename, files)
 
     def close_all_files(self):
-        for name, fp in self.files.items():
+        for fp in self.files.values():
             fp.close()
 
     @staticmethod
@@ -418,30 +429,30 @@ class TaskRunner(object):
 
 
 class LinuxTask(Task):
-    platforms = ["linux"]
+    platforms: tuple[str, ...] = ("linux",)
 
 
 class WindowsTask(Task):
-    platforms = ["win32", "cygwin"]
+    platforms: tuple[str, ...] = ("win32", "cygwin")
 
 
 class MacOSXTask(Task):
-    platforms = ["darwin"]
+    platforms: tuple[str, ...] = ("darwin",)
 
 
 class UnixTask(LinuxTask, MacOSXTask):
-    platforms = LinuxTask.platforms + MacOSXTask.platforms
+    platforms: tuple[str, ...] = LinuxTask.platforms + MacOSXTask.platforms
 
 
 class AllOsTask(UnixTask, WindowsTask):
-    platforms = UnixTask.platforms + WindowsTask.platforms
+    platforms: tuple[str, ...] = UnixTask.platforms + WindowsTask.platforms
 
 
 def make_curl_task(
     name: str,
     url: str,
     auth_headers: dict[str, str],
-    content_postprocessors: Optional[List[Callable]] = None,
+    content_postprocessors: list[Any] | None = None,
     timeout=60,
     log_file="python_curl.log",
     **kwargs,
@@ -465,14 +476,14 @@ def make_curl_task(
 
     """
 
-    def python_curl_task() -> Union[bytes, str]:
+    def python_curl_task() -> bytes | str:
         """
         Return the output from the request after post processing.
         """
         try:
             response_file_handle = urlopen(url, auth_headers)
         except urllib.error.URLError as e:
-            print("WARNING: Error connecting to url {0}: {1}".format(url, e))
+            print(f"WARNING: Error connecting to url {url}: {e}")
             return b""
 
         response_string: bytes = response_file_handle.read()
@@ -487,9 +498,9 @@ def make_curl_task(
 
 
 def add_file_task(
-    sourcefile_path: Union[pathlib.Path, str],
-    output_path: Union[pathlib.Path, str],
-    content_postprocessors: Optional[List[Callable]] = None,
+    sourcefile_path: pathlib.Path | str,
+    output_path: pathlib.Path | str,
+    content_postprocessors: list[Any] | None = None,
 ):
     """
     Adds the contents of a file to the output zip
@@ -506,7 +517,7 @@ def add_file_task(
             return contents
 
     task = PythonTask(
-        description="Contents of {0}".format(sourcefile_path),
+        description=f"Contents of {sourcefile_path}",
         callable=python_add_file_task,
         log_file=output_path,
         log_exception=False,
@@ -520,7 +531,7 @@ def make_event_log_task():
 
     # I found that wmic ntevent can be extremely slow; so limiting the output
     # to approximately last month
-    limit = datetime.today() - timedelta(days=31)
+    limit = datetime.now(UTC) - timedelta(days=31)
     limit = limit.strftime("%Y%m%d000000.000000-000")
 
     return WindowsTask(
@@ -528,10 +539,10 @@ def make_event_log_task():
         "wmic ntevent where "
         '"'
         "(LogFile='application' or LogFile='system') and "
-        "EventType<3 and TimeGenerated>'%(limit)s'"
+        "EventType<3 and TimeGenerated>'{limit}'"
         '" '
         "get TimeGenerated,LogFile,SourceName,EventType,Message,InsertionStrings "
-        "/FORMAT:list" % locals(),
+        "/FORMAT:list".format(**locals()),
     )
 
 
@@ -540,7 +551,7 @@ def make_event_log_task_sg_info():
 
     # I found that wmic ntevent can be extremely slow; so limiting the output
     # to approximately last month
-    limit = datetime.today() - timedelta(days=31)
+    limit = datetime.now(UTC) - timedelta(days=31)
     limit = limit.strftime("%Y%m%d000000.000000-000")
 
     return WindowsTask(
@@ -548,10 +559,10 @@ def make_event_log_task_sg_info():
         "wmic ntevent where "
         '"'
         "SourceName='SyncGateway' and "
-        "TimeGenerated>'%(limit)s'"
+        "TimeGenerated>'{limit}'"
         '" '
         "get TimeGenerated,LogFile,SourceName,EventType,InsertionStrings "
-        "/FORMAT:list" % locals(),
+        "/FORMAT:list".format(**locals()),
     )
 
 
@@ -604,8 +615,9 @@ def make_os_tasks(processes):
         UnixTask("sysctl settings", "sysctl -a"),
         LinuxTask(
             "Relevant lsof output",
-            "echo %(programs)s | xargs -n1 pgrep | xargs -n1 -r -- lsof -n -p"
-            % locals(),
+            "echo {programs} | xargs -n1 pgrep | xargs -n1 -r -- lsof -n -p".format(
+                **locals()
+            ),
         ),
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
@@ -681,9 +693,10 @@ def make_os_tasks(processes):
         ),
         LinuxTask(
             "Relevant proc data",
-            "echo %(programs)s | "
-            "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --"
-            % locals(),
+            "echo {programs} | "
+            "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --".format(
+                **locals()
+            ),
         ),
         LinuxTask("NUMA data", "numactl --hardware"),
         LinuxTask("NUMA data", "numactl --show"),
@@ -727,8 +740,7 @@ def iter_flatten(iterable):
     it = iter(iterable)
     for e in it:
         if isinstance(e, (list, tuple)):
-            for f in iter_flatten(e):
-                yield f
+            yield from iter_flatten(e)
         else:
             yield e
 
@@ -751,20 +763,18 @@ def do_upload(path, url, proxy):
 
         opener = urllib.request.build_opener(proxy_handler)
         request = urllib.request.Request(url, data=f, method="PUT")
-        request.add_header(str("Content-Type"), str("application/zip"))
-        request.add_header("Content-Length", os.fstat(f.fileno()).st_size)
+        request.add_header("Content-Type", "application/zip")
+        request.add_header("Content-Length", str(os.fstat(f.fileno()).st_size))
 
         try:
             url = opener.open(request)
             if url.getcode() == 200:
                 log("Done uploading")
             else:
-                raise Exception(
-                    "Error uploading, expected status code 200, got status code: {0}".format(
-                        url.getcode()
-                    )
+                raise Exception(  # noqa: TRY002
+                    f"Error uploading, expected status code 200, got status code: {url.getcode()}"
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001
             log(traceback.format_exc())
             return 1
 
@@ -790,12 +800,12 @@ def generate_upload_url(parser, options, zip_filename):
         customer = urllib.parse.quote(options.upload_customer)
         fname = urllib.parse.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
-            full_path = "%s/%s/%d/%s" % (path, customer, options.upload_ticket, fname)
+            full_path = f"{path}/{customer}/{options.upload_ticket:d}/{fname}"
         else:
-            full_path = "%s/%s/%s" % (path, customer, fname)
+            full_path = f"{path}/{customer}/{fname}"
 
         upload_url = urllib.parse.urlunsplit((scheme, netloc, full_path, "", ""))
-        log("Will upload collected .zip file into %s" % upload_url)
+        log(f"Will upload collected .zip file into {upload_url}")
     return upload_url
 
 
@@ -804,7 +814,7 @@ def check_ticket(option, opt, value):
         return int(value)
     else:
         raise optparse.OptionValueError(
-            "option %s: invalid ticket number: %r" % (opt, value)
+            f"option {opt}: invalid ticket number: {value!r}"
         )
 
 
@@ -814,7 +824,7 @@ class CbcollectInfoOptions(optparse.Option):
     TYPE_CHECKER["ticket"] = check_ticket
 
 
-def redactable_file(filename: Union[pathlib.Path, str]) -> bool:
+def redactable_file(filename: pathlib.Path | str) -> bool:
     """
     Return True if the file should be redacted, otherwise False.
     """
@@ -824,7 +834,7 @@ def redactable_file(filename: Union[pathlib.Path, str]) -> bool:
     return filename.stem != "sync_gateway"
 
 
-def get_open_fn(path: Union[pathlib.Path, str]) -> Callable:
+def get_open_fn(path: pathlib.Path | str) -> Callable[..., Any]:
     """
     Return open function for path. gzip.open if suffixed with .gz, else open.
     """
@@ -834,7 +844,7 @@ def get_open_fn(path: Union[pathlib.Path, str]) -> Callable:
     return open
 
 
-def urlopen(url: str, auth_headers: dict[str, str]) -> http.client.HTTPResponse:
+def urlopen(url: str, auth_headers: dict[str, str]) -> HTTPResponse:
     """
     Open a URL with basic authentication if username and password are provided. Can raise urllib.error.URLError if there is an error.
     """

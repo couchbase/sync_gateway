@@ -140,9 +140,10 @@ func (runner *SGRTestRunner) IsV4Protocol() bool {
 	return slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString())
 }
 
+// WaitForVersion will wait for revtree if v3 protocol or full version otherwise.
 func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, version DocVersion) {
 	rt.TB().Helper()
-	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
+	if !runner.IsV4Protocol() {
 		// only assert on rev tree IDs when we're not replicating using v4 protocol
 		rt.WaitForVersionRevIDOnly(docID, version)
 		return
