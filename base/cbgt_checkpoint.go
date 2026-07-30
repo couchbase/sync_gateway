@@ -34,7 +34,7 @@ func (c cbgtOpaqueCheckpoint) isEmpty() bool {
 // field - the last sequence SG actually processed for the vbucket, which isn't part of cbgt's own checkpoint shape.
 type CbgtCheckpoint struct {
 	cbgtOpaqueCheckpoint
-	LastSeq uint64 `json:"lastSeq"`
+	LastSeq uint64 `json:"lastSeq,omitempty"`
 }
 
 // readCbgtCheckpoint parses a persisted DCP checkpoint value, returning the last sequence SG actually processed
@@ -50,6 +50,14 @@ func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err e
 	lastSeq = checkpoint.LastSeq
 	if lastSeq == 0 {
 		lastSeq = checkpoint.SnapStart
+	}
+
+	// Guardrail: Ensure lastSeq is within the snapshot boundaries [SnapStart, SnapEnd] of the cbgt checkpoint.
+	if lastSeq < checkpoint.SnapStart {
+		lastSeq = checkpoint.SnapStart
+	}
+	if checkpoint.SnapEnd > 0 && lastSeq > checkpoint.SnapEnd {
+		lastSeq = checkpoint.SnapEnd
 	}
 
 	// A checkpoint with no cbgt-owned fields at all must round-trip back to nil, not "{}", so OpaqueGet's

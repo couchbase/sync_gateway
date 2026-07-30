@@ -112,7 +112,7 @@ var checkpointShapeTestCases = []struct {
 // through persistCheckpoint/loadCheckpoint or a metadata bucket), across checkpoint shapes, verifying every field
 // survives exactly.
 func TestCbgtCheckpointRoundTrip(t *testing.T) {
-	const lastSeq = uint64(42)
+	const lastSeq = uint64(18)
 	for _, testCase := range checkpointShapeTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			persisted, err := createCbgtCheckpoint([]byte(testCase.raw), lastSeq)
@@ -155,6 +155,52 @@ func TestCbgtCheckpointPreservesLargeSequenceNumberPrecision(t *testing.T) {
 	var remains cbgtOpaqueCheckpoint
 	require.NoError(t, JSONUnmarshal(rawMetadata, &remains))
 	assert.Equal(t, largeSeq, remains.SnapEnd)
+}
+
+// TestCbgtCheckpointGuardrails verifies that readCbgtCheckpoint clamps lastSeq to the checkpoint's snapStart and snapEnd boundaries.
+func TestCbgtCheckpointGuardrails(t *testing.T) {
+	testCases := []struct {
+		name             string
+		raw              string
+		persistedLastSeq uint64
+		expectedLastSeq  uint64
+	}{
+		{
+			name:             "lastSeq below snapStart is clamped to snapStart",
+			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
+			persistedLastSeq: 5,
+			expectedLastSeq:  15,
+		},
+		{
+			name:             "lastSeq above snapEnd is clamped to snapEnd",
+			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
+			persistedLastSeq: 25,
+			expectedLastSeq:  20,
+		},
+		{
+			name:             "lastSeq within boundaries is not clamped",
+			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
+			persistedLastSeq: 18,
+			expectedLastSeq:  18,
+		},
+		{
+			name:             "lastSeq is not clamped if boundaries are 0 (e.g. empty/new checkpoints)",
+			raw:              `{}`,
+			persistedLastSeq: 42,
+			expectedLastSeq:  42,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			persisted, err := createCbgtCheckpoint([]byte(testCase.raw), testCase.persistedLastSeq)
+			require.NoError(t, err)
+
+			extractedLastSeq, _, err := readCbgtCheckpoint(persisted)
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expectedLastSeq, extractedLastSeq)
+		})
+	}
 }
 
 // TestDCPCommonCheckpointRoundTrip verifies that persistCheckpoint followed by loadCheckpoint on a *DCPCommon

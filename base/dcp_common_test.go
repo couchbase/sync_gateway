@@ -93,7 +93,7 @@ func TestDCPNameLength(t *testing.T) {
 // i.e. through an actual metadata bucket, not just createCbgtCheckpoint/readCbgtCheckpoint directly - across the
 // same checkpoint shapes as TestCbgtCheckpointRoundTrip, verifying every field survives exactly.
 func TestDCPCommonCheckpointRoundTripShapes(t *testing.T) {
-	const lastSeq = uint64(42)
+	const lastSeq = uint64(18)
 	for _, testCase := range checkpointShapeTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := TestCtx(t)
