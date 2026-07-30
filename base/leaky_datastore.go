@@ -98,6 +98,10 @@ func (lds *LeakyDataStore) SetGetWithXattrCallback(callback func(string) error) 
 	lds.bucket.setWithXattrCallback(callback)
 }
 
+func (lds *LeakyDataStore) SetGetAndTouchRawCallback(callback func(string) error) {
+	lds.bucket.setGetAndTouchRawCallback(callback)
+}
+
 func (lds *LeakyDataStore) GetRaw(ctx context.Context, k string) (v []byte, cas uint64, err error) {
 	if cb := lds.bucket.getRawCallback(); cb != nil {
 		if err = cb(k); err != nil {
@@ -117,6 +121,11 @@ func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKey
 }
 
 func (lds *LeakyDataStore) GetAndTouchRaw(ctx context.Context, k string, exp uint32) (v []byte, cas uint64, err error) {
+	if cb := lds.bucket.getGetAndTouchRawCallback(); cb != nil {
+		if err := cb(k); err != nil {
+			return nil, 0, err
+		}
+	}
 	return lds.dataStore.GetAndTouchRaw(ctx, k, exp)
 }
 func (lds *LeakyDataStore) Touch(ctx context.Context, k string, exp uint32) (cas uint64, err error) {
