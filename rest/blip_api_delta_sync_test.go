@@ -15,6 +15,7 @@ import (
 	"maps"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -490,19 +491,27 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 			expectedDocVersion2RevID = docVersion2.CV.String()
 		}
 		var revMsgs []*blip.Message
-		for _, msg := range client.pullReplication.GetMessages() {
-			if msg.Profile() != db.RevMessageRev {
-				continue
+		// We must use require.EventuallyWithT to poll the messages list here. While WaitForVersion
+		// guarantees that the client's document store has been updated (via addRev), the raw BLIP message
+		// itself is appended to pullReplication.GetMessages() via a defer hook after handleRev exits.
+		// Polling prevents a race condition where WaitForVersion returns but the final accepted full-body
+		// message is not yet appended to the replication messages log.
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			revMsgs = nil
+			for _, msg := range client.pullReplication.GetMessages() {
+				if msg.Profile() != db.RevMessageRev {
+					continue
+				}
+				if msg.Properties[db.RevMessageID] != docID {
+					continue
+				}
+				if msg.Properties[db.RevMessageRev] != expectedDocVersion2RevID {
+					continue
+				}
+				revMsgs = append(revMsgs, msg)
 			}
-			if msg.Properties[db.RevMessageID] != docID {
-				continue
-			}
-			if msg.Properties[db.RevMessageRev] != expectedDocVersion2RevID {
-				continue
-			}
-			revMsgs = append(revMsgs, msg)
-		}
-		require.Len(t, revMsgs, 2, client.pullReplication.GetAllMessagesSummary())
+			assert.Len(c, revMsgs, 2)
+		}, 5*time.Second, 5*time.Millisecond, client.pullReplication.GetAllMessagesSummary())
 		var serialNumber []blip.MessageNumber
 		for _, msg := range revMsgs {
 			serialNumber = append(serialNumber, msg.SerialNumber())
