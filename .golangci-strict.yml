@@ -62,6 +62,9 @@ linters:
         ruleguard:
           failOn: all
           rules: ${base-path}/ruleguard/rules-*.go
+    govet:
+      enable:
+        - nilness
     staticcheck:
       checks:
         - all # enable all
