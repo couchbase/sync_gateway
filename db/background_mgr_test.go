@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -579,7 +580,8 @@ func TestBackgroundManagerJoinNoDoc(t *testing.T) {
 		terminator: base.NewSafeTerminator(),
 	}
 
-	require.ErrorAsType[errBackgroundManagerStatusNotRunning](t, mgr.Join(ctx))
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, mgr.Join(ctx), &statusErr)
 }
 
 // TestBackgroundManagerJoinSingleNodeError verifies that Join returns an error for single-node managers
@@ -831,7 +833,8 @@ func TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenNotRunning(t *testing.
 
 	// No status doc exists → Join must return errBackgroundManagerStatusNotRunning.
 	err := mgr.Join(ctx)
-	require.ErrorAsType[errBackgroundManagerStatusNotRunning](t, err)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	mu.Lock()
 	calls := make([]bool, len(dbStateCalls))
@@ -1114,7 +1117,8 @@ func TestUpdateDatabaseStateJoinOverwritesRunningState(t *testing.T) {
 
 	// B's Join will see no cluster status doc → errBackgroundManagerStatusNotRunning → callUpdateDatabaseState(false).
 	err := mgrB.Join(ctx)
-	require.ErrorAsType[errBackgroundManagerStatusNotRunning](t, err)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	// B wrote false to the shared state doc, even though A is still running.
 	// A's next UpdateStatusClusterAware call must restore true.
@@ -1624,6 +1628,29 @@ func TestBackgroundManagerConcurrentStopStartRace(t *testing.T) {
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
+
+	// Depending on how the goroutines below interleave, the manager can be left running or mid-stop when
+	// they finish, which would leave its goroutines using the bucket after it has been closed. Registered
+	// after the testBucket.Close defer above, so it runs before the bucket is closed.
+	defer func() {
+		terminalStates := []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			// Stop is a no-op if the process is already stopped or stopping.
+			assert.NoError(c, mgr.Stop(ctx))
+			assert.Contains(c, terminalStates, mgr.GetRunState())
+			// Also wait for the persisted status, which the process goroutine writes after transitioning
+			// to a terminal state, to ensure it is done with the bucket.
+			rawStatus, err := mgr.GetStatus(ctx)
+			if !assert.NoError(c, err) {
+				return
+			}
+			var status BackgroundManagerStatus
+			if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
+				return
+			}
+			assert.Contains(c, terminalStates, status.State, "BackgroundManager did not reach a terminal state: %s", string(rawStatus))
+		}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+	}()
 
 	numGoroutines := 10
 	iterations := 20

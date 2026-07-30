@@ -861,7 +861,7 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 		case <-ticker.C:
 			if err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate); err != nil {
 				if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
-					b.setRunState(stateErr.state)
+					b.compareAndSwapRunState(BackgroundProcessStateRunning, stateErr.state)
 					terminator.Close()
 					return
 				}
