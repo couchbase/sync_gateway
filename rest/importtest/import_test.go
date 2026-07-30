@@ -803,7 +803,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-	responseString := string(response.Body.Bytes())
+	responseString := response.Body.String()
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
 	}
@@ -1245,7 +1245,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 
 			rtConfig := rest.RestTesterConfig{
@@ -1323,7 +1323,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 
 			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)

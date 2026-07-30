@@ -292,7 +292,7 @@ func TestUserAPI(t *testing.T) { // PUT a user
 	// Check the list of all users:
 	response = rt.SendAdminRequest("GET", "/db/_user/", "")
 	RequireStatus(t, response, 200)
-	assert.Equal(t, `["snej"]`, string(response.Body.Bytes()))
+	assert.Equal(t, `["snej"]`, response.Body.String())
 
 	// Check that the actual User object is correct:
 	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
@@ -1256,11 +1256,11 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, userResponse, 200)
-	assert.NotContains(t, string(userResponse.Body.Bytes()), collection2Name)
+	assert.NotContains(t, userResponse.Body.String(), collection2Name)
 
 	userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, userResponse, 200)
-	assert.NotContains(t, string(userResponse.Body.Bytes()), collection2Name)
+	assert.NotContains(t, userResponse.Body.String(), collection2Name)
 
 	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
 	putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
