@@ -84,7 +84,6 @@ type TombstoneManagerResponse struct {
 }
 
 func (t *TombstoneCompactionManager) SetProcessStatus(context.Context, []byte, []byte) {
-	return
 }
 
 func (t *TombstoneCompactionManager) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {

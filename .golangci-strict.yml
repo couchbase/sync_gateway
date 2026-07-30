@@ -83,7 +83,6 @@ linters:
         - -S1011 # Use a single 'append' to concatenate two slices.
         - -S1012 # Replace 'time.Now().Sub(x)' with 'time.Since(x)'.
         - -S1021 # Merge variable declaration and assignment.
-        - -S1023 # redundant return statement
         - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
         - -S1025 # Don't use 'fmt.Sprintf("%s", x)' unnecessarily.
         - -S1028 # Simplify error construction with 'fmt.Errorf'.

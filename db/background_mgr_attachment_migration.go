@@ -265,7 +265,6 @@ func (a *AttachmentMigrationManager) ResetStatus() {
 }
 
 func (a *AttachmentMigrationManager) SetProcessStatus(context.Context, []byte, []byte) {
-	return
 }
 
 func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {

@@ -147,12 +147,10 @@ func (m *dcpMetadataBase) SetEndSeqNos(endSeqNos map[uint16]uint64) {
 
 // Persist is no-op for in-memory metadata store
 func (md *DCPMetadataMem) Persist(_ context.Context, workerID int, vbIDs []uint16) {
-	return
 }
 
 // Purge is no-op for in-memory metadata store
 func (md *DCPMetadataMem) Purge(_ context.Context, numWorkers int) {
-	return
 }
 
 func (md *DCPMetadataMem) GetKeyPrefix() string {
@@ -235,7 +233,6 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 	} else {
 		TracefCtx(ctx, KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
 	}
-	return
 }
 
 func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {

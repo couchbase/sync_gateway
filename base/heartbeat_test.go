@@ -87,7 +87,6 @@ func (th *TestHeartbeatListener) GetNodes(_ context.Context) (nodeUUIDs []string
 }
 
 func (th *TestHeartbeatListener) Stop() {
-	return
 }
 
 // TestNewCouchbaseHeartbeater starts three heartbeaters (simulating three nodes), then stops a node
