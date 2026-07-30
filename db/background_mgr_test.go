@@ -1559,11 +1559,11 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 		name string
 		// setup gets the manager into a state where a heartbeat has just succeeded, before the injected error
 		// is armed.
-		setup func(t *testing.T, ctx context.Context, mgr *BackgroundManager[map[string]any], metadataStore base.DataStore, heartbeatDocID string)
+		setup func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string)
 	}{
 		{
 			name: "already running",
-			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[map[string]any], metadataStore base.DataStore, heartbeatDocID string) {
+			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string) {
 				// Write the heartbeat doc up front, as markStart would, so a heartbeat update that isn't
 				// intercepted by the injected error can succeed for real against the underlying bucket.
 				require.NoError(t, metadataStore.SetRaw(ctx, heartbeatDocID, BackgroundManagerHeartbeatExpirySecs, nil, []byte("{}")))
@@ -1573,11 +1573,11 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 		},
 		{
 			name: "startup",
-			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[map[string]any], metadataStore base.DataStore, heartbeatDocID string) {
+			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string) {
 				// Start performs the real (uninjected) WriteCas that writes the heartbeat doc for the first
 				// time; this must count as the most recent successful heartbeat even though
 				// UpdateHeartbeatDocClusterAware itself has not yet been called.
-				require.NoError(t, mgr.Start(ctx, map[string]any{}))
+				require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 				t.Cleanup(func() { _ = mgr.Stop(ctx) })
 			},
 		},
@@ -1604,7 +1604,7 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 			defer leakyBucket.Close(ctx)
 			metadataStore := leakyBucket.DefaultDataStore(ctx)
 
-			mgr := &BackgroundManager[map[string]any]{
+			mgr := &BackgroundManager[MockProcessOptions]{
 				name:    "test-heartbeat-transient-error-mgr",
 				Process: &MockProcess{},
 				clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
