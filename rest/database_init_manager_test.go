@@ -11,6 +11,9 @@ package rest
 import (
 	"fmt"
 	"log"
+	"maps"
+	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -125,6 +128,181 @@ func TestDatabaseInitPostMigrationExcludesDefault(t *testing.T) {
 		require.True(t, ok, "expected collection %s to be initialized, got collections: %v", scName, seen)
 	}
 	require.Len(t, seen, len(expected), "unexpected collection set: %v", seen)
+}
+
+// TestDatabaseInitCollectionsForMetadataStoreMode:
+// _default._default is deliberately never a configured data collection here, so it is only ever a
+// candidate for index initialization in its metadata role:
+//  1. system metadata collection opted in, no legacy metadata in _default._default (fresh deployment, so
+//     the database is migration-complete from the outset) - metadata indexes belong on _system._mobile only
+//  2. system metadata collection opted in, legacy metadata still in _default._default - migration is still
+//     required, so _default remains a dual-read fallback and needs its metadata indexes too
+//  3. not opted in - _default._default *is* the metadata store, and _system._mobile is unused
+func TestDatabaseInitCollectionsForMetadataStoreMode(t *testing.T) {
+	RequireN1QLIndexes(t)
+	base.TestRequiresCollections(t)
+	base.LongRunningTest(t)
+
+	// lowercase only - db.ValidateDatabaseName rejects anything else
+	const dbName = "testdb"
+
+	testCases := []struct {
+		name                        string
+		useSystemMetadataCollection bool
+		legacyMetadataInDefault     bool // seed legacy per-DB metadata in _default._default, so migration is still required
+		expectMobileCollectionInit  bool
+		expectDefaultCollectionInit bool
+	}{
+		{
+			name:                        "system metadata collection, migration complete",
+			useSystemMetadataCollection: true,
+			legacyMetadataInDefault:     false,
+			expectMobileCollectionInit:  true,
+			expectDefaultCollectionInit: false,
+		},
+		{
+			name:                        "system metadata collection, migration required",
+			useSystemMetadataCollection: true,
+			legacyMetadataInDefault:     true,
+			expectMobileCollectionInit:  true,
+			expectDefaultCollectionInit: true,
+		},
+		{
+			name:                        "legacy metadata collection",
+			useSystemMetadataCollection: false,
+			legacyMetadataInDefault:     false,
+			expectMobileCollectionInit:  false,
+			expectDefaultCollectionInit: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
+
+			sc, closeFn := StartBootstrapServer(t)
+			defer closeFn()
+
+			// Drop the indexes created by the bucket pool, so the indexes found in the bucket afterwards
+			// are only the ones this database's initialization built.
+			base.DropAllBucketIndexes(t, tb)
+			dropSystemCollectionMetadataIndexes(t, tb)
+
+			// Two named data collections - _default._default is not a configured collection.
+			scopesConfig := GetCollectionsConfig(t, tb, 2)
+			dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+			// The metadata ID the database will be created with, since its config doesn't include
+			// _default._default. Asserted after creation, because the legacy metadata seeded below is
+			// keyed by it.
+			metadataID := sc.BootstrapContext.standardMetadataID(dbName)
+			if testCase.legacyMetadataInDefault {
+				// Model a database that predates the system metadata collection. The per-DB sequence
+				// counter in _default._default is what the database load probes to decide whether the
+				// metadata store still needs _default as a read fallback.
+				_, err := tb.DefaultDataStore(ctx).Incr(ctx, base.NewMetadataKeys(metadataID).SyncSeqKey(), 1, 1, 0)
+				require.NoError(t, err)
+			}
+
+			// Record every collection index initialization completes for.
+			var seenLock sync.Mutex
+			seen := make(map[base.ScopeAndCollectionName]struct{})
+			sc.DatabaseInitManager.testCollectionStatusUpdateCallback = func(_ string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+				if status != db.CollectionIndexStatusReady {
+					return
+				}
+				seenLock.Lock()
+				defer seenLock.Unlock()
+				seen[scName] = struct{}{}
+			}
+
+			dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(testCase.useSystemMetadataCollection)
+
+			// Index initialization runs synchronously for this create (the database isn't started
+			// offline and no initialization is already in flight), so it has completed for every
+			// collection by the time the request returns.
+			resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/", string(base.MustJSONMarshal(t, dbConfig)))
+			resp.RequireStatus(http.StatusCreated)
+
+			require.Equal(t, metadataID, sc.GetDatabaseConfig(dbName).MetadataID,
+				"metadata ID assigned at database creation must match the one the test derives legacy metadata keys from")
+
+			expected := []base.ScopeAndCollectionName{
+				{Scope: dataStoreNames[0].ScopeName(), Collection: dataStoreNames[0].CollectionName()},
+				{Scope: dataStoreNames[1].ScopeName(), Collection: dataStoreNames[1].CollectionName()},
+			}
+			if testCase.expectMobileCollectionInit {
+				expected = append(expected, base.MobileSystemScopeAndCollectionName())
+			}
+			if testCase.expectDefaultCollectionInit {
+				expected = append(expected, base.DefaultScopeAndCollectionName())
+			}
+
+			seenLock.Lock()
+			defer seenLock.Unlock()
+			require.ElementsMatch(t, expected, slices.Collect(maps.Keys(seen)), "unexpected set of initialized collections")
+
+			// Corroborate the collection set against the indexes actually in the bucket. _default isn't a
+			// configured data collection in any of these cases, so any index in it is a metadata index.
+			dataStore, err := tb.NamedDataStore(base.TestCtx(t), base.DefaultScopeAndCollectionName())
+			require.NoError(t, err)
+			n1qlStore, ok := base.AsN1QLStore(dataStore)
+			require.True(t, ok, "expected %s to be a N1QLStore, got %T", base.DefaultScopeAndCollectionName(), dataStore)
+			indexes, err := n1qlStore.GetIndexes()
+			require.NoError(t, err)
+			if testCase.expectDefaultCollectionInit {
+				require.NotEmpty(t, indexes, "expected indexes to have been built on %s", base.DefaultScopeAndCollectionName())
+			} else {
+				require.Empty(t, indexes, "expected no indexes to have been built on %s", base.DefaultScopeAndCollectionName())
+			}
+			RequireSystemCollectionHasMetadataIndexes(t, tb, testCase.expectMobileCollectionInit)
+		})
+	}
+}
+
+// RequireSystemCollectionHasMetadataIndexes asserts whether the metadata indexes are present on
+// _system._mobile. CBS omits system-scope collections from system:indexes, so this goes via
+// system:all_indexes rather than N1QLStore.GetIndexes, which reports nothing for those collections.
+func RequireSystemCollectionHasMetadataIndexes(t *testing.T, tb *base.TestBucket, expectIndexes bool) {
+	t.Helper()
+	gocbBucket, err := base.AsGocbV2Bucket(tb.Bucket)
+	require.NoError(t, err)
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), base.SystemScope, base.SystemCollectionMobile)
+	require.NoError(t, err)
+	indexesMeta, err := base.GetSystemCollectionIndexesMeta(base.TestCtx(t), n1qlStore, base.SystemScope, base.SystemCollectionMobile, []string{"sg_users_x1", "sg_roles_x1"})
+	require.NoError(t, err)
+	if expectIndexes {
+		base.RequireKeysEqual(t, []string{"sg_users_x1", "sg_roles_x1"}, indexesMeta, "unexpected metadata indexes on %s", base.MobileSystemScopeAndCollectionName())
+	} else {
+		require.Empty(t, indexesMeta, "expected no metadata indexes on %s", base.MobileSystemScopeAndCollectionName())
+	}
+}
+
+// dropSystemCollectionMetadataIndexes drops the metadata indexes the bucket pool builds on
+// _system._mobile. base.DropAllBucketIndexes leaves them in place because it enumerates via
+// N1QLStore.GetIndexes, which doesn't see system-scope collections - to be fixed by CBG-5585, after
+// which this can go away.
+func dropSystemCollectionMetadataIndexes(t *testing.T, tb *base.TestBucket) {
+	t.Helper()
+	ctx := base.TestCtx(t)
+	gocbBucket, err := base.AsGocbV2Bucket(tb.Bucket)
+	require.NoError(t, err)
+	n1qlStore, err := base.NewClusterOnlyN1QLStore(gocbBucket.GetCluster(), gocbBucket.BucketName(), base.SystemScope, base.SystemCollectionMobile)
+	require.NoError(t, err)
+	for _, indexName := range []string{"sg_users_x1", "sg_roles_x1"} {
+		if err := base.DropIndex(ctx, n1qlStore, indexName); err != nil && !base.IsIndexNotFoundError(err) {
+			require.NoError(t, err, "error dropping index %s on %s", indexName, base.MobileSystemScopeAndCollectionName())
+		}
+	}
+	// DROP INDEX is asynchronous - wait for the drops to land, so the index initialization under test
+	// doesn't skip creating an index that's about to disappear.
+	require.Eventually(t, func() bool {
+		indexesMeta, err := base.GetSystemCollectionIndexesMeta(ctx, n1qlStore, base.SystemScope, base.SystemCollectionMobile, []string{"sg_users_x1", "sg_roles_x1"})
+		return err == nil && len(indexesMeta) == 0
+	}, 30*time.Second, 100*time.Millisecond, "metadata indexes on %s were not dropped", base.MobileSystemScopeAndCollectionName())
 }
 
 // TestDatabaseInitConfigChangeSameCollections tests modifications made to the database config while init is running.

@@ -214,12 +214,18 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 		passiveRTConfig = opts.PassiveRestTesterConfig
 	} else {
 		passiveRTConfig = &RestTesterConfig{
-			CustomTestBucket: passiveTestBucket.NoCloseClone(),
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Name: "passivedb",
 			}},
 			SyncFn: channels.DocChannelsSyncFunction,
 		}
+	}
+	// Back the RestTester with the bucket obtained above. A caller-supplied config that doesn't bring
+	// its own bucket would otherwise take a second one from the pool, leaving the bucket above unused
+	// and doubling the test's real bucket requirement past its RequireNumTestBuckets(t, 2) - which
+	// stalls for waitForReadyBucketTimeout and then fails whenever the pool is smaller than that.
+	if passiveRTConfig.CustomTestBucket == nil {
+		passiveRTConfig.CustomTestBucket = passiveTestBucket.NoCloseClone()
 	}
 	passiveRT := NewRestTester(t, passiveRTConfig)
 	t.Cleanup(passiveRT.Close)
@@ -252,10 +258,12 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Name: "activedb",
 			}},
-			CustomTestBucket:   activeTestBucket.NoCloseClone(),
 			SgReplicateEnabled: true,
 			SyncFn:             channels.DocChannelsSyncFunction,
 		}
+	}
+	if activeRTConfig.CustomTestBucket == nil {
+		activeRTConfig.CustomTestBucket = activeTestBucket.NoCloseClone()
 	}
 	activeRT := NewRestTester(t, activeRTConfig)
 	t.Cleanup(activeRT.Close)
