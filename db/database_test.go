@@ -3821,7 +3821,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		})
 	}
 
-	assert.NoError(t, db.TombstoneCompactionManager.Start(ctx, map[string]any{"database": db}))
+	assert.NoError(t, db.TombstoneCompactionManager.Start(ctx, TombstoneCompactionOptions{Database: db}))
 
 	waitAndAssertConditionWithOptions(t, func() bool {
 		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
@@ -4334,8 +4334,8 @@ func Test_stopBackgroundManagers(t *testing.T) {
 
 	testCases := []struct {
 		resyncManager               *BackgroundManager[ResyncOptions]
-		tombstoneCompactionManager  *BackgroundManager[map[string]any]
-		attachmentCompactionManager *BackgroundManager[map[string]any]
+		tombstoneCompactionManager  *BackgroundManager[TombstoneCompactionOptions]
+		attachmentCompactionManager *BackgroundManager[AttachmentCompactionOptions]
 		expected                    int
 	}{
 		{
@@ -4353,13 +4353,13 @@ func Test_stopBackgroundManagers(t *testing.T) {
 				name:    "test_resync",
 				Process: &testBackgroundProcess[ResyncOptions]{isStoppable: true},
 			},
-			tombstoneCompactionManager: &BackgroundManager[map[string]any]{
+			tombstoneCompactionManager: &BackgroundManager[TombstoneCompactionOptions]{
 				name:    "test_tombstone",
-				Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
+				Process: &testBackgroundProcess[TombstoneCompactionOptions]{isStoppable: true},
 			},
-			attachmentCompactionManager: &BackgroundManager[map[string]any]{
+			attachmentCompactionManager: &BackgroundManager[AttachmentCompactionOptions]{
 				name:    "test_attachment",
-				Process: &testBackgroundProcess[map[string]any]{isStoppable: true},
+				Process: &testBackgroundProcess[AttachmentCompactionOptions]{isStoppable: true},
 			},
 			expected: 3,
 		},
@@ -4375,11 +4375,11 @@ func Test_stopBackgroundManagers(t *testing.T) {
 				assert.NoError(t, err)
 			}
 			if db.AttachmentCompactionManager != nil {
-				err := db.AttachmentCompactionManager.Start(ctx, map[string]any{})
+				err := db.AttachmentCompactionManager.Start(ctx, AttachmentCompactionOptions{})
 				assert.NoError(t, err)
 			}
 			if db.TombstoneCompactionManager != nil {
-				err := db.TombstoneCompactionManager.Start(ctx, map[string]any{})
+				err := db.TombstoneCompactionManager.Start(ctx, TombstoneCompactionOptions{})
 				assert.NoError(t, err)
 			}
 

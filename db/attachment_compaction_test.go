@@ -292,7 +292,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 	})
 
 	terminator := base.NewSafeTerminator()
-	err = testDb.AttachmentCompactionManager.Process.Run(ctx, map[string]any{"database": testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
+	err = testDb.AttachmentCompactionManager.Process.Run(ctx, AttachmentCompactionOptions{Database: testDb}, testDb.AttachmentCompactionManager.UpdateStatusClusterAware, terminator)
 	require.NoError(t, err)
 
 	RequireBackgroundManagerState(t, testDb.AttachmentCompactionManager, BackgroundProcessStateCompleted)
@@ -389,11 +389,11 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	var err error
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
 		<-terminator.Done()
 	})
 	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb1)
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2, DryRun: true})
 	assert.NoError(t, err)
 	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
@@ -407,7 +407,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2, DryRun: false})
 	assert.NoError(t, err)
 
 	RequireBackgroundManagerState(t, testDB2.AttachmentCompactionManager, BackgroundProcessStateCompleted)
@@ -419,11 +419,11 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
 		<-terminator.Done()
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb2)
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{Database: testDB1})
 	assert.NoError(t, err)
 	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
@@ -431,13 +431,12 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateStopped)
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
-	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, _ *base.SafeTerminator) {
-		err := testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Process already running")
+	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, _ *base.SafeTerminator) {
+		err := testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2})
+		assert.ErrorContains(t, err, "Process already running")
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb3)
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{Database: testDB1})
 	assert.NoError(t, err)
 
 	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateCompleted)
@@ -474,11 +473,11 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	var err error
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
 		<-terminator.Done()
 	})
 	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb1)
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": true})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2, DryRun: true})
 	assert.NoError(t, err)
 	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
@@ -492,7 +491,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, testStatus.DryRun)
 
-	err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2, "dryRun": false})
+	err = testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2, DryRun: false})
 	assert.NoError(t, err)
 
 	RequireBackgroundManagerState(t, testDB2.AttachmentCompactionManager, BackgroundProcessStateCompleted)
@@ -504,21 +503,22 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ map[string]any, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
 		<-terminator.Done()
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb2)
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{Database: testDB1})
 	assert.NoError(t, err)
 	err = testDB2.AttachmentCompactionManager.Stop(ctx2)
 	assert.NoError(t, err)
 
 	// Kick off another run with an attempted start, verify we don't get 'process already running' error
-	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{Database: testDB1})
 	// Hitting this error may be racy (depending on when heartbeat is polled from previous stop), but we should never
 	// get a 'process already running' error
 	if err != nil {
-		err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]any{"database": testDB2})
+		err = testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{Database: testDB2})
+		require.Error(t, err)
 		assert.NotContains(t, err.Error(), "Process already running")
 	}
 }
@@ -537,7 +537,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	collection, ctx1 := GetSingleDatabaseCollectionWithUser(ctx1, t, testDB1)
 	CreateLegacyAttachmentDoc(t, ctx1, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
-	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]any{"database": testDB1})
+	err := testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{Database: testDB1})
 	assert.NoError(t, err)
 
 	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
