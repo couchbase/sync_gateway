@@ -1732,7 +1732,7 @@ func (h *handler) writeStatus(status int, message string) {
 	_, _ = h.response.Write([]byte(`{"error":"` + errorStr + `","reason":` + base.ConvertToJSONString(message) + `}`))
 }
 
-var kRangeRegex = regexp.MustCompile("^bytes=(\\d+)?-(\\d+)?$")
+var kRangeRegex = regexp.MustCompile(`^bytes=(\d+)?-(\d+)?$`)
 
 // Detects and partially HTTP content range requests.
 // If the request _can_ accept ranges, sets the "Accept-Ranges" response header to "bytes".

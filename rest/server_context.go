@@ -1790,7 +1790,7 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 			}
 			dbcontext.EventMgr.RegisterEventHandler(ctx, wh, eventType)
 		default:
-			return errors.New(fmt.Sprintf("Unknown event handler type %s", event.HandlerType))
+			return fmt.Errorf("Unknown event handler type %s", event.HandlerType)
 		}
 
 	}

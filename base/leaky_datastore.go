@@ -229,7 +229,7 @@ func (lds *LeakyDataStore) GetDDoc(ctx context.Context, docname string) (ddoc sg
 		return sgbucket.DesignDoc{}, errors.New("bucket does not support views")
 	}
 	if remaining, shouldFail := lds.bucket.decrementDDocGetErrorCount(); shouldFail {
-		return ddoc, errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", remaining))
+		return ddoc, fmt.Errorf("Artificial leaky bucket error %d fails remaining", remaining)
 	}
 	return vs.GetDDoc(ctx, docname)
 }
@@ -248,7 +248,7 @@ func (lds *LeakyDataStore) DeleteDDoc(ctx context.Context, docname string) error
 		return errors.New("bucket does not support views")
 	}
 	if remaining, shouldFail := lds.bucket.decrementDDocDeleteErrorCount(); shouldFail {
-		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", remaining))
+		return fmt.Errorf("Artificial leaky bucket error %d fails remaining", remaining)
 	}
 	return vs.DeleteDDoc(ctx, docname)
 }
