@@ -21,6 +21,14 @@ import (
 const TestChannelTimeout = 30 * time.Second
 
 func WaitForChannel(t *testing.T, ch <-chan error, message string) {
+	WaitForChannelWithDiagnostic(t, ch, message, nil)
+}
+
+// WaitForChannelWithDiagnostic behaves like WaitForChannel, but if the wait times out it calls onTimeout (when non-nil)
+// and appends the returned string to the failure message. onTimeout is only evaluated on timeout, so it can render live
+// state captured while the wait was in progress (for example a progress snapshot describing what the awaited operation
+// was still doing) rather than a static, guessed-at explanation supplied up front.
+func WaitForChannelWithDiagnostic(t *testing.T, ch <-chan error, message string, onTimeout func() string) {
 	if message != "" {
 		log.Printf("[%s] starting wait", message)
 		defer func() {
@@ -34,7 +42,11 @@ func WaitForChannel(t *testing.T, ch <-chan error, message string) {
 		}
 		return
 	case <-time.After(TestChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] expected channel message did not arrive in %v", message, TestChannelTimeout))
+		failureMessage := fmt.Sprintf("[%s] expected channel message did not arrive in %v", message, TestChannelTimeout)
+		if onTimeout != nil {
+			failureMessage += "\n" + onTimeout()
+		}
+		require.Fail(t, failureMessage)
 	}
 }
 

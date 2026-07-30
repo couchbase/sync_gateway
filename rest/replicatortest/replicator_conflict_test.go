@@ -1648,12 +1648,20 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				require.NoError(t, err)
 				defer func() { require.NoError(t, ar.Stop()) }()
 
-				// Start the replicator
-				require.NoError(t, ar.Start(ctx1))
+				// Start push before pull: rt2 has no resolver, so it deterministically 409s the
+				// still-untouched local rev. Starting both together races that against pull
+				// resolving (and overwriting) the local doc first, making DocWriteConflict flaky.
+				require.NoError(t, ar.Push.Start(ctx1))
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					status := ar.GetStatus(ctx1)
+					assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
+				}, 10*time.Second, 100*time.Millisecond)
 
+				require.NoError(t, ar.Pull.Start(ctx1))
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					status := ar.GetStatus(ctx1)
 					assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
+					// resolving/republishing must not register as a second conflict
 					assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
 					if testCase.expectedDocPushResolved {
 						assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))

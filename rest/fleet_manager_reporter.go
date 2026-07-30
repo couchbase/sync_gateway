@@ -54,33 +54,34 @@ func (sc *ServerContext) reportFleetManagerMetrics(ctx context.Context) {
 		}
 		return settings
 	}
+	go runFleetManagerReportLoop(ctx, currentSettings, report)
+}
 
-	go func() {
-		settings := currentSettings()
-		ticker := time.NewTicker(settings.Interval())
-		defer ticker.Stop()
-		base.InfofCtx(ctx, base.KeyAll, "Fleet manager metrics reporting interval set to %s (enabled=%t)", settings.Interval(), settings.Enabled)
-		// Report once on startup rather than waiting a full interval for the first tick.
-		report(settings)
-		for {
-			select {
-			case <-ticker.C:
-				refreshed := currentSettings()
-				if refreshed.Enabled != settings.Enabled {
-					base.InfofCtx(ctx, base.KeyAll, "Fleet manager metrics reporting enabled changed to %t", refreshed.Enabled)
-				}
-				if refreshed.Interval() != settings.Interval() {
-					base.InfofCtx(ctx, base.KeyAll, "Fleet manager metrics reporting interval changed from %s to %s", settings.Interval(), refreshed.Interval())
-					ticker.Reset(refreshed.Interval())
-				}
-				settings = refreshed
-				report(settings)
-			case <-ctx.Done():
-				base.InfofCtx(ctx, base.KeyAll, "Stopping fleet manager metrics reporting: %v", context.Cause(ctx))
-				return
+func runFleetManagerReportLoop(ctx context.Context, currentSettings func() base.FleetManagerCollectorSettings, report func(base.FleetManagerCollectorSettings)) {
+	settings := currentSettings()
+	ticker := time.NewTicker(settings.Interval())
+	defer ticker.Stop()
+	base.InfofCtx(ctx, base.KeyAll, "Fleet manager metrics reporting interval set to %s (enabled=%t)", settings.Interval(), settings.Enabled)
+	// Report once on startup rather than waiting a full interval for the first tick.
+	report(settings)
+	for {
+		select {
+		case <-ticker.C:
+			refreshed := currentSettings()
+			if refreshed.Enabled != settings.Enabled {
+				base.InfofCtx(ctx, base.KeyAll, "Fleet manager metrics reporting enabled changed to %t", refreshed.Enabled)
 			}
+			if refreshed.Interval() != settings.Interval() {
+				base.InfofCtx(ctx, base.KeyAll, "Fleet manager metrics reporting interval changed from %s to %s", settings.Interval(), refreshed.Interval())
+				ticker.Reset(refreshed.Interval())
+			}
+			settings = refreshed
+			report(settings)
+		case <-ctx.Done():
+			base.InfofCtx(ctx, base.KeyAll, "Stopping fleet manager metrics reporting: %v", context.Cause(ctx))
+			return
 		}
-	}()
+	}
 }
 
 // sendFleetManagerMetrics POSTs the collected metrics to the ns_server fleet manager collector

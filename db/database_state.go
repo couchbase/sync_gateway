@@ -17,8 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// resyncResumeFunc is a callback function to call to resume a resync process.
-type resyncResumeFunc func(ctx context.Context) error
+// resyncJoinFunc is a callback function to call to join a resync process already running in the cluster.
+type resyncJoinFunc func(ctx context.Context) error
 
 type DatabaseState struct {
 	ResyncRunning *bool `json:"resync,omitempty"`
@@ -29,20 +29,20 @@ type DatabaseStateMgr struct {
 	dbStateID       string
 	metadataStore   base.DataStore
 	pollingInterval time.Duration
-	resumeResync    resyncResumeFunc
+	joinResync      resyncJoinFunc
 	lock            sync.Mutex
 	terminator      chan struct{}
 	done            chan struct{}
 }
 
-// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. If resumeResync is non-nil, it will be invoked when DatabaseState.ResyncRunning is detected as changed on the bucket.
-func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, resumeResync resyncResumeFunc) *DatabaseStateMgr {
+// NewDatabaseStateMgr creates a DatabaseStateMgr for the given database. If joinResync is non-nil, it will be invoked when DatabaseState.ResyncRunning is detected as changed on the bucket.
+func NewDatabaseStateMgr(metadataStore base.DataStore, dbStateID string, joinResync resyncJoinFunc) *DatabaseStateMgr {
 	return &DatabaseStateMgr{
 		dbStateID:       dbStateID,
 		CAS:             0,
 		metadataStore:   metadataStore,
 		pollingInterval: 10 * time.Second,
-		resumeResync:    resumeResync,
+		joinResync:      joinResync,
 	}
 }
 
@@ -121,11 +121,11 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	if !ok {
 		return
 	}
-	if dbMgr.resumeResync != nil {
+	if dbMgr.joinResync != nil {
 		if state.ResyncRunning != nil && *state.ResyncRunning {
-			err := dbMgr.resumeResync(ctx)
+			err := dbMgr.joinResync(ctx)
 			if err != nil {
-				base.WarnfCtx(ctx, "failed to resume resync from DatabaseStateMgr: %v, will try again.", err)
+				base.WarnfCtx(ctx, "failed to join resync from DatabaseStateMgr: %v, will try again.", err)
 				return // leave CAS stale so next tick retries
 			}
 		}
