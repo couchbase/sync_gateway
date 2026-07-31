@@ -491,7 +491,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 				if err == nil {
 					return true
 				}
-				if err != nil && !base.IsCasMismatch(err) {
+				if !base.IsCasMismatch(err) {
 					base.WarnfCtx(ctx, "[%s] Failed to remove compaction ID xattr for doc %s: %v", compactionLoggingID, base.UD(docID), err)
 					return true
 				}

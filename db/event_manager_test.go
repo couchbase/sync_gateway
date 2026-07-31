@@ -969,7 +969,7 @@ type UnsupportedEvent struct {
 }
 
 func (event *UnsupportedEvent) String() string {
-	return fmt.Sprintf("Couchbase Sync Gateway doesn't support this kind of events!")
+	return "Couchbase Sync Gateway doesn't support this kind of events!"
 }
 
 func (event *UnsupportedEvent) EventType() EventType {

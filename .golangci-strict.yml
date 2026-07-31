@@ -62,6 +62,9 @@ linters:
         ruleguard:
           failOn: all
           rules: ${base-path}/ruleguard/rules-*.go
+    govet:
+      enable:
+        - nilness
     staticcheck:
       checks:
         - all # enable all
@@ -83,10 +86,9 @@ linters:
         - -S1011 # Use a single 'append' to concatenate two slices.
         - -S1021 # Merge variable declaration and assignment.
         - -S1025 # Don't use 'fmt.Sprintf("%s", x)' unnecessarily.
+        - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
         - -S1028 # Simplify error construction with 'fmt.Errorf'.
-        - -S1030 # Use 'bytes.Buffer.String' or 'bytes.Buffer.Bytes'.
         - -S1031 # unnecessary nil check around range
-        - -S1039 # Unnecessary use of 'fmt.Sprint'.
         - -ST1003 # Poorly chosen identifier.
         - -ST1005 # errors strings should not end with punctuation or newlines
         - -ST1006 # Poorly chosen receiver name.

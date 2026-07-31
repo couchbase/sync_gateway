@@ -444,7 +444,7 @@ func TestRebalanceReplications(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 
 			cluster := NewSGRCluster()
 			cluster.loggingCtx = base.CorrelationIDLogCtx(base.TestCtx(t), sgrClusterMgrContextID+"test")
@@ -581,7 +581,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 		},
 	}
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			testCase.existingConfig.Upsert(base.TestCtx(t), testCase.updatedConfig)
 			testCase.existingConfig.UpdatedAt = nil // remove updated at field for comparison below
 			equal, err := testCase.existingConfig.Equals(testCase.expectedConfig)
@@ -700,7 +700,7 @@ func TestIsCfgChanged(t *testing.T) {
 	defer mgr.Stop()
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			replicationCfg := getInitialCfg()
 			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
 			require.NoError(t, err)

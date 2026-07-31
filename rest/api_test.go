@@ -1653,12 +1653,12 @@ func TestDocExpiry(t *testing.T) {
 	bulkGetDocs := `{"docs": [{"id": "expNumericTTL", "rev": "1-ca9ad22802b66f662ff171f226211d5c"}]}`
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get", bulkGetDocs)
 	RequireStatus(t, response, 200)
-	responseString := string(response.Body.Bytes())
+	responseString := response.Body.String()
 	assert.True(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
 
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?show_exp=true", bulkGetDocs)
 	RequireStatus(t, response, 200)
-	responseString = string(response.Body.Bytes())
+	responseString = response.Body.String()
 	assert.True(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
 
 	body = nil
