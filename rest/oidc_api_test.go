@@ -2881,3 +2881,63 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)
 	resp.RequireStatus(http.StatusCreated)
 }
+
+func TestNoOIDCValidationOnRemoval(t *testing.T) {
+
+	const (
+		providerName        = "foo"
+		invalidProviderName = "invalid-provider"
+		subject             = "noah"
+		usernameClaim       = "username"
+		channelsClaim       = "channels"
+		testChannelName     = "test_channel"
+	)
+
+	providers := auth.OIDCProviderMap{
+		providerName:        mockProviderWith(providerName, mockProviderRegister{}, mockProviderUserPrefix{""}, mockProviderUsernameClaim{usernameClaim}, mockProviderChannelsClaim{channelsClaim}),
+		invalidProviderName: mockProvider(invalidProviderName),
+	}
+
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + providerName
+	refreshProviderConfig(providers, mockAuthServer.URL)
+
+	mockAuthServer2, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer2.Start()
+	defer mockAuthServer2.Shutdown()
+	mockAuthServer2.options.issuer = mockAuthServer2.URL + "/" + providerName
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.Ptr(providerName)}
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &oidcOptions
+
+	// The invalid provider's issuer doesn't match its own discovery document (mockAuthServer always
+	// reports its single, fixed issuer regardless of which provider path is queried), so validation
+	// must be disabled to allow database creation to succeed with both providers configured.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/db/?disable_oidc_validation=true", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
+
+	// Sanity check that we can authenticate properly against the valid provider
+	jwt, err := mockAuthServer.makeToken(claimsAuthenticWithExtraClaims(map[string]any{
+		usernameClaim: subject,
+		channelsClaim: []string{testChannelName},
+	}))
+	require.NoError(t, err)
+
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + jwt}), http.StatusOK)
+
+	// Now remove the valid provider from the config, leaving only the invalid provider still
+	// configured. This update should succeed without disable_oidc_validation, since the invalid
+	// provider isn't being added or changed - only removed/untouched providers are involved.
+	delete(oidcOptions.Providers, providerName)
+	dbConfig = rt.NewDbConfig()
+	dbConfig.OIDCConfig = &oidcOptions
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
+}
