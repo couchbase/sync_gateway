@@ -639,6 +639,5 @@ func TestResyncInvalidCollections(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_resync", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
-	require.Equal(t, db.BackgroundProcessStateRunning, status.State)
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }

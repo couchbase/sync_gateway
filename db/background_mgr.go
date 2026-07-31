@@ -269,7 +269,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		}
 	}
 
-	terminator, err := b.markStart(ctx, previousStatus)
+	err := b.markStart(ctx, previousStatus)
 	if err != nil {
 		if b.mode() == backgroundManagerModeMultiNode && errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
 			return nil
@@ -292,7 +292,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
-		b.SetError(err, terminator)
+		b.SetError(err)
 		b.updateTerminalStatus(ctx)
 		return err
 	}
@@ -314,22 +314,22 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 					return
 				}
 			}
-		}(terminator)
+		}(b.terminator)
 
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
-			b.startPollingMultiNodeStatus(ctx, terminator)
+			b.startPollingMultiNodeStatus(ctx, b.terminator)
 		})
 	}
-	go func(terminator *base.SafeTerminator) {
-		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, terminator)
+	go func() {
+		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error: %v", err)
-			b.SetError(err, terminator)
+			b.SetError(err)
 		}
 
-		b.Terminate(terminator)
+		b.Terminate()
 
 		b.statusLock.Lock()
 		if b.status.State == BackgroundProcessStateStopping {
@@ -342,7 +342,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
 		b.updateTerminalStatus(ctx)
-	}(terminator)
+	}()
 
 	if b.mode() != backgroundManagerModeLocal {
 		var err error
@@ -360,7 +360,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			// Process.Run's goroutine is already launched by this point, so without this the caller would
 			// get an error back while the process keeps running in the background unbeknownst to them.
 			// SetError both marks the state as Error and terminates the already-running process.
-			b.SetError(err, terminator)
+			b.SetError(err)
 			return err
 		}
 	}
@@ -374,7 +374,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 // Returns:
 //   - errBackgroundManagerProcessAlreadyRunning if already running in local or single node cluster aware mode
 //   - errBackgroundManagerStatusAlreadyStopping if in the process of stopping
-func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus BackgroundManagerStatus) (*base.SafeTerminator, error) {
+func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus BackgroundManagerStatus) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -386,9 +386,9 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 			var status HeartbeatDoc
 			_, err := b.clusterAwareOptions.metadataStore.Get(ctx, b.clusterAwareOptions.HeartbeatDocID(), &status)
 			if err == nil && status.ShouldStop {
-				return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Process stop still in progress - please wait before restarting")
 			}
-			return nil, errBackgroundManagerProcessAlreadyRunning
+			return errBackgroundManagerProcessAlreadyRunning
 		}
 
 		// Now we know that we're the only running process we should instantiate these values
@@ -405,7 +405,7 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 					err = b.UpdateHeartbeatDocClusterAware(ctx)
 					if err != nil {
 						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
-						b.SetError(err, terminator)
+						b.SetError(err)
 					}
 				case <-terminator.Done():
 					ticker.Stop()
@@ -415,28 +415,28 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 		}(b.terminator)
 
 		b.setRunState(BackgroundProcessStateRunning)
-		return b.terminator, nil
+		return nil
 	}
 
 	if b.mode() == backgroundManagerModeMultiNode {
 		if previousStatus.State == BackgroundProcessStateStopping {
-			return nil, errBackgroundManagerStatusAlreadyStopping
+			return errBackgroundManagerStatusAlreadyStopping
 		}
 	}
 
 	if b.GetRunState() == BackgroundProcessStateRunning {
-		return nil, errBackgroundManagerProcessAlreadyRunning
+		return errBackgroundManagerProcessAlreadyRunning
 	}
 
 	if b.GetRunState() == BackgroundProcessStateStopping {
-		return nil, errBackgroundManagerStatusAlreadyStopping
+		return errBackgroundManagerStatusAlreadyStopping
 	}
 
 	// Now we know that we're the only running process we should instantiate these values
 	b.terminator = base.NewSafeTerminator()
 
 	b.setRunState(BackgroundProcessStateRunning)
-	return b.terminator, nil
+	return nil
 }
 
 // updateTerminalStatus persists the current (terminal) status and removes the heartbeat doc to allow a subsequent run.
@@ -635,8 +635,8 @@ func (b *BackgroundManager[O]) Stop(ctx context.Context) error {
 
 // Terminate stops the process via terminator channel
 // Only to be used internally to this file and by tests.
-func (b *BackgroundManager[O]) Terminate(terminator *base.SafeTerminator) {
-	terminator.Close()
+func (b *BackgroundManager[O]) Terminate() {
+	b.terminator.Close()
 	b.backgroundManagerStatusUpdateWaitGroup.Wait()
 }
 
@@ -710,11 +710,11 @@ func (b *BackgroundManager[O]) setStartTime(startTime time.Time) {
 }
 
 // SetError sets the last known error, transitions the state to BackgroundManagerStateError and terminates the process.
-func (b *BackgroundManager[O]) SetError(err error, terminator *base.SafeTerminator) {
+func (b *BackgroundManager[O]) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	b.setLastErrorMessage(err.Error())
-	b.Terminate(terminator)
+	b.Terminate()
 }
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
