@@ -1173,13 +1173,11 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	defer bt.Close()
 
 	wg := sync.WaitGroup{}
-	wg.Add(concurrentSendRevNum)
 	for i := range concurrentSendRevNum {
 		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			bt.SendRev(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-		}()
+		})
 	}
 
 	base.WaitWithTimeout(t, &wg, time.Second*30)
