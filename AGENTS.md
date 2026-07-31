@@ -10,23 +10,9 @@ go test ./...                    # unit tests, in-memory Rosmar backing store
 ```
 
 - **Enterprise Edition** builds and tests need the `cb_sg_enterprise,cb_sg_devmode` build tags on every Go command, plus SSH access to a private repo — see [docs/BUILD.md](docs/BUILD.md). Don't add these tags unless you specifically intend to test EE.
-- **Integration tests** against a real Couchbase Server, the `SG_TEST_*` environment variables, and the bucket pool are covered in [docs/TESTING.md](docs/TESTING.md).
+- **Integration tests** against a real Couchbase Server are covered in [docs/TESTING.md](docs/TESTING.md): starting a local cluster with `integration-test/start_cbs.py`, the `SG_TEST_*` environment variables, and the bucket pool.
 - **Python tooling** (`tools/`): See [tools/AGENTS.md](tools/AGENTS.md).
 - **Lint**: CI enforces `.golangci-strict.yml`; reproduce it locally with `pre-commit run golangci-lint --all-files`. Some conventions are enforced here rather than written down — the linter message explains the fix.
-
-### Starting a Couchbase Server for integration tests
-
-`integration-test/start_cbs.py` allocates a single-node cluster via [cbdinocluster](https://github.com/couchbaselabs/cbdinocluster) (Docker + Go are the only prerequisites; it runs `cbdinocluster init` for you on first use). This is what CI uses.
-
-```sh
-./integration-test/start_cbs.py   # allocate/reuse a cluster, write ./cbs.env
-source cbs.env                    # SG_TEST_COUCHBASE_SERVER_URL, CBS_CLUSTER_ID
-SG_TEST_BACKING_STORE=Couchbase go test -count=1 -p 1 -timeout 45m ./...
-```
-
-Useful flags: `--env-file` (default `./cbs.env`), `--version` (default 8.0.1), `--nodes`, `--services` (default `kv,n1ql,index`), `--kv-memory-mb`/`--index-memory-mb`, `--tls`, `--purpose`.
-
-The allocated cluster ID is recorded in `.cbdinocluster-sg-cluster-id` in the working directory (gitignored), so re-running the script reuses the running cluster when the version/node count/services still match. Tear down with `go run github.com/couchbaselabs/cbdinocluster@latest remove "$CBS_CLUSTER_ID"` (or `list` / `remove-all`); clusters expire on their own but hold Docker memory until then.
 
 Git: `main` is the current in-development version. Released versions and backports live in `release/x.y.z` branches. Feature branches are named `CBG-xxxx` after the Jira ticket.
 
