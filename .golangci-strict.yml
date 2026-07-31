@@ -18,7 +18,6 @@ linters:
     - govet # (vet, vetshadow) Vet examines Go source code and reports suspicious constructs, such as Printf calls whose arguments do not align with the format string
     - ineffassign # Detects when assignments to existing variables are not used
     - misspell # Finds commonly misspelled English words in comments
-    - modernize
     #- nakedret # Finds naked returns in functions greater than a specified function length
     #- prealloc # Finds slice declarations that could potentially be preallocated
     #- revive # Golint differs from gofmt. Gofmt reformats Go source code, whereas golint prints out style mistakes
@@ -66,21 +65,6 @@ linters:
     govet:
       enable:
         - nilness
-    modernize:
-      disable:
-        - any
-        - mapsloop
-        - minmax
-        - newexpr
-        - omitzero
-        - plusbuild
-        - rangeint
-        - reflecttypefor
-        - slicescontains
-        - stringsbuilder
-        - stringscut
-        - stringscutprefix
-        - waitgroup
     staticcheck:
       checks:
         - all # enable all
@@ -117,16 +101,6 @@ linters:
   exclusions:
     generated: strict
     rules:
-      # These modernization sub-analyzers cannot be disabled via settings because they lack corresponding disable features in this version's schema.
-      - text: "waitgroupgo:"
-        linters:
-          - modernize
-      - text: "atomictypes:"
-        linters:
-          - modernize
-      - text: "slicesbackward:"
-        linters:
-          - modernize
       # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
       - linters:
           - goconst

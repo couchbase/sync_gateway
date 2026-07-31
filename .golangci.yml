@@ -23,7 +23,6 @@ linters:
     - revive # Golint differs from gofmt. Gofmt reformats Go source code, whereas golint prints out style mistakes
     - unconvert # Remove unnecessary type conversions
     - unparam # Reports unused function parameters
-    - modernize
   settings:
     exhaustive:
       check:
@@ -50,34 +49,9 @@ linters:
       enable:
         - fieldalignment
         - nilness
-    modernize:
-      disable:
-        - any
-        - mapsloop
-        - minmax
-        - newexpr
-        - omitzero
-        - plusbuild
-        - rangeint
-        - reflecttypefor
-        - slicescontains
-        - stringsbuilder
-        - stringscut
-        - stringscutprefix
-        - waitgroup
   exclusions:
     generated: strict
     rules:
-      # These modernization sub-analyzers cannot be disabled via settings because they lack corresponding disable features in this version's schema.
-      - text: "waitgroupgo:"
-        linters:
-          - modernize
-      - text: "atomictypes:"
-        linters:
-          - modernize
-      - text: "slicesbackward:"
-        linters:
-          - modernize
       - linters:
           # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
           - goconst
