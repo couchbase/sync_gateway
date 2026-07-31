@@ -3399,7 +3399,7 @@ func TestMemoryStatLongTermConsistency(t *testing.T) {
 	}
 	updateDelta := func(i int) {
 		toCV := Version{Value: uint64(1000 + i), SourceID: "test"}.String()
-		d := RevisionDelta{DeltaBytes: []byte(fmt.Sprintf("delta-payload-for-doc-%d", i))}
+		d := RevisionDelta{DeltaBytes: fmt.Appendf(nil, "delta-payload-for-doc-%d", i)}
 		d.CalculateDeltaBytes()
 		orchestrator.UpdateDelta(ctx, docID(i), loadedCV.String(), toCV, testCollectionID, d)
 	}

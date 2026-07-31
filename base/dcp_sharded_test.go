@@ -1313,7 +1313,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		numUpdates := 10
 		var finalCas uint64
 		for i := 1; i <= numUpdates; i++ {
-			cas, err = nodeA.Set(key, []byte(fmt.Sprintf(`{"version": %d}`, i)), cas)
+			cas, err = nodeA.Set(key, fmt.Appendf(nil, `{"version": %d}`, i), cas)
 			require.NoError(t, err)
 			if i == numUpdates {
 				finalCas = cas
