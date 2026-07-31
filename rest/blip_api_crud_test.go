@@ -3774,10 +3774,10 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 		// channel is revoked, then checks that the removal version is recorded correctly.
 		assertChannelRemoval := func(docID, rev1, initialChan, rev2, updatedChan, expectedRemovedChannel string) {
 			t.Helper()
-			v := btcRunner.AddRevTreeRev(client.id, docID, rev1, EmptyDocVersion(), []byte(fmt.Sprintf(`{"chan": %q}`, initialChan)))
+			v := btcRunner.AddRevTreeRev(client.id, docID, rev1, EmptyDocVersion(), fmt.Appendf(nil, `{"chan": %q}`, initialChan))
 			rt.WaitForVersion(docID, v)
 
-			v = btcRunner.AddRevTreeRev(client.id, docID, rev2, &v, []byte(fmt.Sprintf(`{"chan": %q}`, updatedChan)))
+			v = btcRunner.AddRevTreeRev(client.id, docID, rev2, &v, fmt.Appendf(nil, `{"chan": %q}`, updatedChan))
 			rt.WaitForVersion(docID, v)
 
 			xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.VvXattrName})
