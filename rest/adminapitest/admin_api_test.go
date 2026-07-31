@@ -2028,7 +2028,7 @@ func TestHandleCreateDB(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
 	rest.RequireStatus(t, resp, http.StatusOK)
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
 
@@ -2124,7 +2124,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	var respBody db.Body
-	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	require.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
@@ -2280,7 +2280,7 @@ func TestHandleGetConfig(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var respBody rest.StartupConfig
-	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
 	assert.Nil(t, respBody.HeapProfileCollectionThreshold)

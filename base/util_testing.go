@@ -246,7 +246,7 @@ func TestX509LocalServer() (bool, string) {
 
 	username, isSet := os.LookupEnv(TestEnvX509LocalUser)
 	if !isSet {
-		panic(fmt.Sprintf("TestEnvX509LocalUser must be set when TestEnvX509Local=true"))
+		panic("TestEnvX509LocalUser must be set when TestEnvX509Local=true")
 	}
 
 	return val, username

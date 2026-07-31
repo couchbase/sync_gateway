@@ -125,7 +125,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rt.CreateUser("user2", []string{"alpha"})
 
 	// Retrieve all changes for user2 with no limits
-	changesResults = rt.WaitForChanges(101, fmt.Sprintf("/{{.keyspace}}/_changes"), "user2", false)
+	changesResults = rt.WaitForChanges(101, "/{{.keyspace}}/_changes", "user2", false)
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	rt.CreateUser("user3", []string{"alpha"})
@@ -595,7 +595,7 @@ func TestDocIDChangesVersionCVWithLegacyRev(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	// issue docID changes feed
-	resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=["doc1","doc2"]&include_docs=true`), "")
+	resp := rt.SendAdminRequest(http.MethodGet, `/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=["doc1","doc2"]&include_docs=true`, "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	var changesResults ChangesResults
