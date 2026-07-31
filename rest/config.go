@@ -750,11 +750,11 @@ func (dbConfig *DbConfig) validateChanges(ctx context.Context, old DbConfig) err
 }
 
 // validate checks the DbConfig for any invalid or unsupported values and return a http error. If validateReplications is true, return an error if any replications are not valid. Otherwise issue a warning.
-func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig, validateReplications bool) error {
-	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig, validateReplications)
+func (dbConfig *DbConfig) validate(ctx context.Context, validateOIDCConfig, validateReplications, providersRemoved bool) error {
+	return dbConfig.validateVersion(ctx, base.IsEnterpriseEdition(), validateOIDCConfig, validateReplications, providersRemoved)
 }
 
-func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig, validateReplications bool) error {
+func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEdition, validateOIDCConfig, validateReplications, providersRemoved bool) error {
 
 	var multiError *base.MultiError
 	// Make sure a non-zero compact_interval_days config is within the valid range
@@ -973,7 +973,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				}
 			}
 		}
-		if validProviders == 0 {
+		if validProviders == 0 && !providerRemoved {
 			multiError = multiError.Append(fmt.Errorf("OpenID Connect defined in config, but no valid providers specified"))
 		}
 	}
