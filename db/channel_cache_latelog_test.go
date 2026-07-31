@@ -1209,6 +1209,11 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// references, since only the length cap can reclaim a referenced entry.
 	for seq := firstSkipped; seq <= lastSkipped; seq++ {
 		WriteDirect(t, collection, []string{"ABC"}, seq)
+		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
+		// force a listener on each so compaction won't evict pass max length
+		abcCache.lateLogLock.Lock()
+		abcCache.lateLogs[len(abcCache.lateLogs)-1].addListener()
+		abcCache.lateLogLock.Unlock()
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, uint64(0), cCache.getOldestSkippedSequence(ctx),
@@ -1218,7 +1223,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// FIX 1 - bounded: despite thousands of late arrivals behind a stalled feed, lateLogs never grew past the
 	// length cap. Without compaction (the pre-fix behaviour, TestLateLogsSpikeNotPrunedUntilNewLateSequence) the
 	// stalled feed would have pinned the spike in place and the queue would hold spikeSize+1 entries.
-	require.LessOrEqualf(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
+	require.Equalf(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
 		"the length force-prune must bound ABC's lateLogs at LateLogMaxLength (%d) even under a %d-sequence spike behind a stalled feed",
 		DefaultLateLogMaxLength, spikeSize)
 	t.Logf("spike resolved with feed stalled: ABC lateLogs bounded at %d (cap %d, spike %d), forced_rollbacks=%d",
@@ -1246,9 +1251,104 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 		"the feed's sentinel was force-compacted away by the length cap; its getLateFeed must have rolled back inside the changes loop")
 
 	// FIX 3 - lateLogs remain bounded after recovery: the spike left no residue on the channel cache.
-	require.LessOrEqual(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
+	require.Equal(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
 		"ABC's lateLogs must remain bounded by the length cap after the feed recovers")
 
 	t.Logf("feed recovered to seq %d; ABC lateLogs=%d, forced_rollbacks=%d",
 		finalSeq, abcCache.lateLogCount(), forcedRollbacks())
+}
+
+// TestEvictAllLateWhenFirstIteOnlyItemWithListener:
+// Much like TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback but the test does not force listeners on each
+// entry to stop compaction from evicting past the length cap.
+func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
+	base.LongRunningTest(t)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is stalled. Must
+	// exceed the length cap so the force-prune fires.
+	const spikeSize = 2000
+	require.Greater(t, spikeSize, DefaultLateLogMaxLength,
+		"the spike must exceed LateLogMaxLength for the length force-prune to fire")
+
+	// In-order writes used only to fill the feed's output buffer so the goroutine blocks. Must exceed the feed's
+	// hard-coded output buffer capacity (50 in changes.go); the exact block point is confirmed via len==cap below.
+	const bufferFillers = 60
+
+	// Shipped default late-log caps (LateLogMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
+	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
+	// never fires.
+	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
+	defer db.Close(ctx)
+
+	authenticator := db.Authenticator(ctx)
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collectionWithUser.user = user
+	collection := collectionWithUser.DatabaseCollection
+	cCache := collection.changeCache()
+
+	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	feed := startChangesFeed(ctx, t, collectionWithUser)
+	seen := make(map[uint64]bool) // every sequence the feed delivers across its lifetime
+	collectSeen := func(seqs []uint64) {
+		for _, s := range seqs {
+			seen[s] = true
+		}
+	}
+	collectSeen(drainUntilWait(t, feed))
+
+	// One in-order write so the feed is streaming normally and the cache's nextSequence advances to 2.
+	WriteDirect(t, collection, []string{"ABC"}, 1)
+	collectSeen(drainUntilWait(t, feed))
+
+	cc, ok := cCache.getChannelCache().(*channelCacheImpl)
+	require.True(t, ok)
+	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	require.NoError(t, err)
+	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	require.Equal(t, int64(1), abcCache.lateLogCount(), "ABC starts with just its sentinel entry")
+
+	// Stall the feed with its late-sequence listener still on the sentinel. Writing more in-order sequences than
+	// the feed's output buffer holds, and never draining them, blocks the feed goroutine on its output send.
+	for seq := uint64(2); seq <= bufferFillers+1; seq++ {
+		WriteDirect(t, collection, []string{"ABC"}, seq)
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, cap(feed), len(feed), "the feed's output buffer must fill so the goroutine blocks with its late listener still on the sentinel")
+		assert.GreaterOrEqual(c, cCache.getNextSequence(), uint64(bufferFillers+2), "all in-order fillers must be cached before the spike")
+	}, 30*time.Second, 20*time.Millisecond)
+	require.Equal(t, int64(0), forcedRollbacks(), "no rollback should have occurred yet - the stalled feed has not read a late sequence")
+
+	// Create the skip: a single write far ahead leaves the whole spike range with no arrivals.
+	firstSkipped := uint64(bufferFillers + 2)
+	lastSkipped := uint64(bufferFillers + 1 + spikeSize)
+	gapWriteSeq := lastSkipped + 1
+	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, cCache.WasSkipped(firstSkipped) && cCache.WasSkipped(lastSkipped),
+			"the gap %d..%d should have been pushed to the skipped list", firstSkipped, lastSkipped)
+	}, 10*time.Second, 5*time.Millisecond)
+
+	// The spike: every skipped sequence resolves (arrives late) in a tight loop while the feed is provably
+	// stalled (blocked on its full output buffer). Each arrival calls AddLateSequence -> _purgeLateLogEntries;
+	// the length force-prune keeps the queue bounded and force-drops the sentinel that the stalled feed
+	// still references. Given all other items in th elate logs list do not have any listeners the compaction process
+	// will also clean all those items leaving only the sentinel item.
+	for seq := firstSkipped; seq <= lastSkipped; seq++ {
+		WriteDirect(t, collection, []string{"ABC"}, seq)
+		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, uint64(0), cCache.getOldestSkippedSequence(ctx),
+			"all %d skipped sequences should have resolved (arrived late)", spikeSize)
+	}, 60*time.Second, 20*time.Millisecond)
+
+	// We should only have the sentinel entry left. Once we went above the max length for late logs and removed the
+	// earliest entry, this entry was the ony entry with a listener so it was safe to remove all other entries until the last entry
+	require.Equal(t, abcCache.lateLogCount(), 1,
+		"the length force-prune should event down to one item")
 }

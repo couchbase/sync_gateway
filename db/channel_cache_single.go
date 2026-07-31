@@ -901,19 +901,16 @@ func (c *singleChannelCacheImpl) releaseLateLogsForEviction() {
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.  Expects to have a lock on lateLogLock.
 func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
-	// Drop leading entries that no active feed still references.
-	for len(c.lateLogs) > 1 && c.lateLogs[0].getListenerCount() == 0 {
-		c._dropLeadingLateLog()
-	}
-
-	// Bounded-length safeguard: if a stalled or slow feed's listener is pinning the front of the queue
+	// Drop leading entries that no active feed still references. But also if late feed length is above maximum.
+	// If a stalled or slow feed's listener is pinning the front of the queue
 	// and it has grown past LateLogMaxLength, force-drop leading entries even though a listener still
 	// references them. Any feed whose lastSequence is dropped will fail its next GetLateSequencesSince
 	// lookup and be reset to its low sequence (see the "Missing previous sequence" path there) - this is
 	// the lateLogs analogue of the channel cache raising validFrom and forcing a query backfill. Always
 	// keep at least one entry so new listeners can still register. Note, the cap is inclusive of the sentinel
 	// entry kept at the start of the list.
-	for len(c.lateLogs) > 1 && len(c.lateLogs) > c.options.LateLogMaxLength {
+	for len(c.lateLogs) > 1 && (c.lateLogs[0].getListenerCount() == 0 || len(c.lateLogs) > c.options.LateLogMaxLength) {
+		fmt.Println(c.lateLogs[0].getListenerCount(), len(c.lateLogs), c.options.LateLogMaxLength)
 		c._dropLeadingLateLog()
 	}
 }
