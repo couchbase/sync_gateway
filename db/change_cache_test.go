@@ -1070,20 +1070,18 @@ func TestChannelRace(t *testing.T) {
 	changes.entries = make([]*ChangeEntry, 0, 50)
 	go func() {
 		for feedClosed == false {
-			select {
-			case entry, ok := <-feed:
-				if ok {
-					// feed sends nil after each continuous iteration
-					if entry != nil {
-						log.Println("Changes entry:", entry.Seq)
-						changes.lock.Lock()
-						changes.entries = append(changes.entries, entry)
-						changes.lock.Unlock()
-					}
-				} else {
-					log.Println("Closing feed")
-					feedClosed = true
+			entry, ok := <-feed
+			if ok {
+				// feed sends nil after each continuous iteration
+				if entry != nil {
+					log.Println("Changes entry:", entry.Seq)
+					changes.lock.Lock()
+					changes.entries = append(changes.entries, entry)
+					changes.lock.Unlock()
 				}
+			} else {
+				log.Println("Closing feed")
+				feedClosed = true
 			}
 		}
 	}()

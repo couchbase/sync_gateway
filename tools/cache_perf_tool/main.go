@@ -225,14 +225,8 @@ func main() {
 	ticker := time.NewTicker(*timeToRun)
 	defer ticker.Stop()
 
-outerloop:
-	for {
-		select {
-		case <-ticker.C:
-			cancelFunc(errors.New("test duration complete"))
-			break outerloop
-		}
-	}
+	<-ticker.C
+	cancelFunc(errors.New("test duration complete"))
 
 	workerFunc := func() (shouldRetry bool, err error, val any) {
 		return numGoroutines.Load() != int32(0), nil, val

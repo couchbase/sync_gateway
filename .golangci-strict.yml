@@ -77,7 +77,6 @@ linters:
         - -QF1010 # Convert slice of bytes to string when printing it.
         - -QF1011 # Omit redundant type from variable declaration.
         - -QF1012 # Use 'fmt.Fprintf(x, ...)' instead of 'x.Write(fmt.Sprintf(...))'.
-        - -S1000 # Use plain channel send or receive instead of single-case select.
         - -S1002 # Omit comparison with boolean constant.
         - -S1005 # unnecssary assignment to the blank identifier
         - -S1007 # Simplify regular expression by using raw string literal.
