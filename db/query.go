@@ -594,11 +594,6 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.numIndexPartitions())
-
-	params := make(map[string]any)
-	params[QueryParamStartKey] = startKey
-
 	// N1QL Query. context.MetadataStore is a dual-collection wrapper for an opted-in database.
 	// While its migration is in flight, query both keystores and merge in SG (LIMIT is handled
 	// internally by dualMetadataN1QLQuery). Once complete — or for a database that never opted in
@@ -608,15 +603,34 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	metadataStore := context.MetadataStore
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
 		if !ms.MigrationComplete() {
+			queryStatement, params := context.BuildPrincipalsQuery(startKey, 0)
 			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
 		}
 		metadataStore = ms.Primary()
 	}
 
+	queryStatement, params := context.BuildPrincipalsQuery(startKey, limit)
+	return N1QLQueryWithStats(ctx, metadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+}
+
+// BuildPrincipalsQuery builds the query statement and query parameters for a Principals N1QL query.
+// Also used by unit tests to validate the query hints indexes that exist.
+func (context *DatabaseContext) BuildPrincipalsQuery(startKey string, limit int) (string, map[string]any) {
+	// This query spans user and role docs, so hint both principal indexes and let N1QL union scan
+	// them. A hint naming an index that was not created is dropped, giving a sequential scan.
+	principalIndexes := []SGIndex{sgIndexes[IndexUser], sgIndexes[IndexRole]}
+	if context.UseLegacySyncDocsIndex() {
+		principalIndexes = []SGIndex{sgIndexes[IndexSyncDocs]}
+	}
+	queryStatement := replaceIndexTokensQueryMultiIdx(QueryPrincipals.statement, principalIndexes, context.numIndexPartitions())
+
+	params := make(map[string]any)
+	params[QueryParamStartKey] = startKey
+
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-	return N1QLQueryWithStats(ctx, metadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return queryStatement, params
 }
 
 // Query to retrieve user details, using the syncDocs or users index
