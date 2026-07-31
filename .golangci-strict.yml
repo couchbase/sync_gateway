@@ -69,7 +69,6 @@ linters:
     modernize:
       disable:
         - any
-        - atomictypes
         - mapsloop
         - minmax
         - newexpr
@@ -77,12 +76,11 @@ linters:
         - plusbuild
         - rangeint
         - reflecttypefor
-        - slicesbackward
         - slicescontains
         - stringsbuilder
         - stringscut
         - stringscutprefix
-        - waitgroupgo
+        - waitgroup
     staticcheck:
       checks:
         - all # enable all
@@ -119,6 +117,16 @@ linters:
   exclusions:
     generated: strict
     rules:
+      # These modernization sub-analyzers cannot be disabled via settings because they lack corresponding disable features in this version's schema.
+      - text: "waitgroupgo:"
+        linters:
+          - modernize
+      - text: "atomictypes:"
+        linters:
+          - modernize
+      - text: "slicesbackward:"
+        linters:
+          - modernize
       # Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
       - linters:
           - goconst
