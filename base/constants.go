@@ -65,7 +65,7 @@ const (
 	TestEnvX509LocalUser = "SG_TEST_X509_LOCAL_USER"
 
 	// If set, corresponds to name of the docker image of couchbase server
-	TestEnvCouchbaseServerDockerName = "SG_TEST_COUCHBASE_SERVER_DOCKER_NAME"
+	TestEnvCouchbaseServerDockerName = sgtest.EnvCouchbaseServerDockerName
 
 	// TestEnvGoroutineDump if set to true will capture a goroutine pprof profile and log the location at the end of each package
 	TestEnvGoroutineDump = "SG_TEST_GOROUTINE_DUMP"

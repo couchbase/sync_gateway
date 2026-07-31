@@ -410,7 +410,7 @@ func getMetadataPurgeInterval(ctx context.Context, store CouchbaseBucketStore) (
 	}
 
 	// Cluster-wide settings
-	uri = fmt.Sprintf("/settings/autoCompaction")
+	uri = "/settings/autoCompaction"
 	clusterPurgeInterval, err := retrievePurgeInterval(ctx, store, uri)
 	if clusterPurgeInterval > 0 || err != nil {
 		return clusterPurgeInterval, err

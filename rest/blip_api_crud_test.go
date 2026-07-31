@@ -1199,7 +1199,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/largeNumberRev?rev=1-abc", "")
 	RequireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-	responseString := string(response.Body.Bytes())
+	responseString := response.Body.String()
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
 	}

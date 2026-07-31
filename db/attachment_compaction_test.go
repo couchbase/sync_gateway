@@ -61,7 +61,7 @@ func TestAttachmentMark(t *testing.T) {
 	attachmentsMarked, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMark_mark"), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentMark_mark", dcpClient.GetMetadataKeyPrefix())
 
 	for _, attDocKey := range attKeys {
 		xattrs, _, err := dataStore.GetXattrs(ctx, attDocKey, []string{base.AttachmentCompactionXattrName})
@@ -121,7 +121,7 @@ func TestAttachmentSweep(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentSweep_sweep"), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentSweep_sweep", dcpClient.GetMetadataKeyPrefix())
 }
 
 func TestAttachmentCleanup(t *testing.T) {
@@ -194,7 +194,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	terminator := base.NewSafeTerminator()
 	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentCleanup_cleanup"), checkpointPrefix)
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentCleanup_cleanup", checkpointPrefix)
 
 	for _, docID := range singleMarkedAttIDs {
 		_, _, err := dataStore.GetXattrs(ctx, docID, []string{base.AttachmentCompactionXattrName})
@@ -336,13 +336,13 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	attachmentsMarked, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark"), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_mark", dcpClient.GetMetadataKeyPrefix())
 	vbUUIDS := base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	attachmentsPurged, dcpClient, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep"), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_sweep", dcpClient.GetMetadataKeyPrefix())
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -363,7 +363,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 
 	checkpointPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup"), checkpointPrefix)
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentMarkAndSweepAndCleanup_cleanup", checkpointPrefix)
 
 	for _, attDocKey := range attKeys {
 		var back any
@@ -555,7 +555,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	terminator := base.NewSafeTerminator()
 	_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_mark"), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_mark", dcpClient.GetMetadataKeyPrefix())
 	vbUUIDs := base.GetVBUUIDs(dcpClient.GetMetadata())
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
@@ -565,7 +565,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorAs(t, err, &base.ErrVbUUIDMismatch)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
-	require.Equal(t, fmt.Sprintf("_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep"), dcpClient.GetMetadataKeyPrefix())
+	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", dcpClient.GetMetadataKeyPrefix())
 }
 
 func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {

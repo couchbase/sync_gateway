@@ -9,6 +9,9 @@
 
 set -eu -o pipefail
 
+# Prefer start_cbs.py (cbdinocluster) - it's what CI uses now. This script is kept for local dev,
+# since it starts CBS directly in a docker-compose container reachable on localhost.
+
 function usage() {
     echo "Usage: $0 [-m] [-h] containername"
     exit 1
