@@ -438,7 +438,7 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri
 	if statusCode == http.StatusForbidden {
 		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if statusCode != http.StatusOK {
-		return 0, fmt.Errorf("failed with status code, %d, statusCode", statusCode)
+		return 0, fmt.Errorf("failed to retrieve purge interval from %s: status code %d", UD(uri), statusCode)
 	}
 
 	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
