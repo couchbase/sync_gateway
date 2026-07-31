@@ -48,6 +48,7 @@ linters:
     govet:
       enable:
         - fieldalignment
+        - nilness
   exclusions:
     generated: strict
     rules:
