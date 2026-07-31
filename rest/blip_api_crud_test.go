@@ -1136,11 +1136,29 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	const (
 		maxConcurrentRevs    = 10
 		concurrentSendRevNum = 50
+		// Once all maxConcurrentRevs slots are held, every remaining rev has to wait for one.
+		expectedThrottledRevs = concurrentSendRevNum - maxConcurrentRevs
 	)
-	rt := NewRestTester(t, &RestTesterConfig{
+	docIDPrefix := t.Name() + "-"
+
+	var rt *RestTester
+	throttledRevs := func() int64 {
+		return rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledCount.Value()
+	}
+	rt = NewRestTester(t, &RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{
-			UpdateCallback: func(_ string) {
-				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
+			// Hold each rev inside its throttle slot until all of the remaining revs have been
+			// throttled waiting for a slot. Without this the test relies on the client being able
+			// to push more than maxConcurrentRevs revs to the server in the time it takes the
+			// server to write one, which isn't true on a slow or busy machine (CBG-3741).
+			UpdateCallback: func(docID string) {
+				if !strings.HasPrefix(docID, docIDPrefix) {
+					return
+				}
+				deadline := time.Now().Add(time.Second * 20)
+				for throttledRevs() < expectedThrottledRevs && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
 			},
 		},
 		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
@@ -1157,7 +1175,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(concurrentSendRevNum)
 	for i := range concurrentSendRevNum {
-		docID := fmt.Sprintf("%s-%d", t.Name(), i)
+		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
 		go func() {
 			defer wg.Done()
 			bt.SendRev(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
@@ -1170,7 +1188,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	throttleTime := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledTime.Value()
 	throttleDuration := time.Duration(throttleTime) * time.Nanosecond
 
-	assert.Greater(t, throttleCount, int64(0), "Expected throttled revs")
+	assert.Equal(t, int64(expectedThrottledRevs), throttleCount, "Expected throttled revs")
 	assert.Greater(t, throttleTime, int64(0), "Expected non-zero throttled revs time")
 
 	t.Logf("Throttled revs: %d, Throttled duration: %s", throttleCount, throttleDuration)
