@@ -143,7 +143,6 @@ func TestDatabaseInitCollectionsForMetadataStoreMode(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.LongRunningTest(t)
 
-	// lowercase only - db.ValidateDatabaseName rejects anything else
 	const dbName = "testdb"
 
 	testCases := []struct {
@@ -261,6 +260,140 @@ func TestDatabaseInitCollectionsForMetadataStoreMode(t *testing.T) {
 			RequireSystemCollectionHasMetadataIndexes(t, tb, testCase.expectMobileCollectionInit)
 		})
 	}
+}
+
+// TestDatabaseInitDefaultCollectionForMetadataStoreMode:
+//  1. system metadata collection opted in, no legacy metadata in _default._default (fresh deployment,
+//     so the database is migration-complete from the outset) - _default is a data collection only. So it gets
+//     the data indexes and _system._mobile gets the metadata indexes
+//  2. system metadata collection opted in, legacy metadata still in _default._default - migration is
+//     still required, so _default is both the data collection and a metadata dual-read fallback, and
+//     needs the full index set alongside _system._mobile's metadata indexes
+//  3. not opted in - _default._default is both the data collection and the metadata store, so it needs
+//     the full index set, and _system._mobile is unused
+func TestDatabaseInitDefaultCollectionForMetadataStoreMode(t *testing.T) {
+	RequireN1QLIndexes(t)
+	base.TestRequiresCollections(t)
+	base.LongRunningTest(t)
+
+	const dbName = "testdb"
+
+	testCases := []struct {
+		name                        string
+		useSystemMetadataCollection bool
+		legacyMetadataInDefault     bool // seed legacy per-DB metadata in _default._default, so migration is still required
+		expectMobileCollectionInit  bool
+		expectedDefaultIndexes      db.CollectionIndexesType
+	}{
+		{
+			name:                        "system metadata collection, migration complete",
+			useSystemMetadataCollection: true,
+			legacyMetadataInDefault:     false,
+			expectMobileCollectionInit:  true,
+			expectedDefaultIndexes:      db.IndexesWithoutMetadata,
+		},
+		{
+			name:                        "system metadata collection, migration required",
+			useSystemMetadataCollection: true,
+			legacyMetadataInDefault:     true,
+			expectMobileCollectionInit:  true,
+			expectedDefaultIndexes:      db.IndexesAll,
+		},
+		{
+			name:                        "legacy metadata collection",
+			useSystemMetadataCollection: false,
+			legacyMetadataInDefault:     false,
+			expectMobileCollectionInit:  false,
+			expectedDefaultIndexes:      db.IndexesAll,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			tb := base.GetTestBucket(t)
+			defer tb.Close(ctx)
+
+			sc, closeFn := StartBootstrapServer(t)
+			defer closeFn()
+
+			// Drop the indexes created by the bucket pool, so the indexes found in the bucket afterwards
+			// are only the ones this database's initialization built. It also leaves no principal indexes
+			// online anywhere, so the database resolves to the separate users/roles indexes rather than
+			// the legacy syncDocs index - which is what the expected index sets below are computed with.
+			base.DropAllBucketIndexes(t, tb)
+			dropSystemCollectionMetadataIndexes(t, tb)
+
+			if testCase.legacyMetadataInDefault {
+				// Model a database that predates the system metadata collection. The per-DB sequence
+				// counter in _default._default is what the database load probes to decide whether the
+				// metadata store still needs _default as a read fallback. A database that includes
+				// _default._default gets the default (unprefixed) metadata ID, asserted after creation.
+				_, err := tb.DefaultDataStore(ctx).Incr(ctx, base.NewMetadataKeys(base.DefaultMetadataID).SyncSeqKey(), 1, 1, 0)
+				require.NoError(t, err)
+			}
+
+			// Record every collection index initialization completes for.
+			var seenLock sync.Mutex
+			seen := make(map[base.ScopeAndCollectionName]struct{})
+			sc.DatabaseInitManager.testCollectionStatusUpdateCallback = func(_ string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
+				if status != db.CollectionIndexStatusReady {
+					return
+				}
+				seenLock.Lock()
+				defer seenLock.Unlock()
+				seen[scName] = struct{}{}
+			}
+
+			// No scopes in the config - _default._default is the database's only data collection.
+			dbConfig := makeDbConfig(tb.GetName(), dbName, nil)
+			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(testCase.useSystemMetadataCollection)
+
+			// Index initialization runs synchronously for this create (the database isn't started
+			// offline and no initialization is already in flight), so it has completed for every
+			// collection by the time the request returns.
+			resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/"+dbName+"/", string(base.MustJSONMarshal(t, dbConfig)))
+			resp.RequireStatus(http.StatusCreated)
+
+			require.Equal(t, base.DefaultMetadataID, sc.GetDatabaseConfig(dbName).MetadataID,
+				"a database including _default._default must be assigned the default metadata ID, which the legacy metadata seeded by this test is keyed by")
+
+			expected := []base.ScopeAndCollectionName{base.DefaultScopeAndCollectionName()}
+			if testCase.expectMobileCollectionInit {
+				expected = append(expected, base.MobileSystemScopeAndCollectionName())
+			}
+
+			seenLock.Lock()
+			defer seenLock.Unlock()
+			require.ElementsMatch(t, expected, slices.Collect(maps.Keys(seen)), "unexpected set of initialized collections")
+
+			// The collection set is the same for cases 2 and 3, so the index sets in the bucket are what
+			// actually separate the permutations - whether _default carries the metadata (principal)
+			// indexes on top of the data indexes it needs as a configured collection.
+			requireDefaultCollectionIndexes(t, tb, testCase.expectedDefaultIndexes)
+			RequireSystemCollectionHasMetadataIndexes(t, tb, testCase.expectMobileCollectionInit)
+		})
+	}
+}
+
+// requireDefaultCollectionIndexes asserts that the indexes present on _default._default are exactly
+// those implied by indexesType, derived from the index definitions so the expectation tracks changes to
+// the index set. IndexesAll is the data indexes plus the metadata (principal) indexes;
+// IndexesWithoutMetadata is the data indexes alone.
+func requireDefaultCollectionIndexes(t *testing.T, tb *base.TestBucket, indexesType db.CollectionIndexesType) {
+	t.Helper()
+	dataStore, err := tb.NamedDataStore(base.TestCtx(t), base.DefaultScopeAndCollectionName())
+	require.NoError(t, err)
+	n1qlStore, ok := base.AsN1QLStore(dataStore)
+	require.True(t, ok, "expected %s to be a N1QLStore, got %T", base.DefaultScopeAndCollectionName(), dataStore)
+	indexes, err := n1qlStore.GetIndexes()
+	require.NoError(t, err)
+	expected := db.GetIndexNames(db.InitializeIndexOptions{
+		MetadataIndexes:     indexesType,
+		NumPartitions:       db.DefaultNumIndexPartitions,
+		LegacySyncDocsIndex: testUseLegacySyncDocsIndex,
+	}, db.GetSGIndexes())
+	require.ElementsMatch(t, expected, indexes, "unexpected indexes on %s", base.DefaultScopeAndCollectionName())
 }
 
 // RequireSystemCollectionHasMetadataIndexes asserts whether the metadata indexes are present on
@@ -902,6 +1035,34 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			want: CollectionInitData{
 				base.MobileSystemScopeAndCollectionName():               db.IndexesMetadataOnly,
 				base.NewScopeAndCollectionName("scope1", "collection1"): db.IndexesWithoutMetadata,
+			},
+		},
+		{
+			// Implicit default collection (no scopes configured): _default is a configured data collection
+			// by default, so post-migration it needs only its data indexes — same reasoning as the explicit
+			// case below, reached through the no-scopes branch.
+			name: "system metadata: migration complete, implicit default collection",
+			config: &DatabaseConfig{DbConfig: DbConfig{
+				UseSystemMobileMetadataCollection: base.Ptr(true),
+			}},
+			defaultCollectionExists: true,
+			migrationComplete:       true,
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName():      db.IndexesWithoutMetadata,
+				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
+			},
+		},
+		{
+			// migrationComplete is meaningless in legacy mode — _default is still the metadata store as
+			// well as the data collection, so it keeps the full index set. Callers never report
+			// migrationComplete=true here (the metadata store isn't dual), so this locks the branch
+			// against a future caller that does.
+			name:                    "legacy metadata: migrationComplete ignored, implicit default collection",
+			config:                  &DatabaseConfig{},
+			defaultCollectionExists: true,
+			migrationComplete:       true,
+			want: CollectionInitData{
+				base.DefaultScopeAndCollectionName(): db.IndexesAll,
 			},
 		},
 		{

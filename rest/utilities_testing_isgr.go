@@ -206,9 +206,6 @@ func (runner *SGRTestRunner) SetupSGRPeersWithOptions(t *testing.T, opts TestISG
 func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	ctx := base.TestCtx(t)
 	// Set up passive RestTester (rt2)
-	passiveTestBucket := base.GetTestBucket(t)
-	t.Cleanup(func() { passiveTestBucket.Close(ctx) })
-
 	var passiveRTConfig *RestTesterConfig
 	if opts.PassiveRestTesterConfig != nil {
 		passiveRTConfig = opts.PassiveRestTesterConfig
@@ -220,11 +217,14 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 			SyncFn: channels.DocChannelsSyncFunction,
 		}
 	}
-	// Back the RestTester with the bucket obtained above. A caller-supplied config that doesn't bring
-	// its own bucket would otherwise take a second one from the pool, leaving the bucket above unused
-	// and doubling the test's real bucket requirement past its RequireNumTestBuckets(t, 2) - which
+	// Take a bucket from the pool only once we know the config doesn't already bring one, and hand it
+	// to the RestTester rather than letting NewRestTester fetch its own. Either half of that - a bucket
+	// obtained and left unused, or a config left without one - reserves two pool buckets for this peer
+	// instead of one, doubling the test's real requirement past its RequireNumTestBuckets(t, 2), which
 	// stalls for waitForReadyBucketTimeout and then fails whenever the pool is smaller than that.
 	if passiveRTConfig.CustomTestBucket == nil {
+		passiveTestBucket := base.GetTestBucket(t)
+		t.Cleanup(func() { passiveTestBucket.Close(ctx) })
 		passiveRTConfig.CustomTestBucket = passiveTestBucket.NoCloseClone()
 	}
 	passiveRT := NewRestTester(t, passiveRTConfig)
@@ -247,9 +247,6 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
 	passiveDBURL.User = url.UserPassword("alice", RestTesterDefaultUserPassword)
 
-	activeTestBucket := base.GetTestBucket(t)
-	t.Cleanup(func() { activeTestBucket.Close(ctx) })
-
 	var activeRTConfig *RestTesterConfig
 	if opts.ActiveRestTesterConfig != nil {
 		activeRTConfig = opts.ActiveRestTesterConfig
@@ -262,7 +259,10 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 			SyncFn:             channels.DocChannelsSyncFunction,
 		}
 	}
+	// As above - only take a pool bucket if the caller's config didn't supply one.
 	if activeRTConfig.CustomTestBucket == nil {
+		activeTestBucket := base.GetTestBucket(t)
+		t.Cleanup(func() { activeTestBucket.Close(ctx) })
 		activeRTConfig.CustomTestBucket = activeTestBucket.NoCloseClone()
 	}
 	activeRT := NewRestTester(t, activeRTConfig)

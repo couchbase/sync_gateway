@@ -230,7 +230,11 @@ func buildCollectionIndexData(startup *StartupConfig, config *DatabaseConfig, de
 	useSystemMetadataCollection := resolveUseSystemMetadataCollection(startup, &config.DbConfig)
 	if len(config.Scopes) == 0 {
 		if useSystemMetadataCollection {
-			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
+			defaultIndexes := db.IndexesAll
+			if migrationComplete {
+				defaultIndexes = db.IndexesWithoutMetadata
+			}
+			return CollectionInitData{base.DefaultScopeAndCollectionName(): defaultIndexes, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
 		} else {
 			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
 		}
