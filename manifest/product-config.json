@@ -977,7 +977,7 @@
             "trigger_blackduck": true
         },
         "manifest/4.1.xml": {
-            "go_version": "1.26.4",
+            "go_version": "1.26.5",
             "interval": 120,
             "production": true,
             "release": "4.1.2",
