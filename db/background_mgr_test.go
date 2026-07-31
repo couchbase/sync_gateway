@@ -1521,7 +1521,7 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
 
 	process := &MockProcess{}
-	mgr := &BackgroundManager[map[string]any]{
+	mgr := &BackgroundManager[MockProcessOptions]{
 		name: "persist-fail-mgr",
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: leakyMetadataStore,
@@ -1533,7 +1533,7 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	}
 
 	// Start() reports failure to the caller...
-	err := mgr.Start(ctx, nil)
+	err := mgr.Start(ctx, MockProcessOptions{})
 	require.Error(t, err)
 
 	// ...but Process.Run was already launched before that failure occurred, so the manager should not be left
@@ -1544,7 +1544,7 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 
-	require.NoError(t, mgr.Start(ctx, nil))
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
