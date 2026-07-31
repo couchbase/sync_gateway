@@ -32,3 +32,5 @@ planPIndexes/
 
 couchbase-lite-tests
 integration-test/e2e/.gitconfig.e2e
+.cbdinocluster-sg-cluster-id
+cbs.env
