@@ -377,6 +377,102 @@ func TestStatsLoggerStopped(t *testing.T) {
 	time.Sleep(time.Millisecond * 10)
 }
 
+// TestStatsLoggerIndependentOfDatabaseLock is a regression test for CBG-5472. A config update can
+// hold _databasesLock for write across a long index-readiness wait. updateCalculatedStats must
+// still complete during that time, because it reads databasesSnapshot instead of the map.
+func TestStatsLoggerIndependentOfDatabaseLock(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	ctx := base.TestCtx(t)
+	require.Len(t, sc.AllDatabases(), 1)
+
+	// Simulate a config update holding the write lock for a long time.
+	sc._databasesLock.Lock()
+	defer sc._databasesLock.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		sc.updateCalculatedStats(ctx)
+		close(done)
+	}()
+
+	// updateCalculatedStats no longer takes _databasesLock, so it returns immediately.
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("updateCalculatedStats blocked on _databasesLock held by a simulated config update (CBG-5472)")
+	}
+}
+
+// TestDatabasesSnapshotTracksDatabases checks that databasesSnapshot stays in sync with _databases
+// as databases are added and removed (CBG-5472).
+func TestDatabasesSnapshotTracksDatabases(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	dbName := rt.GetDatabase().Name
+
+	snapshot := sc.databasesSnapshot.Load()
+	require.NotNil(t, snapshot)
+	require.Len(t, *snapshot, 1)
+
+	require.True(t, sc.RemoveDatabase(base.TestCtx(t), dbName, "test cleanup"))
+
+	snapshot = sc.databasesSnapshot.Load()
+	require.NotNil(t, snapshot)
+	require.Empty(t, *snapshot)
+}
+
+// TestStatsLoggerConcurrentWithDatabaseRemoval runs the lock-free stats reader against a concurrent
+// database removal. The reader no longer holds _databasesLock, so it can see a database that is
+// closing, which must stay memory-safe. Most valuable under -race.
+func TestStatsLoggerConcurrentWithDatabaseRemoval(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	ctx := base.TestCtx(t)
+	dbName := rt.GetDatabase().Name
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 2000 {
+			sc.updateCalculatedStats(ctx)
+		}
+	})
+
+	require.True(t, sc.RemoveDatabase(ctx, dbName, "concurrent stats test"))
+	wg.Wait()
+}
+
+// TestStatsSnapshotExcludesClosedDatabase checks that a database the stats logger can still reach is
+// never one that has been closed. updateCalculatedStats loads the snapshot pointer and then iterates
+// it without a lock, so a removal running alongside leaves it holding a closed DatabaseContext.
+// Close() does not change State, so the DBOnline guard does not skip it.
+func TestStatsSnapshotExcludesClosedDatabase(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	ctx := base.TestCtx(t)
+	dbName := rt.GetDatabase().Name
+
+	// A stats logger iteration that started before the removal holds this pointer.
+	snapshot := sc.databasesSnapshot.Load()
+	require.NotNil(t, snapshot)
+	require.Len(t, *snapshot, 1)
+
+	require.True(t, sc.RemoveDatabase(ctx, dbName, "closed database stats test"))
+
+	for _, dbContext := range *snapshot {
+		require.NotEqual(t, db.DBOnline, atomic.LoadUint32(&dbContext.State),
+			"closed database %q still reports DBOnline, so updateCalculatedStats operates on it", dbContext.Name)
+	}
+}
+
 func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")

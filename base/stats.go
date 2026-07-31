@@ -15,6 +15,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -106,13 +107,24 @@ const (
 	StatStabilityInternal  = "internal"
 )
 
-type SgwStats struct {
+// sgwStatsFields holds every serialized field of SgwStats. String() copies this struct whole, so a
+// stat added here reaches the output without String() having to name it.
+type sgwStatsFields struct {
 	GlobalStats     *GlobalStat         `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
 	ReplicatorStats *ReplicatorStats    `json:"per_replication,omitempty"`
+}
+
+// SgwStats is the root of the stats tree serialized to the expvar/stats log output.
+// Declare new serialized stats in sgwStatsFields, not here.
+type SgwStats struct {
+	sgwStatsFields
 
 	dbStatsMapMutex sync.Mutex
 }
+
+// Compile-time interface check.
+var _ expvar.Var = &SgwStats{}
 
 var SyncGatewayStats *SgwStats
 
@@ -128,8 +140,10 @@ func NewSyncGatewayStats() (*SgwStats, error) {
 		return nil, err
 	}
 	sgwStats := SgwStats{
-		GlobalStats: globalStats,
-		DbStats:     map[string]*DbStats{},
+		sgwStatsFields: sgwStatsFields{
+			GlobalStats: globalStats,
+			DbStats:     map[string]*DbStats{},
+		},
 	}
 
 	err = sgwStats.initReplicationStats()
@@ -162,11 +176,20 @@ func init() {
 	expvar.Publish(StatsGroupKeySyncGateway, SyncGatewayStats)
 }
 
+// cloneDbStatsMap returns a shallow copy of the DbStats map, to hold the map lock for as short a time as possible.
+func (s *SgwStats) cloneDbStatsMap() map[string]*DbStats {
+	s.dbStatsMapMutex.Lock()
+	defer s.dbStatsMapMutex.Unlock()
+	return maps.Clone(s.DbStats)
+}
+
 // This String() is to satisfy the expvar.Var interface which is used to produce the expvar endpoint output.
 func (s *SgwStats) String() string {
-	s.dbStatsMapMutex.Lock()
-	bytes, err := JSONMarshalCanonical(s)
-	s.dbStatsMapMutex.Unlock()
+	// Copy every serialized field, then swap in a clone of the map that cannot be read unguarded.
+	statsCopy := s.sgwStatsFields
+	statsCopy.DbStats = s.cloneDbStatsMap()
+
+	bytes, err := JSONMarshalCanonical(statsCopy)
 	if err != nil {
 		ErrorfCtx(context.Background(), "Unable to Marshal SgwStats: %v", err)
 		return "null"
@@ -1355,8 +1378,7 @@ type QueryStat struct {
 }
 
 func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, metadataMigrationEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
-	s.dbStatsMapMutex.Lock()
-	defer s.dbStatsMapMutex.Unlock()
+	// Build and register dbStats before taking the map lock, so Prometheus registration stays outside it.
 	dbStats := &DbStats{
 		dbName:            name,
 		DbReplicatorStats: make(map[string]*DbReplicatorStats),
@@ -1425,51 +1447,62 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 		return nil, err
 	}
 
+	s.dbStatsMapMutex.Lock()
+	defer s.dbStatsMapMutex.Unlock()
 	s.DbStats[name] = dbStats
+
 	return dbStats, nil
 }
 
 func (s *SgwStats) ClearDBStats(name string) {
-	s.dbStatsMapMutex.Lock()
-	defer s.dbStatsMapMutex.Unlock()
-
-	if _, ok := s.DbStats[name]; !ok {
+	dbStats, ok := s.popDbStats(name)
+	if !ok {
 		return
 	}
 
-	for scopeAndCollectionName := range s.DbStats[name].CollectionStats {
-		s.DbStats[name].unregisterCollectionStats(scopeAndCollectionName)
+	for scopeAndCollectionName := range dbStats.CollectionStats {
+		dbStats.unregisterCollectionStats(scopeAndCollectionName)
 	}
 
-	s.DbStats[name].unregisterCacheStats()
-	s.DbStats[name].unregisterCBLReplicationPullStats()
-	s.DbStats[name].unregisterCBLReplicationPushStats()
-	for replName := range s.DbStats[name].DbReplicatorStats {
-		s.DbStats[name].unregisterReplicationStats(replName)
+	dbStats.unregisterCacheStats()
+	dbStats.unregisterCBLReplicationPullStats()
+	dbStats.unregisterCBLReplicationPushStats()
+	// DBReplicatorStats() writes this map lazily, and can run while the database is torn down. Hold
+	// the mutex so iterating here cannot hit "concurrent map read and map write".
+	dbStats.dbReplicatorStatsMutex.Lock()
+	for replName := range dbStats.DbReplicatorStats {
+		dbStats.unregisterReplicationStats(replName)
 	}
-	s.DbStats[name].unregisterDatabaseStats()
-	s.DbStats[name].unregisterSecurityStats()
+	dbStats.dbReplicatorStatsMutex.Unlock()
+	dbStats.unregisterDatabaseStats()
+	dbStats.unregisterSecurityStats()
 
-	if s.DbStats[name].DeltaSyncStats != nil {
-		s.DbStats[name].unregisterDeltaSyncStats()
-	}
-
-	if s.DbStats[name].SharedBucketImportStats != nil {
-		s.DbStats[name].unregisterSharedBucketImportStats()
-	}
-
-	if s.DbStats[name].MigrationStats != nil {
-		s.DbStats[name].unregisterMigrationStats()
+	if dbStats.DeltaSyncStats != nil {
+		dbStats.unregisterDeltaSyncStats()
 	}
 
-	s.DbStats[name].unregisterQueryStats()
-	delete(s.DbStats, name)
+	if dbStats.SharedBucketImportStats != nil {
+		dbStats.unregisterSharedBucketImportStats()
+	}
+
+	if dbStats.MigrationStats != nil {
+		dbStats.unregisterMigrationStats()
+	}
+
+	dbStats.unregisterQueryStats()
 }
 
 // Removes the per-database stats for this database by removing the database from the map
 func RemovePerDbStats(dbName string) {
 	// Clear out the stats for this db since they will no longer be updated.
 	SyncGatewayStats.ClearDBStats(dbName)
+}
+
+// popDbStats removes the named database's stats from the map, and reports whether they were present.
+func (s *SgwStats) popDbStats(name string) (*DbStats, bool) {
+	s.dbStatsMapMutex.Lock()
+	defer s.dbStatsMapMutex.Unlock()
+	return PopMapEntry(s.DbStats, name)
 }
 
 func (d *DbStats) initCacheStats() error {
@@ -2366,15 +2399,18 @@ func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
 	return nil
 }
 
+// DBReplicatorStats returns the stats for replicationID, building and registering them on first
+// use. The mutex is held throughout so the entry is only published once every stat is set.
 func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, error) {
 	d.dbReplicatorStatsMutex.Lock()
 	defer d.dbReplicatorStatsMutex.Unlock()
 
-	if _, ok := d.DbReplicatorStats[replicationID]; ok {
-		return d.DbReplicatorStats[replicationID], nil
+	if existing, ok := d.DbReplicatorStats[replicationID]; ok {
+		return existing, nil
 	}
-	var err error
+
 	resUtil := &DbReplicatorStats{}
+	var err error
 	labelKeys := []string{DatabaseLabelKey, ReplicationLabelKey}
 	labelVals := []string{d.dbName, replicationID}
 
@@ -2492,8 +2528,7 @@ func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, e
 	}
 
 	d.DbReplicatorStats[replicationID] = resUtil
-
-	return d.DbReplicatorStats[replicationID], nil
+	return resUtil, nil
 }
 
 // Reset replication stats to zero
