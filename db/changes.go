@@ -1292,7 +1292,7 @@ func (db *DatabaseCollectionWithUser) getLateFeed(ctx context.Context, feedHandl
 	if err != nil {
 		return nil, err
 	}
-	if logs == nil || len(logs) == 0 {
+	if len(logs) == 0 {
 		// There are no late entries newer than lastSequence
 		feed := make(chan *ChangeEntry)
 		close(feed)
