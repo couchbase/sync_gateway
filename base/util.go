@@ -1827,6 +1827,16 @@ func KeysPresent[K comparable, V any](m map[K]V, keys []K) []K {
 	return result
 }
 
+// PopMapEntry removes key from m and returns the value it held, and whether it was present.
+// Popping from a nil map returns the zero value and false.
+func PopMapEntry[M ~map[K]V, K comparable, V any](m M, key K) (V, bool) {
+	value, ok := m[key]
+	if ok {
+		delete(m, key)
+	}
+	return value, ok
+}
+
 // IsRevTreeID checks if the string looks like a RevTree ID.
 func IsRevTreeID(s string) bool {
 	// If we scan forwards past each digit until we hit `-`, we know this is a RevTree ID.

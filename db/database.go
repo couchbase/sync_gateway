@@ -804,6 +804,9 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 }
 
 func (context *DatabaseContext) Close(ctx context.Context) {
+	// Mark offline before teardown so the lock-free stats reader skips this database (CBG-5472).
+	atomic.StoreUint32(&context.State, DBOffline)
+
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
