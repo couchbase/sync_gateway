@@ -914,7 +914,7 @@ func waitForBGTCompletion(ctx context.Context, waitTimeMax time.Duration, tasks 
 		start := time.Now()
 		select {
 		case <-t.doneChan:
-			waitTime -= time.Now().Sub(start)
+			waitTime -= time.Since(start)
 			continue
 		case <-time.After(waitTime):
 			// Timeout after waiting for background task to terminate.

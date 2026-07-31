@@ -490,7 +490,7 @@ func isTransientIndexerError(err error) bool {
 }
 
 func SlowQueryLog(ctx context.Context, startTime time.Time, threshold time.Duration, messageFormat string, args ...any) {
-	if elapsed := time.Now().Sub(startTime); elapsed > threshold {
+	if elapsed := time.Since(startTime); elapsed > threshold {
 		InfofCtx(ctx, KeyQuery, messageFormat+" took "+elapsed.String(), args...)
 	}
 }

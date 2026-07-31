@@ -81,9 +81,7 @@ linters:
         - -S1008 # Simplify returning boolean expression.
         - -S1009 # Omit redundant nil check on slices, maps, and channels.
         - -S1011 # Use a single 'append' to concatenate two slices.
-        - -S1012 # Replace 'time.Now().Sub(x)' with 'time.Since(x)'.
         - -S1021 # Merge variable declaration and assignment.
-        - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
         - -S1025 # Don't use 'fmt.Sprintf("%s", x)' unnecessarily.
         - -S1028 # Simplify error construction with 'fmt.Errorf'.
         - -S1030 # Use 'bytes.Buffer.String' or 'bytes.Buffer.Bytes'.
