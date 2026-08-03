@@ -785,17 +785,15 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-func (context *DatabaseContext) IsOIDCProviderRemoved(oidcConfig *auth.OIDCOptions) bool {
-	providerRemoved := false
-	existingProviderLen := len(context.OIDCProviders)
-	newProviderLen := len(context.OIDCProviders)
-	lenDiff := newProviderLen < existingProviderLen
-	for _, provider := range context.OIDCProviders {
-		if _, ok := oidcConfig.Providers[provider.Name]; ok && lenDiff {
-			providerRemoved = true
+func (context *DatabaseContext) OIDCValidationRequired(oidcConfig *auth.OIDCOptions) {
+	if oidcConfig == nil {
+		return
+	}
+	for name, provider := range oidcConfig.Providers {
+		if _, ok := context.OIDCProviders[name]; !ok {
+			provider.ShouldValidate = true
 		}
 	}
-	return providerRemoved
 }
 
 // _stopOnlineProcesses is called to represent an error condition from startOnlineProcesses, or from DatabaseContext.Close. Most of the objects are not safe to close twice, since they have internal terminator objects and goroutines that wait on closed channels. Acquire the bucket lock, to avoid calling this function multiple times.

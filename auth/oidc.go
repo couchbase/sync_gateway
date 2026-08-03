@@ -187,6 +187,10 @@ type OIDCProvider struct {
 	// should be disabled for this provider. TLS certificate verification is
 	// enabled by default.
 	InsecureSkipVerify bool
+
+	// ShouldValidate will be used during config validation. This will determine
+	// if the provider should be validated or not
+	ShouldValidate bool
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
