@@ -785,15 +785,34 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
+// OIDCValidationRequired marks providers that are already known to this database's current
+// config, and materially unchanged, as not needing re-validation - e.g. when removing one
+// provider, another unchanged, already-accepted provider shouldn't have its discovery/issuer
+// info re-checked just because the config as a whole is being updated. A provider that's new, or
+// whose discovery-relevant fields changed in place, is still validated.
 func (context *DatabaseContext) OIDCValidationRequired(oidcConfig *auth.OIDCOptions) {
 	if oidcConfig == nil {
 		return
 	}
 	for name, provider := range oidcConfig.Providers {
-		if _, ok := context.OIDCProviders[name]; !ok {
-			provider.ShouldValidate = true
+		if provider == nil {
+			continue
+		}
+		existing, ok := context.OIDCProviders[name]
+		if ok && !oidcProviderDiscoveryConfigChanged(existing, provider) {
+			provider.SkipValidation = true
 		}
 	}
+}
+
+// oidcProviderDiscoveryConfigChanged reports whether any field that affects OIDC discovery/issuer
+// validation differs between the currently running provider and the incoming one.
+func oidcProviderDiscoveryConfigChanged(existing, incoming *auth.OIDCProvider) bool {
+	return existing.Issuer != incoming.Issuer ||
+		existing.DiscoveryURI != incoming.DiscoveryURI ||
+		existing.InsecureSkipVerify != incoming.InsecureSkipVerify ||
+		existing.DisableConfigValidation != incoming.DisableConfigValidation ||
+		base.ValDefault(existing.ClientID, "") != base.ValDefault(incoming.ClientID, "")
 }
 
 // _stopOnlineProcesses is called to represent an error condition from startOnlineProcesses, or from DatabaseContext.Close. Most of the objects are not safe to close twice, since they have internal terminator objects and goroutines that wait on closed channels. Acquire the bucket lock, to avoid calling this function multiple times.

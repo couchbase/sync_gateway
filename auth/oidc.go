@@ -188,9 +188,11 @@ type OIDCProvider struct {
 	// enabled by default.
 	InsecureSkipVerify bool
 
-	// ShouldValidate will be used during config validation. This will determine
-	// if the provider should be validated or not
-	ShouldValidate bool
+	// SkipValidation is used internally during config validation to indicate this provider is
+	// already known/unchanged and does not need its discovery/issuer info re-checked on this
+	// validation pass. Defaults to false, so a provider validates by default unless something
+	// explicitly marks it as already-known. It must not be configurable or persisted.
+	SkipValidation bool `json:"-"`
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
