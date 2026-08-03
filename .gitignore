@@ -22,8 +22,13 @@ tools/cache_perf_tool/cache_perf_tool
 ./cache_perf_tool
 tools/stats-definition-exporter/stats-definition-exporter
 ./stats-definition-exporter
+
 # factory.ai
 .factory
+
+# Anthropic Claude Code
+.claude/worktrees
+.claude/settings.local.json
 
 ### Couchbase Plugin ###
 .cbcache/
