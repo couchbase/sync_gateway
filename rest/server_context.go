@@ -2425,6 +2425,11 @@ func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Cont
 			continue
 		}
 		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+			if base.IsDocNotFoundError(err) {
+				// no migration status doc for this bucket means no metadata migration has ever
+				// been run for any of its databases — not an error worth warning about
+				continue
+			}
 			base.WarnfCtx(ctx, "Re-check of bucket %q metadata migration failed: %v", base.MD(bucket), err)
 		}
 	}
