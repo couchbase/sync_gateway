@@ -751,22 +751,14 @@ func refreshAndGetRegistry(t *testing.T, rt *RestTester, bucketName string) *Gat
 // IsConfigFullyApplied returns true once both nodes have applied the config.
 func TestIsConfigFullyAppliedTwoNodeConvergence(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+	})
+	defer rtc.Close(ctx)
 
-	groupID := t.Name()
-	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	}
-
-	rtA := NewRestTester(t, rtConfig)
-	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfig)
-	defer rtB.Close()
-
-	bucketName := tb.GetName()
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
+	bucketName := rtc.testBucket.GetName()
 
 	dbConfig := rtA.NewDbConfig()
 	resp := rtA.CreateDatabase("db", dbConfig)
@@ -781,7 +773,7 @@ func TestIsConfigFullyAppliedTwoNodeConvergence(t *testing.T) {
 	require.NotEmpty(t, dbVersion)
 
 	registry := refreshAndGetRegistry(t, rtA, bucketName)
-	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupID, "db", dbVersion)
+	acked, missing, err := registry.IsConfigFullyApplied(ctx, rtc.groupID, "db", dbVersion)
 	require.NoError(t, err)
 	assert.True(t, acked, "both nodes should have acked; missing: %v (registry nodes: %v)", missing, registry.Nodes)
 	assert.Empty(t, missing)
@@ -792,22 +784,14 @@ func TestIsConfigFullyAppliedTwoNodeConvergence(t *testing.T) {
 // node A's view even though B never acked the latest version.
 func TestIsConfigFullyAppliedStaleNodePruned(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+	})
+	defer rtc.Close(ctx)
 
-	groupID := t.Name()
-	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	}
-
-	rtA := NewRestTester(t, rtConfig)
-	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfig)
-	defer rtB.Close()
-
-	bucketName := tb.GetName()
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
+	bucketName := rtc.testBucket.GetName()
 
 	dbConfig := rtA.NewDbConfig()
 	resp := rtA.CreateDatabase("db", dbConfig)
@@ -824,7 +808,7 @@ func TestIsConfigFullyAppliedStaleNodePruned(t *testing.T) {
 	assert.NotContains(t, registry.Nodes, rtB.ServerContext().NodeUID, "stale node B should be pruned")
 
 	dbVersion := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
-	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupID, "db", dbVersion)
+	acked, missing, err := registry.IsConfigFullyApplied(ctx, rtc.groupID, "db", dbVersion)
 	require.NoError(t, err)
 	assert.True(t, acked, "gate should pass after stale node is pruned; missing: %v", missing)
 	assert.Empty(t, missing)
@@ -834,20 +818,14 @@ func TestIsConfigFullyAppliedStaleNodePruned(t *testing.T) {
 // picks up the config via polling, it re-acks and IsConfigFullyApplied remains true.
 func TestIsConfigFullyAppliedNodeRestart(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+	})
+	defer rtc.Close(ctx)
 
-	groupID := t.Name()
-	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	}
-
-	rtA := NewRestTester(t, rtConfig)
-	defer rtA.Close()
-
-	bucketName := tb.GetName()
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
+	bucketName := rtc.testBucket.GetName()
 
 	dbConfig := rtA.NewDbConfig()
 	resp := rtA.CreateDatabase("db", dbConfig)
@@ -856,15 +834,12 @@ func TestIsConfigFullyAppliedNodeRestart(t *testing.T) {
 	dbVersion := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	require.NotEmpty(t, dbVersion)
 
-	rtB := NewRestTester(t, rtConfig)
-	defer rtB.Close()
-
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
 
 	refreshAndGetRegistry(t, rtB, bucketName)
 
 	registry := refreshAndGetRegistry(t, rtA, bucketName)
-	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupID, "db", dbVersion)
+	acked, missing, err := registry.IsConfigFullyApplied(ctx, rtc.groupID, "db", dbVersion)
 	require.NoError(t, err)
 	assert.True(t, acked, "restarted node B should have re-acked; missing: %v", missing)
 	assert.Empty(t, missing)
@@ -879,8 +854,6 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	groupA := t.Name() + "-A"
-	groupB := t.Name() + "-B"
 	bucketName := tb.GetName()
 
 	twoCollectionScopesConfig := GetCollectionsConfig(t, tb, 2)
@@ -894,9 +867,9 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 	rtA := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          &groupA,
 	})
 	defer rtA.Close()
+	groupA := rtA.ServerContext().Config.Bootstrap.ConfigGroupID
 
 	dbConfigA := rtA.NewDbConfig()
 	dbConfigA.Scopes = collection1ScopesConfig
@@ -910,7 +883,6 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 	rtB := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          &groupB,
 	})
 	defer rtB.Close()
 
@@ -946,22 +918,14 @@ func TestIsConfigFullyAppliedCrossGroupIgnored(t *testing.T) {
 // and IsConfigFullyApplied for V1 becomes true.
 func TestIsConfigFullyAppliedRollback(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+	})
+	defer rtc.Close(ctx)
 
-	groupID := t.Name()
-	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	}
-
-	rtA := NewRestTester(t, rtConfig)
-	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfig)
-	defer rtB.Close()
-
-	bucketName := tb.GetName()
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
+	bucketName := rtc.testBucket.GetName()
 
 	dbConfig := rtA.NewDbConfig()
 	resp := rtA.CreateDatabase("db", dbConfig)
@@ -988,11 +952,11 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 
 	registry := refreshAndGetRegistry(t, rtA, bucketName)
 
-	acked, _, err := registry.IsConfigFullyApplied(ctx, groupID, "db", versionV)
+	acked, _, err := registry.IsConfigFullyApplied(ctx, rtc.groupID, "db", versionV)
 	require.NoError(t, err)
 	assert.False(t, acked, "old version V should no longer be acked after rollback to V1")
 
-	acked, missing, err := registry.IsConfigFullyApplied(ctx, groupID, "db", versionV1)
+	acked, missing, err := registry.IsConfigFullyApplied(ctx, rtc.groupID, "db", versionV1)
 	require.NoError(t, err)
 	assert.True(t, acked, "new version V1 should be acked by both nodes; missing: %v", missing)
 	assert.Empty(t, missing)
@@ -1004,22 +968,14 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 // tracking should be removed from the second node's clusterCompatManager.
 func TestIsConfigFullyAppliedDeleteDBRemovesTracking(t *testing.T) {
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+	})
+	defer rtc.Close(ctx)
 
-	groupID := t.Name()
-	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	}
-
-	rtA := NewRestTester(t, rtConfig)
-	defer rtA.Close()
-	rtB := NewRestTester(t, rtConfig)
-	defer rtB.Close()
-
-	bucketName := tb.GetName()
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
+	bucketName := rtc.testBucket.GetName()
 
 	dbConfig := rtA.NewDbConfig()
 	resp := rtA.CreateDatabase("db", dbConfig)
@@ -1109,7 +1065,6 @@ func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	groupID := t.Name()
 	bucketName := tb.GetName()
 
 	twoCollectionScopesConfig := GetCollectionsConfig(t, tb, 2)
@@ -1123,7 +1078,6 @@ func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          &groupID,
 	})
 	defer rt.Close()
 
@@ -1161,26 +1115,22 @@ func TestClusterCompatMultipleDBsSameBucket(t *testing.T) {
 func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
 	base.TestRequiresCollections(t)
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+	})
+	defer rtc.Close(ctx)
 
-	groupID := t.Name()
-	bucketName := tb.GetName()
+	rtA := rtc.Node(0)
+	rtB := rtc.Node(1)
+	bucketName := rtc.testBucket.GetName()
 
-	twoCollectionScopesConfig := GetCollectionsConfig(t, tb, 2)
+	twoCollectionScopesConfig := GetCollectionsConfig(t, rtc.testBucket, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(twoCollectionScopesConfig)
 	scopeName := dataStoreNames[0].ScopeName()
 	collection1Name := dataStoreNames[0].CollectionName()
 	collection2Name := dataStoreNames[1].CollectionName()
 	collection1ScopesConfig := ScopesConfig{scopeName: ScopeConfig{Collections: map[string]*CollectionConfig{collection1Name: {}}}}
 	collection2ScopesConfig := ScopesConfig{scopeName: ScopeConfig{Collections: map[string]*CollectionConfig{collection2Name: {}}}}
-
-	rtA := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	})
-	defer rtA.Close()
 
 	dbConfig1 := rtA.NewDbConfig()
 	dbConfig1.Scopes = collection1ScopesConfig
@@ -1191,13 +1141,6 @@ func TestClusterCompatApplyConfigsBatchVersions(t *testing.T) {
 	dbConfig2.Scopes = collection2ScopesConfig
 	resp = rtA.CreateDatabase("db2", dbConfig2)
 	RequireStatus(t, resp, http.StatusCreated)
-
-	rtB := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          &groupID,
-	})
-	defer rtB.Close()
 
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
 
@@ -1227,16 +1170,14 @@ func TestIsConfigFullyAppliedNoEligibleAckersIntegration(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
-	groupA := t.Name() + "-A"
-	groupB := t.Name() + "-B"
 	bucketName := tb.GetName()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
-		GroupID:          &groupA,
 	})
 	defer rt.Close()
+	groupA := rt.ServerContext().Config.Bootstrap.ConfigGroupID
 
 	dbConfig := rt.NewDbConfig()
 	resp := rt.CreateDatabase("db", dbConfig)
@@ -1251,8 +1192,9 @@ func TestIsConfigFullyAppliedNoEligibleAckersIntegration(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, acked, "group A node should have acked; missing: %v", missing)
 
-	acked, missing, err = registry.IsConfigFullyApplied(ctx, groupB, "db", dbVersion)
-	require.ErrorIs(t, err, ErrNoEligibleAckers, "group B has no nodes, should return ErrNoEligibleAckers")
+	// Any group with no registered nodes returns ErrNoEligibleAckers.
+	acked, missing, err = registry.IsConfigFullyApplied(ctx, t.Name(), "db", dbVersion)
+	require.ErrorIs(t, err, ErrNoEligibleAckers, "a group with no nodes should return ErrNoEligibleAckers")
 	assert.False(t, acked)
 	assert.Empty(t, missing)
 }
