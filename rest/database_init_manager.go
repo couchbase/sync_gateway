@@ -56,7 +56,7 @@ type InitializeIndexesFunc func(context.Context, base.N1QLStore, db.InitializeIn
 // indexes required for each collection.
 type CollectionInitData map[base.ScopeAndCollectionName]db.CollectionIndexesType
 
-func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, statusCallback CollectionCallbackFunc, useLegacySyncDocsIndex bool, defaultCollectionExists bool) (doneChan chan error, err error) {
+func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, statusCallback CollectionCallbackFunc, useLegacySyncDocsIndex bool, defaultCollectionExists bool, migrationComplete bool) (doneChan chan error, err error) {
 	m.workersLock.Lock()
 	defer m.workersLock.Unlock()
 	if m.workers == nil {
@@ -66,7 +66,7 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 		base.MD(dbConfig.Name))
 	dbInitWorker, ok := m.workers[dbConfig.Name]
 
-	collectionSet := buildCollectionIndexData(startupConfig, dbConfig, defaultCollectionExists)
+	collectionSet := buildCollectionIndexData(startupConfig, dbConfig, defaultCollectionExists, migrationComplete)
 	if ok {
 		// If worker exists for the database and the collection sets match, add watcher to the existing worker
 		if dbInitWorker.collectionsEqual(collectionSet) {
@@ -152,8 +152,8 @@ func (m *DatabaseInitManager) InitializeDatabaseWithStatusCallback(ctx context.C
 
 // InitializeDatabase will establish a new cluster connection using the provided server config.  Establishes a new
 // cluster-only N1QLStore based on the startup config to perform initialization.
-func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool, defaultCollectionExists bool) (doneChan chan error, err error) {
-	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex, defaultCollectionExists)
+func (m *DatabaseInitManager) InitializeDatabase(ctx context.Context, startupConfig *StartupConfig, dbConfig *DatabaseConfig, useLegacySyncDocsIndex bool, defaultCollectionExists bool, migrationComplete bool) (doneChan chan error, err error) {
+	return m.InitializeDatabaseWithStatusCallback(ctx, startupConfig, dbConfig, nil, useLegacySyncDocsIndex, defaultCollectionExists, migrationComplete)
 }
 
 func (m *DatabaseInitManager) HasActiveInitialization(dbName string) bool {
@@ -221,22 +221,26 @@ func (m *DatabaseInitManager) cancelWorkers() {
 }
 
 // buildCollectionIndexData determines the set of indexes required for each collection in the config, including
-// the metadata collection. defaultCollectionExists reports whether _default._default physically exists in the
-// bucket: _default carries metadata indexes that support dual-read principal queries during migration, but a
-// customer may drop it once migration completes, at which point those indexes are vestigial and attempting to
-// build them on the missing collection would retry until the op times out and fail initialization. When
-// _default is gone (and not itself a configured data collection) it is omitted from the index set.
-func buildCollectionIndexData(startup *StartupConfig, config *DatabaseConfig, defaultCollectionExists bool) CollectionInitData {
+// the metadata collection. _default._default's index set is the union of two independent roles: its data
+// indexes when it's a configured data collection, and its metadata indexes while it's still the metadata store
+// (legacy) or a dual-read fallback (system-metadata, mid-migration). migrationComplete reports whether a
+// system-metadata database has finished migrating off _default (afterwards its metadata indexes are vestigial),
+// and defaultCollectionExists reports whether _default physically exists (a customer may drop it post-migration;
+// building indexes on a missing collection would retry until the op times out and fail initialization).
+func buildCollectionIndexData(startup *StartupConfig, config *DatabaseConfig, defaultCollectionExists bool, migrationComplete bool) CollectionInitData {
 	useSystemMetadataCollection := resolveUseSystemMetadataCollection(startup, &config.DbConfig)
 	if len(config.Scopes) == 0 {
 		if useSystemMetadataCollection {
-			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
+			defaultIndexes := db.IndexesAll
+			if migrationComplete {
+				defaultIndexes = db.IndexesWithoutMetadata
+			}
+			return CollectionInitData{base.DefaultScopeAndCollectionName(): defaultIndexes, base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly}
 		} else {
 			return CollectionInitData{base.DefaultScopeAndCollectionName(): db.IndexesAll}
 		}
 	}
 
-	defaultScopeAndCollectionMetadataIndexes := db.IndexesMetadataOnly
 	defaultIsConfiguredCollection := false
 
 	collectionInitData := make(CollectionInitData)
@@ -244,7 +248,6 @@ func buildCollectionIndexData(startup *StartupConfig, config *DatabaseConfig, de
 		for collectionName := range scopeConfig.Collections {
 			scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 			if scName.IsDefault() {
-				defaultScopeAndCollectionMetadataIndexes = db.IndexesAll
 				defaultIsConfiguredCollection = true
 				continue
 			}
@@ -252,10 +255,24 @@ func buildCollectionIndexData(startup *StartupConfig, config *DatabaseConfig, de
 		}
 	}
 
-	// Include _default for metadata indexes only when it actually exists. If _default is itself a
-	// configured data collection it necessarily exists, so it is always included in that case.
-	if defaultCollectionExists || defaultIsConfiguredCollection {
-		collectionInitData[base.DefaultScopeAndCollectionName()] = defaultScopeAndCollectionMetadataIndexes
+	// _default's index set is the union of two independent roles: it holds data when it's a configured
+	// collection, and it holds metadata while it's still the metadata store (legacy) or a dual-read
+	// fallback (system-metadata, mid-migration). These used to always coincide, but a system-metadata
+	// database that has finished migrating uses _default for neither — its metadata indexes there are
+	// vestigial. migrationComplete is only ever set once system metadata is in use, so migratedOffDefault
+	// captures "fully migrated off _default"; defaultCollectionExists guards against building metadata
+	// indexes on a _default the customer dropped post-migration (the op would otherwise retry until it
+	// times out). Callers always report defaultCollectionExists=true for a configured _default, since the
+	// database load fails earlier (GetAndWaitUntilDataStoreReady) if a configured collection is missing.
+	migratedOffDefault := useSystemMetadataCollection && migrationComplete
+	defaultHoldsMetadata := !migratedOffDefault && defaultCollectionExists
+	switch {
+	case defaultIsConfiguredCollection && defaultHoldsMetadata:
+		collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesAll
+	case defaultIsConfiguredCollection:
+		collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesWithoutMetadata
+	case defaultHoldsMetadata:
+		collectionInitData[base.DefaultScopeAndCollectionName()] = db.IndexesMetadataOnly
 	}
 	if useSystemMetadataCollection {
 		collectionInitData[base.MobileSystemScopeAndCollectionName()] = db.IndexesMetadataOnly
