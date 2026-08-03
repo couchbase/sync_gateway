@@ -322,6 +322,11 @@ func TestFreshDeploymentWithDroppedDefaultCollectionTwoDatabases(t *testing.T) {
 func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 	base.TestRequiresCollections(t)
 
+	// TODO MB-73113: Couchbase Server 8.0.0+ never finishes a deferred index build on a collection once _default._default
+	// has been dropped, so db2 below never comes online. The 8.x minimums here are placeholders no build will reach, which
+	// skips all of 8.0.x and 8.1.x. Replace them with the real fixed versions once MB-73113 ships in an 8.x build.
+	base.RequireServerVersionForTest(t, "7.6.0", "8.0.99", "8.1.99")
+
 	ctx := base.TestCtx(t)
 
 	tb := base.GTestBucketPool.CreateTestBucket(t)
