@@ -83,7 +83,7 @@ func NewMetadataMigrationStatus() *MetadataMigrationStatus {
 // Callers must pass the live registry-derived set so a DB added mid-migration isn't missed.
 func (s *MetadataMigrationStatus) AllDatabasesComplete(expected []string) bool {
 	if len(expected) == 0 {
-		return false
+		return true // no databases to wait for, complete migration
 	}
 	for _, id := range expected {
 		entry, ok := s.Databases[id]
