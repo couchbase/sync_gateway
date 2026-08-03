@@ -48,8 +48,8 @@ Skip tickets whose *backport* ticket is already `In Review`/`Resolved` unless as
 2. **Fetch first, always.** A prerequisite may have landed since your last fetch — this is the single biggest waste of effort in a backport.
    ```bash
    git fetch origin --prune
-   git fetch origin release/x.y.z:release/x.y.z   # keep the local trunk ref current
    ```
+   Everything below works off `origin/release/x.y.z`. A *local* `release/x.y.z` branch is only needed for stacking — see [Stacking](#stacking-dependent-backports).
 3. **Branch and cherry-pick.** Branch name = backport ticket key. Use `-c rerere.enabled=false` so you see the real conflicts instead of a replay of an earlier resolution.
    ```bash
    git checkout -b CBG-<backport> origin/release/x.y.z
@@ -67,11 +67,16 @@ Skip tickets whose *backport* ticket is already `In Review`/`Resolved` unless as
    ```
 6. **Verify** — every backport, no exceptions. Build, vet **and running the affected tests** all carry equal weight: adaptations routinely compile and vet clean, then fail at runtime.
    ```bash
-   gofmt -l . && go build ./... && go vet ./...
+   go build ./... && go vet ./...
    go test -count=1 -run '<affected tests>' ./<pkg>/          # every package the commit touched
-   golangci-lint run --new-from-rev=origin/release/x.y.z ./<pkg>/...
+   golangci-lint run --config=.golangci-strict.yml --new-from-rev=origin/release/x.y.z ./<pkg>/...
+   golangci-lint fmt --config=.golangci-strict.yml --diff ./<pkg>/...
    ```
+   Always pass `--config=.golangci-strict.yml` — that is the config CI runs. Without it, golangci-lint falls back to `.golangci.yml`, a different rule set, so a clean local run proves nothing.
+
    `--new-from-rev` is what makes lint usable — it reports only what this backport adds, instead of the base branch's hundreds of pre-existing findings. Lint every touched package, not just one.
+
+   `golangci-lint run` does **not** check formatting, so `fmt --diff` is a separate step. It applies the repo's goimports rules and exits non-zero on a diff. Do not substitute `gofmt -l`: it ignores import grouping, and it exits 0 even when it lists unformatted files, so it gates nothing.
 
    A new finding that exists identically on `main`, and is only "new" because the file is new to the release branch: fix it and list it as a deviation. A red CI is worse than an extra bullet in the body.
 
@@ -98,7 +103,17 @@ Adapting around a missing prerequisite is legitimate but costs more and diverges
 
 Bottom of the stack = the prerequisite; top = the change that needs it.
 
+`gh stack` is a GitHub CLI extension, not a built-in subcommand — install it once, or the first call fails with `unknown command`. The `gh-stack` skill covers the extension in full; only the backport-specific parts are below.
+
 ```bash
+gh extension list | grep -q gh-stack || gh extension install github/gh-stack
+```
+
+`gh stack` rebases onto the **local** trunk branch, so that ref must match `origin` or the stack records a stale base. Update it from a backport branch, never from the trunk itself: `git branch --force` refuses to move the branch you have checked out, so the mistake fails loudly instead of quietly stacking on the wrong base.
+
+```bash
+git switch CBG-<lower>
+git branch --force release/x.y.z origin/release/x.y.z
 git config rerere.enabled true
 git config remote.pushDefault origin
 gh stack init --base release/x.y.z CBG-<lower> CBG-<upper>
@@ -156,6 +171,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - Cherry-picking with rerere on, then trusting a resolution you never looked at
 - `gh stack init` against a stale local `release/x.y.z` ref — the stack records the wrong base
 - Reporting a backport done without `go build`/`go vet`, or implying integration tests ran when they didn't
+- Calling lint clean after a `golangci-lint` run that used the default config instead of `.golangci-strict.yml`, or a format check that can't fail
 - Leaving the auto-generated PR body or the repo PR template in place
 - Submitting or editing a PR body without the `sync-gateway-backport` attribution footer
 - Silently dropping part of the upstream commit because the file doesn't exist on the release branch — find where that code lives on the branch, or say you dropped it
