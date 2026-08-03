@@ -106,7 +106,7 @@ gh stack view --json          # never bare `gh stack view` - it opens a TUI
 gh stack submit --auto --open # pushes, creates non-draft PRs, links the stack
 ```
 
-`gh stack submit` sets each PR's base to the branch below it. Update the bodies afterwards (`gh pr edit N --body-file`) — `--auto` generates them from commit messages.
+`gh stack submit` sets each PR's base to the branch below it. Update the bodies afterwards (`gh pr edit N --body-file`) — `--auto` generates them from commit messages, so every PR in the stack still needs the real body, attribution footer included.
 
 When a branch name is already taken (usually the upstream PR used the same ticket key), suffix the release: `CBG-5414-4.1.2`.
 
@@ -118,12 +118,14 @@ Title — the ticket is the **backport** ticket, the subject is the **upstream P
 [4.1.2 Backport] CBG-5591: stop indexes being built on default when not required
 ```
 
-Body — exactly this shape, nothing else (no repo PR template):
+Body — exactly this shape, nothing else (no repo PR template). The last line is the attribution footer, and it is **not optional** — a reviewer must be able to tell at a glance that a skill opened this PR:
 
 ```
 CBG-5591
 
 Clean cherry pick of #8495 to 4.1.2
+
+🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
 
 For anything that did not apply cleanly:
@@ -135,9 +137,17 @@ Unclean cherry pick of #8495 to 4.1.2
 Changes from main commit:
 - `rest/manualbucketpooltest/database_init_manager_test.go` — package doesn't exist on 4.1.2; the signature change was applied to the copy of that test in `rest/` instead
 - `rest/database_init_manager_test.go` — `dbConfig.setup()` takes an extra `forcePerBucketAuth` arg on 4.1.2
+
+🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
 
 One bullet per deviation, naming the file and the reason. "Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. For a stacked PR, add a line naming the PR it sits on.
+
+The footer goes on every backport PR, including stacked ones, and survives every later `gh pr edit --body-file` — rewriting a body drops it unless you carry it over. Write bodies from a file so the footer is part of the text you author, not something appended by hand:
+
+```bash
+gh pr edit <N> --body-file <file>   # file already ends with the footer line
+```
 
 ## Red flags
 
@@ -147,6 +157,7 @@ One bullet per deviation, naming the file and the reason. "Clean" means the cher
 - `gh stack init` against a stale local `release/x.y.z` ref — the stack records the wrong base
 - Reporting a backport done without `go build`/`go vet`, or implying integration tests ran when they didn't
 - Leaving the auto-generated PR body or the repo PR template in place
+- Submitting or editing a PR body without the `sync-gateway-backport` attribution footer
 - Silently dropping part of the upstream commit because the file doesn't exist on the release branch — find where that code lives on the branch, or say you dropped it
 
 ## Common mistakes
@@ -158,3 +169,4 @@ One bullet per deviation, naming the file and the reason. "Clean" means the cher
 | `cherry-pick --continue` leaves the upstream commit subject | `git commit --amend` to the backport message |
 | Dropping an upstream test file that has no counterpart on the branch | Apply its changes to wherever that test lives on the release branch |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
+| Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
