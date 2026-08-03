@@ -965,7 +965,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 				continue
 			}
 			seenIssuers[oidc.Issuer]++
-			if validateOIDCConfig && oidc.ShouldValidate {
+			if validateOIDCConfig && !oidc.SkipValidation {
 				_, _, err := oidc.DiscoverConfig(ctx)
 				if err != nil {
 					multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
