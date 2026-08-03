@@ -64,8 +64,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		validateReplications := true
-		oidcProvidersRemoved := false
-		if err := config.validate(h.ctx(), validateOIDC, validateReplications, oidcProvidersRemoved); err != nil {
+		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
 			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
@@ -940,10 +939,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
-	providerRemoved := h.db.IsOIDCProviderRemoved(dbConfig.OIDCConfig)
+	h.db.OIDCValidationRequired(dbConfig.OIDCConfig)
 
 	validateReplications := true
-	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications, providerRemoved)
+	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
 	if err != nil {
 		return base.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -1395,8 +1394,7 @@ func (h *handler) handlePutCollectionConfigSync() error {
 		}
 
 		validateReplications := false
-		providersRemoved := false
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications, providersRemoved); err != nil {
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
@@ -1546,8 +1544,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 		}
 
 		validateReplications := false
-		providersRemoved := false
-		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications, false); err != nil {
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation), validateReplications); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
