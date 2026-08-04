@@ -534,27 +534,30 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	checkFlags(entries)
 }
 
-func TestCountAllDocs(t *testing.T) {
+func TestCountAllActiveDocs(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	count, err := collection.CountAllDocs(ctx)
+	count, err := collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0), count)
 
 	// Add some docs
 	numDocs := 5
-	var docToDelete *Document
+	var docToDelete, docToLegacyTombstone *Document
 	for i := range numDocs {
 		_, doc, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"value": i})
 		require.NoError(t, err)
-		if i == 0 {
+		switch i {
+		case 0:
 			docToDelete = doc
+		case 1:
+			docToLegacyTombstone = doc
 		}
 	}
 
-	count, err = collection.CountAllDocs(ctx)
+	count, err = collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numDocs), count)
 
@@ -571,20 +574,30 @@ func TestCountAllDocs(t *testing.T) {
 	_, _, err = collection.DeleteDoc(ctx, "doc0", docToDelete.ExtractDocVersion())
 	require.NoError(t, err)
 
-	count, err = collection.CountAllDocs(ctx)
+	count, err = collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
-	// Views exclude tombstoned documents from the map function; N1QL counts them until purged.
-	if base.TestsDisableGSI() {
-		assert.Equal(t, uint64(numDocs-1), count)
-	} else {
-		assert.Equal(t, uint64(numDocs), count)
-	}
+	assert.Equal(t, uint64(numDocs-1), count)
 
 	err = collection.Purge(ctx, "doc0", false)
 	require.NoError(t, err)
 
-	count, err = collection.CountAllDocs(ctx)
+	count, err = collection.CountAllActiveDocs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(numDocs-1), count)
 
+	// Simulate a legacy tombstone that only sets _sync.deleted, without the sync.flags deleted bit
+	// (the flags-based tombstone marker was introduced after the "deleted" field in commit 4194f81,
+	// 2/17/14). ViewAllDocs already excludes these via `(sync.flags & 1) || sync.deleted`;
+	// CountAllActiveDocs must match that behavior.
+	_, xattrs, _, err := collection.dataStore.GetWithXattrs(ctx, docToLegacyTombstone.ID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	var legacyTombstoneSyncData map[string]any
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &legacyTombstoneSyncData))
+	legacyTombstoneSyncData["deleted"] = true
+	_, err = collection.dataStore.UpdateXattrs(ctx, docToLegacyTombstone.ID, 0, docToLegacyTombstone.Cas, map[string][]byte{base.SyncXattrName: base.MustJSONMarshal(t, legacyTombstoneSyncData)}, DefaultMutateInOpts())
+	require.NoError(t, err)
+
+	count, err = collection.CountAllActiveDocs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(numDocs-2), count)
 }

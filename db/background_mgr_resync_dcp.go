@@ -211,7 +211,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 func totalResyncDocs(ctx context.Context, collections DatabaseCollections) (uint64, error) {
 	var total uint64
 	for _, collection := range collections {
-		count, err := collection.CountAllDocs(ctx)
+		count, err := collection.CountAllActiveDocs(ctx)
 		if err != nil {
 			return 0, base.RedactErrorf("failed to count docs for collection %s.%s: %w", base.MD(collection.ScopeName), base.MD(collection.Name), err)
 		}
