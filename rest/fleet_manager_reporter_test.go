@@ -14,7 +14,10 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -203,4 +206,67 @@ func TestAllFleetManagerMetricsPopulated(t *testing.T) {
 	assert.NotEmpty(t, metrics.ProductInfo.Edition)
 	assert.NotEmpty(t, metrics.ProductInfo.Version)
 	assert.NotEmpty(t, metrics.ProductInfo.Name)
+}
+
+func TestFleetManagerReporterLoop(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+
+		var mutex sync.Mutex
+		var reports []base.FleetManagerCollectorSettings
+		current := base.FleetManagerCollectorSettings{Enabled: true, ReportingInterval: 1}
+		getCollectorFunc := func() base.FleetManagerCollectorSettings {
+			mutex.Lock()
+			defer mutex.Unlock()
+			return current
+		}
+		reportFunc := func(settings base.FleetManagerCollectorSettings) {
+			mutex.Lock()
+			defer mutex.Unlock()
+			if settings.Enabled { // mirror our report closure in production code
+				reports = append(reports, settings)
+			}
+		}
+		reportCount := func() int {
+			mutex.Lock()
+			defer mutex.Unlock()
+			return len(reports)
+		}
+
+		go runFleetManagerReportLoop(ctx, getCollectorFunc, reportFunc)
+
+		synctest.Wait() // wait until first report runs and is blocking on the ticker interval
+		require.Equal(t, 1, reportCount())
+
+		time.Sleep(1 * time.Hour) // mock 1 hour passing, should trigger new report on ticker interval
+		synctest.Wait()           // wait for report goroutine to block again
+		require.Equal(t, 2, reportCount())
+
+		mutex.Lock()
+		current.Enabled = false
+		mutex.Unlock()
+		time.Sleep(1 * time.Hour)          // mock another hour passing
+		synctest.Wait()                    // wait for report goroutine to block again after another report interval
+		require.Equal(t, 2, reportCount()) // tick has fired above but enabled is false so no report should fire
+
+		// update interval to two hours
+		mutex.Lock()
+		current.ReportingInterval = 2
+		current.Enabled = true
+		mutex.Unlock()
+		time.Sleep(1 * time.Hour)
+		synctest.Wait() // first tick after update uses the previous 1h ticker interval
+		require.Equal(t, 3, reportCount())
+
+		time.Sleep(1 * time.Hour)
+		synctest.Wait() // ticker should have been reset to 2h on the prior tick
+		require.Equal(t, 3, reportCount())
+
+		// assert reports only contain entries of enabled=true
+		mutex.Lock()
+		for _, report := range reports {
+			assert.True(t, report.Enabled)
+		}
+		mutex.Unlock()
+	})
 }

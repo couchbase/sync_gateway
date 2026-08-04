@@ -130,11 +130,11 @@ type DatabaseContext struct {
 	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
 	State                       uint32                 // The runtime state of the DB from a service perspective
 	ResyncManager               *BackgroundManager[ResyncOptions]
-	TombstoneCompactionManager  *BackgroundManager[map[string]any]
-	AttachmentCompactionManager *BackgroundManager[map[string]any]
-	AttachmentMigrationManager  *BackgroundManager[map[string]any]
-	AsyncIndexInitManager       *BackgroundManager[map[string]any]
-	MetadataMigrationManager    *BackgroundManager[map[string]any]
+	TombstoneCompactionManager  *BackgroundManager[TombstoneCompactionOptions]
+	AttachmentCompactionManager *BackgroundManager[AttachmentCompactionOptions]
+	AttachmentMigrationManager  *BackgroundManager[AttachmentMigrationOptions]
+	AsyncIndexInitManager       *BackgroundManager[AsyncIndexInitOptions]
+	MetadataMigrationManager    *BackgroundManager[MetadataMigrationOptions]
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
@@ -753,7 +753,7 @@ func (dbCtx *DatabaseContext) tryStartMetadataMigration(ctx context.Context) boo
 		return false
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Config fully applied across cluster for database %s, starting metadata migration", base.MD(dbCtx.Name))
-	if err := dbCtx.MetadataMigrationManager.Start(ctx, nil); err != nil {
+	if err := dbCtx.MetadataMigrationManager.Start(ctx, MetadataMigrationOptions{}); err != nil {
 		// Another node already holds the migration heartbeat lock, so it owns this run. Stop arming
 		// to avoid re-acquiring the lock and re-running the migration once that node completes and
 		// releases it.
@@ -914,7 +914,7 @@ func waitForBGTCompletion(ctx context.Context, waitTimeMax time.Duration, tasks 
 		start := time.Now()
 		select {
 		case <-t.doneChan:
-			waitTime -= time.Now().Sub(start)
+			waitTime -= time.Since(start)
 			continue
 		case <-time.After(waitTime):
 			// Timeout after waiting for background task to terminate.
@@ -2551,7 +2551,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// if we have collections requiring migration, run the job
 	if len(db.RequireAttachmentMigration) > 0 {
 		cols := slices.Clone(db.RequireAttachmentMigration) // duplicate slice before logging, in case AttachmentMigrationManager runs very fast
-		err := db.AttachmentMigrationManager.Start(ctx, nil)
+		err := db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 		if err != nil {
 			base.WarnfCtx(ctx, "Error trying to migrate attachments for %s with error: %v", db.Name, err)
 		}

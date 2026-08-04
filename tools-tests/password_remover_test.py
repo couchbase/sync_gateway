@@ -81,7 +81,6 @@ class TestRemovePasswords(unittest.TestCase):
         """
         with_passwords_removed = password_remover.remove_passwords(db_config)
         assert "foobar" not in with_passwords_removed
-        pass
 
     def test_non_parseable_config(self):
         """
@@ -201,8 +200,8 @@ class TestConvertToValidJSON(unittest.TestCase):
             parsed_json = json.loads(valid_json)
             json.dumps(parsed_json, indent=4)
             got_exception = False
-        except Exception as e:
-            print("Exception: {0}".format(e))
+        except Exception as e:  # noqa: BLE001
+            print(f"Exception: {e}")
 
         assert got_exception is False, "Failed to convert to valid JSON"
 
@@ -266,8 +265,8 @@ class TestConvertToValidJSON(unittest.TestCase):
             parsed_json = json.loads(valid_json)
             json.dumps(parsed_json, indent=4)
             got_exception = False
-        except Exception as e:
-            print("Exception: {0}".format(e))
+        except Exception as e:  # noqa: BLE001
+            print(f"Exception: {e}")
 
         assert got_exception is False, "Failed to convert to valid JSON"
 

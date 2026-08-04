@@ -944,6 +944,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
+		migrationComplete := false
 		// MetadataStore intentionally doesn't implement N1QLStore — principal queries fan out
 		// to both stores via dualMetadataN1QLQuery — so unwrap to the underlying store(s) for
 		// index inventory inspection. Primary is the write target and the policy default;
@@ -959,6 +960,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			// and noisy (ShouldUseLegacySyncDocsIndex tolerates the error but still fires the query).
 			if !dual.MigrationComplete() {
 				fallbackIndexStore = dual.Fallback()
+			} else {
+				migrationComplete = true
 			}
 		}
 		metadataStore, ok := base.AsN1QLStore(primaryIndexStore)
@@ -985,7 +988,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		// Initialize indexes using DatabaseInitManager. defaultCollectionPresent prevents building
 		// metadata indexes on _default._default when it has been dropped post-migration — otherwise
 		// the index create retries until it times out and fails db initialization.
-		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, contextOptions.UseLegacySyncDocsIndex, defaultCollectionPresent)
+		dbInitDoneChan, err = sc.DatabaseInitManager.InitializeDatabase(ctx, sc.Config, &config, contextOptions.UseLegacySyncDocsIndex, defaultCollectionPresent, migrationComplete)
 		if err != nil {
 			if options.loadFromBucket {
 				sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInitializationIndexError))

@@ -1066,6 +1066,9 @@ func (btc *BlipTesterClient) SetHLCClockForTest(clockFn func() uint64) {
 
 // Close shuts down all the clients and clears all messages stored.
 func (btc *BlipTesterClient) Close() {
+	if btc.TB() != nil && btc.TB().Failed() {
+		btc.printBlipMessages()
+	}
 	for _, collectionClient := range btc.collectionClients {
 		collectionClient.Close()
 	}
@@ -1984,18 +1987,26 @@ func (btr *BlipTesterReplicator) GetAllMessagesSummary() string {
 	output := strings.Builder{}
 	messages := btr.GetMessages()
 	output.WriteString("{")
-	for i := 1; i <= len(messages); i++ {
-		if i == 0 {
-			output.WriteString("\n")
-		}
-		msg, ok := messages[blip.MessageNumber(i)]
-		require.True(btr.TB(), ok, "Message %d not found in messages map", i)
+	// messages are numbered from Sync Gateway, so different replicators (push/pull) can have missing values.
+	for _, msgNum := range slices.Sorted(maps.Keys(messages)) {
+		msg := messages[msgNum]
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
-		output.WriteString(fmt.Sprintf("\t%s:{Properties:%s Body: %s}\n", msg, msg.Properties, body))
+		fmt.Fprintf(&output, "\t%s:{Properties:%s Body: %s}\n", msg, msg.Properties, string(body))
 	}
 	output.WriteString("}")
 	return output.String()
+}
+
+// printBlipMessages pretty-prints all BLIP messages suitable for debugging.
+func (btc *BlipTesterClient) printBlipMessages() {
+	btc.TB().Helper()
+	if btc.pullReplication != nil {
+		btc.TB().Logf("Pull replication messages:\n%s", btc.pullReplication.GetAllMessagesSummary())
+	}
+	if btc.pushReplication != nil {
+		btc.TB().Logf("Push replication messages:\n%s", btc.pushReplication.GetAllMessagesSummary())
+	}
 }
 
 func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {

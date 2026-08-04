@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
 	"github.com/pkg/errors"
 )
@@ -124,6 +125,22 @@ type TestBucketPool struct {
 
 	// needsBucketTeardown indicates whether the test bucket pool needs to be torn down after tests are run.
 	needsBucketTeardown bool
+
+	// dockerContainerNameForServer caches the docker container name lookup, computed lazily since most packages never need it.
+	dockerContainerNameOnce           sync.Once
+	dockerContainerNameForServer      string
+	dockerContainerNameForServerFound bool
+}
+
+// DockerContainerNameForServer returns the docker container name the pool's cluster is running in, if any.
+func (tbp *TestBucketPool) DockerContainerNameForServer() (string, bool) {
+	if UnitTestUrlIsWalrus() {
+		return "", false
+	}
+	tbp.dockerContainerNameOnce.Do(func() {
+		tbp.dockerContainerNameForServer, tbp.dockerContainerNameForServerFound = sgtest.GetServerDockerContainer(UnitTestUrl())
+	})
+	return tbp.dockerContainerNameForServer, tbp.dockerContainerNameForServerFound
 }
 
 type TestBucketPoolOptions struct {
@@ -193,8 +210,10 @@ func NewTestBucketPoolWithOptions(ctx context.Context, bucketReadierFunc TBPBuck
 		FatalfCtx(ctx, "Invalid value for %s: %s. Valid values are: %s, %s", tbpEnvXDCRConflictResolutionStrategy, os.Getenv(tbpEnvXDCRConflictResolutionStrategy), XDCRConflictResolutionStrategyLWW, XDCRConflictResolutionStrategyMWW)
 	}
 
+	integrationMode := !UnitTestUrlIsWalrus() && !TestUseExistingBucket()
+
 	tbp := TestBucketPool{
-		integrationMode:                !UnitTestUrlIsWalrus() && !TestUseExistingBucket(),
+		integrationMode:                integrationMode,
 		numBuckets:                     numBuckets,
 		readyBucketPool:                make(chan Bucket, numBuckets),
 		bucketReadierQueue:             make(chan tbpBucketName, numBuckets),

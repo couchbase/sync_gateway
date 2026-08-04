@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -24,17 +25,44 @@ type AsyncIndexInitManager struct {
 	_doneChan  chan error               // _doneChan is a DatabaseInitManager worker's done channel. Here to allow Run to block until complete.
 }
 
+// AsyncIndexInitOptions defines the options passed when starting an asynchronous index initialization process.
+type AsyncIndexInitOptions struct {
+	// StatusMap provides a reference to the structure tracking index status per collection.
+	StatusMap *IndexStatusByCollection
+	// DoneChan receives the completion status/error from the index initialization task.
+	DoneChan chan error
+}
+
+// validate returns an error if the options are not usable by Init/Run.
+func (o AsyncIndexInitOptions) validate() error {
+	if o.StatusMap == nil {
+		return errors.New("async index init requires a StatusMap")
+	}
+	if o.DoneChan == nil {
+		return errors.New("async index init requires a DoneChan")
+	}
+	return nil
+}
+
 // Init is called synchronously to set up a run for the background manager process. See Run() for the async part.
-func (a *AsyncIndexInitManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
+func (a *AsyncIndexInitManager) Init(ctx context.Context, options AsyncIndexInitOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
+	if err := options.validate(); err != nil {
+		return backgroundManagerInitReset, err
+	}
+
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	a._statusMap = options["statusMap"].(*IndexStatusByCollection)
-	a._doneChan = options["doneChan"].(chan error)
+	a._statusMap = options.StatusMap
+	a._doneChan = options.DoneChan
 	return backgroundManagerInitReset, nil
 }
 
 // Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
-func (a *AsyncIndexInitManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AsyncIndexInitManager) Run(ctx context.Context, options AsyncIndexInitOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	if err := options.validate(); err != nil {
+		return err
+	}
+
 	a.lock.Lock()
 	doneChan := a._doneChan
 	a.lock.Unlock()
@@ -86,13 +114,12 @@ func (a *AsyncIndexInitManager) ResetStatus() {
 	defer a.lock.Unlock()
 	a._statusMap = nil
 	a._doneChan = nil
-	return
 }
 
-var _ BackgroundManagerProcessI[map[string]any] = &AsyncIndexInitManager{}
+var _ BackgroundManagerProcessI[AsyncIndexInitOptions] = &AsyncIndexInitManager{}
 
-func NewAsyncIndexInitManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager[map[string]any] {
-	return &BackgroundManager[map[string]any]{
+func NewAsyncIndexInitManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager[AsyncIndexInitOptions] {
+	return &BackgroundManager[AsyncIndexInitOptions]{
 		name:    "index_init",
 		Process: &AsyncIndexInitManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{

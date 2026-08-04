@@ -389,7 +389,6 @@ func (dh *documentBackedListener) GetNodes(ctx context.Context) ([]string, error
 }
 
 func (dh *documentBackedListener) Stop() {
-	return
 }
 
 func (dh *documentBackedListener) StaleHeartbeatDetected(ctx context.Context, nodeUUID string) {

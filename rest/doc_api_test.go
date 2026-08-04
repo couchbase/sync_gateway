@@ -118,7 +118,7 @@ func TestDocumentNumbers(t *testing.T) {
 			RequireStatus(ts, getResponse, 200)
 
 			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-			responseString := string(getResponse.Body.Bytes())
+			responseString := getResponse.Body.String()
 			if !strings.Contains(responseString, test.expectedString) {
 				ts.Errorf("Response does not contain the expected number format (%s).  Response: %s", test.name, responseString)
 			}

@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// AttachmentMigrationManager manages the process of migrating attachment metadata to Sync Gateway 4.0+.
 type AttachmentMigrationManager struct {
 	docsProcessed atomic.Int64
 	docsChanged   atomic.Int64
@@ -31,14 +32,20 @@ type AttachmentMigrationManager struct {
 	lock          sync.RWMutex
 }
 
-var _ BackgroundManagerProcessI[map[string]any] = &AttachmentMigrationManager{}
+// AttachmentMigrationOptions defines options for configuring an attachment migration run.
+type AttachmentMigrationOptions struct {
+	// Reset indicates whether to start the migration process from scratch rather than resuming.
+	Reset bool
+}
+
+var _ BackgroundManagerProcessI[AttachmentMigrationOptions] = &AttachmentMigrationManager{}
 
 const MetaVersionValue = "4.0.0" // Meta version to set in syncInfo document upon completion of attachment migration for collection
 
-func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager[map[string]any] {
+func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager[AttachmentMigrationOptions] {
 	metadataStore := database.MetadataStore
 	metaKeys := database.MetadataKeys
-	return &BackgroundManager[map[string]any]{
+	return &BackgroundManager[AttachmentMigrationOptions]{
 		name: "attachment_migration",
 		Process: &AttachmentMigrationManager{
 			databaseCtx: database,
@@ -52,7 +59,7 @@ func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager
 	}
 }
 
-func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
+func (a *AttachmentMigrationManager) Init(ctx context.Context, options AttachmentMigrationOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
 		if err != nil {
@@ -68,14 +75,13 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 		var statusDoc AttachmentMigrationManagerStatusDoc
 		err := base.JSONUnmarshal(clusterStatus, &statusDoc)
 
-		reset, _ := options["reset"].(bool)
-		if reset {
+		if options.Reset {
 			base.InfofCtx(ctx, base.KeyAll, "Attachment Migration: Resetting migration process. Will not resume any partially completed process")
 		}
 
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
-		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || reset {
+		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || options.Reset {
 			return backgroundManagerInitReset, newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
@@ -92,7 +98,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options map[strin
 	return backgroundManagerInitReset, newRunInit()
 }
 
-func (a *AttachmentMigrationManager) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AttachmentMigrationManager) Run(ctx context.Context, options AttachmentMigrationOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := a.databaseCtx
 	migrationLoggingID := "Migration: " + a.MigrationID
 
@@ -259,7 +265,6 @@ func (a *AttachmentMigrationManager) ResetStatus() {
 }
 
 func (a *AttachmentMigrationManager) SetProcessStatus(context.Context, []byte, []byte) {
-	return
 }
 
 func (a *AttachmentMigrationManager) GetProcessStatus(status BackgroundManagerStatus, _ []byte) ([]byte, []byte, error) {

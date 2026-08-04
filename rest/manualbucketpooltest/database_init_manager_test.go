@@ -101,14 +101,14 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db2Config, db2Name, sc.Config.Bootstrap))
 
 	// Start first async index creation, should block after first collection
-	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
 	rest.WaitForChannel(t, firstCollectionInitChannel, "first collection init")
 
 	// Start second async index creation for db2 while first is still running
-	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true)
+	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
 	// Unblock the first InitializeDatabase, should cancel

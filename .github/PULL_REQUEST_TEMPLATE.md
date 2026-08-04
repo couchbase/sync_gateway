@@ -4,7 +4,6 @@ Describe your PR here...
 - Use bullet points if there's more than one thing changed
 
 ## Pre-review checklist
-- [ ] Removed debug logging (`fmt.Print`, `log.Print`, ...)
 - [ ] Logging sensitive data? Make sure it's tagged (e.g. `base.UD(docID)`, `base.MD(dbName)`)
 - [ ] Updated relevant information in the API specifications (such as endpoint descriptions, schemas, ...) in `docs/api`
 
@@ -13,4 +12,10 @@ Describe your PR here...
 - [ ] Update Go module dependencies when merged
 
 ## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration/build?delay=0sec)
-- [ ]  https://jenkins.sgwdev.com/job/SyncGatewayIntegration/0000/
+- [ ] https://jenkins.sgwdev.com/job/SyncGatewayIntegration/0000/
+
+<!--
+Automated review runs on every non-draft PR raised from this repo (forks are not reviewed automatically).
+  - Re-run it, or ask a follow-up, by commenting `@droid <question>`
+  - Suppress it with the `droid-skip` label, or `WIP`/`DO NOT MERGE` in the title
+-->

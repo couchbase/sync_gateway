@@ -203,7 +203,7 @@ func TestRetryLoop(t *testing.T) {
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("TestRetryLoop")
+	description := "TestRetryLoop"
 	err, result := RetryLoop(TestCtx(t), description, worker, sleeper)
 
 	// We shouldn't get an error, because it will retry a few times and then succeed
@@ -232,6 +232,7 @@ func TestRetryLoopContextCancellation(t *testing.T) {
 		return true, nil, nil
 	}
 
+	//nolint:gocritic // deliberately covers the causeless cancellation path; TestRetryLoopContextCancellationWithCause covers WithCancelCause
 	ctx, cancelFunc := context.WithCancel(TestCtx(t))
 
 	go func() {

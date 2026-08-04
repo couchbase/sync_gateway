@@ -118,7 +118,7 @@ func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte, mustPersist bool
 			return nil
 		}
 
-		err := c.persistCheckpoint(vbucketId, value)
+		err := c.persistCheckpoint(vbucketId, value, c.seqs[vbucketId])
 		if err != nil {
 			WarnfCtx(c.loggingCtx, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
 			return fmt.Errorf("Unable to persist DCP metadata")
@@ -167,38 +167,44 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 	c.updatesSinceCheckpoint[vbucketId]++
 }
 
-// loadCheckpoint retrieves previously persisted DCP metadata.  Need to unmarshal metadata to determine last sequence processed.
-// We always restart the feed from the last persisted snapshot start (as opposed to a sequence we may have processed
-// midway through the checkpoint), because:
-//   - We don't otherwise persist the last sequence we processed
-//   - For SG feed processing, there's no harm if we receive feed events for mutations we've previously seen
-//   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
-//     sequences in a checkpoint on startup
-func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
+// loadCheckpoint retrieves previously persisted DCP metadata, along with the last sequence SG processed for the
+// vbucket, so the feed can resume from that sequence rather than the start of the last persisted snapshot.
+func (c *DCPCommon) loadCheckpoint(vbNo uint16) (rawMetadata []byte, lastSeq uint64, err error) {
 	rawValue, _, err := c.metaStore.GetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsDocNotFoundError(err) {
-			return []byte{}, 0, 0, nil
-		} else {
-			return []byte{}, 0, 0, err
+			return nil, 0, nil
 		}
+		return nil, 0, err
 	}
 
-	var snapshotMetadata ShardedImportDCPMetadata
-	unmarshalErr := JSONUnmarshal(rawValue, &snapshotMetadata)
-	if unmarshalErr != nil {
-		return []byte{}, 0, 0, unmarshalErr
+	lastSeq, rawMetadata, err = readCbgtCheckpoint(rawValue)
+	if err != nil {
+		return nil, 0, err
 	}
-	if c.endSeqNos != nil && snapshotMetadata.SnapStart > c.endSeqNos[vbNo] {
-		return rawValue, c.endSeqNos[vbNo], c.endSeqNos[vbNo], nil
-	}
-	return rawValue, snapshotMetadata.SnapStart, snapshotMetadata.SnapEnd, nil
 
+	if endSeq, ok := c.endSeqForVbucket(vbNo); ok && lastSeq > endSeq {
+		lastSeq = endSeq
+	}
+	return rawMetadata, lastSeq, nil
+}
+
+// endSeqForVbucket looks up the configured one-shot-feed end sequence number for a vbucket, if any. It asserts if
+// endSeqNos was specified but doesn't cover this vbucket, which would mean it was built with the wrong vbucket count.
+func (c *DCPCommon) endSeqForVbucket(vbNo uint16) (endSeq uint64, ok bool) {
+	if c.endSeqNos == nil {
+		return 0, false
+	}
+	endSeq, ok = c.endSeqNos[vbNo]
+	if !ok {
+		AssertfCtx(c.loggingCtx, "vbno %d is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
+	}
+	return endSeq, ok
 }
 
 func (c *DCPCommon) InitVbMeta(vbNo uint16) {
-	metadata, snapStart, _, err := c.loadCheckpoint(vbNo)
+	metadata, lastSeq, err := c.loadCheckpoint(vbNo)
 	c.m.Lock()
 	if err != nil {
 		WarnfCtx(c.loggingCtx, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", vbNo, err)
@@ -206,7 +212,7 @@ func (c *DCPCommon) InitVbMeta(vbNo uint16) {
 		c.seqs[vbNo] = 0
 	} else {
 		c.meta[vbNo] = metadata
-		c.seqs[vbNo] = snapStart
+		c.seqs[vbNo] = lastSeq
 	}
 	c.m.Unlock()
 }
@@ -216,9 +222,15 @@ func (c *DCPCommon) InitVbMeta(vbNo uint16) {
 //	restarting w/ an older checkpoint:
 //	  - Would only result in some repeated entry processing, which is already handled by the indexer
 //	  - Is a relatively infrequent operation
-func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
+func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte, lastSeq uint64) error {
 	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return c.metaStore.SetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value)
+
+	persistedValue, err := createCbgtCheckpoint(value, lastSeq)
+	if err != nil {
+		return fmt.Errorf("unable to marshal DCP checkpoint metadata for vbno %d: %w", vbNo, err)
+	}
+
+	return c.metaStore.SetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, persistedValue)
 }
 
 // shouldProcessSequence checks the incoming sequence number against the expected end sequence number, and returns true
@@ -239,6 +251,28 @@ func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
 		return true
 	}
 	return seq <= endSeq
+}
+
+// makeVbucketMetadataForSequence builds the marshalled CbgtCheckpoint for a vbucket that's now at exactly
+// sequence (i.e. seqStart/snapStart/snapEnd/lastSeq all equal sequence), for use as rollback metadata. seqEnd is
+// capped to the vbucket's expected end sequence number for one-shot feeds (endSeqNos), matching
+// shouldProcessSequence, and otherwise left unbounded.
+func (c *DCPCommon) makeVbucketMetadataForSequence(vbNo uint16, vbucketUUID uint64, sequence uint64) ([]byte, error) {
+	seqEnd := uint64(0xFFFFFFFFFFFFFFFF)
+	if endSeq, ok := c.endSeqForVbucket(vbNo); ok {
+		seqEnd = endSeq
+	}
+	checkpoint := CbgtCheckpoint{
+		cbgtOpaqueCheckpoint: cbgtOpaqueCheckpoint{
+			SeqStart:    sequence,
+			SeqEnd:      seqEnd,
+			SnapStart:   sequence,
+			SnapEnd:     sequence,
+			FailOverLog: [][]uint64{{vbucketUUID, 0}},
+		},
+		LastSeq: sequence,
+	}
+	return JSONMarshal(checkpoint)
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition

@@ -137,6 +137,11 @@ type LeakyBucketConfig struct {
 	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
 	UpdateCallback func(key string)
 
+	// PreUpdateCallback is invoked before Update calls into the underlying dataStore. If it returns an error,
+	// Update returns that error immediately without ever calling into the underlying dataStore - allows tests
+	// to simulate a write that fails before it reaches the server.
+	PreUpdateCallback func(key string) error
+
 	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
 	// to GetRaw being ran.
 	GetRawCallback       func(key string) error
@@ -160,6 +165,10 @@ type LeakyBucketConfig struct {
 
 	// TouchCallback issues a callback during touch.
 	TouchCallback func(key string) error
+
+	// GetAndTouchRawCallback issues a callback prior to running GetAndTouchRaw. Useful for injecting
+	// transient errors, e.g. to simulate a heartbeat write failure.
+	GetAndTouchRawCallback func(key string) error
 
 	// AddCallback issues a callback during Add.
 	AddCallback func(key string) (bool, error)
@@ -237,6 +246,18 @@ func (b *LeakyBucket) getAddCallback() func(string) (bool, error) {
 	return b._config.AddCallback
 }
 
+func (b *LeakyBucket) getGetAndTouchRawCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.GetAndTouchRawCallback
+}
+
+func (b *LeakyBucket) setGetAndTouchRawCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.GetAndTouchRawCallback = fn
+}
+
 func (b *LeakyBucket) getForceErrorSetRawKeys() []string {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
@@ -265,6 +286,18 @@ func (b *LeakyBucket) setUpdateCallback(fn func(string)) {
 	b.configLock.Lock()
 	defer b.configLock.Unlock()
 	b._config.UpdateCallback = fn
+}
+
+func (b *LeakyBucket) getPreUpdateCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.PreUpdateCallback
+}
+
+func (b *LeakyBucket) setPreUpdateCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b._config.PreUpdateCallback = fn
 }
 
 func (b *LeakyBucket) getPostUpdateCallback() func(string) {

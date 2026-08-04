@@ -47,7 +47,7 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
 	}
 
-	err := db.AttachmentMigrationManager.Start(ctx, nil)
+	err := db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 	require.NoError(t, err)
 
 	// wait for task to complete
@@ -103,7 +103,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 		require.NotNil(t, doc.Attachments())
 	}
 
-	err := db.AttachmentMigrationManager.Start(ctx, nil)
+	err := db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 	require.NoError(t, err)
 
 	// Attempt to Stop Process
@@ -127,7 +127,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 	require.Error(t, err)
 
 	// Resume process
-	err = db.AttachmentMigrationManager.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 	require.NoError(t, err)
 
 	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateCompleted)
@@ -157,7 +157,7 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 	_, err = collection.dataStore.Add(ctx, key, 0, []byte(`{"test":"doc"}`))
 	require.NoError(t, err)
 
-	err = db.AttachmentMigrationManager.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 	require.NoError(t, err)
 
 	// wait for task to complete
@@ -209,7 +209,7 @@ func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
 	_, err = collection.dataStore.UpdateXattrs(ctx, key, 0, cas, updateXattrs, DefaultMutateInOpts())
 	require.NoError(t, err)
 
-	err = db.AttachmentMigrationManager.Start(ctx, nil)
+	err = db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 	require.NoError(t, err)
 
 	// wait for task to complete
@@ -258,25 +258,25 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 			name:          "default collection, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "",
-			expected:      fmt.Sprintf("_sync:dcp_ck::sg:att_migration:1234"),
+			expected:      "_sync:dcp_ck::sg:att_migration:1234",
 		},
 		{
 			name:          "default collection, group ID=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID},
 			groupID:       "foo",
-			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg:att_migration:1234"),
+			expected:      "_sync:dcp_ck:foo::sg:att_migration:1234",
 		},
 		{
 			name:          "default collection + collection 1, no group id",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "",
-			expected:      fmt.Sprintf("_sync:dcp_ck::sg:att_migration:1234"),
+			expected:      "_sync:dcp_ck::sg:att_migration:1234",
 		},
 		{
 			name:          "default collection + collection 1, group ID=foo",
 			collectionIDs: []uint32{base.DefaultCollectionID, 1},
 			groupID:       "foo",
-			expected:      fmt.Sprintf("_sync:dcp_ck:foo::sg:att_migration:1234"),
+			expected:      "_sync:dcp_ck:foo::sg:att_migration:1234",
 		},
 	}
 	for _, test := range testCases {
@@ -343,7 +343,7 @@ func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
 
 	mgr := NewAttachmentMigrationManager(db.DatabaseContext)
 	require.NotNil(t, mgr)
-	require.NoError(t, mgr.Start(ctx, nil))
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{}))
 	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
 
 	raw, _, err := collection.dataStore.GetRaw(ctx, base.SGSyncInfo)

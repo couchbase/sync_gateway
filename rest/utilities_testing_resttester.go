@@ -80,6 +80,15 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	return DocVersion{RevTreeID: body[db.BodyRev].(string)}, body
 }
 
+// WaitForNotFound waits for a GET request for the given docID to return 404 Not Found.
+func (rt *RestTester) WaitForNotFound(docID string) {
+	rt.TB().Helper()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+		assert.Equal(c, http.StatusNotFound, resp.Code, "expected doc %q to be not found, got status %d: %s", docID, resp.Code, resp.Body.String())
+	}, 20*time.Second, 100*time.Millisecond)
+}
+
 // TriggerOnDemandImport will use the REST API to trigger on an demand import via GET. This function intentionally does not check error codes in case the document does not exist or is invalid to be imported.
 func (rt *RestTester) TriggerOnDemandImport(docID string) {
 	_ = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace}}/%s", docID), "")

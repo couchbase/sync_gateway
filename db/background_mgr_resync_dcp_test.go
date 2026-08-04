@@ -717,14 +717,14 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "",
 			distributed:     false,
-			expected:        fmt.Sprintf("_sync:dcp_ck::sg:resync:1234"),
+			expected:        "_sync:dcp_ck::sg:resync:1234",
 		},
 		{
 			name:            "default collection, group id=foo",
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "foo",
 			distributed:     false,
-			expected:        fmt.Sprintf("_sync:dcp_ck:foo::sg:resync:1234"),
+			expected:        "_sync:dcp_ck:foo::sg:resync:1234",
 		},
 		{
 			name: "default collection + collection 1, no group id",
@@ -734,7 +734,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "",
 			distributed: false,
-			expected:    fmt.Sprintf("_sync:dcp_ck::sg:resync:1234"),
+			expected:    "_sync:dcp_ck::sg:resync:1234",
 		},
 		{
 			name: "default collection + collection 1, group id=foo",
@@ -744,21 +744,21 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "foo",
 			distributed: false,
-			expected:    fmt.Sprintf("_sync:dcp_ck:foo::sg:resync:1234"),
+			expected:    "_sync:dcp_ck:foo::sg:resync:1234",
 		},
 		{
 			name:            "distributed, default collection, no group id",
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "",
 			distributed:     true,
-			expected:        fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:        "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 		{
 			name:            "distributed, default collection, group id=foo",
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "foo",
 			distributed:     true,
-			expected:        fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:        "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 		{
 			name: "distributed, default collection + collection 1, no group id",
@@ -768,7 +768,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "",
 			distributed: true,
-			expected:    fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:    "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 		{
 			name: "distributed, default collection + collection 1, group id=foo",
@@ -778,7 +778,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "foo",
 			distributed: true,
-			expected:    fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:    "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 	}
 	for _, test := range testCases {

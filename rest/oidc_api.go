@@ -204,7 +204,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	if provider.IncludeAccessToken {
 		callbackResponse.AccessToken = token.AccessToken
-		callbackResponse.Expires = int(token.Expiry.Sub(time.Now()).Seconds())
+		callbackResponse.Expires = int(time.Until(token.Expiry).Seconds())
 		callbackResponse.TokenType = token.TokenType
 	}
 
@@ -255,7 +255,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	if provider.IncludeAccessToken {
 		refreshResponse.AccessToken = token.AccessToken
-		refreshResponse.Expires = int(token.Expiry.Sub(time.Now()).Seconds())
+		refreshResponse.Expires = int(time.Until(token.Expiry).Seconds())
 		refreshResponse.TokenType = token.TokenType
 	}
 
@@ -278,7 +278,7 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 	}
 
 	if !provider.DisableSession {
-		sessionTTL := tokenExpiryTime.Sub(time.Now())
+		sessionTTL := time.Until(tokenExpiryTime)
 		oneTime := false
 		sessionID, err := h.makeSessionWithTTL(user, sessionTTL, oneTime)
 		return user.Name(), sessionID, err

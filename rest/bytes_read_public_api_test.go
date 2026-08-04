@@ -86,7 +86,7 @@ func TestBytesReadDocOperations(t *testing.T) {
 	}, int64(len(inputBytes)))
 
 	// send another public request (this time POST) to check stat increments, but check it increments by correct bytes value
-	input = fmt.Sprint(`{"foo":"bar", "channels":["ABC"]}`)
+	input = `{"foo":"bar", "channels":["ABC"]}`
 	inputBytes2 := []byte(input)
 
 	resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/", input, "greg")

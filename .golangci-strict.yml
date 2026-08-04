@@ -10,6 +10,7 @@ version: "2"
 linters:
   enable:
     - exhaustive
+    - forbidigo # Forbids identifiers - used here to keep dev-time printing out of shipping code
     - gocritic # The most opinionated Go source code linter
     #- goprintffuncname # Checks that printf-like functions are named with `f` at the end
     #- gosec # Inspects source code for security problems
@@ -32,6 +33,13 @@ linters:
       default-signifies-exhaustive: true
       explicit-exhaustive-map: true
       ignore-enum-members: "(auditdSyncGatewayEndID|levelCount)" # these mark end of an enum
+    forbidigo:
+      # Listed explicitly rather than relying on forbidigo's defaults, which don't cover log.Print*.
+      forbid:
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: use the context-aware base logging wrappers (base.InfofCtx, base.WarnfCtx, base.DebugfCtx, base.TracefCtx) so log keys and redaction are applied
+        - pattern: ^log\.Print(f|ln)?$
+          msg: use the context-aware base logging wrappers (base.InfofCtx, base.WarnfCtx, base.DebugfCtx, base.TracefCtx) so log keys and redaction are applied
     gocritic:
       enabled-checks:
         - ruleguard
@@ -54,6 +62,9 @@ linters:
         ruleguard:
           failOn: all
           rules: ${base-path}/ruleguard/rules-*.go
+    govet:
+      enable:
+        - nilness
     staticcheck:
       checks:
         - all # enable all
@@ -73,15 +84,11 @@ linters:
         - -S1008 # Simplify returning boolean expression.
         - -S1009 # Omit redundant nil check on slices, maps, and channels.
         - -S1011 # Use a single 'append' to concatenate two slices.
-        - -S1012 # Replace 'time.Now().Sub(x)' with 'time.Since(x)'.
         - -S1021 # Merge variable declaration and assignment.
-        - -S1023 # redundant return statement
-        - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
         - -S1025 # Don't use 'fmt.Sprintf("%s", x)' unnecessarily.
+        - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
         - -S1028 # Simplify error construction with 'fmt.Errorf'.
-        - -S1030 # Use 'bytes.Buffer.String' or 'bytes.Buffer.Bytes'.
         - -S1031 # unnecessary nil check around range
-        - -S1039 # Unnecessary use of 'fmt.Sprint'.
         - -ST1003 # Poorly chosen identifier.
         - -ST1005 # errors strings should not end with punctuation or newlines
         - -ST1006 # Poorly chosen receiver name.
@@ -103,6 +110,11 @@ linters:
       - linters:
           - unused
         path: rest/debug.go
+      # The logging implementation itself, the standalone CLIs under tools/, and tests (which print
+      # diagnostics and generate data) write to stdout by design.
+      - linters:
+          - forbidigo
+        path: (base/logging\.go|base/redactor\.go|^tools/|_test.*\.go)
       - text: "ST1000:" # at least one file in a package should have a package comment
         linters:
           - staticcheck
