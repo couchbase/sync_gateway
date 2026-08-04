@@ -25,6 +25,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	mathrand "math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -632,6 +633,19 @@ func CreateIndefiniteMaxDoublingSleeperFunc(initialTimeToSleepMs int, maxSleepPe
 	}
 
 	return sleeper
+}
+
+// CreateJitterSleeperFunc creates a RetrySleeper that waits a random duration up to maxJitter
+// before each retried attempt, up to maxNumAttempts retries. Jitter decorrelates independent,
+// periodically-firing retriers that would otherwise collide in lockstep.
+func CreateJitterSleeperFunc(maxNumAttempts int, maxJitter time.Duration) RetrySleeper {
+	maxJitterMs := int(maxJitter.Milliseconds())
+	return func(numAttempts int) (bool, int) {
+		if numAttempts > maxNumAttempts {
+			return false, -1
+		}
+		return true, mathrand.Intn(maxJitterMs)
+	}
 }
 
 // CreateFastFailRetrySleeperFunc returns a retry sleeper that will not retry.
