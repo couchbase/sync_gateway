@@ -19,8 +19,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestFreshDeploymentWithDroppedDefaultCollection verifies that a database can be created and
@@ -29,6 +30,10 @@ import (
 // and never had _default._default, or post-migration deployments where the operator dropped it.
 func TestFreshDeploymentWithDroppedDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
+	// Without the drop this is just a "database works" test, duplicating existing coverage.
+	if sgtest.UnitTestUrlIsWalrus() {
+		t.Skip("CBS only: rosmar cannot drop _default._default")
+	}
 
 	ctx := base.TestCtx(t)
 
@@ -44,12 +49,9 @@ func TestFreshDeploymentWithDroppedDefaultCollection(t *testing.T) {
 
 	// Drop _default._default before the database is created to simulate a fresh deployment
 	// where the collection was never present or was dropped post-migration.
-	// Rosmar does not support dropping the default collection, so this step is CBS-only.
-	if !base.UnitTestUrlIsWalrus() {
-		require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
-			Scope: base.DefaultScope, Collection: base.DefaultCollection,
-		}), "dropping _default._default should succeed on Couchbase Server")
-	}
+	require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
+		Scope: base.DefaultScope, Collection: base.DefaultCollection,
+	}), "dropping _default._default should succeed on Couchbase Server")
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -175,7 +177,7 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 
 	// 4. Drop _default._default. Rosmar cannot drop the default collection, so this and the
 	// drop-dependent probe in step 6 are CBS-only.
-	if !base.UnitTestUrlIsWalrus() {
+	if !sgtest.UnitTestUrlIsWalrus() {
 		require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
 			Scope: base.DefaultScope, Collection: base.DefaultCollection,
 		}), "dropping _default._default should succeed on Couchbase Server after migration")
@@ -212,7 +214,7 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	// opts OUT of the system metadata collection can no longer be created — SG rejects the config up
 	// front rather than falling back to the (now-absent) _default._default legacy store (CBG-5511).
 	// CBS only: on rosmar _default was never dropped, so this database would succeed.
-	if !base.UnitTestUrlIsWalrus() {
+	if !sgtest.UnitTestUrlIsWalrus() {
 		newDbConfig := rt.NewDbConfig()
 		newDbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
 		newDbConfig.Scopes = rest.ScopesConfig{
@@ -233,6 +235,10 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 // _default._default being present on the bucket.
 func TestFreshDeploymentWithDroppedDefaultCollectionTwoDatabases(t *testing.T) {
 	base.TestRequiresCollections(t)
+	// Without the drop both databases are ordinary system-metadata databases, covered elsewhere.
+	if sgtest.UnitTestUrlIsWalrus() {
+		t.Skip("CBS only: rosmar cannot drop _default._default")
+	}
 
 	ctx := base.TestCtx(t)
 
@@ -255,11 +261,9 @@ func TestFreshDeploymentWithDroppedDefaultCollectionTwoDatabases(t *testing.T) {
 	_, err = dataStore2.Add(ctx, "pre-existing-doc", 0, map[string]any{"channels": []string{"*"}, "value": "pre-existing"})
 	require.NoError(t, err)
 
-	if !base.UnitTestUrlIsWalrus() {
-		require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
-			Scope: base.DefaultScope, Collection: base.DefaultCollection,
-		}), "dropping _default._default should succeed on Couchbase Server")
-	}
+	require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
+		Scope: base.DefaultScope, Collection: base.DefaultCollection,
+	}), "dropping _default._default should succeed on Couchbase Server")
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -383,7 +387,7 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 	rt.WaitForBucketMetadataMigrationComplete(rt.Bucket().GetName())
 
 	// 4. Drop _default._default (CBS only).
-	if !base.UnitTestUrlIsWalrus() {
+	if !sgtest.UnitTestUrlIsWalrus() {
 		require.NoError(t, tb.DropDataStore(ctx, base.ScopeAndCollectionName{
 			Scope: base.DefaultScope, Collection: base.DefaultCollection,
 		}), "dropping _default._default should succeed on Couchbase Server after migration")
@@ -460,7 +464,7 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 // CBS only: rosmar does not support dropping the default collection.
 func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("CBS only: rosmar cannot drop _default._default")
 	}
 
@@ -516,10 +520,15 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 	// 5. Wait for migration to leave the running state. Allow generous timeout: if the scan
 	//    already fetched all key IDs before the drop, the manager may exhaust all 16 passes
 	//    with per-doc errors before declaring error state.
+	//    Every assertion inside the callback must use the CollectT: the callback runs on its own
+	//    goroutine, so failing the outer t (e.g. via rest.RequireStatus) would abort the test on the
+	//    first transient non-200 instead of retrying.
 	var migStatus db.MigrationManagerResponse
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		resp := rt.SendAdminRequest(http.MethodGet, "/"+dbName+"/_metadata_migration", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
+		if !assert.Equal(c, http.StatusOK, resp.Code, "unexpected status: %s", resp.Body.String()) {
+			return
+		}
 		require.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &migStatus))
 		assert.NotEqual(c, db.BackgroundProcessStateRunning, migStatus.State)
 		assert.NotEqual(c, db.BackgroundProcessStateStopping, migStatus.State)
@@ -548,7 +557,7 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 // _default._default, so the legacy metadata store never exists.
 func TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("test requires dropping _default collection")
 	}
 

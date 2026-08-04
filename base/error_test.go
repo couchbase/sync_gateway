@@ -244,3 +244,47 @@ func TestMultiError(t *testing.T) {
 	assert.Nil(t, nilError.ErrorOrNil())
 
 }
+
+func TestIsCollectionOutdatedError(t *testing.T) {
+	// A timeout is only treated as terminal when KV_COLLECTION_OUTDATED is its sole retry reason -
+	// a timeout that also lists transient reasons must stay retryable.
+	testCases := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{name: "nil", err: nil, expected: false},
+		{name: "collection not found", err: gocb.ErrCollectionNotFound, expected: true},
+		{name: "scope not found", err: gocb.ErrScopeNotFound, expected: true},
+		{name: "wrapped collection not found", err: fmt.Errorf("get failed: %w", gocb.ErrCollectionNotFound), expected: true},
+		{name: "document not found", err: gocb.ErrDocumentNotFound, expected: false},
+		{
+			name:     "timeout with no retry reasons",
+			err:      &gocb.TimeoutError{InnerError: gocb.ErrTimeout},
+			expected: false,
+		},
+		{
+			name: "timeout from collection outdated only",
+			err: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVCollectionOutdatedRetryReason}},
+			expected: true,
+		},
+		{
+			name: "timeout with transient reason alongside collection outdated",
+			err: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVCollectionOutdatedRetryReason, gocb.KVNotMyVBucketRetryReason}},
+			expected: false,
+		},
+		{
+			name: "timeout from unrelated reason",
+			err: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVNotMyVBucketRetryReason}},
+			expected: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, IsCollectionOutdatedError(testCase.err))
+		})
+	}
+}

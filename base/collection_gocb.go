@@ -390,40 +390,15 @@ func (c *Collection) isRecoverableReadError(err error) bool {
 		return false
 	}
 
-	// A read that failed only because the collection was dropped/recreated underneath it will
-	// never succeed on retry. gocbcore marks KV_COLLECTION_OUTDATED as always-retry, so such an
-	// op exhausts its whole deadline and surfaces as a timeout — retrying here just repeats that
-	// wait indefinitely. Fail fast so callers (e.g. metadata migration over a dropped fallback
-	// collection) can reach a terminal state instead of hanging.
+	// gocbcore always-retries KV_COLLECTION_OUTDATED, so a read against a dropped collection burns
+	// its whole deadline and surfaces as a timeout. Retrying that just repeats the wait, so fail
+	// fast to let callers (e.g. metadata migration over a dropped fallback) reach a terminal state.
 	if IsCollectionOutdatedError(err) {
 		return false
 	}
 
 	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) || errors.Is(err, gocb.ErrTimeout) {
 		return true
-	}
-	return false
-}
-
-// IsCollectionOutdatedError reports whether err indicates the target collection no longer matches
-// the collection ID on the request — i.e. it was dropped or recreated underneath an in-flight
-// operation. This surfaces either as an explicit collection/scope-not-found error, or (for KV point
-// ops, which gocbcore always-retries on KV_COLLECTION_OUTDATED) as a timeout whose retry reasons
-// include that reason. In both cases the condition is terminal for the current collection ID.
-func IsCollectionOutdatedError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
-		return true
-	}
-	var timeoutErr *gocb.TimeoutError
-	if errors.As(err, &timeoutErr) {
-		for _, reason := range timeoutErr.RetryReasons {
-			if reason.Description() == gocb.KVCollectionOutdatedRetryReason.Description() {
-				return true
-			}
-		}
 	}
 	return false
 }

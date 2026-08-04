@@ -270,6 +270,34 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
+// IsCollectionOutdatedError returns true if an error indicates the target collection no longer
+// matches the collection ID on the request - i.e. it was dropped or recreated underneath an
+// in-flight operation, which is terminal for the current collection ID.
+//
+// This is either an explicit collection/scope-not-found error, or - for KV point ops, which
+// gocbcore always-retries on KV_COLLECTION_OUTDATED - a timeout whose only retry reason is that
+// one. A timeout that also lists other reasons (rebalance, socket loss) may still be transient, so
+// it is left to the normal retry path.
+func IsCollectionOutdatedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
+		return true
+	}
+	var timeoutErr *gocb.TimeoutError
+	if !errors.As(err, &timeoutErr) || len(timeoutErr.RetryReasons) == 0 {
+		return false
+	}
+	// gocbcore dedupes RetryReasons, so this is a set comparison.
+	for _, reason := range timeoutErr.RetryReasons {
+		if reason != gocb.KVCollectionOutdatedRetryReason {
+			return false
+		}
+	}
+	return true
+}
+
 // IsTemporaryKvError returns true if a kv operation has an error that is likely to be ephemeral. This represents
 // situations where Couchbase Server is under load and would be expected to return a success or failure in a future call.
 func IsTemporaryKvError(err error) bool {

@@ -14,13 +14,12 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/stretchr/testify/require"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestIsRecoverableReadErrorCollectionOutdated verifies that a read which failed only because the
-// collection was dropped/recreated underneath it is treated as unrecoverable. gocbcore marks
-// KV_COLLECTION_OUTDATED as always-retry, so such an operation burns its whole deadline and
-// surfaces as a TimeoutError carrying that retry reason — retrying it again cannot help.
+// TestIsRecoverableReadErrorCollectionOutdated verifies the read-retry path treats a dropped
+// collection as unrecoverable. Branch coverage for the classifier itself lives in
+// TestIsCollectionOutdatedError.
 func TestIsRecoverableReadErrorCollectionOutdated(t *testing.T) {
 	c := &Collection{}
 

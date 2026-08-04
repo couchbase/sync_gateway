@@ -45,11 +45,10 @@ func seedFallback(ctx context.Context, t *testing.T, ms *base.MetadataStore, key
 	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{key})
 }
 
-// scanErrorDataStore wraps a DataStore so its range scan returns an iterator that yields no
-// items and reports scanErr via Err() — the shape gocb produces when a scan aborts because the
-// collection was dropped underneath it. Next() returning nil while Err() is non-nil is the exact
-// condition that only occurs against Couchbase Server; this wrapper lets a Rosmar unit test
-// exercise it deterministically.
+// scanErrorDataStore wraps a DataStore so its range scan returns an iterator that yields no items
+// and reports scanErr via Err() — the shape gocb produces when a scan aborts mid-stream. Next()
+// returning nil while Err() is non-nil only happens against Couchbase Server; this wrapper lets a
+// Rosmar unit test exercise it deterministically.
 type scanErrorDataStore struct {
 	base.DataStore
 	scanErr error
@@ -75,31 +74,58 @@ type scanErrorIterator struct {
 func (it *scanErrorIterator) Next(context.Context) *sgbucket.ScanResultItem { return nil }
 func (it *scanErrorIterator) Err() error                                    { return it.scanErr }
 
-// TestMigrateMetadataScanErrorFailsPass verifies that a fallback range scan which aborts
-// mid-stream (e.g. the collection is dropped underneath it) fails the pass rather than being
+// TestMigrateMetadataScanError verifies that a fallback range scan which aborts mid-stream is never
 // mistaken for a clean drain. Next() returns nil for both a clean end-of-stream and an abort, so
 // MigrateMetadata must consult iter.Err(): swallowing the error would let the orchestrator
 // SetMigrationComplete() with un-migrated docs still on the fallback.
-func TestMigrateMetadataScanErrorFailsPass(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close(ctx)
+//
+// A dropped collection is fatal (no retry can help); anything else may be transient, so the pass is
+// flagged unclean via ScanAborted and the orchestrator retries it.
+func TestMigrateMetadataScanError(t *testing.T) {
+	testCases := []struct {
+		name      string
+		scanErr   error
+		wantFatal bool
+	}{
+		{
+			name:      "collection dropped is fatal",
+			scanErr:   gocb.ErrCollectionNotFound,
+			wantFatal: true,
+		},
+		{
+			name:      "transient scan error is retried",
+			scanErr:   errors.New("range scan aborted: partition stream lost"),
+			wantFatal: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close(ctx)
 
-	ms := newMigrationTestStore(t, bucket)
+			ms := newMigrationTestStore(t, bucket)
 
-	// Seed an in-scope user doc so the fallback genuinely has metadata to migrate; the aborted
-	// scan reads none of it, which must not be reported as a completed migration.
-	metadataID := "scanErrDB"
-	keys := base.NewMetadataKeys(metadataID)
-	seedFallback(ctx, t, ms, keys.UserKey("alice"), []byte(`{"name":"alice"}`))
+			// Seed an in-scope user doc so the fallback genuinely has metadata to migrate; the
+			// aborted scan reads none of it, which must not be reported as a completed migration.
+			const metadataID = "scanErrDB"
+			keys := base.NewMetadataKeys(metadataID)
+			seedFallback(ctx, t, ms, keys.UserKey("alice"), []byte(`{"name":"alice"}`))
 
-	scanErr := errors.New("range scan aborted: collection dropped")
-	msWithScanErr := base.NewMetadataStore(ms.Primary(), &scanErrorDataStore{DataStore: ms.Fallback(), scanErr: scanErr})
+			msWithScanErr := base.NewMetadataStore(ms.Primary(),
+				&scanErrorDataStore{DataStore: ms.Fallback(), scanErr: testCase.scanErr})
 
-	stats := &MigrationStats{}
-	_, err := MigrateMetadata(ctx, msWithScanErr, metadataID, nil, nil, stats)
-	require.Error(t, err, "MigrateMetadata must surface a scan abort, not report a clean pass")
-	require.ErrorIs(t, err, scanErr)
+			stats := &MigrationStats{}
+			_, err := MigrateMetadata(ctx, msWithScanErr, metadataID, nil, nil, stats)
+			if testCase.wantFatal {
+				require.ErrorIs(t, err, testCase.scanErr, "a dropped collection must fail the migration")
+				return
+			}
+			require.NoError(t, err, "a transient scan error must not fail the migration outright")
+			require.True(t, stats.ScanAborted.Load(), "a truncated scan must not look like a clean pass")
+			require.Zero(t, stats.DocsMigrated.Load())
+		})
+	}
 }
 
 // fallbackFetchErrorDataStore wraps a DataStore so its range scan still works (delegated) but every
@@ -143,7 +169,45 @@ func TestMigrateMetadataCollectionDroppedDuringMoveFailsPass(t *testing.T) {
 
 	stats := &MigrationStats{}
 	_, err := MigrateMetadata(ctx, msWithFetchErr, metadataID, nil, nil, stats)
-	require.Error(t, err, "a dropped fallback collection during a per-doc move must fail the pass")
+	require.ErrorIs(t, err, gocb.ErrCollectionNotFound, "a dropped fallback collection during a per-doc move must fail the pass")
+}
+
+// primaryAddErrorDataStore wraps a DataStore so every Add fails with addErr, standing in for the
+// primary metadata collection going away mid-migration.
+type primaryAddErrorDataStore struct {
+	base.DataStore
+	addErr error
+}
+
+func (s *primaryAddErrorDataStore) Add(context.Context, string, uint32, any) (bool, error) {
+	return false, s.addErr
+}
+
+// TestMigrateMetadataPrimaryCollectionDroppedFailsPass verifies that a dropped PRIMARY collection is
+// fatal too, not just a dropped fallback. Counting it as a per-doc error would burn a full KV
+// timeout on every remaining key across every retry pass without ever making progress.
+func TestMigrateMetadataPrimaryCollectionDroppedFailsPass(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	ms := newMigrationTestStore(t, bucket)
+
+	const metadataID = "primaryErrDB"
+	keys := base.NewMetadataKeys(metadataID)
+	seedFallback(ctx, t, ms, keys.UserKey("alice"), []byte(`{"name":"alice"}`))
+
+	msWithAddErr := base.NewMetadataStore(
+		&primaryAddErrorDataStore{DataStore: ms.Primary(), addErr: gocb.ErrCollectionNotFound}, ms.Fallback())
+
+	stats := &MigrationStats{}
+	_, err := MigrateMetadata(ctx, msWithAddErr, metadataID, nil, nil, stats)
+	require.ErrorIs(t, err, gocb.ErrCollectionNotFound, "a dropped primary collection must fail the pass")
+
+	// The doc must be left on the fallback — nothing was written to primary.
+	exists, existsErr := ms.Fallback().Exists(ctx, keys.UserKey("alice"))
+	require.NoError(t, existsErr)
+	require.True(t, exists, "an unmigrated doc must stay on the fallback")
 }
 
 // TestMigrateMetadataEmptyFallback verifies the new-DB fast path: empty fallback yields a
