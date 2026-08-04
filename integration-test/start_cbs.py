@@ -198,15 +198,27 @@ def main() -> None:
     if cluster_id is None:
         services = ", ".join(s.strip() for s in opts.services.split(",") if s.strip())
 
-        yaml_content = textwrap.dedent(f"""\
-            nodes:
-              - count: {opts.nodes}
-                version: {opts.version}
-                services: [{services}]
-            docker:
-                kv-memory: {opts.kv_memory_mb}
-                index-memory: {opts.index_memory_mb}
-        """)
+        # A version containing '/' is a full docker image reference (e.g.
+        # ghcr.io/cb-vanilla/server:8.1.0), not a plain version string - pull it directly via
+        # docker.image instead of letting cbdinocluster resolve 'version' against its registries.
+        node_docker_block = ""
+        if "/" in opts.version:
+            node_docker_block = f"    docker:\n      image: {opts.version}\n"
+
+        yaml_content = (
+            textwrap.dedent(f"""\
+                nodes:
+                  - count: {opts.nodes}
+                    version: {opts.version}
+                    services: [{services}]
+            """)
+            + node_docker_block
+            + textwrap.dedent(f"""\
+                docker:
+                    kv-memory: {opts.kv_memory_mb}
+                    index-memory: {opts.index_memory_mb}
+            """)
+        )
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False, prefix="cbdino-sg-"
