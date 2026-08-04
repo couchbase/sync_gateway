@@ -518,7 +518,8 @@ func (h *handler) handlePostIndexInit() error {
 	} else {
 		defaultCollectionPresent = exists
 	}
-	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex, defaultCollectionPresent)
+
+	done, err := h.server.DatabaseInitManager.InitializeDatabaseWithStatusCallback(h.ctx(), h.server.initialStartupConfig, &newDbConfig, statusCallback, useLegacySyncDocsIndex, defaultCollectionPresent, h.db.MetadataMigrationComplete(h.ctx()))
 	if err != nil {
 		return err
 	}
