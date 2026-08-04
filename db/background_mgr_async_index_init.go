@@ -114,7 +114,6 @@ func (a *AsyncIndexInitManager) ResetStatus() {
 	defer a.lock.Unlock()
 	a._statusMap = nil
 	a._doneChan = nil
-	return
 }
 
 var _ BackgroundManagerProcessI[AsyncIndexInitOptions] = &AsyncIndexInitManager{}

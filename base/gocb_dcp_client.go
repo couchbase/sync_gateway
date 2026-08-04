@@ -421,9 +421,7 @@ func (dc *GoCBDCPClient) initAgent(spec BucketSpec) error {
 			waitError = fmt.Errorf("WaitUntilReady error channel for dcp agent returned error (%d): %w", i, err)
 			continue
 		}
-		if waitError == nil {
-			break
-		}
+		break
 
 	}
 	if waitError != nil {

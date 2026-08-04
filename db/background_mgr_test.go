@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -1573,6 +1574,67 @@ func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
 	assert.Equal(t, BackgroundProcessStateStopped, clusterState)
 }
 
+// TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning reproduces the case where Init succeeds and
+// Process.Run is launched in its own goroutine, but the subsequent persist of the initial cluster status fails.
+// Start() returns that error to the caller, even though Run is already executing in the background.
+func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T) {
+
+	t.Skip("This test will pass after the fix in CBG-5660")
+
+	testBucket := base.GetTestBucket(t)
+	ctx := context.Background()
+	defer testBucket.Close(ctx)
+
+	metaKeys := base.NewMetadataKeys("test-start-persist-fail")
+	processSuffix := "multi-persist-fail"
+	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
+	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
+
+	// The first Update call for statusDocID fails outright, so start() sees an error and returns it, exactly
+	// like a transient bucket blip would. Every call after that behaves normally, so the manager can be reused
+	// as-is for the recovery Start() below without needing a different key or a fresh metadataStore.
+	var updateCount atomic.Int32
+	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{
+		PreUpdateCallback: func(key string) error {
+			if key == statusDocID && updateCount.Add(1) == 1 {
+				return errors.New("simulated write failure")
+			}
+			return nil
+		},
+	})
+	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
+
+	process := &MockProcess{}
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name: "persist-fail-mgr",
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: leakyMetadataStore,
+			metaKeys:      metaKeys,
+			processSuffix: processSuffix,
+			multiNode:     true,
+		},
+		Process: process,
+	}
+
+	// Start() reports failure to the caller...
+	err := mgr.Start(ctx, MockProcessOptions{})
+	require.Error(t, err)
+
+	// ...but Process.Run was already launched before that failure occurred, so the manager should not be left
+	// reporting Running forever - it should reflect the failure as an Error state, same as the Process.Run-error
+	// path does via SetError.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, BackgroundProcessStateRunning, mgr.GetRunState())
+		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(t, mgr.Stop(ctx))
+}
+
 // TestUpdateStatusClusterAware checks that UpdateStatusClusterAware surfaces the underlying bucket-closed
 // error for single-node and multi-node managers.
 func TestUpdateStatusClusterAware(t *testing.T) {
@@ -1713,4 +1775,90 @@ func TestBackgroundManagerConcurrentStopStartRace(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// TestUpdateHeartbeatDocClusterAwareTransientError reproduces a bug in UpdateHeartbeatDocClusterAware: the
+// grace-period check compares an elapsed time.Duration (nanoseconds) against
+// (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs), which is an untyped
+// constant representing *seconds* (29) that is never multiplied by time.Second. Since any measurable elapsed
+// time comfortably exceeds 29 nanoseconds, a single transient heartbeat write error is treated as if the
+// ~29 second grace period had already elapsed, and the error is propagated (causing the caller to call
+// SetError and terminate the background process) instead of being tolerated.
+//
+// The two subtests differ in how the manager reaches the "just had a successful heartbeat" precondition:
+// "already running" sets lastSuccessfulHeartbeatUnix directly, while "startup" goes through mgr.Start, which
+// exercises markStart recording its own heartbeat-doc write as the initial success (lastSuccessfulHeartbeatUnix
+// otherwise defaults to zero, so a transient error on the very first tick after Start would look like ~56
+// years had passed since the last success).
+func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
+	tests := []struct {
+		name string
+		// setup gets the manager into a state where a heartbeat has just succeeded, before the injected error
+		// is armed.
+		setup func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string)
+	}{
+		{
+			name: "already running",
+			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string) {
+				// Write the heartbeat doc up front, as markStart would, so a heartbeat update that isn't
+				// intercepted by the injected error can succeed for real against the underlying bucket.
+				require.NoError(t, metadataStore.SetRaw(ctx, heartbeatDocID, BackgroundManagerHeartbeatExpirySecs, nil, []byte("{}")))
+				mgr.terminator = base.NewSafeTerminator()
+				mgr.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
+			},
+		},
+		{
+			name: "startup",
+			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string) {
+				// Start performs the real (uninjected) WriteCas that writes the heartbeat doc for the first
+				// time; this must count as the most recent successful heartbeat even though
+				// UpdateHeartbeatDocClusterAware itself has not yet been called.
+				require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+				t.Cleanup(func() { _ = mgr.Stop(ctx) })
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			ctx := base.TestCtx(t)
+
+			metaKeys := base.NewMetadataKeys("test-heartbeat-transient-error")
+			processSuffix := "heartbeat-transient-error"
+			heartbeatDocID := metaKeys.BackgroundProcessHeartbeatPrefix(processSuffix)
+
+			var injectError atomic.Bool
+			leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
+				GetAndTouchRawCallback: func(key string) error {
+					if key == heartbeatDocID && injectError.Load() {
+						return fmt.Errorf("injected transient heartbeat write error")
+					}
+					return nil
+				},
+			})
+			defer leakyBucket.Close(ctx)
+			metadataStore := leakyBucket.DefaultDataStore(ctx)
+
+			mgr := &BackgroundManager[MockProcessOptions]{
+				name:    "test-heartbeat-transient-error-mgr",
+				Process: &MockProcess{},
+				clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+					metadataStore: metadataStore,
+					metaKeys:      metaKeys,
+					processSuffix: processSuffix,
+				},
+			}
+
+			test.setup(t, ctx, mgr, metadataStore, heartbeatDocID)
+
+			injectError.Store(true)
+			err := mgr.UpdateHeartbeatDocClusterAware(ctx)
+			require.NoError(t, err, "a transient heartbeat write error should be tolerated within the grace period")
+
+			// Once the injected error clears, the next heartbeat should succeed for real and record a new success time.
+			injectError.Store(false)
+			require.NoError(t, mgr.UpdateHeartbeatDocClusterAware(ctx))
+		})
+	}
 }

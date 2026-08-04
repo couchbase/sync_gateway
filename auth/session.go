@@ -134,8 +134,6 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 
 	if user != nil && user.Disabled() {
 		return nil, base.HTTPErrorf(400, "User is disabled")
-	} else if err != nil {
-		return nil, err
 	}
 
 	session := &LoginSession{

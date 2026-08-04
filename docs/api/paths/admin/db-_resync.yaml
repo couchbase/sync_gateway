@@ -87,6 +87,8 @@ post:
         application/json:
           schema:
             $ref: ../../components/schemas.yaml#/Resync-status
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
     '403':
       $ref: ../../components/responses.yaml#/Unauthorized-database
     '503':

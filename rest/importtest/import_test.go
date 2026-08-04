@@ -803,7 +803,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-	responseString := string(response.Body.Bytes())
+	responseString := response.Body.String()
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
 	}
@@ -1245,7 +1245,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 
 			rtConfig := rest.RestTesterConfig{
@@ -1323,7 +1323,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 
 			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)
@@ -2198,7 +2198,7 @@ func TestImportRollback(t *testing.T) {
 			vbNo, err := base.GetVbucketForKey(ctx, bucket, key)
 			require.NoError(t, err)
 			checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
-			var checkpointData base.ShardedImportDCPMetadata
+			var checkpointData base.CbgtCheckpoint
 			checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 			require.NoError(t, err)
 			require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2207,6 +2207,7 @@ func TestImportRollback(t *testing.T) {
 			checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 			checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 			checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+			checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 			if testType == rollbackWithFailover {
 				existingVbUUID := checkpointData.FailOverLog[0][0]
 				checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
@@ -2296,7 +2297,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	// fetch the checkpoint for vBucket 0 and alternatePartitionVB, modify the checkpoint values to a higher
 	// sequence to trigger rollback upon stream open request
 	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, 0)
-	var checkpointData base.ShardedImportDCPMetadata
+	var checkpointData base.CbgtCheckpoint
 	checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2304,6 +2305,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 	existingVbUUID := checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2314,7 +2316,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	// second partition's vBucket
 	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, alternatePartitionVB)
-	checkpointData = base.ShardedImportDCPMetadata{}
+	checkpointData = base.CbgtCheckpoint{}
 	checkpointBytes, _, err = metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2322,6 +2324,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 	existingVbUUID = checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2537,7 +2540,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	// fetch each vBucket checkpoint, modify the checkpoint values back to the bucket
 	for vbNo := range docPerVBucket {
 		checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
-		var checkpointData base.ShardedImportDCPMetadata
+		var checkpointData base.CbgtCheckpoint
 		checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 		require.NoError(t, err)
 		require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2546,6 +2549,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 		checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 		checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+		checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 		existingVbUUID := checkpointData.FailOverLog[0][0]
 		// mutate vbUUID to force rollback
 		checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}

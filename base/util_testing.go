@@ -225,12 +225,19 @@ func TestUseSystemMetadataCollection() bool {
 	return val
 }
 
+// TestUseCouchbaseServerDockerName returns whether the Couchbase Server under test is running in a local Docker
+// container, and if so, the container's name. SG_TEST_COUCHBASE_SERVER_DOCKER_NAME overrides the lookup when set.
+// Otherwise, the container is found by matching the host in SG_TEST_COUCHBASE_SERVER_URL against the docker network
+// IP addresses of currently running containers, since tools like cbdinocluster assign a random container name per node.
+// If GTestBucketPool has already computed this (the common case), the cached value is reused instead of
+// re-running docker commands on every call.
 func TestUseCouchbaseServerDockerName() (bool, string) {
-	testX509CouchbaseServerDockerName, isSet := os.LookupEnv(TestEnvCouchbaseServerDockerName)
-	if !isSet {
-		return false, ""
+	if GTestBucketPool != nil {
+		name, found := GTestBucketPool.DockerContainerNameForServer()
+		return found, name
 	}
-	return true, testX509CouchbaseServerDockerName
+	name, found := sgtest.GetServerDockerContainer(UnitTestUrl())
+	return found, name
 }
 
 func TestX509LocalServer() (bool, string) {
@@ -246,7 +253,7 @@ func TestX509LocalServer() (bool, string) {
 
 	username, isSet := os.LookupEnv(TestEnvX509LocalUser)
 	if !isSet {
-		panic(fmt.Sprintf("TestEnvX509LocalUser must be set when TestEnvX509Local=true"))
+		panic("TestEnvX509LocalUser must be set when TestEnvX509Local=true")
 	}
 
 	return val, username

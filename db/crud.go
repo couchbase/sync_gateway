@@ -1684,9 +1684,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 	})
 
 	if doc != nil && doc.HLV != nil {
-		if cv == nil {
-			cv = &Version{}
-		}
+		cv = &Version{}
 		source, version := doc.HLV.GetCurrentVersion()
 		cv.SourceID = source
 		cv.Value = version

@@ -250,10 +250,6 @@ func (h *handler) handleGetUserDocAccessSpan() error {
 		return fmt.Errorf("unable to get scope and collection from keyspace")
 	}
 
-	if err != nil {
-		return err
-	}
-
 	keyspace := scope + "." + coll
 
 	for _, docID := range docidsList {

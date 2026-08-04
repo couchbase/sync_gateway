@@ -883,7 +883,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					rt1InitDoc := rt1.CreateDocNoHLV(docID, bodyRT1)
 					initLegacyRevRT1 = rt1InitDoc.GetRevTreeID()
 					upgradedDocVersion = rt1.PutDoc(docID, fmt.Sprintf(`{"%s":"%s", "channels": ["alice"], "source": "rt1"}`, db.BodyRev, initLegacyRevRT1))
-					expectedBody = fmt.Sprintf(`{"channels": ["alice"], "source": "rt1"}`)
+					expectedBody = `{"channels": ["alice"], "source": "rt1"}`
 					legacyRevRT1 = upgradedDocVersion.RevTreeID
 
 					// create doc on rt2 with same body for rev1 to keep revID generation the same as rev1 of the document above
@@ -900,7 +900,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					rt2InitDoc := rt2.CreateDocNoHLV(docID, bodyRT2)
 					initLegacyRevRT2 = rt2InitDoc.GetRevTreeID()
 					upgradedDocVersion = rt2.PutDoc(docID, fmt.Sprintf(`{"%s":"%s", "channels": ["alice"], "source": "rt2"}`, db.BodyRev, initLegacyRevRT2))
-					expectedBody = fmt.Sprintf(`{"channels": ["alice"], "source": "rt2"}`)
+					expectedBody = `{"channels": ["alice"], "source": "rt2"}`
 
 					// create doc on rt1 with same body for rev1 to keep revID generation the same as rev1 of the document above
 					// but have both revisions be pre upgraded versions

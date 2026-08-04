@@ -9,7 +9,6 @@
 package channels
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -71,7 +70,7 @@ func TestTimedSetUnmarshal(t *testing.T) {
 
 	err = base.JSONUnmarshal([]byte(`{"channels":{"a":{"seq":17, "vb":21},"b":{"seq":23, "vb":25}}}`), &str)
 	assert.NoError(t, err, "Unmarshal sequence and vbucket only")
-	assert.Equal(t, fmt.Sprintf("%s", TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}), fmt.Sprintf("%s", str.Channels))
+	assert.Equal(t, TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}.String(), str.Channels.String())
 }
 
 func TestEncodeSequenceID(t *testing.T) {
