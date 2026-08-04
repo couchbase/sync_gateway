@@ -212,8 +212,12 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 	if rollbackSeq == 0 {
 		vbucketUUID = 0
 	}
-	cbgtMeta := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
-	return d.rollbackEx(partitionToVbNo(d.loggingCtx, partition), vbucketUUID, rollbackSeq, cbgtMeta)
+	vbNo := partitionToVbNo(d.loggingCtx, partition)
+	cbgtMeta, err := d.makeVbucketMetadataForSequence(vbNo, vbucketUUID, rollbackSeq)
+	if err != nil {
+		return err
+	}
+	return d.rollbackEx(vbNo, vbucketUUID, rollbackSeq, cbgtMeta)
 }
 
 // TODO: Not implemented, review potential usage
