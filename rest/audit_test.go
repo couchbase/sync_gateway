@@ -1355,7 +1355,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType:    "normal",
 					base.AuditFieldIncludeDocs: true,
-					base.AuditFieldSince:       "5:10",
+					base.AuditFieldSince:       "10",
 				},
 			},
 			{
@@ -1482,7 +1482,7 @@ func TestAuditChangesFeedStart(t *testing.T) {
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType: "normal",
-					base.AuditFieldSince:    "1:10",
+					base.AuditFieldSince:    "10",
 				},
 			},
 		}
