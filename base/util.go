@@ -653,13 +653,18 @@ func CreateIndefiniteMaxDoublingSleeperFunc(initialTimeToSleepMs int, maxSleepPe
 }
 
 // CreateJitterSleeperFunc creates a RetrySleeper that waits a random duration up to maxJitter
-// before each retried attempt, up to maxNumAttempts retries. Jitter decorrelates independent,
+// before each retried attempt, up to maxNumAttempts total attempts. Jitter decorrelates independent,
 // periodically-firing retriers that would otherwise collide in lockstep.
 func CreateJitterSleeperFunc(maxNumAttempts int, maxJitter time.Duration) RetrySleeper {
 	maxJitterMs := int(maxJitter.Milliseconds())
 	return func(numAttempts int) (bool, int) {
-		if numAttempts > maxNumAttempts {
+		// RetryLoopWithOptions/RetryLoopCas call the sleeper after an attempt that already ran,
+		// so stopping at >= (rather than >) caps the worker at maxNumAttempts total calls.
+		if numAttempts >= maxNumAttempts {
 			return false, -1
+		}
+		if maxJitterMs <= 0 {
+			return true, 0
 		}
 		// Floor at 1ms so a known retry never sleeps 0ms, without pushing the ceiling past maxJitter.
 		return true, max(mathrand.Intn(maxJitterMs), 1)

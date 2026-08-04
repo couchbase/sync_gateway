@@ -180,6 +180,45 @@ func TestCreateDoublingSleeperFunc(t *testing.T) {
 
 }
 
+func TestCreateJitterSleeperFunc(t *testing.T) {
+
+	maxNumAttempts := 3
+	sleeper := CreateJitterSleeperFunc(maxNumAttempts, 20*time.Millisecond)
+
+	for i := range maxNumAttempts - 1 {
+		shouldContinue, sleepMs := sleeper(i + 1)
+		assert.True(t, shouldContinue)
+		assert.True(t, sleepMs >= 1 && sleepMs <= 20)
+	}
+
+	shouldContinue, sleepMs := sleeper(maxNumAttempts)
+	assert.False(t, shouldContinue)
+	assert.Equal(t, -1, sleepMs)
+}
+
+func TestCreateJitterSleeperFuncZeroJitter(t *testing.T) {
+
+	sleeper := CreateJitterSleeperFunc(3, 0)
+
+	shouldContinue, sleepMs := sleeper(1)
+	assert.True(t, shouldContinue)
+	assert.Equal(t, 0, sleepMs)
+}
+
+func TestCreateJitterSleeperFuncRetryLoopAttemptCount(t *testing.T) {
+
+	maxNumAttempts := 5
+	numTimesInvoked := 0
+	worker := func(RetryState) (bool, error, any) {
+		numTimesInvoked += 1
+		return true, fmt.Errorf("fake error"), nil
+	}
+
+	err, _ := RetryLoopWithOptions(TestCtx(t), "TestCreateJitterSleeperFuncRetryLoopAttemptCount", worker, CreateJitterSleeperFunc(maxNumAttempts, time.Millisecond))
+	require.Error(t, err)
+	assert.Equal(t, maxNumAttempts, numTimesInvoked)
+}
+
 func TestRetryLoop(t *testing.T) {
 
 	// Make sure that the worker retries if an error is returned and shouldRetry == true
