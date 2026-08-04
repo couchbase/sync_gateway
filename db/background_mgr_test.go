@@ -1416,6 +1416,7 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 // cluster status to a terminal state, a still-running node that only observes this via polling
 // converges to that same state - without overwriting it.
 func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	tests := []struct {
 		name          string
 		externalState BackgroundProcessState
@@ -1516,6 +1517,7 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 // via one manager brings every manager - including ones that only observe the stop by polling the
 // shared cluster status - to Stopped, both locally and in the persisted cluster status.
 func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)

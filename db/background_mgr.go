@@ -323,7 +323,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 				case <-ticker.C:
 					err := b.UpdateSingleNodeClusterAwareStatus(ctx)
 					if err != nil {
-						base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
+						base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
 					}
 				case <-terminator.Done():
 					ticker.Stop()
@@ -372,7 +372,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			err = b.UpdateSingleNodeClusterAwareStatus(ctx)
 		}
 		if err != nil {
-			base.ErrorfCtx(ctx, "Failed to update background manager status: %v", err)
+			base.ErrorfCtx(ctx, "Failed to update background manager status on start: %v", err)
 			// Process.Run's goroutine is already launched by this point, so without this the caller would
 			// get an error back while the process keeps running in the background unbeknownst to them.
 			// SetError both marks the state as Error and terminates the already-running process.
@@ -461,7 +461,7 @@ func (b *BackgroundManager[O]) updateTerminalStatus(ctx context.Context) {
 		err := b.UpdateStatusClusterAware(ctx)
 		if err != nil {
 			if _, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); !ok {
-				base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
+				base.WarnfCtx(ctx, "Failed to update terminal background manager status after finishing process: %v", err)
 			}
 		}
 
