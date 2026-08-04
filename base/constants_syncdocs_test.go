@@ -444,7 +444,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 			shouldFailAdd.Store(false)
-			ds.config.WriteCasCallback = test.writeCasCallback
+			ds.SetWriteCasCallback(test.writeCasCallback)
 			requiresResync, requiresAttachmentMigration, err := InitSyncInfo(ctx, ds, expectedMetadataID, nil)
 			if test.expectedError != "" {
 				require.Error(t, err)
