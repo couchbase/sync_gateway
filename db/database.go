@@ -785,11 +785,11 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-// OIDCValidationRequired marks providers that are already known to this database's current
-// config, and materially unchanged, as not needing re-validation - e.g. when removing one
-// provider, another unchanged, already-accepted provider shouldn't have its discovery/issuer
-// info re-checked just because the config as a whole is being updated. A provider that's new, or
-// whose discovery-relevant fields changed in place, is still validated.
+// OIDCValidationRequired marks providers that are new to this database's current config, or whose
+// discovery-relevant fields changed in place, as needing (re-)validation on this pass - e.g. when
+// removing one provider, another unchanged, already-accepted provider shouldn't have its
+// discovery/issuer info re-checked just because the config as a whole is being updated. An
+// unchanged, already-known provider is left at its default of not requiring validation.
 func (context *DatabaseContext) OIDCValidationRequired(oidcConfig *auth.OIDCOptions) {
 	if oidcConfig == nil {
 		return
@@ -799,8 +799,8 @@ func (context *DatabaseContext) OIDCValidationRequired(oidcConfig *auth.OIDCOpti
 			continue
 		}
 		existing, ok := context.OIDCProviders[name]
-		if ok && !oidcProviderDiscoveryConfigChanged(existing, provider) {
-			provider.SkipValidation = true
+		if !ok || oidcProviderDiscoveryConfigChanged(existing, provider) {
+			provider.ForceRevalidation = true
 		}
 	}
 }
@@ -810,7 +810,6 @@ func (context *DatabaseContext) OIDCValidationRequired(oidcConfig *auth.OIDCOpti
 func oidcProviderDiscoveryConfigChanged(existing, incoming *auth.OIDCProvider) bool {
 	return existing.Issuer != incoming.Issuer ||
 		existing.DiscoveryURI != incoming.DiscoveryURI ||
-		existing.InsecureSkipVerify != incoming.InsecureSkipVerify ||
 		existing.DisableConfigValidation != incoming.DisableConfigValidation ||
 		base.ValDefault(existing.ClientID, "") != base.ValDefault(incoming.ClientID, "")
 }

@@ -3168,3 +3168,93 @@ func TestOIDCValidationSkippedOnInPlaceProviderChange(t *testing.T) {
 
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &updatedDbConfig))), http.StatusBadRequest)
 }
+
+// TestOIDCRevalidationSkippedWithTlsSkipVerify checks that resubmitting an OIDC provider's config
+// completely unchanged still succeeds, both with and without oidc_tls_skip_verify enabled.
+// existing.InsecureSkipVerify (db/database.go) is populated server-side from
+// db.Options.UnsupportedOptions.OidcTlsSkipVerify, but incoming.InsecureSkipVerify (parsed straight
+// from the request body) is never populated at all.
+func TestOIDCRevalidationSkippedWithTlsSkipVerify(t *testing.T) {
+	for _, oidcSkipTlsVerify := range []bool{true, false} {
+		t.Run(fmt.Sprintf("oidcSkipTlsVerify=%t", oidcSkipTlsVerify), func(t *testing.T) {
+			// A fresh server per subtest, since it gets shut down mid-test below.
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/provider1"
+
+			providers := auth.OIDCProviderMap{
+				"provider1": mockProviderWith("provider1", mockProviderRegister{}),
+			}
+			refreshProviderConfig(providers, mockAuthServer.URL)
+			rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+			dbConfig.OIDCConfig = &auth.OIDCOptions{
+				Providers: providers,
+			}
+			dbConfig.Unsupported = &db.UnsupportedOptions{OidcTlsSkipVerify: oidcSkipTlsVerify}
+
+			RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+			// Make the discovery URL unreachable, so a wrongly-forced revalidation would fail.
+			mockAuthServer.Shutdown()
+
+			// Resubmit "provider1" completely unchanged (same Issuer/DiscoveryURI/ClientID as at
+			// creation). The update should succeed regardless of oidcSkipTlsVerify, since nothing
+			// about the provider actually changed - even though its discovery URL is now unreachable.
+			updatedProviders := auth.OIDCProviderMap{
+				"provider1": mockProviderWith("provider1", mockProviderRegister{}),
+			}
+			refreshProviderConfig(updatedProviders, mockAuthServer.URL)
+
+			updatedDbConfig := rt.NewDbConfig()
+			updatedDbConfig.OIDCConfig = &auth.OIDCOptions{
+				Providers: updatedProviders,
+			}
+			updatedDbConfig.Unsupported = &db.UnsupportedOptions{OidcTlsSkipVerify: oidcSkipTlsVerify}
+
+			RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &updatedDbConfig))), http.StatusCreated)
+		})
+	}
+}
+
+// TestOIDCValidationSkippedOnUnrelatedConfigUpsert checks that a database config update with
+// nothing to do with OIDC doesn't force revalidation of an existing, untouched provider.
+// A POST (upsert/merge) that doesn't mention "oidc" at all parses to a nil OIDCConfig, so
+// OIDCValidationRequired (db/database.go) has nothing to mark - but the existing provider still
+// gets merged back in from the persisted config and, since SkipRevalidation (json:"-") is never
+// persisted, defaults to false on every fresh deserialization regardless of history.
+func TestOIDCValidationSkippedOnUnrelatedConfigUpsert(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/actual-issuer"
+
+	invalidProvider := mockProvider("invalidProvider")
+	invalidProvider.Issuer = mockAuthServer.URL + "/invalidProvider" // doesn't match mockAuthServer.options.issuer
+	invalidProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(invalidProvider.Issuer)
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"invalidProvider": invalidProvider},
+	}
+
+	// disable_oidc_validation is required here purely to get the intentionally-invalid provider
+	// accepted in the first place - it's not used again below.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/db/?disable_oidc_validation=true", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
+
+	// POST an update that's entirely unrelated to OIDC - the body has no "oidc" key at all, so
+	// OIDCValidationRequired has nothing to mark. The already-configured "invalidProvider" is
+	// merged back in unchanged and must not be re-validated as a side effect of this update.
+	unrelatedUpdate := DbConfig{
+		RevsLimit: base.Ptr(uint32(1000)),
+	}
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &unrelatedUpdate))), http.StatusCreated)
+}
