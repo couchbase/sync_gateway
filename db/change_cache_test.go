@@ -1060,38 +1060,37 @@ func TestChannelRace(t *testing.T) {
 	options.Wait = true
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("Even", "Odd"), options)
 	assert.True(t, err == nil)
-	feedClosed := false
 
-	// Go-routine to work the feed channel and write to an array for use by assertions
+	// Go-routine to drain the feed channel and write to an array for use by assertions
 	var changes struct {
 		lock    sync.RWMutex
 		entries []*ChangeEntry
 	}
 	changes.entries = make([]*ChangeEntry, 0, 50)
 	go func() {
-		for feedClosed == false {
-			entry, ok := <-feed
-			if ok {
-				// feed sends nil after each continuous iteration
-				if entry != nil {
-					log.Println("Changes entry:", entry.Seq)
-					changes.lock.Lock()
-					changes.entries = append(changes.entries, entry)
-					changes.lock.Unlock()
-				}
-			} else {
-				log.Println("Closing feed")
-				feedClosed = true
+		for entry := range feed {
+			// feed sends nil after each continuous iteration
+			if entry == nil {
+				continue
 			}
+			log.Println("Changes entry:", entry.Seq)
+			changes.lock.Lock()
+			changes.entries = append(changes.entries, entry)
+			changes.lock.Unlock()
 		}
+		log.Println("Closing feed")
 	}()
 
-	// Wait for processing of two channels (100 ms each)
-	time.Sleep(250 * time.Millisecond)
-	// Validate the initial sequences arrive as expected
-	changes.lock.RLock()
-	assert.Len(t, changes.entries, 3)
-	changes.lock.RUnlock()
+	changesLen := func() int {
+		changes.lock.RLock()
+		defer changes.lock.RUnlock()
+		return len(changes.entries)
+	}
+
+	// Wait for the initial sequences to arrive as expected
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 3, changesLen())
+	}, 5*time.Second, 10*time.Millisecond)
 
 	// Send update to trigger the start of the next changes iteration
 	WriteDirect(t, collection, []string{"Even"}, 4)
@@ -1108,9 +1107,12 @@ func TestChannelRace(t *testing.T) {
 	// Write a few more to validate that we're not catching up on the missing '6' later
 	WriteDirect(t, collection, []string{"Even"}, 8)
 	WriteDirect(t, collection, []string{"Odd"}, 9)
-	time.Sleep(750 * time.Millisecond)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, 9, changesLen())
+	}, 5*time.Second, 10*time.Millisecond)
+
 	changes.lock.RLock()
-	assert.Len(t, changes.entries, 9)
 	assert.True(t, verifyChangesFullSequences(changes.entries, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
 	changesString := ""
 	for _, change := range changes.entries {

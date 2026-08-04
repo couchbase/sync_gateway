@@ -222,10 +222,7 @@ func main() {
 	defer printEndofTestStatsFile(ctx, dbContext)
 
 	// duration of test logic
-	ticker := time.NewTicker(*timeToRun)
-	defer ticker.Stop()
-
-	<-ticker.C
+	time.Sleep(*timeToRun)
 	cancelFunc(errors.New("test duration complete"))
 
 	workerFunc := func() (shouldRetry bool, err error, val any) {
