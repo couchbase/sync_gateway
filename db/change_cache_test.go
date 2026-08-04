@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1004,31 +1005,60 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.Equal(t, initialQueryCount+1, finalQueryCount)
 }
 
-// Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
-// in the main changes.go iteration loop, without a lock on the underlying channel caches.  The following
-// sequence is possible while running a changes feed for channels "A", "B":
-//  1. Sequence 100, Channel A arrives, and triggers changes loop iteration
-//  2. Changes loop calls changes.changesFeed(A) - gets 100
-//  3. Sequence 101, Channel A arrives
-//  4. Sequence 102, Channel B arrives
-//  5. Changes loop calls changes.changesFeed(B) - gets 102
-//  6. Changes sends 100, 102, and sets since=102
+// drainFeed reads numEntries new entries from feed, skipping the nils continuous feeds send after
+// each iteration, and returns them appended to entries. Fails the test if numEntries aren't
+// received within maxWaitTime.
+func drainFeed(t *testing.T, entries []*ChangeEntry, feed <-chan *ChangeEntry, numEntries int, maxWaitTime time.Duration) []*ChangeEntry {
+	timeout := time.After(maxWaitTime)
+	received := 0
+	for received < numEntries {
+		select {
+		case entry, ok := <-feed:
+			require.True(t, ok, "feed closed unexpectedly")
+			if entry == nil {
+				continue
+			}
+			entries = append(entries, entry)
+			received++
+		case <-timeout:
+			require.FailNow(t, fmt.Sprintf("timed out waiting for %d entries, only received %d: %s", numEntries, received, formatChangeSequences(entries)))
+		}
+	}
+	return entries
+}
+
+// Test race condition that could cause skipped sequences in the changes feed.  Channel feeds are processed
+// sequentially in the main changes.go iteration loop, without a lock on the underlying channel caches.  The
+// following sequence occurs while running a continuous changes feed for channels "Even", "Odd":
+//  1. Sequence 4, channel "Even" arrives, and triggers a changes loop iteration
+//  2. Changes loop calls changesFeed("Even") - gets 4
+//  3. Sequence 6, channel "Even" arrives, but is delayed (blocked below via a LeakyBucket
+//     WriteWithXattrCallback)
+//  4. Sequences 5 and 7, channel "Odd" arrive
+//  5. Changes loop calls changesFeed("Odd") - gets 5 and 7
+//  6. Changes sends 4, 5, 7, tracks 6 as a skipped sequence, and holds since at 5 (the highest
+//     contiguous sequence) until 6 arrives
 //
-// Here 101 is skipped, and never gets sent.  There are a number of ways a sufficient delay between #2 and #5
-// could be introduced in a real-world scenario
-//   - there are channels C,D,E,F,G with large caches that get processed between A and B
-//
-// To test, uncomment the following
-// lines at the start of changesFeed() in changes.go to simulate slow processing:
-//
-//	base.Infof(base.KeyChanges, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
-//	time.Sleep(100 * time.Millisecond)
+// If 6 were simply dropped from since tracking instead of being tracked as skipped, it would never get sent
+// once it finally arrived. Sequence 7 is sent with a compound sequence ID (triggered by 5) to reflect that
+// since is still held at 5; 6 is then sent on its own once unblocked, filling the gap - see the
+// verifyChangesFullSequences assertion below.
 func TestChannelRace(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
+	// blockDoc6 delays the underlying write of sequence 6 until the test closes it below, so sequences 5
+	// and 7 are guaranteed to be processed by the changes loop while 6 is still not visible.
+	blockDoc6 := make(chan struct{})
+	leakyConfig := base.LeakyBucketConfig{
+		WriteWithXattrCallback: func(key string) {
+			if key == "doc-6" {
+				<-blockDoc6
+			}
+		},
+	}
+	db, ctx := setupTestLeakyDBWithCacheOptions(t, shortWaitCache(), leakyConfig)
 	defer db.Close(ctx)
 
 	// Create a user with access to channels "Odd", "Even"
@@ -1061,65 +1091,44 @@ func TestChannelRace(t *testing.T) {
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("Even", "Odd"), options)
 	assert.True(t, err == nil)
 
-	// Go-routine to drain the feed channel and write to an array for use by assertions
-	var changes struct {
-		lock    sync.RWMutex
-		entries []*ChangeEntry
-	}
-	changes.entries = make([]*ChangeEntry, 0, 50)
-	go func() {
-		for entry := range feed {
-			// feed sends nil after each continuous iteration
-			if entry == nil {
-				continue
-			}
-			log.Println("Changes entry:", entry.Seq)
-			changes.lock.Lock()
-			changes.entries = append(changes.entries, entry)
-			changes.lock.Unlock()
-		}
-		log.Println("Closing feed")
-	}()
-
-	changesLen := func() int {
-		changes.lock.RLock()
-		defer changes.lock.RUnlock()
-		return len(changes.entries)
-	}
+	// The output channel of MultiChangesFeed is buffered (currently 50 entries), well beyond the 9
+	// entries used in this test, so draining it synchronously between writes below - rather than
+	// continuously via a background goroutine - doesn't affect the internal processing being tested.
+	var entries []*ChangeEntry
 
 	// Wait for the initial sequences to arrive as expected
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 3, changesLen())
-	}, 5*time.Second, 10*time.Millisecond)
+	entries = drainFeed(t, entries, feed, 3, 5*time.Second)
 
 	// Send update to trigger the start of the next changes iteration
 	WriteDirect(t, collection, []string{"Even"}, 4)
-	time.Sleep(150 * time.Millisecond)
-	// After read of "Even" channel, but before read of "Odd" channel, send three new entries
+	entries = drainFeed(t, entries, feed, 1, 5*time.Second)
+
+	// Sequence 6's write blocks on blockDoc6 (see leakyConfig above), so it won't become visible to the
+	// change cache until that channel is closed below.
+	var write6Wg sync.WaitGroup
+	write6Wg.Go(func() {
+		WriteDirect(t, collection, []string{"Even"}, 6)
+	})
+
+	// Sequences 5 and 7 ("Odd") arrive and get processed while 6 is still blocked, advancing the
+	// continuous changes feed's since value to 7 without having seen 6.
 	WriteDirect(t, collection, []string{"Odd"}, 5)
-	WriteDirect(t, collection, []string{"Even"}, 6)
 	WriteDirect(t, collection, []string{"Odd"}, 7)
+	entries = drainFeed(t, entries, feed, 2, 5*time.Second)
 
-	time.Sleep(100 * time.Millisecond)
-
-	// At this point we've haven't sent sequence 6, but the continuous changes feed has since=7
+	// Unblock sequence 6, and confirm below that it isn't skipped once it becomes visible.
+	close(blockDoc6)
+	write6Wg.Wait()
 
 	// Write a few more to validate that we're not catching up on the missing '6' later
 	WriteDirect(t, collection, []string{"Even"}, 8)
 	WriteDirect(t, collection, []string{"Odd"}, 9)
 
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, 9, changesLen())
-	}, 5*time.Second, 10*time.Millisecond)
+	entries = drainFeed(t, entries, feed, 3, 5*time.Second)
 
-	changes.lock.RLock()
-	assert.True(t, verifyChangesFullSequences(changes.entries, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}))
-	changesString := ""
-	for _, change := range changes.entries {
-		changesString = fmt.Sprintf("%s%d, ", changesString, change.Seq.Seq)
-	}
-	changes.lock.RUnlock()
-	fmt.Println("changes: ", changesString)
+	// Sequence 7 is sent with a compound sequence ID (triggered by 5, the highest contiguous sequence at
+	// the time) since 6 was still outstanding; 6 is then sent on its own once it arrives, filling the gap.
+	assert.True(t, verifyChangesFullSequences(entries, []string{"1", "2", "3", "4", "5", "5::7", "6", "8", "9"}))
 }
 
 // Test that housekeeping goroutines get terminated when change cache is stopped
@@ -1234,18 +1243,27 @@ func verifyCacheSequences(singleCache SingleChannelCache, sequences []uint64) bo
 // verifyChangesFullSequences compares for a full match on sequence, including compound elements)
 func verifyChangesFullSequences(changes []*ChangeEntry, sequences []string) bool {
 	if len(changes) != len(sequences) {
-		log.Printf("verifyChangesFullSequences: changes size (%v) not equals to sequences size (%v)",
-			len(changes), len(sequences))
+		log.Printf("verifyChangesFullSequences: changes size (%v) not equals to sequences size (%v), changes=%s",
+			len(changes), len(sequences), formatChangeSequences(changes))
 		return false
 	}
 	for index, seq := range sequences {
 		if changes[index].Seq.String() != seq {
 			log.Printf("verifyChangesFullSequences: sequence mismatch at index %v, changes=%s, sequences=%s",
-				index, changes[index].Seq.String(), seq)
+				index, formatChangeSequences(changes), seq)
 			return false
 		}
 	}
 	return true
+}
+
+// formatChangeSequences renders the sequence numbers of changes for diagnostic logging.
+func formatChangeSequences(changes []*ChangeEntry) string {
+	seqs := make([]string, 0, len(changes))
+	for _, change := range changes {
+		seqs = append(seqs, change.Seq.String())
+	}
+	return strings.Join(seqs, ", ")
 }
 
 // verifyChangesSequencesIgnoreOrder compares for a match on sequence number only and ignores sequenceID order
