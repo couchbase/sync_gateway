@@ -53,54 +53,18 @@ func (s SequenceID) String() string {
 }
 
 func (s SequenceID) intSeqToString() string {
-	seqStrHasTriggeredBy := false
-	seqStr := fmt.Sprintf("%d", s.Seq)
-
-	if s.TriggeredBy > 0 {
-		if s.Seq < s.TriggeredBy {
-			seqStrHasTriggeredBy = true
-			seqStr = fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
-		} else {
-			seqStr = fmt.Sprintf("%d", s.Seq)
+	backfillActive := s.TriggeredBy > 0 && s.Seq < s.TriggeredBy
+	if backfillActive {
+		if s.LowSeq > 0 && s.LowSeq < s.TriggeredBy {
+			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
 		}
+		return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
 	}
-
-	if s.LowSeq > 0 {
-		if seqStrHasTriggeredBy && s.LowSeq < s.TriggeredBy {
-			seqStr = fmt.Sprintf("%d:%s", s.LowSeq, seqStr)
-		} else if s.LowSeq < s.Seq {
-			seqStr = fmt.Sprintf("%d::%s", s.LowSeq, seqStr)
-		}
+	if s.LowSeq > 0 && s.LowSeq < s.Seq {
+		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
 	}
-
-	return seqStr
+	return strconv.FormatUint(s.Seq, 10)
 }
-
-// intSeqToString implements the formatting rules documented on String() above.
-//func (s SequenceID) intSeqToString() string {
-//	// LowSeq is omitted from the output here for two independent reasons: it's zero (there's
-//	// nothing to report), or it's stale - greater than Seq. LowSeq is stale when this entry is a
-//	// previously-skipped sequence being delivered after the feed's lowest contiguous sequence has
-//	// already moved past it, so including it here would misrepresent this entry's position.
-//	// TriggeredBy, if set, reflects an in-progress channel backfill and is unrelated to which of
-//	// those two reasons applies.
-//	if s.LowSeq == 0 || s.Seq < s.LowSeq {
-//		if s.TriggeredBy > 0 {
-//			return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
-//		}
-//		return strconv.FormatUint(s.Seq, 10)
-//	}
-//
-//	// From here, LowSeq is non-zero and still relevant (not stale).
-//	if s.TriggeredBy > 0 {
-//		return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
-//	}
-//
-//	if s.LowSeq < s.Seq {
-//		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
-//	}
-//	return strconv.FormatUint(s.Seq, 10)
-//}
 
 // seqStr converts a decoded JSON sequence value - a string or json.Number - to its string form,
 // for use with ParseJSONSequenceID/ParsePlainSequenceID. Returns "" for any other type.
@@ -215,7 +179,7 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 // SafeSequence returns the safe sequence after which the changes have to be sent. If LowSeq is
 // set, then LowSeq is the SafeSequence, since it's the last contiguous sequence; else it's Seq.
 func (s SequenceID) SafeSequence() uint64 {
-	if s.LowSeq > 0 {
+	if s.LowSeq > 0 && s.LowSeq < s.Seq {
 		return s.LowSeq
 	} else {
 		return s.Seq

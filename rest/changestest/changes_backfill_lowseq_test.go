@@ -95,6 +95,14 @@ func TestChangesBackfillContinuationSkippedByCompoundLowSeq(t *testing.T) {
 	require.Truef(t, delivered["doc-4"],
 		"DEF backfill doc-4 was skipped across the paginated since requests (since=%q; REQ1=%v REQ2=%v)",
 		compound.String(), changeDocIDs(req1), changeDocIDs(req2))
+
+	// doc-6 and doc-7 are missing from the feed, doc6 is the skipped sequence
+	// whereas the doc-7 is the new stable sequence.
+	req2Docs := changeDocIDSet(req2)
+	require.Truef(t, req2Docs["doc-6"],
+		"doc-6 was missing from REQ2 (since=%q; REQ2=%v)", compound.String(), changeDocIDs(req2))
+	require.Truef(t, req2Docs["doc-7"],
+		"doc-7 was missing from REQ2 (since=%q; REQ2=%v)", compound.String(), changeDocIDs(req2))
 }
 
 // TestChangesBackfillGrantSuppressedByCompoundLowSeq covers CBG-5429 finding #2: a fresh backfill
