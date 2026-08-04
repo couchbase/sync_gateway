@@ -9,6 +9,8 @@
 package rest
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -1876,4 +1879,146 @@ func TestMergeRegistryIntoCache_PreCCVAwarePeerLowerWins(t *testing.T) {
 		assert.Equal(t, v33, m.cachedPreCCVAwareNodes[peerUUID].Version, "lower reading must remain after a higher second observation")
 		assert.Equal(t, later, m.cachedPreCCVAwareNodes[peerUUID].LastObservedAt, "LastObservedAt must advance even when the higher reading is discarded")
 	})
+}
+
+func TestClusterCompatRefreshAndStopUntrackVanishedBucket(t *testing.T) {
+	ctx := base.TestCtx(t)
+	fakeBucket := "non_existent_fake_bucket_123"
+
+	if base.UnitTestUrlIsWalrus() {
+		defer func() {
+			// Under Rosmar, any read against fakeBucket auto-creates it.
+			// Make sure to delete it regardless of what happened in the test.
+			bucket, err := rosmar.OpenBucketIn(base.UnitTestUrl(), fakeBucket, rosmar.CreateOrOpen)
+			require.NoError(t, err)
+			require.NoError(t, bucket.CloseAndDelete(ctx))
+		}()
+	}
+
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	clusterCompat := sc.ClusterCompat
+	require.NotNil(t, clusterCompat)
+	defer clusterCompat.Stop(ctx)
+
+	bucketName := rt.Bucket().GetName()
+
+	// Verify bucket is currently tracked and exists
+	require.Contains(t, clusterCompat.trackedBucketList(), bucketName)
+	exists, err := sc.BootstrapContext.bucketExists(ctx, bucketName)
+	require.NoError(t, err)
+	require.True(t, exists, "active bucket should exist")
+
+	// Verify non-existent bucket doesn't exist
+	exists, err = sc.BootstrapContext.bucketExists(ctx, fakeBucket)
+	require.NoError(t, err)
+	require.False(t, exists, "non-existent bucket should not exist")
+
+	// Track the fake bucket and confirm refreshNodeRegistrations doesn't hang or panic on a tracked
+	// bucket that no longer exists. Under Rosmar the read auto-creates fakeBucket (see above), so
+	// it's never classified as vanished and stays tracked. Under Couchbase Server the read fails
+	// for real, so it's classified as errBucketDoesNotExist and gets untracked.
+	clusterCompat.mu.Lock()
+	clusterCompat.trackedBuckets[fakeBucket] = struct{}{}
+	clusterCompat.mu.Unlock()
+	require.Contains(t, clusterCompat.trackedBucketList(), fakeBucket, "fake bucket should be tracked")
+
+	_, _, _, _, err = clusterCompat.refreshNodeRegistrations(ctx)
+	require.NoError(t, err)
+	require.Contains(t, clusterCompat.trackedBucketList(), bucketName, "real bucket should remain tracked")
+
+	if base.UnitTestUrlIsWalrus() {
+		require.Contains(t, clusterCompat.trackedBucketList(), fakeBucket, "Rosmar auto-creates buckets on read, so the fake bucket is never classified as vanished")
+	} else {
+		require.NotContains(t, clusterCompat.trackedBucketList(), fakeBucket, "vanished bucket should be untracked")
+	}
+}
+
+// fakeVanishingBootstrapConnection simulates a bucket that no longer exists in the cluster:
+// GetMetadataDocument always fails, and any bucket absent from knownBuckets is then classified
+// as errBucketDoesNotExist by getGatewayRegistry. Only the methods refreshNodeRegistrations
+// actually calls are implemented; anything else panics via the nil embedded interface.
+type fakeVanishingBootstrapConnection struct {
+	base.BootstrapConnection
+	knownBuckets []string
+}
+
+func (f *fakeVanishingBootstrapConnection) GetConfigBuckets(_ context.Context) ([]string, error) {
+	return f.knownBuckets, nil
+}
+
+func (f *fakeVanishingBootstrapConnection) GetMetadataDocument(_ context.Context, _, _ string, _ any) (uint64, error) {
+	return 0, errors.New("simulated: unable to read metadata document")
+}
+
+// newTestClusterCompatManager builds a clusterCompatManager backed by a fake bootstrap
+// connection, skipping the full RestTester/ServerContext setup — refreshNodeRegistrations only
+// touches fields that are safe at their zero value here (NodeUID, Config, _databases(Lock)).
+func newTestClusterCompatManager(knownBuckets []string, trackedBuckets ...string) *clusterCompatManager {
+	sc := &ServerContext{
+		Config:  &StartupConfig{},
+		NodeUID: "test-node",
+		BootstrapContext: &bootstrapContext{
+			Connection: &fakeVanishingBootstrapConnection{knownBuckets: knownBuckets},
+		},
+	}
+	tracked := make(map[string]struct{}, len(trackedBuckets))
+	for _, b := range trackedBuckets {
+		tracked[b] = struct{}{}
+	}
+	return &clusterCompatManager{sc: sc, trackedBuckets: tracked}
+}
+
+// TestClusterCompatRefreshNodeRegistrationsAllBucketsVanished verifies that when every tracked
+// bucket vanishes in the same pass, refreshNodeRegistrations reports success with empty
+// results rather than an error — otherwise Refresh would never clear the cache, since it stops
+// calling refreshNodeRegistrations once trackedBuckets is empty.
+func TestClusterCompatRefreshNodeRegistrationsAllBucketsVanished(t *testing.T) {
+	ctx := base.TestCtx(t)
+	m := newTestClusterCompatManager(nil, "vanished-bucket-1", "vanished-bucket-2")
+
+	nodes, freeze, preCCVAwareNodes, hwm, err := m.refreshNodeRegistrations(ctx)
+	require.NoError(t, err, "all-vanished tracked buckets must not be reported as a failure")
+	assert.Empty(t, nodes)
+	assert.Nil(t, freeze)
+	assert.Empty(t, preCCVAwareNodes)
+	assert.Nil(t, hwm)
+	assert.Empty(t, m.trackedBucketList(), "vanished buckets must be untracked")
+}
+
+// TestClusterCompatRefreshAllBucketsVanishedClearsCache verifies that Refresh actually clears a
+// previously-cached, now-stale cluster compat version once every tracked bucket has vanished.
+func TestClusterCompatRefreshAllBucketsVanishedClearsCache(t *testing.T) {
+	ctx := base.TestCtx(t)
+	m := newTestClusterCompatManager(nil, "vanished-bucket")
+
+	staleVersion := base.NewClusterCompatVersion(3, 3)
+	m.cachedVersion = &staleVersion
+	m.cachedNodes = map[string]base.ClusterCompatVersion{"some-other-node": staleVersion}
+
+	m.Refresh(ctx)
+
+	assert.Nil(t, m.getCachedVersion(), "cache must be cleared once no buckets remain tracked")
+	assert.Empty(t, m.NodeVersions())
+	assert.Empty(t, m.trackedBucketList())
+}
+
+// TestClusterCompatRefreshNodeRegistrationsPartialVanishKeepsError verifies the fix is scoped
+// to the all-vanished case: if a vanished bucket is mixed with a bucket that fails for another
+// reason, the result is still reported as an error so Refresh keeps the old cached state
+// instead of caching an incomplete view.
+func TestClusterCompatRefreshNodeRegistrationsPartialVanishKeepsError(t *testing.T) {
+	ctx := base.TestCtx(t)
+	// flaky-bucket exists (per GetConfigBuckets) but every read against it fails, so it's a
+	// real, non-vanished failure. vanished-bucket doesn't exist, so it's classified as vanished.
+	m := newTestClusterCompatManager([]string{"flaky-bucket"}, "vanished-bucket", "flaky-bucket")
+
+	_, _, _, _, err := m.refreshNodeRegistrations(ctx)
+	require.Error(t, err, "a mix of vanished and non-vanished failures must still be reported as an error")
+
+	tracked := m.trackedBucketList()
+	assert.NotContains(t, tracked, "vanished-bucket", "vanished bucket must still be untracked")
+	assert.Contains(t, tracked, "flaky-bucket", "non-vanished failures must not untrack the bucket")
 }
