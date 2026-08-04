@@ -70,6 +70,15 @@ func updateDoc(rt *rest.RestTester, docID string, version rest.DocVersion, bodyV
 	return updatedVersion
 }
 
+// requireCheckpointSequence waits for the checkpointer's processed and expected sequence counts to reach
+// expectedSeqCount. This avoids the race where WaitForChanges returns after the document write but before
+// the checkpointer's BLIP callback has recorded the sequence.
+func requireCheckpointSequence(t *testing.T, checkpointer *db.Checkpointer, expectedSeqCount int64) {
+	t.Helper()
+	base.RequireWaitForStat(t, func() int64 { return checkpointer.Stats().ProcessedSequenceCount }, expectedSeqCount, "ProcessedSequenceCount")
+	base.RequireWaitForStat(t, func() int64 { return checkpointer.Stats().ExpectedSequenceCount }, expectedSeqCount, "ExpectedSequenceCount")
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
