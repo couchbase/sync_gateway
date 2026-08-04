@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -1475,4 +1476,65 @@ func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
 	var status BackgroundManagerStatus
 	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
 	assert.Equal(t, BackgroundProcessStateCompleted, status.State, "expected the bucket status to remain completed and NOT be overwritten")
+}
+
+// TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning reproduces the case where Init succeeds and
+// Process.Run is launched in its own goroutine, but the subsequent persist of the initial cluster status fails.
+// Start() returns that error to the caller, even though Run is already executing in the background.
+func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T) {
+
+	t.Skip("This test will pass after the fix in CBG-5660")
+
+	testBucket := base.GetTestBucket(t)
+	ctx := context.Background()
+	defer testBucket.Close(ctx)
+
+	metaKeys := base.NewMetadataKeys("test-start-persist-fail")
+	processSuffix := "multi-persist-fail"
+	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
+	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
+
+	// The first Update call for statusDocID fails outright, so start() sees an error and returns it, exactly
+	// like a transient bucket blip would. Every call after that behaves normally, so the manager can be reused
+	// as-is for the recovery Start() below without needing a different key or a fresh metadataStore.
+	var updateCount atomic.Int32
+	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{
+		PreUpdateCallback: func(key string) error {
+			if key == statusDocID && updateCount.Add(1) == 1 {
+				return errors.New("simulated write failure")
+			}
+			return nil
+		},
+	})
+	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
+
+	process := &MockProcess{}
+	mgr := &BackgroundManager[map[string]any]{
+		name: "persist-fail-mgr",
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: leakyMetadataStore,
+			metaKeys:      metaKeys,
+			processSuffix: processSuffix,
+			multiNode:     true,
+		},
+		Process: process,
+	}
+
+	// Start() reports failure to the caller...
+	err := mgr.Start(ctx, map[string]any{})
+	require.Error(t, err)
+
+	// ...but Process.Run was already launched before that failure occurred, so the manager should not be left
+	// reporting Running forever - it should reflect the failure as an Error state, same as the Process.Run-error
+	// path does via SetError.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, BackgroundProcessStateRunning, mgr.GetRunState())
+		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, mgr.Start(ctx, map[string]any{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(t, mgr.Stop(ctx))
 }
