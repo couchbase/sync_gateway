@@ -3589,6 +3589,8 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		changesResults = edge2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
 
 		edge2PullCheckpointer := edge2Replicator.Pull.GetSingleCollection(t).Checkpointer
+		base.RequireWaitForStat(t, func() int64 { return edge2PullCheckpointer.Stats().ProcessedSequenceCount }, numRT1DocsInitial)
+		base.RequireWaitForStat(t, func() int64 { return edge2PullCheckpointer.Stats().ExpectedSequenceCount }, numRT1DocsInitial)
 		edge2PullCheckpointer.CheckpointNow()
 
 		// make sure that edge 2 didn't use a checkpoint
