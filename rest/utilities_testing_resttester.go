@@ -372,6 +372,7 @@ func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
+	rt.TB().Helper()
 	var status db.ReplicationStatus
 	successFunc := func() bool {
 		status = rt.GetReplicationStatusForDB(dbName, replicationID)
@@ -381,10 +382,12 @@ func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID
 }
 
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
+	rt.TB().Helper()
 	rt.WaitForReplicationStatusForDB("{{.db}}", replicationID, targetStatus)
 }
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
 	RequireStatus(rt.TB(), rawResponse, 200)
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
@@ -392,10 +395,12 @@ func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationC
 }
 
 func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
+	rt.TB().Helper()
 	return rt.GetReplicationStatusForDB("{{.db}}", replicationID)
 }
 
 func (rt *RestTester) GetReplicationStatusForDB(dbName string, replicationID string) (status db.ReplicationStatus) {
+	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_replicationStatus/"+replicationID, "")
 	RequireStatus(rt.TB(), rawResponse, 200)
 	require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
