@@ -2267,16 +2267,15 @@ func TestRevocationMessage(t *testing.T) {
 		revocationTester, rt := InitScenario(t, nil)
 		defer rt.Close()
 
+		revocationTester.addRoleChannel("foo", "A")
+		revocationTester.addRole("user", "foo")
+
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:        "user",
 			ClientDeltas:    false,
 			SendRevocations: true,
 		})
 		defer btc.Close()
-
-		// Add channel to role and role to user
-		revocationTester.addRoleChannel("foo", "A")
-		revocationTester.addRole("user", "foo")
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
@@ -2377,16 +2376,15 @@ func TestRevocationNoRev(t *testing.T) {
 		revocationTester, rt := InitScenario(t, nil)
 		defer rt.Close()
 
+		revocationTester.addRoleChannel("foo", "A")
+		revocationTester.addRole("user", "foo")
+
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:        "user",
 			ClientDeltas:    false,
 			SendRevocations: true,
 		})
 		defer btc.Close()
-
-		// Add channel to role and role to user
-		revocationTester.addRoleChannel("foo", "A")
-		revocationTester.addRole("user", "foo")
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
@@ -2470,16 +2468,15 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 		defer rt.Close()
 
+		revocationTester.addRoleChannel("foo", "A")
+		revocationTester.addRole("user", "foo")
+
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username:        "user",
 			ClientDeltas:    false,
 			SendRevocations: true,
 		})
 		defer btc.Close()
-
-		// Add channel to role and role to user
-		revocationTester.addRoleChannel("foo", "A")
-		revocationTester.addRole("user", "foo")
 
 		// Skip to seq 4 and then create doc in channel A
 		revocationTester.fillToSeq(4)
