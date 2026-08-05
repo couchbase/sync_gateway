@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"fmt"
 	"log"
 	"testing"
 
@@ -76,7 +75,7 @@ func TestView(t *testing.T) {
 		return true, viewErr, nil
 	}
 
-	description := fmt.Sprintf("Wait for view readiness")
+	description := "Wait for view readiness"
 	sleeper := CreateSleeperFunc(50, 100)
 	viewErr, _ := RetryLoop(ctx, description, worker, sleeper)
 	require.NoError(t, viewErr)

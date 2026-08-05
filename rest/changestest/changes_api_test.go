@@ -643,7 +643,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 	changes = rt.WaitForChanges(len(expectedResults),
-		fmt.Sprintf("/{{.keyspace}}/_changes?since=28:5"), "bernard", false)
+		"/{{.keyspace}}/_changes?since=28:5", "bernard", false)
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -1912,7 +1912,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	allDocsChanges := rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs", "user1")
 	for index, result := range allDocsChanges.Results {
-		assert.Equal(t, expectedStyleAllDocs[index], fmt.Sprintf("%s", base.MustJSONMarshal(t, result)))
+		assert.Equal(t, expectedStyleAllDocs[index], string(base.MustJSONMarshal(t, result)))
 	}
 
 	// Validate style=all_docs, include_docs=true permutations.  Only modified doc from include_docs test is doc_conflict (adds open revisions)
@@ -2508,7 +2508,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	rt.GetDatabase().FlushChannelCache(t)
 
 	// 1. Issue a since=0 changes request, validate results
-	changesJSON := fmt.Sprintf(`{"since":0}`)
+	changesJSON := `{"since":0}`
 	changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, username)
 	require.Len(t, changes.Results, 50)
 
@@ -2519,7 +2519,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 
 	// 2. Same again, but with limit on the changes request
 	rt.GetDatabase().FlushChannelCache(t)
-	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
+	changesJSON = `{"since":0, "limit":25}`
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, username)
 	require.Len(t, changes.Results, 25)
 

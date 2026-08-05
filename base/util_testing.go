@@ -225,12 +225,19 @@ func TestUseSystemMetadataCollection() bool {
 	return val
 }
 
+// TestUseCouchbaseServerDockerName returns whether the Couchbase Server under test is running in a local Docker
+// container, and if so, the container's name. SG_TEST_COUCHBASE_SERVER_DOCKER_NAME overrides the lookup when set.
+// Otherwise, the container is found by matching the host in SG_TEST_COUCHBASE_SERVER_URL against the docker network
+// IP addresses of currently running containers, since tools like cbdinocluster assign a random container name per node.
+// If GTestBucketPool has already computed this (the common case), the cached value is reused instead of
+// re-running docker commands on every call.
 func TestUseCouchbaseServerDockerName() (bool, string) {
-	testX509CouchbaseServerDockerName, isSet := os.LookupEnv(TestEnvCouchbaseServerDockerName)
-	if !isSet {
-		return false, ""
+	if GTestBucketPool != nil {
+		name, found := GTestBucketPool.DockerContainerNameForServer()
+		return found, name
 	}
-	return true, testX509CouchbaseServerDockerName
+	name, found := sgtest.GetServerDockerContainer(UnitTestUrl())
+	return found, name
 }
 
 func TestX509LocalServer() (bool, string) {
@@ -246,7 +253,7 @@ func TestX509LocalServer() (bool, string) {
 
 	username, isSet := os.LookupEnv(TestEnvX509LocalUser)
 	if !isSet {
-		panic(fmt.Sprintf("TestEnvX509LocalUser must be set when TestEnvX509Local=true"))
+		panic("TestEnvX509LocalUser must be set when TestEnvX509Local=true")
 	}
 
 	return val, username
@@ -901,27 +908,6 @@ func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (uint32, e
 		return 0, err
 	}
 	return sgbucket.VBHash(key, maxVbNo), nil
-}
-
-// VBucket0DocIDs returns count doc IDs that all hash to vBucket 0 for every supported vBucket count
-// (32, 64, 100, 128, 1024). Placing multiple test docs on the same vBucket ensures they are processed
-// sequentially by a single DCP worker, which is required when a test pauses one doc and needs the
-// remaining docs to stay unprocessed until the pause is released.
-//
-// Keys were pre-computed using sgbucket.VBHash and are verified at runtime.
-// count must be between 1 and 6 inclusive.
-func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
-	all := []string{"abbacomes", "baba", "ob", "rz", "aex", "fbz"}
-	require.GreaterOrEqual(t, count, 1, "VBucket0DocIDs: count must be at least 1")
-	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
-	keys := all[:count]
-	ctx := TestCtx(t)
-	for _, key := range keys {
-		vbNo, err := GetVbucketForKey(ctx, bucket, key)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
-	}
-	return keys
 }
 
 // VBucket0AttachmentBodies returns count attachment body byte slices whose v1 attachment data

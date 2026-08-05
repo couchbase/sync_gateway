@@ -678,17 +678,27 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
+			rt := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+				LeakyBucketConfig: &base.LeakyBucketConfig{},
+			}, 3)
 			defer rt.Close()
 			scopeName := "sg_test_0"
 
-			// create documents in DB to cause resync to take a few seconds
-			for i := range 1000 {
-				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+fmt.Sprint(i), `{"value":1}`)
+			// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
+			// double-close panic from concurrent callback invocations.
+			docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 3)
+			for _, key := range docKeys {
+				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+key, `{"value":1}`)
 				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
 
 			rt.TakeDbOffline()
+
+			// Pause resync at the first user document so stop arrives while genuinely in-flight,
+			// letting us reliably observe "running" before it completes.
+			pauser := newResyncPauser(rt)
+			defer pauser.Close()
+			pauser.Pause()
 
 			if !testCase.specifyCollection {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -698,8 +708,10 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
 				rest.RequireStatus(t, resp, http.StatusOK)
 			}
+			pauser.WaitUntilBlocked()
 			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
+			pauser.Release()
 
 			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
@@ -790,7 +802,7 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 
 	// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
 	// double-close panic from concurrent callback invocations.
-	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
+	docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 5)
 	numDocs := len(docKeys)
 	for _, key := range docKeys {
 		rt.CreateTestDoc(key)
@@ -1455,7 +1467,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 	// The pauser eliminates the race between "DCP finishes all docs → completed" and "stop
 	// command arrives → stopped", so numOfDocs can be kept small for test speed without
 	// risking the process completing before stop is issued.
-	docKeys := base.VBucket0DocIDs(t, rt.Bucket(), 5)
+	docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 5)
 	numOfDocs := len(docKeys)
 	for _, key := range docKeys {
 		rt.CreateTestDoc(key)
@@ -2016,7 +2028,7 @@ func TestHandleCreateDB(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
 	rest.RequireStatus(t, resp, http.StatusOK)
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
 
@@ -2112,7 +2124,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	var respBody db.Body
-	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	require.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
@@ -2268,7 +2280,7 @@ func TestHandleGetConfig(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var respBody rest.StartupConfig
-	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
 	assert.Nil(t, respBody.HeapProfileCollectionThreshold)
@@ -4275,7 +4287,7 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 
 // resyncPauser blocks the resync DCP stream at the first user document it encounters. Can be
 // Paused and Released multiple times across a test.
-// Tests using this pauser must ensure all docs are on vBucket 0 (via base.VBucket0DocIDs) so only
+// Tests using this pauser must ensure all docs are on vBucket 0 (via sgtest.VBucketDocIDs) so only
 // a single DCP worker fires the callback.
 type resyncPauser struct {
 	t           testing.TB
@@ -4285,8 +4297,17 @@ type resyncPauser struct {
 	callbackSet atomic.Bool
 }
 
+// newResyncPauser binds to the first collection (lexicographically, matching {{.keyspace1}}) so it
+// also works against multi-collection databases where GetSingleDataStore doesn't apply.
 func newResyncPauser(rt *rest.RestTester) *resyncPauser {
-	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+	collections := rt.GetDbCollections()
+	require.NotEmpty(rt.TB(), collections, "database must have at least one collection")
+	ds, err := rt.GetDatabase().Bucket.NamedDataStore(rt.Context(), base.ScopeAndCollectionName{
+		Scope:      collections[0].ScopeName,
+		Collection: collections[0].Name,
+	})
+	require.NoError(rt.TB(), err)
+	leakyDS, ok := base.AsLeakyDataStore(ds)
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
 	return &resyncPauser{
 		t:  rt.TB(),

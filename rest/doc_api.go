@@ -445,7 +445,7 @@ func (h *handler) handlePutAttachment() error {
 			}
 			// couchdb creates empty body on attachment PUT for non-existent doc id
 			body = db.Body{bodyKey: occValue}
-		} else if err != nil {
+		} else {
 			return err
 		}
 	} else if body != nil {
@@ -503,7 +503,7 @@ func (h *handler) handleDeleteAttachment() error {
 			}
 			// Need to return an error if a document is not found
 			return base.HTTPErrorf(http.StatusNotFound, "Document specified is not found")
-		} else if err != nil {
+		} else {
 			return err
 		}
 	} else if body != nil {

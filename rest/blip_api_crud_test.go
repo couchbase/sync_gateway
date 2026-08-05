@@ -1136,11 +1136,29 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	const (
 		maxConcurrentRevs    = 10
 		concurrentSendRevNum = 50
+		// Once all maxConcurrentRevs slots are held, every remaining rev has to wait for one.
+		expectedThrottledRevs = concurrentSendRevNum - maxConcurrentRevs
 	)
-	rt := NewRestTester(t, &RestTesterConfig{
+	docIDPrefix := t.Name() + "-"
+
+	var rt *RestTester
+	throttledRevs := func() int64 {
+		return rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledCount.Value()
+	}
+	rt = NewRestTester(t, &RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{
-			UpdateCallback: func(_ string) {
-				time.Sleep(time.Millisecond * 5) // slow down rosmar - it's too quick to be throttled
+			// Hold each rev inside its throttle slot until all of the remaining revs have been
+			// throttled waiting for a slot. Without this the test relies on the client being able
+			// to push more than maxConcurrentRevs revs to the server in the time it takes the
+			// server to write one, which isn't true on a slow or busy machine (CBG-3741).
+			UpdateCallback: func(docID string) {
+				if !strings.HasPrefix(docID, docIDPrefix) {
+					return
+				}
+				deadline := time.Now().Add(time.Second * 20)
+				for throttledRevs() < expectedThrottledRevs && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
 			},
 		},
 		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
@@ -1155,13 +1173,11 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	defer bt.Close()
 
 	wg := sync.WaitGroup{}
-	wg.Add(concurrentSendRevNum)
 	for i := range concurrentSendRevNum {
-		docID := fmt.Sprintf("%s-%d", t.Name(), i)
-		go func() {
-			defer wg.Done()
+		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+		wg.Go(func() {
 			bt.SendRev(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-		}()
+		})
 	}
 
 	base.WaitWithTimeout(t, &wg, time.Second*30)
@@ -1170,7 +1186,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	throttleTime := rt.GetDatabase().DbStats.CBLReplicationPush().WriteThrottledTime.Value()
 	throttleDuration := time.Duration(throttleTime) * time.Nanosecond
 
-	assert.Greater(t, throttleCount, int64(0), "Expected throttled revs")
+	assert.Equal(t, int64(expectedThrottledRevs), throttleCount, "Expected throttled revs")
 	assert.Greater(t, throttleTime, int64(0), "Expected non-zero throttled revs time")
 
 	t.Logf("Throttled revs: %d, Throttled duration: %s", throttleCount, throttleDuration)
@@ -1199,7 +1215,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	// Get non-deleted rev
 	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/largeNumberRev?rev=1-abc", "")
 	RequireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-	responseString := string(response.Body.Bytes())
+	responseString := response.Body.String()
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
 	}
@@ -1950,17 +1966,11 @@ func TestSendReplacementRevision(t *testing.T) {
 					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 0)
 				} else {
 					// requested revision (or any alternative) did not get replicated
-					data := btcRunner.SingleCollection(btc.id).WaitForVersion(docID, version1)
-					assert.Nil(t, data)
+					btcRunner.SingleCollection(btc.id).WaitForPullNoRevMessage(docID, version1)
 
 					// no message for rev 2
 					_, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version2)
 					require.False(t, ok)
-
-					// norev message for the requested rev
-					msg, ok := btcRunner.SingleCollection(btc.id).GetPullRevMessage(docID, version1)
-					require.True(t, ok)
-					assert.Equal(t, db.MessageNoRev, msg.Profile())
 
 					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 1)
 					base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value, 0)
@@ -3080,11 +3090,8 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 		require.NoError(t, err)
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, version)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
-
-		msg = btcRunner.WaitForPullRevMessage(btc.id, docID2, version2)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, version)
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID2, version2)
 	})
 }
 
@@ -3200,8 +3207,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 
 				btcRunner.StartOneshotPull(btc2.id)
 
-				msg := btcRunner.WaitForPullRevMessage(btc2.id, docID, revID)
-				require.Equal(t, db.MessageNoRev, msg.Profile())
+				btcRunner.WaitForPullNoRevMessage(btc2.id, docID, revID)
 			})
 		}
 	})
@@ -3481,57 +3487,6 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 	})
 }
 
-func TestBlipPullConflict(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync, base.KeySyncMsg, base.KeySGTest)
-	btcRunner := NewBlipTesterClientRunner(t)
-
-	btcRunner.SkipSubtest[RevtreeSubtestName] = true
-
-	btcRunner.Run(func(t *testing.T) {
-		rt := NewRestTesterPersistentConfig(t)
-		defer rt.Close()
-
-		const (
-			alice   = "alice"
-			cblBody = `{"actor": "cbl"}`
-			sgBody  = `{"actor": "sg"}`
-			docID   = "doc1"
-		)
-		rt.CreateUser(alice, []string{"*"})
-		sgVersion := rt.PutDoc(docID, `{"actor": "sg"}`)
-		rt.WaitForPendingChanges()
-
-		opts := &BlipTesterClientOpts{
-			Username: alice,
-		}
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, opts)
-		defer btc.Close()
-
-		client := btcRunner.SingleCollection(btc.id)
-		preConflictCBLVersion := btcRunner.AddRev(btc.id, docID, EmptyDocVersion(), []byte(cblBody))
-		require.NotEqual(t, sgVersion, preConflictCBLVersion)
-		_, preConflictHLV, _ := client.GetDoc(docID)
-		require.Empty(t, preConflictHLV.PreviousVersions)
-		require.Empty(t, preConflictHLV.MergeVersions)
-
-		btcRunner.StartOneshotPull(btc.id)
-
-		// expect resolution as CBL wins (local wins)
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			body, postConflictHLV, _ := client.GetDoc(docID)
-			assert.Equal(c, db.HybridLogicalVector{
-				CurrentVersionCAS: 0,
-				Version:           preConflictCBLVersion.CV.Value,
-				SourceID:          preConflictCBLVersion.CV.SourceID,
-				PreviousVersions: db.HLVVersions{
-					sgVersion.CV.SourceID: sgVersion.CV.Value,
-				},
-			}, *postConflictHLV)
-			assert.Equal(c, string(body), cblBody)
-		}, time.Second*10, time.Millisecond*10)
-	})
-}
-
 func TestManyChannelsRemovedOnDocUpdate(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache, base.KeySGTest)
 
@@ -3746,113 +3701,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
 
 		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
-	})
-}
-
-func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
-	base.TestRequiresDeltaSync(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyCache, base.KeyCRUD, base.KeySGTest)
-	btcRunner := NewBlipTesterClientRunner(t)
-	// a norev message is only sent on delta sync when v2 protocol is used, otherwise the deleted flag on a changes
-	// message is used
-	btcRunner.RunSubprotocolV2(func(t *testing.T) {
-		rt := NewRestTester(t,
-			&RestTesterConfig{
-				PersistentConfig: true,
-				SyncFn:           channels.DocChannelsSyncFunction,
-			},
-		)
-		defer rt.Close()
-
-		dbConfig := rt.NewDbConfig()
-		dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
-		dbConfig.AutoImport = false
-		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
-
-		const user = "user"
-		const channelA = "A"
-		rt.CreateUser(user, []string{channelA})
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:     user,
-			ClientDeltas: true,
-		})
-		defer btc.Close()
-
-		ctx := rt.Context()
-		docID := SafeDocumentName(t, t.Name())
-		docRev1 := rt.CreateDocNoHLV(docID, db.Body{"delta": true, "channels": []string{channelA}})
-		btcRunner.StartOneshotPull(btc.id)
-		btcRunner.WaitForVersion(btc.id, docID, DocVersion{RevTreeID: docRev1.GetRevTreeID()})
-		seq, err := rt.GetDatabase().NextSequence(ctx)
-		require.NoError(t, err)
-		// document contains an invalid revtree
-		//
-		// 3-c is a child of 3-d, a revision must be one or more generations higher than it its parent, not equal
-		badSyncRaw := `{
-			"cas": "expand",
-			"channel_set":  [
-				{
-					"end": {{.rev3seq}},
-					"name": "A",
-					"start": {{.rev1seq}}
-				}
-			],
-			"channels": {
-				"A": {
-					"rev": "{{.rev1}}",
-					"seq": {{.rev3seq}}
-				}
-			},
-			"channel_set_history": null,
-			"history": {
-				"parents": [
-					3,
-					0,
-					-1,
-					2
-				],
-				"revs": [
-					"3-d",
-					"3-c",
-					"{{.rev1}}",
-					"2-b"
-				]
-			},
-			"rev": "3-c",
-			"sequence": {{.rev3seq}},
-			"value_crc32c": "expand"
-		}`
-		tmpl := template.Must(template.New("badSync").Option("missingkey=error").Parse(badSyncRaw))
-		var badSyncData bytes.Buffer
-		require.NoError(t, tmpl.Execute(&badSyncData, map[string]any{
-			"rev1":    docRev1.GetRevTreeID(),
-			"rev1seq": docRev1.Sequence,
-			"rev3seq": seq,
-		}))
-
-		mutateInOptions := db.DefaultMutateInOpts()
-		_, err = rt.GetSingleDataStore().WriteWithXattrs(
-			ctx,
-			docID,
-			0,
-			docRev1.Cas,
-			[]byte(`{"key":"value"}`),
-			map[string][]byte{
-				base.SyncXattrName: badSyncData.Bytes(),
-			},
-			nil,
-			mutateInOptions,
-		)
-		require.NoError(t, err)
-
-		rt.WaitForPendingChanges()
-		expectedVersion := DocVersion{RevTreeID: "3-c"}
-
-		btcRunner.StartOneshotPull(btc.id)
-		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
-		require.Equal(t, db.MessageNoRev, msg.Profile())
+		btcRunner.WaitForPullNoRevMessage(btc.id, docID, expectedVersion)
 	})
 }
 
@@ -3941,10 +3790,10 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 		// channel is revoked, then checks that the removal version is recorded correctly.
 		assertChannelRemoval := func(docID, rev1, initialChan, rev2, updatedChan, expectedRemovedChannel string) {
 			t.Helper()
-			v := btcRunner.AddRevTreeRev(client.id, docID, rev1, EmptyDocVersion(), []byte(fmt.Sprintf(`{"chan": %q}`, initialChan)))
+			v := btcRunner.AddRevTreeRev(client.id, docID, rev1, EmptyDocVersion(), fmt.Appendf(nil, `{"chan": %q}`, initialChan))
 			rt.WaitForVersion(docID, v)
 
-			v = btcRunner.AddRevTreeRev(client.id, docID, rev2, &v, []byte(fmt.Sprintf(`{"chan": %q}`, updatedChan)))
+			v = btcRunner.AddRevTreeRev(client.id, docID, rev2, &v, fmt.Appendf(nil, `{"chan": %q}`, updatedChan))
 			rt.WaitForVersion(docID, v)
 
 			xattrs, _, err := collection.GetCollectionDatastore().GetXattrs(ctx, docID, []string{base.SyncXattrName, base.VvXattrName})

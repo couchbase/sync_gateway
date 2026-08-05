@@ -98,6 +98,10 @@ func (lds *LeakyDataStore) SetGetWithXattrCallback(callback func(string) error) 
 	lds.bucket.setWithXattrCallback(callback)
 }
 
+func (lds *LeakyDataStore) SetGetAndTouchRawCallback(callback func(string) error) {
+	lds.bucket.setGetAndTouchRawCallback(callback)
+}
+
 func (lds *LeakyDataStore) GetRaw(ctx context.Context, k string) (v []byte, cas uint64, err error) {
 	if cb := lds.bucket.getRawCallback(); cb != nil {
 		if err = cb(k); err != nil {
@@ -117,6 +121,11 @@ func (lds *LeakyDataStore) GetWithXattrs(ctx context.Context, k string, xattrKey
 }
 
 func (lds *LeakyDataStore) GetAndTouchRaw(ctx context.Context, k string, exp uint32) (v []byte, cas uint64, err error) {
+	if cb := lds.bucket.getGetAndTouchRawCallback(); cb != nil {
+		if err := cb(k); err != nil {
+			return nil, 0, err
+		}
+	}
 	return lds.dataStore.GetAndTouchRaw(ctx, k, exp)
 }
 func (lds *LeakyDataStore) Touch(ctx context.Context, k string, exp uint32) (cas uint64, err error) {
@@ -162,6 +171,12 @@ func (lds *LeakyDataStore) WriteCas(ctx context.Context, k string, exp uint32, c
 	return lds.dataStore.WriteCas(ctx, k, exp, cas, v, opt)
 }
 func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
+	if preUpdateCb := lds.bucket.getPreUpdateCallback(); preUpdateCb != nil {
+		if err := preUpdateCb(k); err != nil {
+			return 0, err
+		}
+	}
+
 	updateCb := lds.bucket.getUpdateCallback()
 	forceTimeoutKeys := lds.bucket.getForceTimeoutErrorOnUpdateKeys()
 
@@ -220,7 +235,7 @@ func (lds *LeakyDataStore) GetDDoc(ctx context.Context, docname string) (ddoc sg
 		return sgbucket.DesignDoc{}, errors.New("bucket does not support views")
 	}
 	if remaining, shouldFail := lds.bucket.decrementDDocGetErrorCount(); shouldFail {
-		return ddoc, errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", remaining))
+		return ddoc, fmt.Errorf("Artificial leaky bucket error %d fails remaining", remaining)
 	}
 	return vs.GetDDoc(ctx, docname)
 }
@@ -239,7 +254,7 @@ func (lds *LeakyDataStore) DeleteDDoc(ctx context.Context, docname string) error
 		return errors.New("bucket does not support views")
 	}
 	if remaining, shouldFail := lds.bucket.decrementDDocDeleteErrorCount(); shouldFail {
-		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", remaining))
+		return fmt.Errorf("Artificial leaky bucket error %d fails remaining", remaining)
 	}
 	return vs.DeleteDDoc(ctx, docname)
 }
@@ -368,6 +383,10 @@ func (lds *LeakyDataStore) SetPostUpdateCallback(callback func(key string)) {
 
 func (lds *LeakyDataStore) SetUpdateCallback(callback func(key string)) {
 	lds.bucket.setUpdateCallback(callback)
+}
+
+func (lds *LeakyDataStore) SetPreUpdateCallback(callback func(key string) error) {
+	lds.bucket.setPreUpdateCallback(callback)
 }
 
 func (lds *LeakyDataStore) SetWriteCasCallback(callback func(key string) (uint64, error)) {

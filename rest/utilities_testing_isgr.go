@@ -140,9 +140,10 @@ func (runner *SGRTestRunner) IsV4Protocol() bool {
 	return slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString())
 }
 
+// WaitForVersion will wait for revtree if v3 protocol or full version otherwise.
 func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, version DocVersion) {
 	rt.TB().Helper()
-	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
+	if !runner.IsV4Protocol() {
 		// only assert on rev tree IDs when we're not replicating using v4 protocol
 		rt.WaitForVersionRevIDOnly(docID, version)
 		return
@@ -205,20 +206,26 @@ func (runner *SGRTestRunner) SetupSGRPeersWithOptions(t *testing.T, opts TestISG
 func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	ctx := base.TestCtx(t)
 	// Set up passive RestTester (rt2)
-	passiveTestBucket := base.GetTestBucket(t)
-	t.Cleanup(func() { passiveTestBucket.Close(ctx) })
-
 	var passiveRTConfig *RestTesterConfig
 	if opts.PassiveRestTesterConfig != nil {
 		passiveRTConfig = opts.PassiveRestTesterConfig
 	} else {
 		passiveRTConfig = &RestTesterConfig{
-			CustomTestBucket: passiveTestBucket.NoCloseClone(),
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Name: "passivedb",
 			}},
 			SyncFn: channels.DocChannelsSyncFunction,
 		}
+	}
+	// Take a bucket from the pool only once we know the config doesn't already bring one, and hand it
+	// to the RestTester rather than letting NewRestTester fetch its own. Either half of that - a bucket
+	// obtained and left unused, or a config left without one - reserves two pool buckets for this peer
+	// instead of one, doubling the test's real requirement past its RequireNumTestBuckets(t, 2), which
+	// stalls for waitForReadyBucketTimeout and then fails whenever the pool is smaller than that.
+	if passiveRTConfig.CustomTestBucket == nil {
+		passiveTestBucket := base.GetTestBucket(t)
+		t.Cleanup(func() { passiveTestBucket.Close(ctx) })
+		passiveRTConfig.CustomTestBucket = passiveTestBucket.NoCloseClone()
 	}
 	passiveRT := NewRestTester(t, passiveRTConfig)
 	t.Cleanup(passiveRT.Close)
@@ -240,9 +247,6 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
 	passiveDBURL.User = url.UserPassword("alice", RestTesterDefaultUserPassword)
 
-	activeTestBucket := base.GetTestBucket(t)
-	t.Cleanup(func() { activeTestBucket.Close(ctx) })
-
 	var activeRTConfig *RestTesterConfig
 	if opts.ActiveRestTesterConfig != nil {
 		activeRTConfig = opts.ActiveRestTesterConfig
@@ -251,10 +255,15 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Name: "activedb",
 			}},
-			CustomTestBucket:   activeTestBucket.NoCloseClone(),
 			SgReplicateEnabled: true,
 			SyncFn:             channels.DocChannelsSyncFunction,
 		}
+	}
+	// As above - only take a pool bucket if the caller's config didn't supply one.
+	if activeRTConfig.CustomTestBucket == nil {
+		activeTestBucket := base.GetTestBucket(t)
+		t.Cleanup(func() { activeTestBucket.Close(ctx) })
+		activeRTConfig.CustomTestBucket = activeTestBucket.NoCloseClone()
 	}
 	activeRT := NewRestTester(t, activeRTConfig)
 	t.Cleanup(activeRT.Close)

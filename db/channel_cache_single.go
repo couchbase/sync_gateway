@@ -562,7 +562,6 @@ func (c *singleChannelCacheImpl) insertChange(log *LogEntries, change *LogEntry)
 	*log = append(*log, nil)
 	copy((*log)[insertAtIndex+1:], (*log)[insertAtIndex:])
 	(*log)[insertAtIndex] = change
-	return
 }
 
 // Prepends an array of entries to this one, skipping ones that I already have.

@@ -120,19 +120,23 @@ if [ "${RUN_WALRUS}" == "true" ]; then
 fi
 
 # Run CBS
+CBS_NODES=1
 if [ "${MULTI_NODE:-}" == "true" ]; then
-    # multi node
-    ./integration-test/start_server.sh -m "${COUCHBASE_SERVER_VERSION}"
+    CBS_NODES=3
     export SG_TEST_BUCKET_NUM_REPLICAS=1
-else
-    # single node
-    ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
-    export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME="couchbase"
 fi
+START_CBS_ARGS=(--version "${COUCHBASE_SERVER_VERSION}" --nodes "${CBS_NODES}" --purpose sync_gateway_integration)
+if [ "${COUCHBASE_SERVER_PROTOCOL}" == "couchbases" ]; then
+    START_CBS_ARGS+=(--tls)
+fi
+CBS_ENV_FILE="$(mktemp)"
+./integration-test/start_cbs.py "${START_CBS_ARGS[@]}" --env-file "${CBS_ENV_FILE}"
+# shellcheck disable=SC1090
+source "${CBS_ENV_FILE}"
+rm -f "${CBS_ENV_FILE}"
 
 # Set up test environment variables for CBS runs
 export SG_TEST_USE_GSI=${GSI}
-export SG_TEST_COUCHBASE_SERVER_URL="${COUCHBASE_SERVER_PROTOCOL}://127.0.0.1"
 export SG_TEST_BACKING_STORE="Couchbase"
 export SG_TEST_TLS_SKIP_VERIFY=${TLS_SKIP_VERIFY}
 
@@ -153,7 +157,7 @@ set +x # Stop outputting all executed shell commands
 
 # Collect CBS logs if server error occurred
 if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out"; then
-    docker exec -t couchbase /opt/couchbase/bin/cbcollect_info /workspace/cbcollect.zip
+    go run github.com/couchbaselabs/cbdinocluster@latest collect-logs "${CBS_CLUSTER_ID}" cbcollect.zip
 fi
 
 # If rosmar tests were run, then prepend classname with integration to tell them apart

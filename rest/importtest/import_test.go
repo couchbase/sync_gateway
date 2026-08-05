@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
@@ -802,7 +803,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-	responseString := string(response.Body.Bytes())
+	responseString := response.Body.String()
 	if !strings.Contains(responseString, `9223372036854775807`) {
 		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
 	}
@@ -1244,7 +1245,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 
 			rtConfig := rest.RestTesterConfig{
@@ -1322,7 +1323,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 
 			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)
@@ -2197,7 +2198,7 @@ func TestImportRollback(t *testing.T) {
 			vbNo, err := base.GetVbucketForKey(ctx, bucket, key)
 			require.NoError(t, err)
 			checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
-			var checkpointData base.ShardedImportDCPMetadata
+			var checkpointData base.CbgtCheckpoint
 			checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 			require.NoError(t, err)
 			require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2206,6 +2207,7 @@ func TestImportRollback(t *testing.T) {
 			checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 			checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 			checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+			checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 			if testType == rollbackWithFailover {
 				existingVbUUID := checkpointData.FailOverLog[0][0]
 				checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
@@ -2251,9 +2253,6 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	numVBuckets, err := bucket.GetMaxVbno(ctx)
 	require.NoError(t, err)
-	if numVBuckets != 1024 {
-		t.Skipf("Test requires 1024 vBuckets, but only had %d, will fix in CBG-4544", numVBuckets)
-	}
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: bucket.NoCloseClone(),
@@ -2265,16 +2264,21 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		},
 	})
 
-	// create doc id's for vb0 and vb800
-	vb0DocIDs := []string{"abbacomes", "abdicate", "accrescent", "aconitum", "acrux", "adduction", "affrication", "algraphy", "allantoinuria", "altiloquent"}
-	vb800DocIDs := []string{"abrook", "accept", "accompaniment", "acoemeti", "adiposeness", "alkyd", "alnage", "ambulance", "anasazi", "anhydroxime"}
+	// ImportPartitions=2 splits vBuckets into two contiguous halves; pick a doc ID from each partition so
+	// each partition rolls back independently.
+	alternatePartitionVB := numVBuckets - 1
+	vb0DocIDs := sgtest.VBucketDocIDs(t, bucket, 0, 10)
+	alternatePartitionVBDocIDs := sgtest.VBucketDocIDs(t, bucket, alternatePartitionVB, 10)
+	// vBucket 1 stays in the first partition but is never rolled back, confirming a sibling vBucket's
+	// import isn't disrupted by vb0's rollback.
+	nonRolledBackDocID := sgtest.VBucketDocIDs(t, bucket, 1, 1)[0]
 
 	for _, v := range vb0DocIDs {
 		added, err := rt.GetSingleDataStore().AddRaw(ctx, v, 0, fmt.Appendf(nil, `{"star": "6"}`))
 		require.True(t, added)
 		require.NoError(t, err)
 	}
-	for _, v := range vb800DocIDs {
+	for _, v := range alternatePartitionVBDocIDs {
 		added, err := rt.GetSingleDataStore().AddRaw(ctx, v, 0, fmt.Appendf(nil, `{"star": "6"}`))
 		require.True(t, added)
 		require.NoError(t, err)
@@ -2290,10 +2294,10 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	rt.Close()
 
 	metaStore := bucket.GetMetadataStore()
-	// fetch the checkpoint for the vBucket 0 and 800, modify the checkpoint values to a higher sequence to
-	// trigger rollback upon stream open request
+	// fetch the checkpoint for vBucket 0 and alternatePartitionVB, modify the checkpoint values to a higher
+	// sequence to trigger rollback upon stream open request
 	checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, 0)
-	var checkpointData base.ShardedImportDCPMetadata
+	var checkpointData base.CbgtCheckpoint
 	checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2301,6 +2305,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 	existingVbUUID := checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2309,9 +2314,9 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	err = metaStore.SetRaw(ctx, checkpointKey, 0, nil, updatedBytes)
 	require.NoError(t, err)
 
-	// vBucket 800
-	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, 800)
-	checkpointData = base.ShardedImportDCPMetadata{}
+	// second partition's vBucket
+	checkpointKey = fmt.Sprintf("%s%d", checkpointPrefix, alternatePartitionVB)
+	checkpointData = base.CbgtCheckpoint{}
 	checkpointBytes, _, err = metaStore.GetRaw(ctx, checkpointKey)
 	require.NoError(t, err)
 	require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2319,6 +2324,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 	existingVbUUID = checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2343,13 +2349,13 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		err := rt2.GetSingleDataStore().SetRaw(ctx, v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
 		require.NoError(t, err)
 	}
-	for _, v := range vb800DocIDs {
+	for _, v := range alternatePartitionVBDocIDs {
 		err := rt2.GetSingleDataStore().SetRaw(ctx, v, 0, nil, fmt.Appendf(nil, `{"star": "7"}`))
 		require.NoError(t, err)
 	}
 
-	// Add doc to non rolled back vBucket (392) and assert its imported
-	added, err := rt2.GetSingleDataStore().AddRaw(ctx, "someKey", 0, fmt.Appendf(nil, `{"star": "6"}`))
+	// Add doc to non rolled back vBucket and assert its imported
+	added, err := rt2.GetSingleDataStore().AddRaw(ctx, nonRolledBackDocID, 0, fmt.Appendf(nil, `{"star": "6"}`))
 	require.NoError(t, err)
 	require.True(t, added)
 
@@ -2510,9 +2516,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		},
 	})
 
-	vbCount, err := bucket.GetMaxVbno(ctx)
-	require.NoError(t, err)
-	docPerVBucket := getDocPerVbucket(t, bucket)
+	docPerVBucket := sgtest.DocPerVBucket(t, bucket)
 	// create one document per vBucket to ensure we have a checkpoint for each vBucket
 	for _, docID := range docPerVBucket {
 		added, err := rt.GetSingleDataStore().Add(ctx, docID, 0, []byte(`{"mutation": 1}`))
@@ -2521,7 +2525,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	}
 
 	// wait for docs to be imported
-	changes := rt.WaitForChanges(int(vbCount), "/{{.keyspace}}/_changes?since=0", "", true)
+	changes := rt.WaitForChanges(len(docPerVBucket), "/{{.keyspace}}/_changes?since=0", "", true)
 	lastSeq := changes.Last_Seq.String()
 
 	// validate the number of cbgt.Dest instances matches the expected number of partitions
@@ -2536,7 +2540,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	// fetch each vBucket checkpoint, modify the checkpoint values back to the bucket
 	for vbNo := range docPerVBucket {
 		checkpointKey := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
-		var checkpointData base.ShardedImportDCPMetadata
+		var checkpointData base.CbgtCheckpoint
 		checkpointBytes, _, err := metaStore.GetRaw(ctx, checkpointKey)
 		require.NoError(t, err)
 		require.NoError(t, base.JSONUnmarshal(checkpointBytes, &checkpointData))
@@ -2545,6 +2549,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 		checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 		checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
+		checkpointData.LastSeq = 3000 + checkpointData.LastSeq
 		existingVbUUID := checkpointData.FailOverLog[0][0]
 		// mutate vbUUID to force rollback
 		checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
@@ -2572,7 +2577,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 	}
 
 	// wait for doc update to be imported, these documents won't be imported until the rollback is complete for all vBuckets
-	rt2.WaitForChanges(int(vbCount), "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
+	rt2.WaitForChanges(len(docPerVBucket), "/{{.keyspace}}/_changes?since="+lastSeq, "", true)
 
 	// after all documents are imported, I expect that cbgt.Dest == number of partitions
 	require.Equal(t, int(importPartitions), int(rt2.GetDatabase().DbStats.SharedBucketImportStats.ImportPartitions.Value()))

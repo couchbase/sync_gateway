@@ -717,14 +717,14 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "",
 			distributed:     false,
-			expected:        fmt.Sprintf("_sync:dcp_ck::sg:resync:1234"),
+			expected:        "_sync:dcp_ck::sg:resync:1234",
 		},
 		{
 			name:            "default collection, group id=foo",
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "foo",
 			distributed:     false,
-			expected:        fmt.Sprintf("_sync:dcp_ck:foo::sg:resync:1234"),
+			expected:        "_sync:dcp_ck:foo::sg:resync:1234",
 		},
 		{
 			name: "default collection + collection 1, no group id",
@@ -734,7 +734,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "",
 			distributed: false,
-			expected:    fmt.Sprintf("_sync:dcp_ck::sg:resync:1234"),
+			expected:    "_sync:dcp_ck::sg:resync:1234",
 		},
 		{
 			name: "default collection + collection 1, group id=foo",
@@ -744,21 +744,21 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "foo",
 			distributed: false,
-			expected:    fmt.Sprintf("_sync:dcp_ck:foo::sg:resync:1234"),
+			expected:    "_sync:dcp_ck:foo::sg:resync:1234",
 		},
 		{
 			name:            "distributed, default collection, no group id",
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "",
 			distributed:     true,
-			expected:        fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:        "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 		{
 			name:            "distributed, default collection, group id=foo",
 			collectionNames: base.NewCollectionNameSet(defaultCollection),
 			groupID:         "foo",
 			distributed:     true,
-			expected:        fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:        "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 		{
 			name: "distributed, default collection + collection 1, no group id",
@@ -768,7 +768,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "",
 			distributed: true,
-			expected:    fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:    "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 		{
 			name: "distributed, default collection + collection 1, group id=foo",
@@ -778,7 +778,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 			),
 			groupID:     "foo",
 			distributed: true,
-			expected:    fmt.Sprintf("_sync:dcp_ck::sg:resync-distributed:1234"),
+			expected:    "_sync:dcp_ck::sg:resync-distributed:1234",
 		},
 	}
 	for _, test := range testCases {
@@ -1081,7 +1081,7 @@ func TestResyncManagerDCPWritesV1SyncInfoAtCcv41(t *testing.T) {
 }
 
 // TestResyncManagerOptionsStoredInMeta verifies that the options passed when starting a resync are embedded
-// in the "options" field of the meta returned by GetProcessStatus, so that BackgroundManager.Resume can
+// in the "options" field of the meta returned by GetProcessStatus, so that BackgroundManager.Join can
 // read them back from the status document.
 func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
 	inputCollections := base.CollectionNames{"scope1": []string{"col1", "col2"}}
@@ -1096,7 +1096,7 @@ func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, metaBytes)
 
-	// BackgroundManager.Resume reads "options" from the meta subdoc, deserialising into ResyncOptions.
+	// BackgroundManager.Join reads "options" from the meta subdoc, deserialising into ResyncOptions.
 	var metaDoc ResyncManagerMeta
 	require.NoError(t, base.JSONUnmarshal(metaBytes, &metaDoc))
 
@@ -1127,18 +1127,18 @@ func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
 
 	var metaDoc ResyncManagerMeta
 	require.NoError(t, base.JSONUnmarshal(metaBytes, &metaDoc))
-	// Verify Init stored the options so that Resume can recover them via the meta subdoc.
+	// Verify Init stored the options so that Join can recover them via the meta subdoc.
 	require.Equal(t, false, metaDoc.Options.RegenerateSequences)
 	require.Equal(t, false, metaDoc.Options.Reset)
 }
 
-// TestResyncManagerDCPResumeRoundTripsOptions verifies that ResyncOptions survive the full serialisation
-// round-trip performed by BackgroundManager.Resume: options are written to the cluster status document by
-// the first manager and then read back into a fresh ResyncManagerDCP via Resume, without ever being passed
+// TestResyncManagerDCPJoinRoundTripsOptions verifies that ResyncOptions survive the full serialisation
+// round-trip performed by BackgroundManager.Join: options are written to the cluster status document by
+// the first manager and then read back into a fresh ResyncManagerDCP via Join, without ever being passed
 // to the second manager's Start call directly.
-func TestResyncManagerDCPResumeRoundTripsOptions(t *testing.T) {
+func TestResyncManagerDCPJoinRoundTripsOptions(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	// write documents so that Resume() can be called while mgr is already running
+	// write documents so that Join() can be called while mgr is already running
 	docsToCreate := 500
 	if base.UnitTestUrlIsWalrus() {
 		// rosmar runs too quickly, increase doc count
@@ -1182,17 +1182,17 @@ func TestResyncManagerDCPResumeRoundTripsOptions(t *testing.T) {
 	require.NoError(t, mgr1.Start(ctx, inputOptions))
 	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
 
-	// Flush options into the cluster status document before the second manager calls Resume.
+	// Flush options into the cluster status document before the second manager calls Join.
 	require.NoError(t, mgr1.UpdateStatusClusterAware(ctx))
 
-	// A second manager sharing the same metadata store calls Resume: it must recover inputOptions from the
+	// A second manager sharing the same metadata store calls Join: it must recover inputOptions from the
 	// status document without ever having been given them directly.
-	// Init is called synchronously inside Resume before Run is spawned, so startOptions is already set
-	// by the time Resume returns.
+	// Init is called synchronously inside Join before Run is spawned, so startOptions is already set
+	// by the time Join returns.
 	mgr2 := newMgr()
 	defer func() { _ = mgr2.Stop(ctx) }()
 
-	require.NoError(t, mgr2.Resume(ctx))
+	require.NoError(t, mgr2.Join(ctx))
 
 	// Read startOptions from mgr2's process. The field is unexported but accessible within the package.
 	resync2 := mgr2.Process.(*ResyncManagerDCP)

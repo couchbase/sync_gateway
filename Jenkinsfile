@@ -19,7 +19,7 @@ pipeline {
             steps {
                 sh 'git rev-parse HEAD > .git/commit-id'
                 script {
-                    env.SG_COMMIT = readFile '.git/commit-id'
+                    env.SG_COMMIT = readFile('.git/commit-id').trim()
                     // Set BRANCH variable to target branch if this build is a PR
                     if (env.CHANGE_TARGET) {
                         env.BRANCH = env.CHANGE_TARGET
@@ -208,6 +208,27 @@ pipeline {
                                 // Queues up an async integration test run using default build params (main branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
                                 build job: 'MainIntegration', quietPeriod: 3600, wait: false
+
+                                echo 'Queueing E2E test runs (rosmar/cbs x dev_e2e/QE) for branch "main" ...'
+                                script {
+                                    def e2eModes = [
+                                        [backingStore: 'rosmar', testDirectory: 'tests/dev_e2e'],
+                                        [backingStore: 'rosmar', testDirectory: 'tests/QE'],
+                                        [backingStore: 'cbs', testDirectory: 'tests/dev_e2e'],
+                                        [backingStore: 'cbs', testDirectory: 'tests/QE'],
+                                    ]
+                                    def couchbaseLiteVersion = env.DEFAULT_COUCHBASE_LITE_VERSION
+                                    def couchbaseServerVersion = env.DEFAULT_COUCHBASE_SERVER_VERSION
+                                    e2eModes.each { mode ->
+                                        build job: 'Couchbase Lite E2E', wait: false, parameters: [
+                                            string(name: 'SG_COMMIT', value: env.SG_COMMIT),
+                                            string(name: 'BACKING_STORE', value: mode.backingStore),
+                                            string(name: 'TEST_DIRECTORY', value: mode.testDirectory),
+                                            string(name: 'COUCHBASE_LITE_VERSION', value: couchbaseLiteVersion),
+                                            string(name: 'COUCHBASE_SERVER_VERSION', value: couchbaseServerVersion),
+                                        ]
+                                    }
+                                }
                             }
                         }
                     }
@@ -236,26 +257,23 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: 'danger', message: "Failed tests in main SGW pipeline: ${currentBuild.fullDisplayName}\nAt least one test failed: ${env.BUILD_URL}"
-                }
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
             }
         }
         failure {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: 'danger', message: "Build failure!!!\nA build failure occurred in the main SGW pipeline: ${currentBuild.fullDisplayName}\nSomething went wrong building: ${env.BUILD_URL}"
-                }
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL)
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'main') {
-                    slackSend color: 'danger', message: "main SGW pipeline build aborted: ${currentBuild.fullDisplayName}\nCould be due to build timeout: ${env.BUILD_URL}"
-                }
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
             }
         }
         cleanup {

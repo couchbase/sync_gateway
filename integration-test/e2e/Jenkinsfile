@@ -1,3 +1,17 @@
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+// The 'Run E2E Tests' stage overwrites integration-test/slackUtils.groovy and .github/slack_usernames.yaml
+// with the latest versions from main before this runs, so both stay current regardless of which SG_COMMIT
+// is under test.
+def e2eDetails() {
+    return [
+        SG_COMMIT: params.SG_COMMIT,
+        BACKING_STORE: params.BACKING_STORE,
+        TEST_DIRECTORY: params.TEST_DIRECTORY,
+        COUCHBASE_LITE_VERSION: params.COUCHBASE_LITE_VERSION,
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+    ]
+}
+
 pipeline {
     agent any
     options {
@@ -108,11 +122,18 @@ pipeline {
         stage('Checkout Scm') {
             steps {
                 cleanWs(disableDeferredWipeout: false)
-                git(
-                    url: 'git@github.com:couchbase/sync_gateway.git',
-                    branch: "${params.SG_COMMIT}",
-                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
-                )
+                // SG_COMMIT may be an arbitrary commit SHA rather than a branch name. The build
+                // chooser only resolves a branch spec against existing remote-tracking refs, so a
+                // bare SHA won't resolve unless it's fetched into a ref of the same name.
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: params.SG_COMMIT]],
+                    userRemoteConfigs: [[
+                        url: 'git@github.com:couchbase/sync_gateway.git',
+                        credentialsId: 'CB_SG_Robot_Github_SSH_Key',
+                        refspec: "+${params.SG_COMMIT}:refs/remotes/origin/${params.SG_COMMIT}"
+                    ]]
+                ])
             }
         }
         stage('Run E2E Tests') {
@@ -120,8 +141,10 @@ pipeline {
                 sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                     sh '''
                         set -eu
-                        mkdir -p integration-test/e2e
+                        mkdir -p integration-test/e2e .github
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
                         /bin/bash integration-test/e2e/run_e2e_tests.sh
                     '''
                 }
@@ -130,8 +153,25 @@ pipeline {
     }
     post {
         always {
-            archiveArtifacts artifacts: 'couchbase-lite-tests/environment/local/sync_gateway.log', followSymlinks: false
-            junit allowEmptyResults: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml'
+            archiveArtifacts(artifacts: 'couchbase-lite-tests/environment/local/sync_gateway.log', followSymlinks: false)
+            junit(allowEmptyResults: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml')
+        }
+        success {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                def message = slackUtils.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails())
+                slackSend(channel: 'syncgatewaybot', color: 'good', message: message)
+                def dmTarget = slackUtils.slackUserIdForBuild()
+                if (dmTarget) {
+                    slackSend(channel: dmTarget, color: 'good', message: message)
+                }
+            }
+        }
+        failure {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails())
+            }
         }
         cleanup {
             cleanWs(disableDeferredWipeout: true)

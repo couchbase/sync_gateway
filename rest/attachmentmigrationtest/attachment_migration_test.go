@@ -359,7 +359,7 @@ func TestStartMigrationAlreadyRunningProcess(t *testing.T) {
 	// Wait until migration is blocked mid-UpdateXattrs, guaranteeing Running state.
 	base.RequireChanClosed(t, blocked)
 
-	err = rt.GetDatabase().AttachmentMigrationManager.Start(ctx, nil)
+	err = rt.GetDatabase().AttachmentMigrationManager.Start(ctx, db.AttachmentMigrationOptions{})
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "Process already running")
 

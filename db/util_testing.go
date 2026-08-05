@@ -555,6 +555,30 @@ func IsCovered(plan map[string]any) bool {
 	return true
 }
 
+// ScannedIndexesFromPlan returns the indexes scanned by an EXPLAIN plan, traversing the nested
+// operators like IsCovered does. A query served without an index reports "#sequentialscan".
+func ScannedIndexesFromPlan(plan map[string]any) []string {
+	var indexes []string
+	if _, isOperator := plan["#operator"]; isOperator {
+		if indexName, ok := plan["index"].(string); ok {
+			indexes = append(indexes, indexName)
+		}
+	}
+	for _, value := range plan {
+		switch value := value.(type) {
+		case map[string]any:
+			indexes = append(indexes, ScannedIndexesFromPlan(value)...)
+		case []any:
+			for _, arrayValue := range value {
+				if jsonArrayValue, ok := arrayValue.(map[string]any); ok {
+					indexes = append(indexes, ScannedIndexesFromPlan(jsonArrayValue)...)
+				}
+			}
+		}
+	}
+	return indexes
+}
+
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {

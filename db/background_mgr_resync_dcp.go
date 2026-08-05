@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -48,7 +49,7 @@ type ResyncManagerDCP struct {
 	VBUUIDs                      []uint64
 	EndSeqNos                    []uint64 // EndSeqNos for resync, stored as a slice to optimize persistence in status doc
 	ResyncedCollections          base.CollectionNames
-	startOptions                 ResyncOptions // options from the most recent Start call, persisted to meta for Resume
+	startOptions                 ResyncOptions // options from the most recent Start call, persisted to meta for Join
 	resyncCollectionInfo
 	lock              sync.RWMutex
 	Distributed       bool
@@ -145,7 +146,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 		var err error
 		collections, err = r.db.collections(options.Collections)
 		if err != nil {
-			return backgroundManagerInitReset, err
+			return backgroundManagerInitReset, base.HTTPErrorf(http.StatusBadRequest, "%w", err)
 		}
 	} else {
 		collections = slices.Collect(maps.Values(r.db.CollectionByID))
@@ -230,7 +231,7 @@ func (r *ResyncManagerDCP) purgeCheckpoints(ctx context.Context, resyncID string
 	)
 }
 
-// setStartOptions stores the options used to start the current run so that Resume can reconstruct them.
+// setStartOptions stores the options used to start the current run so that Join can reconstruct them.
 func (r *ResyncManagerDCP) setStartOptions(options ResyncOptions) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -822,8 +823,8 @@ type resyncManagerCompletedVBuckets struct {
 type ResyncManagerMeta struct {
 	VBUUIDs       []uint64      `json:"vbuuids"`
 	CollectionIDs []uint32      `json:"collection_ids,omitempty"`
-	EndSeqNos     []uint64      `json:"end_seq_nos"`       // end seq nos, persisted for Resume
-	Options       ResyncOptions `json:"options,omitempty"` // start options, persisted for Resume
+	EndSeqNos     []uint64      `json:"end_seq_nos"`       // end seq nos, persisted for Join
+	Options       ResyncOptions `json:"options,omitempty"` // start options, persisted for Join
 	resyncManagerCompletedVBuckets
 }
 

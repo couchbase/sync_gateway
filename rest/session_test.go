@@ -742,7 +742,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	expires, err := time.Parse(time.RFC3339, body["expires"].(string))
 	assert.NoError(t, err, "Couldn't parse session expiration datetime")
-	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
+	assert.True(t, time.Until(expires).Hours() <= 24, "Couldn't validate session expiration")
 
 	sessionId := body["session_id"].(string)
 	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
@@ -752,7 +752,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	expires, err = time.Parse(time.RFC3339, body["expires"].(string))
 	assert.NoError(t, err, "Couldn't parse session expiration datetime")
-	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
+	assert.True(t, time.Until(expires).Hours() <= 24, "Couldn't validate session expiration")
 }
 
 // TestSessionCreationCookieBehavior verifies that POST /_session sets a cookie for regular sessions

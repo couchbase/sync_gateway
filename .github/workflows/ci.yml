@@ -295,9 +295,9 @@ jobs:
       - name: Run test
         run: |
           uv run -- pytest
-      - name: Run mypy
+      - name: Run ty
         run: |
-          uv run -- mypy
+          uvx ty check
 
   test-stats-definition-exporter:
     runs-on: ${{ matrix.os }}

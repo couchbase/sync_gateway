@@ -500,7 +500,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	for _, testCase := range testCases {
 
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			key := fmt.Sprintf("TestImportDocWithStaleDoc%-s", testCase.name)
 			bodyBytes := testCase.docBody
 			body := Body{}
@@ -657,7 +657,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 	}
 
 	for _, testcase := range testcases {
-		t.Run(fmt.Sprintf("%s", testcase.docname), func(t *testing.T) {
+		t.Run(testcase.docname, func(t *testing.T) {
 			db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
 			defer db.Close(ctx)
 

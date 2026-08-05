@@ -1,0 +1,32 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+review:
+  # --- Auto-review settings ---
+  auto_review:
+    enabled: true
+    draft: false
+    bot: false
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    ignore_labels:
+      - "droid-skip"
+      - "Abandoned"
+
+  # --- Output settings ---
+  pr_summary: true
+  file_summaries: true
+  tips: true
+  github_action_repair: true
+  enable_skip_reason_comments: true
+
+  guidelines:
+    - path: "*"
+      guideline: "Follow our copilot-instructions.md style guide."
+      context_document_path: ".github/copilot-instructions.md"

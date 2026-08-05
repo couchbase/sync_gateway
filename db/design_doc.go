@@ -628,7 +628,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 			return err != nil, err, nil
 		}
 
-		description := fmt.Sprintf("Attempt to install Couchbase design doc")
+		description := "Attempt to install Couchbase design doc"
 		err, _ := base.RetryLoop(ctx, description, worker, sleeper)
 
 		if err != nil {

@@ -11,16 +11,30 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
+	"github.com/couchbaselabs/rosmar"
 )
+
+// MockProcessOptions defines configurations used for testing various background managers.
+type MockProcessOptions struct {
+	// Key is an arbitrary string value used to test options passing/resuming.
+	Key string
+	// Num is an arbitrary float value used to test options passing/resuming.
+	Num float64
+	// Reset indicates whether the mock process should start clean or resume.
+	Reset bool
+}
 
 type MockProcess struct {
 	InitCalled           bool
@@ -31,14 +45,14 @@ type MockProcess struct {
 	lock                 sync.Mutex
 }
 
-func (m *MockProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
+func (m *MockProcess) Init(ctx context.Context, options MockProcessOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.InitCalled = true
 	return backgroundManagerInitReset, nil
 }
 
-func (m *MockProcess) Run(ctx context.Context, options map[string]any, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (m *MockProcess) Run(ctx context.Context, options MockProcessOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	m.lock.Lock()
 	m.RunCalled = true
 	m.updateStatusCallback = persistClusterStatusCallback
@@ -123,13 +137,13 @@ func TestBackgroundManagerModes(t *testing.T) {
 	for _, mode := range modes {
 		t.Run(mode.name, func(t *testing.T) {
 			process := &MockProcess{}
-			mgr := &BackgroundManager[map[string]any]{
+			mgr := &BackgroundManager[MockProcessOptions]{
 				name:                "test-mgr-" + mode.name,
 				clusterAwareOptions: mode.clusterAwareOptions,
 				Process:             process,
 			}
 
-			err := mgr.Start(ctx, nil)
+			err := mgr.Start(ctx, MockProcessOptions{})
 			require.NoError(t, err)
 
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -166,29 +180,29 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager[map[string]any]{
+	mgr1 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr1",
 		clusterAwareOptions: options,
 		Process:             process1,
 	}
 
 	// 1. Start mgr1
-	err := mgr1.Start(ctx, nil)
+	err := mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, mgr1.Stop(ctx)) }()
 
 	// 2. Try to start mgr1 again
-	err = mgr1.Start(ctx, nil)
+	err = mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 
 	// 3. Start mgr2 (should succeed because it's MultiNode)
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager[map[string]any]{
+	mgr2 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr2",
 		clusterAwareOptions: options,
 		Process:             process2,
 	}
-	err = mgr2.Start(ctx, nil)
+	err = mgr2.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
@@ -212,7 +226,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	require.True(t, process2.StopRequested, "mgr2 should have received stop request")
 
 	// 5. Restart (from Stopped state)
-	err = mgr1.Start(ctx, nil)
+	err = mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, BackgroundProcessStateRunning, mgr1.GetRunState())
 }
@@ -232,12 +246,12 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 	}
 
 	numNodes := 5
-	managers := make([]*BackgroundManager[map[string]any], numNodes)
+	managers := make([]*BackgroundManager[MockProcessOptions], numNodes)
 	processes := make([]*MockProcess, numNodes)
 
 	for i := 0; i < numNodes; i++ {
 		processes[i] = &MockProcess{}
-		managers[i] = &BackgroundManager[map[string]any]{
+		managers[i] = &BackgroundManager[MockProcessOptions]{
 			name:                fmt.Sprintf("mgr%d", i),
 			clusterAwareOptions: options,
 			Process:             processes[i],
@@ -250,7 +264,7 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			assert.NoError(t, managers[i].Start(ctx, nil))
+			assert.NoError(t, managers[i].Start(ctx, MockProcessOptions{}))
 		}(i)
 		defer func(i int) { assert.NoError(t, managers[i].Stop(ctx)) }(i)
 	}
@@ -281,7 +295,7 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 	}, 15*time.Second, 500*time.Millisecond)
 }
 
-func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
+func TestBackgroundManagerStartTimePreservedOnJoin(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
@@ -296,13 +310,13 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager[map[string]any]{
+	mgr1 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr1",
 		clusterAwareOptions: options,
 		Process:             process1,
 	}
 
-	err := mgr1.Start(ctx, nil)
+	err := mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 
 	origStartTime := mgr1.getStartTime()
@@ -321,12 +335,12 @@ func TestBackgroundManagerStartTimePreservedOnResume(t *testing.T) {
 	WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr1)
 
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager[map[string]any]{
+	mgr2 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr2",
 		clusterAwareOptions: options,
 		Process:             process2,
 	}
-	err = mgr2.Start(ctx, nil)
+	err = mgr2.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
@@ -348,14 +362,14 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager[map[string]any]{
+	mgr1 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr1",
 		clusterAwareOptions: options,
 		Process:             process1,
 	}
 
 	// 1. Start mgr1
-	err := mgr1.Start(ctx, nil)
+	err := mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, mgr1.Stop(ctx)) }()
 
@@ -373,13 +387,13 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 
 	// 2. Start mgr2 (MultiNode)
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager[map[string]any]{
+	mgr2 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr2",
 		clusterAwareOptions: options,
 		Process:             process2,
 	}
 
-	err = mgr2.Start(ctx, nil)
+	err = mgr2.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
 
@@ -468,11 +482,11 @@ func TestResyncMultiNodeStatsAggregation(t *testing.T) {
 // It stores the options passed to Init and serialises them into the "meta" returned by GetProcessStatus.
 type ResumableMockProcess struct {
 	MockProcess
-	receivedOptions map[string]any
+	receivedOptions MockProcessOptions
 	optionsLock     sync.RWMutex
 }
 
-func (r *ResumableMockProcess) Init(ctx context.Context, options map[string]any, clusterStatus []byte) (backgroundManagerInitMode, error) {
+func (r *ResumableMockProcess) Init(ctx context.Context, options MockProcessOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	r.optionsLock.Lock()
 	r.receivedOptions = options
 	r.optionsLock.Unlock()
@@ -489,7 +503,7 @@ func (r *ResumableMockProcess) GetProcessStatus(status BackgroundManagerStatus, 
 	r.optionsLock.RUnlock()
 
 	type mockMeta struct {
-		Options map[string]any `json:"options,omitempty"`
+		Options MockProcessOptions `json:"options,omitempty"`
 	}
 	metaBytes, err := base.JSONMarshal(mockMeta{Options: opts})
 	if err != nil {
@@ -499,37 +513,37 @@ func (r *ResumableMockProcess) GetProcessStatus(status BackgroundManagerStatus, 
 }
 
 // ReceivedOptions returns the options most recently passed to Init (safe for concurrent use).
-func (r *ResumableMockProcess) ReceivedOptions() map[string]any {
+func (r *ResumableMockProcess) ReceivedOptions() MockProcessOptions {
 	r.optionsLock.RLock()
 	defer r.optionsLock.RUnlock()
 	return r.receivedOptions
 }
 
-// TestBackgroundManagerResume verifies that a second multi-node manager can join an already-running process
-// via Resume, picking up the stored options without being given them explicitly.
-func TestBackgroundManagerResume(t *testing.T) {
+// TestBackgroundManagerJoin verifies that a second multi-node manager can join an already-running process
+// via Join, picking up the stored options without being given them explicitly.
+func TestBackgroundManagerJoin(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume")
+	metaKeys := base.NewMetadataKeys("test-join")
 
 	clusterOpts := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "resume",
+		processSuffix: "join",
 		multiNode:     true,
 	}
 
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager[map[string]any]{
-		name:                "test-resume-mgr",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-mgr",
 		Process:             process,
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
 
-	startOptions := map[string]any{"key": "value", "num": float64(42)}
+	startOptions := MockProcessOptions{Key: "value", Num: 42}
 
 	// Start mgr — this writes the options into the status document and sets cluster state to running.
 	require.NoError(t, mgr.Start(ctx, startOptions))
@@ -537,16 +551,16 @@ func TestBackgroundManagerResume(t *testing.T) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 
-	// While cluster state is running, a second manager sharing the same status document should join via Resume.
+	// While cluster state is running, a second manager sharing the same status document should join via Join.
 	process2 := &ResumableMockProcess{}
-	mgr2 := &BackgroundManager[map[string]any]{
-		name:                "test-resume-mgr2",
+	mgr2 := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-mgr2",
 		Process:             process2,
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
 
-	require.NoError(t, mgr2.Resume(ctx))
+	require.NoError(t, mgr2.Join(ctx))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr2.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
@@ -556,116 +570,117 @@ func TestBackgroundManagerResume(t *testing.T) {
 	require.NoError(t, mgr2.Stop(ctx))
 }
 
-// TestBackgroundManagerResumeNoDoc verifies that Resume returns errBackgroundManagerStatusNotRunning when
+// TestBackgroundManagerJoinNoDoc verifies that Join returns errBackgroundManagerStatusNotRunning when
 // no status document exists (i.e. Start has never been called).
-func TestBackgroundManagerResumeNoDoc(t *testing.T) {
+func TestBackgroundManagerJoinNoDoc(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-no-doc")
+	metaKeys := base.NewMetadataKeys("test-join-no-doc")
 
-	mgr := &BackgroundManager[map[string]any]{
-		name:    "test-resume-no-doc-mgr",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:    "test-join-no-doc-mgr",
 		Process: &ResumableMockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
-			processSuffix: "resume-no-doc",
+			processSuffix: "join-no-doc",
 			multiNode:     true,
 		},
 		terminator: base.NewSafeTerminator(),
 	}
 
-	require.ErrorIs(t, mgr.Resume(ctx), errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, mgr.Join(ctx), &statusErr)
 }
 
-// TestBackgroundManagerResumeSingleNodeError verifies that Resume returns an error for single-node managers
-// since Resume is only supported for multi-node background managers.
-func TestBackgroundManagerResumeSingleNodeError(t *testing.T) {
+// TestBackgroundManagerJoinSingleNodeError verifies that Join returns an error for single-node managers
+// since Join is only supported for multi-node background managers.
+func TestBackgroundManagerJoinSingleNodeError(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-single-node")
+	metaKeys := base.NewMetadataKeys("test-join-single-node")
 
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager[map[string]any]{
-		name:    "test-resume-single-node-mgr",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:    "test-join-single-node-mgr",
 		Process: process,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
-			processSuffix: "resume-single-node",
+			processSuffix: "join-single-node",
 			multiNode:     false, // single-node
 		},
 		terminator: base.NewSafeTerminator(),
 	}
 
-	err := mgr.Resume(ctx)
+	err := mgr.Join(ctx)
 	require.Error(t, err)
 }
 
-// TestBackgroundManagerResumeWhileRunning verifies that calling Resume on a multi-node manager that is
+// TestBackgroundManagerJoinWhileRunning verifies that calling Join on a multi-node manager that is
 // already running is idempotent: it returns nil and does not start a second instance of the process.
-func TestBackgroundManagerResumeWhileRunning(t *testing.T) {
+func TestBackgroundManagerJoinWhileRunning(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-running")
+	metaKeys := base.NewMetadataKeys("test-join-running")
 
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager[map[string]any]{
-		name:    "test-resume-running-mgr",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:    "test-join-running-mgr",
 		Process: process,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
-			processSuffix: "resume-running",
+			processSuffix: "join-running",
 			multiNode:     true,
 		},
 		terminator: base.NewSafeTerminator(),
 	}
 
-	startOptions := map[string]any{"key": "value"}
+	startOptions := MockProcessOptions{Key: "value"}
 	require.NoError(t, mgr.Start(ctx, startOptions))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 
-	// Resume while running is idempotent for multi-node managers.
-	require.NoError(t, mgr.Resume(ctx))
+	// Join while running is idempotent for multi-node managers.
+	require.NoError(t, mgr.Join(ctx))
 	require.Equal(t, BackgroundProcessStateRunning, mgr.GetRunState())
 	require.Equal(t, startOptions, process.ReceivedOptions())
 
 	require.NoError(t, mgr.Stop(ctx))
 }
 
-// TestBackgroundManagerResumeWhenNotRunning verifies that Resume returns errBackgroundManagerStatusNotRunning
-// when the cluster state is not running (e.g., after the process has been stopped).
-func TestBackgroundManagerResumeWhenNotRunning(t *testing.T) {
+// TestBackgroundManagerJoinWhenNotRunning verifies that Join returns nil without starting the local process
+// when the cluster state is a terminal, non-running state (e.g., after the process has been stopped).
+func TestBackgroundManagerJoinWhenNotRunning(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-not-running")
+	metaKeys := base.NewMetadataKeys("test-join-not-running")
 
 	clusterOpts := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "resume-not-running",
+		processSuffix: "join-not-running",
 		multiNode:     true,
 	}
 
-	mgr := &BackgroundManager[map[string]any]{
-		name:                "test-resume-not-running-mgr",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-not-running-mgr",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
 
-	require.NoError(t, mgr.Start(ctx, map[string]any{"key": "value"}))
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{Key: "value"}))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
@@ -678,32 +693,32 @@ func TestBackgroundManagerResumeWhenNotRunning(t *testing.T) {
 		assert.Contains(c, []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted}, status.State)
 	}, 5*time.Second, 100*time.Millisecond)
 
-	// Cluster state is now stopped; a second manager must not be able to Resume.
-	mgr2 := &BackgroundManager[map[string]any]{
-		name:                "test-resume-not-running-mgr2",
+	// Cluster state is now stopped; a second manager must not be able to Join.
+	mgr2 := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-not-running-mgr2",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
-	require.NoError(t, mgr2.Resume(ctx))
+	require.NoError(t, mgr2.Join(ctx))
 	mgr2State, err := mgr2.getClusterStatusState(ctx)
 	require.NoError(t, err)
 	require.Equal(t, mgr.GetRunState(), mgr2State)
 }
 
-// TestBackgroundManagerResumeLocalModeError verifies that Resume returns an error for a local-mode manager
-// since Resume is only supported for multi-node background managers.
-func TestBackgroundManagerResumeLocalModeError(t *testing.T) {
+// TestBackgroundManagerJoinLocalModeError verifies that Join returns an error for a local-mode manager
+// since Join is only supported for multi-node background managers.
+func TestBackgroundManagerJoinLocalModeError(t *testing.T) {
 	ctx := base.TestCtx(t)
 	process := &ResumableMockProcess{}
-	mgr := &BackgroundManager[map[string]any]{
-		name:       "test-resume-local-mgr",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:       "test-join-local-mgr",
 		Process:    process,
 		terminator: base.NewSafeTerminator(),
 		// no clusterAwareOptions → local mode
 	}
 
-	err := mgr.Resume(ctx)
+	err := mgr.Join(ctx)
 	require.Error(t, err)
 }
 
@@ -719,7 +734,7 @@ func TestBackgroundManagerUpdateDatabaseStateRunning(t *testing.T) {
 	var dbStateCalls []bool
 	var mu sync.Mutex
 
-	mgr := &BackgroundManager[map[string]any]{
+	mgr := &BackgroundManager[MockProcessOptions]{
 		name:    "test-update-db-state-running",
 		Process: &MockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -737,7 +752,7 @@ func TestBackgroundManagerUpdateDatabaseStateRunning(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, mgr.Start(ctx, nil))
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 	defer func() { assert.NoError(t, mgr.Stop(ctx)) }()
 
 	// UpdateStatusClusterAware is called synchronously at the end of Start, so by the time
@@ -761,7 +776,7 @@ func TestBackgroundManagerUpdateDatabaseStateOnCompletion(t *testing.T) {
 
 	calledWithFalse := make(chan struct{}, 1)
 
-	mgr := &BackgroundManager[map[string]any]{
+	mgr := &BackgroundManager[MockProcessOptions]{
 		name:    "test-update-db-state-done",
 		Process: &MockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -782,7 +797,7 @@ func TestBackgroundManagerUpdateDatabaseStateOnCompletion(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, mgr.Start(ctx, nil))
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 
 	// Stopping the manager causes the run goroutine to exit, which transitions the state to
 	// Stopped and then calls UpdateStatusClusterAware — which must call updateDatabaseState(false).
@@ -797,25 +812,25 @@ func TestBackgroundManagerUpdateDatabaseStateOnCompletion(t *testing.T) {
 	base.RequireChanRecvWithTimeout(t, calledWithFalse, 5*time.Second)
 }
 
-// TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenNotRunning verifies that Resume calls
+// TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenNotRunning verifies that Join calls
 // updateDatabaseState(false) when the cluster has no status document (not running).
-func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenNotRunning(t *testing.T) {
+func TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenNotRunning(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-db-state-not-running")
+	metaKeys := base.NewMetadataKeys("test-join-db-state-not-running")
 
 	var dbStateCalls []bool
 	var mu sync.Mutex
 
-	mgr := &BackgroundManager[map[string]any]{
-		name:    "test-resume-db-state-not-running",
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:    "test-join-db-state-not-running",
 		Process: &ResumableMockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
-			processSuffix: "resume-db-state-not-running",
+			processSuffix: "join-db-state-not-running",
 			multiNode:     true,
 		},
 		terminator: base.NewSafeTerminator(),
@@ -827,43 +842,44 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenNotRunning(t *testin
 		},
 	}
 
-	// No status doc exists → Resume must return errBackgroundManagerStatusNotRunning.
-	err := mgr.Resume(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	// No status doc exists → Join must return errBackgroundManagerStatusNotRunning.
+	err := mgr.Join(ctx)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	mu.Lock()
 	calls := make([]bool, len(dbStateCalls))
 	copy(calls, dbStateCalls)
 	mu.Unlock()
 
-	require.Len(t, calls, 1, "expected exactly one updateDatabaseState call from Resume")
+	require.Len(t, calls, 1, "expected exactly one updateDatabaseState call from Join")
 	require.False(t, calls[0], "expected updateDatabaseState(false) when cluster is not running")
 }
 
-// TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped verifies that Resume calls
+// TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenStopped verifies that Join calls
 // updateDatabaseState(false) when the cluster state is stopped (not running).
-func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped(t *testing.T) {
+func TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenStopped(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-db-state-stopped")
+	metaKeys := base.NewMetadataKeys("test-join-db-state-stopped")
 
 	clusterOpts := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "resume-db-state-stopped",
+		processSuffix: "join-db-state-stopped",
 		multiNode:     true,
 	}
 
 	// Start and then stop a manager so the cluster status doc shows Stopped.
-	starter := &BackgroundManager[map[string]any]{
-		name:                "test-resume-db-state-stopped-starter",
+	starter := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-db-state-stopped-starter",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
-	require.NoError(t, starter.Start(ctx, map[string]any{"key": "value"}))
+	require.NoError(t, starter.Start(ctx, MockProcessOptions{Key: "value"}))
 	require.NoError(t, starter.Stop(ctx))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		rawStatus, err := starter.GetStatus(ctx)
@@ -879,8 +895,8 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped(t *testing.T
 	// A fresh manager observing the same (stopped) cluster state should call updateDatabaseState(false).
 	var dbStateCalls []bool
 	var mu sync.Mutex
-	observer := &BackgroundManager[map[string]any]{
-		name:                "test-resume-db-state-stopped-observer",
+	observer := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-db-state-stopped-observer",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
@@ -892,7 +908,7 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenStopped(t *testing.T
 		},
 	}
 
-	err := observer.Resume(ctx)
+	err := observer.Join(ctx)
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -911,7 +927,7 @@ type immediateCallbackProcess struct {
 	MockProcess
 }
 
-func (m *immediateCallbackProcess) Run(ctx context.Context, _ map[string]any, cb updateStatusCallbackFunc, _ *base.SafeTerminator) error {
+func (m *immediateCallbackProcess) Run(ctx context.Context, _ MockProcessOptions, cb updateStatusCallbackFunc, _ *base.SafeTerminator) error {
 	m.lock.Lock()
 	m.RunCalled = true
 	m.lock.Unlock()
@@ -923,9 +939,9 @@ func (m *immediateCallbackProcess) Run(ctx context.Context, _ map[string]any, cb
 
 // newTestManagerWithStateDoc returns a multi-node BackgroundManager whose updateDatabaseState is wired
 // to a DatabaseStateMgr backed by the given metadata store.
-func newTestManagerWithStateDoc(metadataStore base.DataStore, metaKeys *base.MetadataKeys, suffix string, proc BackgroundManagerProcessI[map[string]any]) (*BackgroundManager[map[string]any], *DatabaseStateMgr) {
+func newTestManagerWithStateDoc(metadataStore base.DataStore, metaKeys *base.MetadataKeys, suffix string, proc BackgroundManagerProcessI[MockProcessOptions]) (*BackgroundManager[MockProcessOptions], *DatabaseStateMgr) {
 	dbStateMgr := NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), nil)
-	mgr := &BackgroundManager[map[string]any]{
+	mgr := &BackgroundManager[MockProcessOptions]{
 		name:    "test-" + suffix,
 		Process: proc,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -970,7 +986,7 @@ func TestUpdateDatabaseStateRapidCycles(t *testing.T) {
 		metaKeys := base.NewMetadataKeys(fmt.Sprintf("rapid-cycle-%d", i))
 		mgr, dbStateMgr := newTestManagerWithStateDoc(metadataStore, metaKeys, "rapid", &ResumableMockProcess{})
 
-		require.NoError(t, mgr.Start(ctx, nil))
+		require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 		assertResyncRunningEventually(t, dbStateMgr, true, ctx)
 
 		require.NoError(t, mgr.Stop(ctx))
@@ -993,7 +1009,7 @@ func TestUpdateDatabaseStateProcessCompletesBeforeStartReturns(t *testing.T) {
 
 	// immediateCallbackProcess returns from Run immediately, making the goroutine cleanup race
 	// with the synchronous UpdateStatusClusterAware call at the end of Start.
-	require.NoError(t, mgr.Start(ctx, nil))
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 
 	// Regardless of ordering, the final state must settle to false because the process completed.
 	assertResyncRunningEventually(t, dbStateMgr, false, ctx)
@@ -1013,9 +1029,9 @@ func TestUpdateDatabaseStateConcurrentManagersSharedStateDoc(t *testing.T) {
 	dbStateMgr := NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), nil)
 
 	const numNodes = 5
-	managers := make([]*BackgroundManager[map[string]any], numNodes)
+	managers := make([]*BackgroundManager[MockProcessOptions], numNodes)
 	for i := range numNodes {
-		managers[i] = &BackgroundManager[map[string]any]{
+		managers[i] = &BackgroundManager[MockProcessOptions]{
 			name:    fmt.Sprintf("test-concurrent-shared-%d", i),
 			Process: &ResumableMockProcess{},
 			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -1037,7 +1053,7 @@ func TestUpdateDatabaseStateConcurrentManagersSharedStateDoc(t *testing.T) {
 		startWG.Add(1)
 		go func(i int) {
 			defer startWG.Done()
-			assert.NoError(t, managers[i].Start(ctx, nil))
+			assert.NoError(t, managers[i].Start(ctx, MockProcessOptions{}))
 		}(i)
 	}
 	startWG.Wait()
@@ -1072,35 +1088,35 @@ func TestUpdateDatabaseStateConcurrentManagersSharedStateDoc(t *testing.T) {
 	assertResyncRunningEventually(t, dbStateMgr, false, ctx)
 }
 
-// TestUpdateDatabaseStateResumeOverwritesRunningState exercises a design-level race: a node whose
-// Resume fails (stale cluster state) calls updateDatabaseState(false) and can overwrite the true
+// TestUpdateDatabaseStateJoinOverwritesRunningState exercises a design-level race: a node whose
+// Join fails (stale cluster state) calls updateDatabaseState(false) and can overwrite the true
 // written by a concurrently running node. This verifies that the system eventually self-corrects via
 // the DatabaseStateMgr polling loop.
-func TestUpdateDatabaseStateResumeOverwritesRunningState(t *testing.T) {
+func TestUpdateDatabaseStateJoinOverwritesRunningState(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-overwrite")
+	metaKeys := base.NewMetadataKeys("test-join-overwrite")
 
 	// Manager A is the running node.
-	mgrA, dbStateMgr := newTestManagerWithStateDoc(metadataStore, metaKeys, "resume-overwrite", &ResumableMockProcess{})
-	require.NoError(t, mgrA.Start(ctx, nil))
+	mgrA, dbStateMgr := newTestManagerWithStateDoc(metadataStore, metaKeys, "join-overwrite", &ResumableMockProcess{})
+	require.NoError(t, mgrA.Start(ctx, MockProcessOptions{}))
 	defer func() { assert.NoError(t, mgrA.Stop(ctx)) }()
 
 	assertResyncRunningEventually(t, dbStateMgr, true, ctx)
 
-	// Manager B is an observer that has a stale cluster status. We simulate Resume seeing
-	// "not running" by stopping the cluster state doc before B calls Resume.
+	// Manager B is an observer that has a stale cluster status. We simulate Join seeing
+	// "not running" by stopping the cluster state doc before B calls Join.
 	// In practice this can happen when B reads the status doc during a brief window between
 	// an old run completing and a new one starting.
-	mgrB := &BackgroundManager[map[string]any]{
-		name:    "test-resume-overwrite-observer",
+	mgrB := &BackgroundManager[MockProcessOptions]{
+		name:    "test-join-overwrite-observer",
 		Process: &ResumableMockProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
-			metaKeys:      base.NewMetadataKeys("test-resume-overwrite-stale"), // different key → no status doc
-			processSuffix: "resume-overwrite-stale",
+			metaKeys:      base.NewMetadataKeys("test-join-overwrite-stale"), // different key → no status doc
+			processSuffix: "join-overwrite-stale",
 			multiNode:     true,
 		},
 		terminator: base.NewSafeTerminator(),
@@ -1110,9 +1126,10 @@ func TestUpdateDatabaseStateResumeOverwritesRunningState(t *testing.T) {
 		},
 	}
 
-	// B's Resume will see no cluster status doc → errBackgroundManagerStatusNotRunning → callUpdateDatabaseState(false).
-	err := mgrB.Resume(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	// B's Join will see no cluster status doc → errBackgroundManagerStatusNotRunning → callUpdateDatabaseState(false).
+	err := mgrB.Join(ctx)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	// B wrote false to the shared state doc, even though A is still running.
 	// A's next UpdateStatusClusterAware call must restore true.
@@ -1177,26 +1194,26 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 	t.Logf("handler fired %d times", handlerFires.Load())
 }
 
-func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
+func TestBackgroundManagerJoinConcurrentWhileStopping(t *testing.T) {
 	t.Skip("this test might not be valid pending CBG-5435")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-race")
+	metaKeys := base.NewMetadataKeys("test-join-race")
 
 	clusterOpts := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "resume-race",
+		processSuffix: "join-race",
 		multiNode:     true,
 	}
 
-	startOptions := map[string]any{"key": "value"}
+	startOptions := MockProcessOptions{Key: "value"}
 
 	// mgr1 is the "originating" node that starts the process and then stops it.
-	mgr1 := &BackgroundManager[map[string]any]{
-		name:                "test-resume-race-mgr1",
+	mgr1 := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-race-mgr1",
 		Process:             &ResumableMockProcess{},
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
@@ -1206,49 +1223,49 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 
-	// Ensure the running state is persisted to the cluster so that Resume callers can see it.
+	// Ensure the running state is persisted to the cluster so that Join callers can see it.
 	require.NoError(t, mgr1.UpdateStatusClusterAware(ctx))
 
-	const numResumeCallers = 10
+	const numJoinCallers = 10
 
-	// Build a fleet of managers that will all call Resume concurrently.
-	resumeManagers := make([]*BackgroundManager[map[string]any], numResumeCallers)
-	for i := range numResumeCallers {
-		resumeManagers[i] = &BackgroundManager[map[string]any]{
-			name:                fmt.Sprintf("test-resume-race-caller%d", i),
+	// Build a fleet of managers that will all call Join concurrently.
+	joinManagers := make([]*BackgroundManager[MockProcessOptions], numJoinCallers)
+	for i := range numJoinCallers {
+		joinManagers[i] = &BackgroundManager[MockProcessOptions]{
+			name:                fmt.Sprintf("test-join-race-caller%d", i),
 			Process:             &ResumableMockProcess{},
 			clusterAwareOptions: clusterOpts,
 			terminator:          base.NewSafeTerminator(),
 		}
 	}
 
-	// Use a barrier so all goroutines fire Resume at the same instant that Stop is called.
+	// Use a barrier so all goroutines fire Join at the same instant that Stop is called.
 	var barrier sync.WaitGroup
-	barrier.Add(numResumeCallers + 1) // +1 for the Stop goroutine
+	barrier.Add(numJoinCallers + 1) // +1 for the Stop goroutine
 
-	// resumeErrors[i] holds the error returned by resumeManagers[i].Resume.
-	resumeErrors := make([]error, numResumeCallers)
+	// joinErrors[i] holds the error returned by joinManagers[i].Join.
+	joinErrors := make([]error, numJoinCallers)
 
-	var resumeWG sync.WaitGroup
-	for i := range numResumeCallers {
-		resumeWG.Add(1)
+	var joinWG sync.WaitGroup
+	for i := range numJoinCallers {
+		joinWG.Add(1)
 		go func(i int) {
-			defer resumeWG.Done()
+			defer joinWG.Done()
 			barrier.Done()
 			barrier.Wait()
-			resumeErrors[i] = resumeManagers[i].Resume(ctx)
+			joinErrors[i] = joinManagers[i].Join(ctx)
 		}(i)
 	}
 
-	// Stop mgr1 concurrently with the Resume calls.
+	// Stop mgr1 concurrently with the Join calls.
 	go func() {
 		barrier.Done()
 		barrier.Wait()
 		assert.NoError(t, mgr1.Stop(ctx))
 	}()
 
-	// Wait for all Resume callers to finish before reading their results.
-	resumeWG.Wait()
+	// Wait for all Join callers to finish before reading their results.
+	joinWG.Wait()
 
 	// Wait for mgr1 to reach a terminal state.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1260,24 +1277,24 @@ func TestBackgroundManagerResumeConcurrentWhileStopping(t *testing.T) {
 		}, state)
 	}, 10*time.Second, 100*time.Millisecond)
 
-	// Stop any resume callers that managed to start running.
-	for i := range numResumeCallers {
-		if resumeErrors[i] == nil {
-			// Resume succeeded → process may be running; stop it.
-			_ = resumeManagers[i].Stop(ctx)
+	// Stop any join callers that managed to start running.
+	for i := range numJoinCallers {
+		if joinErrors[i] == nil {
+			// Join succeeded → process may be running; stop it.
+			_ = joinManagers[i].Stop(ctx)
 		}
 	}
 
-	// Wait for all resume callers that started to reach a terminal state.
+	// Wait for all join callers that started to reach a terminal state.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		for i := range numResumeCallers {
-			if resumeErrors[i] != nil {
-				// Resume returned an error — no goroutine running, nothing to wait for.
+		for i := range numJoinCallers {
+			if joinErrors[i] != nil {
+				// Join returned an error — no goroutine running, nothing to wait for.
 				continue
 			}
-			state := resumeManagers[i].GetRunState()
+			state := joinManagers[i].GetRunState()
 			if state == "" {
-				// Resume returned nil but the process never started: the cluster transitioned
+				// Join returned nil but the process never started: the cluster transitioned
 				// out of "running" before this node called start(). Nothing to wait for.
 				continue
 			}
@@ -1298,7 +1315,7 @@ func TestBackgroundManagerStartAfterCompletedSucceeds(t *testing.T) {
 	metadataStore := testBucket.DefaultDataStore(ctx)
 	metaKeys := base.NewMetadataKeys("test-start-after-complete")
 
-	mgr := &BackgroundManager[map[string]any]{
+	mgr := &BackgroundManager[MockProcessOptions]{
 		name:    "test-start-after-complete-mgr",
 		Process: &immediateCallbackProcess{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
@@ -1311,10 +1328,10 @@ func TestBackgroundManagerStartAfterCompletedSucceeds(t *testing.T) {
 	}
 
 	// Start and wait for the process to run to completion.
-	require.NoError(t, mgr.Start(ctx, nil))
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
 
-	err := mgr.Start(ctx, nil)
+	err := mgr.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
 }
 
@@ -1337,51 +1354,51 @@ func (s *statsMockProcess) LastPreviousStatus() []byte {
 	return s.lastPreviousStatus
 }
 
-// TestBackgroundManagerResumePreservesPreviousStatus verifies that when a multi-node manager Resume()s,
+// TestBackgroundManagerJoinPreservesPreviousStatus verifies that when a multi-node manager Join()s,
 // it preserves and passes the previous cluster status to the process GetProcessStatus call,
 // allowing it to merge/preserve stats.
-func TestBackgroundManagerResumePreservesPreviousStatus(t *testing.T) {
+func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-resume-preserve-status")
+	metaKeys := base.NewMetadataKeys("test-join-preserve-status")
 
 	clusterOpts := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "resume-preserve-status",
+		processSuffix: "join-preserve-status",
 		multiNode:     true,
 	}
 
 	process1 := &statsMockProcess{}
-	mgr1 := &BackgroundManager[map[string]any]{
-		name:                "test-resume-mgr1",
+	mgr1 := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-mgr1",
 		Process:             process1,
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
 
-	require.NoError(t, mgr1.Start(ctx, nil))
+	require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
 	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
 
 	// Ensure the running status is written to the cluster.
 	require.NoError(t, mgr1.UpdateStatusClusterAware(ctx))
 
 	process2 := &statsMockProcess{}
-	mgr2 := &BackgroundManager[map[string]any]{
-		name:                "test-resume-mgr2",
+	mgr2 := &BackgroundManager[MockProcessOptions]{
+		name:                "test-join-mgr2",
 		Process:             process2,
 		clusterAwareOptions: clusterOpts,
 		terminator:          base.NewSafeTerminator(),
 	}
 
-	require.NoError(t, mgr2.Resume(ctx))
+	require.NoError(t, mgr2.Join(ctx))
 	RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
 
 	// Assert that process2 received the previous status in its GetProcessStatus call,
-	// which is required to avoid dropping stats on resume.
-	require.NotEmpty(t, process2.LastPreviousStatus(), "expected previous status to be passed to GetProcessStatus on resume")
+	// which is required to avoid dropping stats on join.
+	require.NotEmpty(t, process2.LastPreviousStatus(), "expected previous status to be passed to GetProcessStatus on join")
 
 	// Ensure we can unmarshal it to verify it actually contains the status.
 	var clusterStatus struct {
@@ -1395,84 +1412,455 @@ func TestBackgroundManagerResumePreservesPreviousStatus(t *testing.T) {
 	require.NoError(t, mgr2.Stop(ctx))
 }
 
-func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
+// TestBackgroundManagerMultiNodePollingConverges verifies that when another node moves the shared
+// cluster status to a terminal state, a still-running node that only observes this via polling
+// converges to that same state - without overwriting it.
+func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
+	tests := []struct {
+		name          string
+		externalState BackgroundProcessState
+	}{
+		{name: "Completed", externalState: BackgroundProcessStateCompleted},
+		{name: "Error", externalState: BackgroundProcessStateError},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			ctx := base.TestCtx(t)
+			defer testBucket.Close(ctx)
+
+			metadataStore := testBucket.DefaultDataStore(ctx)
+			metaKeys := base.NewMetadataKeys("test-polling-converge")
+
+			clusterOpts := &ClusterAwareBackgroundManagerOptions{
+				metadataStore: metadataStore,
+				metaKeys:      metaKeys,
+				processSuffix: "polling-converge",
+				multiNode:     true,
+			}
+
+			process1 := &MockProcess{}
+			mgr1 := &BackgroundManager[MockProcessOptions]{
+				name:                "mgr1",
+				Process:             process1,
+				clusterAwareOptions: clusterOpts,
+				terminator:          base.NewSafeTerminator(),
+			}
+			process2 := &MockProcess{}
+			mgr2 := &BackgroundManager[MockProcessOptions]{
+				name:                "mgr2",
+				Process:             process2,
+				clusterAwareOptions: clusterOpts,
+				terminator:          base.NewSafeTerminator(),
+			}
+
+			// Start both managers. Both should run.
+			require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
+			defer func() { _ = mgr1.Stop(ctx) }()
+
+			require.NoError(t, mgr2.Start(ctx, MockProcessOptions{}))
+			defer func() { _ = mgr2.Stop(ctx) }()
+
+			RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
+			RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
+
+			// Simulate another node reaching a terminal state by manually writing it to the shared
+			// cluster status document.
+			docID := clusterOpts.StatusDocID()
+			_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
+				var output map[string]json.RawMessage
+				if current != nil {
+					_ = base.JSONUnmarshal(current, &output)
+				} else {
+					output = make(map[string]json.RawMessage)
+				}
+
+				status := BackgroundManagerStatus{
+					State:     test.externalState,
+					StartTime: time.Now(),
+				}
+				statusBytes, err := base.JSONMarshal(status)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				output["status"] = statusBytes
+				output["meta"] = json.RawMessage("null")
+
+				outputBytes, err := base.JSONMarshal(output)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				return outputBytes, nil, false, nil
+			})
+			require.NoError(t, err)
+
+			// Wait for mgr2's polling loop to detect the terminal status and close its terminator.
+			require.Eventually(t, func() bool {
+				return mgr2.terminator.IsClosed()
+			}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects "+string(test.externalState)+" status")
+
+			assert.Equal(t, test.externalState, mgr2.GetRunState(), "mgr2 should adopt the real external state")
+
+			// Verify that the status in the bucket remains as set externally and is not overwritten by mgr2.
+			rawStatus, err := mgr2.GetStatus(ctx)
+			require.NoError(t, err)
+			var status BackgroundManagerStatus
+			require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+			assert.Equal(t, test.externalState, status.State, "expected the bucket status to remain "+string(test.externalState)+" and NOT be overwritten")
+		})
+	}
+}
+
+// TestBackgroundManagerMultiNodeStopConvergesToStopped verifies that stopping a multi-node process
+// via one manager brings every manager - including ones that only observe the stop by polling the
+// shared cluster status - to Stopped, both locally and in the persisted cluster status.
+func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-polling-overwrite")
+	metaKeys := base.NewMetadataKeys("test-multi-node-stop")
 
-	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+	options := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "polling-overwrite",
+		processSuffix: "multi-node-stop",
 		multiNode:     true,
 	}
 
 	process1 := &MockProcess{}
-	mgr1 := &BackgroundManager[map[string]any]{
+	mgr1 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr1",
 		Process:             process1,
-		clusterAwareOptions: clusterOpts,
+		clusterAwareOptions: options,
 		terminator:          base.NewSafeTerminator(),
 	}
 
 	process2 := &MockProcess{}
-	mgr2 := &BackgroundManager[map[string]any]{
+	mgr2 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr2",
 		Process:             process2,
-		clusterAwareOptions: clusterOpts,
+		clusterAwareOptions: options,
 		terminator:          base.NewSafeTerminator(),
 	}
 
 	// Start both managers. Both should run.
-	require.NoError(t, mgr1.Start(ctx, nil))
+	require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
 	defer func() { _ = mgr1.Stop(ctx) }()
 
-	require.NoError(t, mgr2.Start(ctx, nil))
+	require.NoError(t, mgr2.Start(ctx, MockProcessOptions{}))
 	defer func() { _ = mgr2.Stop(ctx) }()
 
-	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
-	RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
+		assert.Equal(c, BackgroundProcessStateRunning, mgr2.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
 
-	// Simulate mgr1 completing successfully by manually writing a completed status to the cluster status document.
-	docID := clusterOpts.StatusDocID()
-	_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
-		var output map[string]json.RawMessage
-		if current != nil {
-			_ = base.JSONUnmarshal(current, &output)
-		} else {
-			output = make(map[string]json.RawMessage)
-		}
+	// Only mgr1 receives Stop(); mgr2 only learns about it via status polling.
+	require.NoError(t, mgr1.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateStopped, mgr1.GetRunState())
+		assert.Equal(c, BackgroundProcessStateStopped, mgr2.GetRunState())
+	}, 10*time.Second, 100*time.Millisecond)
 
-		status := BackgroundManagerStatus{
-			State:     BackgroundProcessStateCompleted,
-			StartTime: time.Now(),
-		}
-		statusBytes, err := base.JSONMarshal(status)
-		if err != nil {
-			return nil, nil, false, err
-		}
-		output["status"] = statusBytes
-		output["meta"] = json.RawMessage("null")
+	// RequireBackgroundManagerState reads the shared cluster doc via GetStatus, and with two
+	// managers able to write it, an Eventually-style wait could observe a transient correct value
+	// before it's overwritten and pass regardless. GetRunState has no such race, and once both
+	// managers are terminal their status pollers have stopped writing, so a single cluster read
+	// afterwards is stable.
+	clusterState, err := mgr1.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, BackgroundProcessStateStopped, clusterState)
+}
 
-		outputBytes, err := base.JSONMarshal(output)
-		if err != nil {
-			return nil, nil, false, err
-		}
-		return outputBytes, nil, false, nil
+// TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning reproduces the case where Init succeeds and
+// Process.Run is launched in its own goroutine, but the subsequent persist of the initial cluster status fails.
+// Start() returns that error to the caller, even though Run is already executing in the background.
+func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T) {
+
+	t.Skip("This test will pass after the fix in CBG-5660")
+
+	testBucket := base.GetTestBucket(t)
+	ctx := context.Background()
+	defer testBucket.Close(ctx)
+
+	metaKeys := base.NewMetadataKeys("test-start-persist-fail")
+	processSuffix := "multi-persist-fail"
+	// Same key start()'s final updateMultiNodeClusterAwareStatus call will write to.
+	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
+
+	// The first Update call for statusDocID fails outright, so start() sees an error and returns it, exactly
+	// like a transient bucket blip would. Every call after that behaves normally, so the manager can be reused
+	// as-is for the recovery Start() below without needing a different key or a fresh metadataStore.
+	var updateCount atomic.Int32
+	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{
+		PreUpdateCallback: func(key string) error {
+			if key == statusDocID && updateCount.Add(1) == 1 {
+				return errors.New("simulated write failure")
+			}
+			return nil
+		},
 	})
-	require.NoError(t, err)
+	leakyMetadataStore := leakyBucket.DefaultDataStore(ctx)
 
-	// Wait for mgr2's polling loop to detect the completed status and close its terminator.
-	require.Eventually(t, func() bool {
-		return mgr2.terminator.IsClosed()
-	}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects completed status")
+	process := &MockProcess{}
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name: "persist-fail-mgr",
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: leakyMetadataStore,
+			metaKeys:      metaKeys,
+			processSuffix: processSuffix,
+			multiNode:     true,
+		},
+		Process: process,
+	}
 
-	// Verify that the status in the bucket remains completed and is not overwritten by mgr2.
-	rawStatus, err := mgr2.GetStatus(ctx)
-	require.NoError(t, err)
-	var status BackgroundManagerStatus
-	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
-	assert.Equal(t, BackgroundProcessStateCompleted, status.State, "expected the bucket status to remain completed and NOT be overwritten")
+	// Start() reports failure to the caller...
+	err := mgr.Start(ctx, MockProcessOptions{})
+	require.Error(t, err)
+
+	// ...but Process.Run was already launched before that failure occurred, so the manager should not be left
+	// reporting Running forever - it should reflect the failure as an Error state, same as the Process.Run-error
+	// path does via SetError.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, BackgroundProcessStateRunning, mgr.GetRunState())
+		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(t, mgr.Stop(ctx))
+}
+
+// TestUpdateStatusClusterAware checks that UpdateStatusClusterAware surfaces the underlying bucket-closed
+// error for single-node and multi-node managers.
+func TestUpdateStatusClusterAware(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-update-status-closed-bucket")
+
+	testCases := []struct {
+		name                string
+		clusterAwareOptions *ClusterAwareBackgroundManagerOptions
+	}{
+		{
+			name: "single node",
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				metadataStore: metadataStore,
+				metaKeys:      metaKeys,
+				processSuffix: "update-status-closed-bucket-single-node",
+			},
+		},
+		{
+			name: "multi node",
+			clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+				metadataStore: metadataStore,
+				metaKeys:      metaKeys,
+				processSuffix: "update-status-closed-bucket-multi-node",
+				multiNode:     true,
+			},
+		},
+	}
+
+	testBucket.Close(ctx)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			mgr := &BackgroundManager[MockProcessOptions]{
+				name:                testCase.name + "-mgr",
+				Process:             &MockProcess{},
+				clusterAwareOptions: testCase.clusterAwareOptions,
+				terminator:          base.NewSafeTerminator(),
+			}
+
+			err := mgr.UpdateStatusClusterAware(ctx)
+			if base.TestUseCouchbaseServer() {
+				require.ErrorIs(t, err, gocb.ErrShutdown)
+			} else {
+				require.ErrorIs(t, err, rosmar.ErrBucketClosed)
+			}
+		})
+	}
+}
+
+// TestBackgroundManagerConcurrentStopStartRace stress-tests starting, stopping, and updating status
+// concurrently across multiple goroutines to verify there are no deadlocks, panics, or race conditions.
+func TestBackgroundManagerConcurrentStopStartRace(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-stop-start-race")
+
+	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		processSuffix: "stop-start-race",
+		multiNode:     true,
+	}
+
+	process := &MockProcess{}
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:                "race-mgr",
+		Process:             process,
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	// Depending on how the goroutines below interleave, the manager can be left running or mid-stop when
+	// they finish, which would leave its goroutines using the bucket after it has been closed. Registered
+	// after the testBucket.Close defer above, so it runs before the bucket is closed.
+	defer func() {
+		terminalStates := []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			// Stop is a no-op if the process is already stopped or stopping.
+			assert.NoError(c, mgr.Stop(ctx))
+			assert.Contains(c, terminalStates, mgr.GetRunState())
+			// Also wait for the persisted status, which the process goroutine writes after transitioning
+			// to a terminal state, to ensure it is done with the bucket.
+			rawStatus, err := mgr.GetStatus(ctx)
+			if !assert.NoError(c, err) {
+				return
+			}
+			var status BackgroundManagerStatus
+			if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
+				return
+			}
+			assert.Contains(c, terminalStates, status.State, "BackgroundManager did not reach a terminal state: %s", string(rawStatus))
+		}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+	}()
+
+	numGoroutines := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines * 3)
+
+	// Worker group 1: Concurrently start
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.Start(ctx, MockProcessOptions{})
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	// Worker group 2: Concurrently stop
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.Stop(ctx)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	// Worker group 3: Concurrently update status
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.UpdateStatusClusterAware(ctx)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+// TestUpdateHeartbeatDocClusterAwareTransientError reproduces a bug in UpdateHeartbeatDocClusterAware: the
+// grace-period check compares an elapsed time.Duration (nanoseconds) against
+// (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs), which is an untyped
+// constant representing *seconds* (29) that is never multiplied by time.Second. Since any measurable elapsed
+// time comfortably exceeds 29 nanoseconds, a single transient heartbeat write error is treated as if the
+// ~29 second grace period had already elapsed, and the error is propagated (causing the caller to call
+// SetError and terminate the background process) instead of being tolerated.
+//
+// The two subtests differ in how the manager reaches the "just had a successful heartbeat" precondition:
+// "already running" sets lastSuccessfulHeartbeatUnix directly, while "startup" goes through mgr.Start, which
+// exercises markStart recording its own heartbeat-doc write as the initial success (lastSuccessfulHeartbeatUnix
+// otherwise defaults to zero, so a transient error on the very first tick after Start would look like ~56
+// years had passed since the last success).
+func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
+	tests := []struct {
+		name string
+		// setup gets the manager into a state where a heartbeat has just succeeded, before the injected error
+		// is armed.
+		setup func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string)
+	}{
+		{
+			name: "already running",
+			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string) {
+				// Write the heartbeat doc up front, as markStart would, so a heartbeat update that isn't
+				// intercepted by the injected error can succeed for real against the underlying bucket.
+				require.NoError(t, metadataStore.SetRaw(ctx, heartbeatDocID, BackgroundManagerHeartbeatExpirySecs, nil, []byte("{}")))
+				mgr.terminator = base.NewSafeTerminator()
+				mgr.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
+			},
+		},
+		{
+			name: "startup",
+			setup: func(t *testing.T, ctx context.Context, mgr *BackgroundManager[MockProcessOptions], metadataStore base.DataStore, heartbeatDocID string) {
+				// Start performs the real (uninjected) WriteCas that writes the heartbeat doc for the first
+				// time; this must count as the most recent successful heartbeat even though
+				// UpdateHeartbeatDocClusterAware itself has not yet been called.
+				require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+				t.Cleanup(func() { _ = mgr.Stop(ctx) })
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			ctx := base.TestCtx(t)
+
+			metaKeys := base.NewMetadataKeys("test-heartbeat-transient-error")
+			processSuffix := "heartbeat-transient-error"
+			heartbeatDocID := metaKeys.BackgroundProcessHeartbeatPrefix(processSuffix)
+
+			var injectError atomic.Bool
+			leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
+				GetAndTouchRawCallback: func(key string) error {
+					if key == heartbeatDocID && injectError.Load() {
+						return fmt.Errorf("injected transient heartbeat write error")
+					}
+					return nil
+				},
+			})
+			defer leakyBucket.Close(ctx)
+			metadataStore := leakyBucket.DefaultDataStore(ctx)
+
+			mgr := &BackgroundManager[MockProcessOptions]{
+				name:    "test-heartbeat-transient-error-mgr",
+				Process: &MockProcess{},
+				clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+					metadataStore: metadataStore,
+					metaKeys:      metaKeys,
+					processSuffix: processSuffix,
+				},
+			}
+
+			test.setup(t, ctx, mgr, metadataStore, heartbeatDocID)
+
+			injectError.Store(true)
+			err := mgr.UpdateHeartbeatDocClusterAware(ctx)
+			require.NoError(t, err, "a transient heartbeat write error should be tolerated within the grace period")
+
+			// Once the injected error clears, the next heartbeat should succeed for real and record a new success time.
+			injectError.Store(false)
+			require.NoError(t, mgr.UpdateHeartbeatDocClusterAware(ctx))
+		})
+	}
 }

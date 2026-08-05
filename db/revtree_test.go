@@ -91,7 +91,7 @@ type BranchSpec struct {
 func getMultiBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
 
 	if unconflictedBranchNumRevs < 1 {
-		panic(fmt.Sprintf("Must have at least 1 unconflictedBranchNumRevs"))
+		panic("Must have at least 1 unconflictedBranchNumRevs")
 	}
 
 	winningBranchDigest := "winning"

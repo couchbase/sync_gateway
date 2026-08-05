@@ -14,7 +14,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -411,7 +410,7 @@ func getMetadataPurgeInterval(ctx context.Context, store CouchbaseBucketStore) (
 	}
 
 	// Cluster-wide settings
-	uri = fmt.Sprintf("/settings/autoCompaction")
+	uri = "/settings/autoCompaction"
 	clusterPurgeInterval, err := retrievePurgeInterval(ctx, store, uri)
 	if clusterPurgeInterval > 0 || err != nil {
 		return clusterPurgeInterval, err
@@ -439,7 +438,7 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri
 	if statusCode == http.StatusForbidden {
 		WarnfCtx(ctx, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if statusCode != http.StatusOK {
-		return 0, errors.New(fmt.Sprintf("failed with status code, %d, statusCode", statusCode))
+		return 0, RedactErrorf("failed to retrieve purge interval from %s: status code %d", UD(uri), statusCode)
 	}
 
 	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
