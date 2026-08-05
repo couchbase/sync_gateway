@@ -90,9 +90,8 @@ func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID str
 
 	// Next returns nil for both a clean end-of-stream and a mid-stream abort, so consult Err to tell
 	// them apart. A truncated scan must never look clean, or the orchestrator would
-	// SetMigrationComplete with in-scope docs still on the fallback. ErrScanCancelled is the benign
-	// clean-close sentinel (surfaced only after Close), not a failure.
-	if scanErr := iter.Err(); scanErr != nil && !errors.Is(scanErr, sgbucket.ErrScanCancelled) {
+	// SetMigrationComplete with in-scope docs still on the fallback.
+	if scanErr := iter.Err(); scanErr != nil {
 		// A dropped fallback collection can never be scanned again - fail the whole migration.
 		if base.IsCollectionOutdatedError(scanErr) {
 			return int(stats.DocsUnknownPrefix.Load()), fmt.Errorf("metadata migration scan aborted: %w", scanErr)
@@ -128,7 +127,9 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 			return false, nil, 0
 		}
 		if err != nil {
-			return true, err, 0
+			// A dropped/recreated fallback collection is terminal - retrying here would
+			// spin on full KV timeouts forever.
+			return !base.IsCollectionOutdatedError(err), err, 0
 		}
 		var existing base.SyncSeqMigrationPill
 		if jsonErr := base.JSONUnmarshal(raw, &existing); jsonErr != nil || !existing.SGMetadataMigrationPill {
@@ -146,7 +147,7 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 				return false, mErr, 0
 			}
 			if _, wErr := ms.Fallback().WriteCas(ctx, seqKey, 0, cas, payload, 0); wErr != nil {
-				return true, wErr, 0
+				return !base.IsCollectionOutdatedError(wErr), wErr, 0
 			}
 			stats.SeqPoisonPillApplied.Add(1)
 		}

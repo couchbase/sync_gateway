@@ -285,8 +285,8 @@ func IsCollectionOutdatedError(err error) bool {
 	if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
 		return true
 	}
-	var timeoutErr *gocb.TimeoutError
-	if !errors.As(err, &timeoutErr) || len(timeoutErr.RetryReasons) == 0 {
+	timeoutErr, ok := errors.AsType[*gocb.TimeoutError](err)
+	if !ok || len(timeoutErr.RetryReasons) == 0 {
 		return false
 	}
 	// gocbcore dedupes RetryReasons, so this is a set comparison.
