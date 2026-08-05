@@ -256,20 +256,12 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions
 	// Determine index name, UUID, and existing definition (if any)
 	indexName, previousIndexUUID, existingDef := c.getIndexNameAndUUID(ctx, opts.IndexName, opts.PreviousIndexName)
 
-	// Skip if already up to date: CreateIndexEx always assigns a new UUID, and since
-	// PlanPIndexName embeds it, a no-op "update" would restart every PIndex/DCP feed on every
-	// node, not just this one joining. createCBGTIndex runs on every node startup.
-	//
-	// existingDef comes from the same manager.GetIndexDefs(true) call used to resolve
-	// previousIndexUUID above, so this doesn't add a new race: another node could still delete/
-	// replace the index between that read and the CreateIndex call below, in which case cbgt
-	// returns "index missing for update" - a string StartManager's tolerated-error checks don't
-	// recognize (only "already exists" and "concurrent index definition update" are), so this
-	// node's database would fail to come online. That race pre-dates this check.
+	// Skip index update if already up to date. Redundant updates assign new UUIDs, restarting
+	// all PIndexes/DCP feeds cluster-wide. A concurrent index deletion/replacement by another node
+	// may cause cbgt to return "index missing for update" and fail startup (pre-existing race).
 	if previousIndexUUID != "" && existingDef != nil &&
 		cbgtIndexDefUnchanged(existingDef, sourceType, c.sourceName, c.sourceUUID, sourceParams, opts.IndexType, indexParams, planParams) {
-		InfofCtx(ctx, KeyDCP, "cbgt index %q for db %q is already up to date, skipping redundant update", MD(indexName), MD(opts.DBName))
-		c.Manager.Kick("NewIndexesCreated")
+		InfofCtx(ctx, KeyDCP, "cbgt index %q for db %q is already up to date, was set on another node", MD(indexName), MD(opts.DBName))
 		return nil
 	}
 

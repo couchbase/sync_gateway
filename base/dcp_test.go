@@ -630,6 +630,72 @@ func TestCreateCBGTIndexIdempotent(t *testing.T) {
 	}
 }
 
+// TestCBGTPersistsParamsVerbatim verifies that CBGT preserves SourceParams/IndexParams
+// values verbatim through its config round-trip without dropping or defaulting fields.
+// This is critical for cbgtIndexDefUnchanged to reliably detect index definition changes.
+// Semantic equality helpers are used instead of raw string comparison because JSON key
+// order is not preserved during the CBGT config round-trip.
+func TestCBGTPersistsParamsVerbatim(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+	spec := bucket.BucketSpec
+	testDBName := "testDB"
+
+	cfg, err := newCfgSG(ctx, dataStore, "", false, 10*time.Millisecond)
+	require.NoError(t, err)
+
+	configGroup := "configGroup" + t.Name()
+	indexType := CBGTIndexTypeSyncGatewayImport + configGroup
+	cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{})
+
+	indexName, err := GenerateCBGTIndexName(testDBName, ShardedDCPFeedTypeImport)
+	require.NoError(t, err)
+
+	opts := ShardedDCPOptions{
+		DBName:        testDBName,
+		Bucket:        bucket,
+		NumPartitions: DefaultImportPartitions,
+		IndexType:     indexType,
+		IndexName:     indexName,
+		DestKey:       "testDestKey",
+		Collections:   CollectionNames{"scope1": {"collectionA", "collectionB"}},
+		EndSeqNos:     map[uint16]uint64{5: 100, 10: 200},
+	}
+
+	expectedSourceParams, err := cbgtFeedParams(ctx, opts)
+	require.NoError(t, err)
+	expectedIndexParams, err := cbgtIndexParams(opts.DestKey)
+	require.NoError(t, err)
+
+	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
+	require.NoError(t, err)
+	defer node.Manager.Stop()
+	require.NoError(t, node.StartManager(ctx, opts))
+
+	_, indexDefsMap, err := node.Manager.GetIndexDefs(true)
+	require.NoError(t, err)
+	require.Contains(t, maps.Keys(indexDefsMap), indexName)
+	indexDef := indexDefsMap[indexName]
+
+	// Verify semantic equality because CBGT does not preserve JSON key order during round-trip.
+	assert.True(t, SGFeedSourceParamsEqual(expectedSourceParams, indexDef.SourceParams), "cbgt should preserve SourceParams field values, with no defaulting: expected %s, got %s", expectedSourceParams, indexDef.SourceParams)
+	assert.True(t, SGFeedIndexParamsEqual(expectedIndexParams, indexDef.Params), "cbgt should preserve IndexParams field values, with no defaulting: expected %s, got %s", expectedIndexParams, indexDef.Params)
+	firstUUID := indexDef.UUID
+	require.NotEmpty(t, firstUUID)
+
+	// Re-registering with identical parameters should be recognized as unchanged and not rotate the index UUID.
+	require.NoError(t, node.StartManager(ctx, opts))
+	_, indexDefsMap, err = node.Manager.GetIndexDefs(true)
+	require.NoError(t, err)
+	assert.Equal(t, firstUUID, indexDefsMap[indexName].UUID, "re-registering with identical Collections/EndSeqNos should not rotate the index UUID")
+}
+
 // leakyCfg wraps a cbgt.Cfg and can be told to fail the next Get call for a given key, to
 // simulate a transient error reading cbgt's persisted metadata (e.g. its index defs document).
 type leakyCfg struct {
