@@ -25,6 +25,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	mathrand "math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -430,6 +431,15 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker[T any] func() (shouldRetry bool, err error, value T)
 
+// RetryState is passed to a RetryWorkerWithOptions on each invocation, giving it visibility
+// into the retry loop's progress without having to track attempt counts itself.
+type RetryState struct {
+	Attempt int // 1-indexed attempt number of the current call
+}
+
+// A RetryWorkerWithOptions is a RetryWorker that additionally receives the current RetryState.
+type RetryWorkerWithOptions[T any] func(state RetryState) (shouldRetry bool, err error, value T)
+
 type RetryCasWorker func() (shouldRetry bool, err error, value uint64)
 
 type RetryTimeoutError struct {
@@ -449,11 +459,19 @@ func (r *RetryTimeoutError) Error() string {
 }
 
 func RetryLoop[T any](ctx context.Context, description string, worker RetryWorker[T], sleeper RetrySleeper) (error, T) {
+	return RetryLoopWithOptions(ctx, description, func(RetryState) (bool, error, T) {
+		return worker()
+	}, sleeper)
+}
+
+// RetryLoopWithOptions behaves like RetryLoop, but passes a RetryState to the worker on each
+// call so it can access the current attempt number without maintaining its own counter.
+func RetryLoopWithOptions[T any](ctx context.Context, description string, worker RetryWorkerWithOptions[T], sleeper RetrySleeper) (error, T) {
 
 	numAttempts := 1
 
 	for {
-		shouldRetry, err, value := worker()
+		shouldRetry, err, value := worker(RetryState{Attempt: numAttempts})
 		if !shouldRetry {
 			if err != nil {
 				return err, *new(T)
@@ -632,6 +650,25 @@ func CreateIndefiniteMaxDoublingSleeperFunc(initialTimeToSleepMs int, maxSleepPe
 	}
 
 	return sleeper
+}
+
+// CreateJitterSleeperFunc creates a RetrySleeper that waits a random duration up to maxJitter
+// before each retried attempt, up to maxNumAttempts total attempts. Jitter decorrelates independent,
+// periodically-firing retriers that would otherwise collide in lockstep.
+func CreateJitterSleeperFunc(maxNumAttempts int, maxJitter time.Duration) RetrySleeper {
+	maxJitterMs := int(maxJitter.Milliseconds())
+	return func(numAttempts int) (bool, int) {
+		// RetryLoopWithOptions/RetryLoopCas call the sleeper after an attempt that already ran,
+		// so stopping at >= (rather than >) caps the worker at maxNumAttempts total calls.
+		if numAttempts >= maxNumAttempts {
+			return false, -1
+		}
+		if maxJitterMs <= 0 {
+			return true, 0
+		}
+		// Floor at 1ms so a known retry never sleeps 0ms, without pushing the ceiling past maxJitter.
+		return true, max(mathrand.Intn(maxJitterMs), 1)
+	}
 }
 
 // CreateFastFailRetrySleeperFunc returns a retry sleeper that will not retry.

@@ -48,6 +48,19 @@ const configFetchMaxRetryAttempts = 5  // Maximum number of retries due to regis
 // at once — the budget is a multiple of configUpdateMaxRetryAttempts to absorb that race.
 const nodeVersionUpdateMaxRetryAttempts = configUpdateMaxRetryAttempts * 5
 
+// updateConfigRegistryPersistMaxRetryAttempts bounds CAS retries for UpdateConfig's registry
+// persist step (Step 2), which can collide with the periodic cluster-compat node heartbeat
+// (clusterCompatManager.Refresh).
+const updateConfigRegistryPersistMaxRetryAttempts = configUpdateMaxRetryAttempts * 5
+
+// registryRetrySleeper returns a jittered RetrySleeper shared by registry read/update/write
+// retry loops, bounded to numAttempts retries. Jitter decorrelates the registry's independent,
+// periodically-firing writers (config updates, cluster-compat heartbeats, freeze/unfreeze) so
+// they don't retry in lockstep.
+func registryRetrySleeper(numAttempts int) base.RetrySleeper {
+	return base.CreateJitterSleeperFunc(numAttempts, 20*time.Millisecond)
+}
+
 const defaultMetadataID = base.DefaultMetadataID
 
 // GetConfig fetches a database name for a given bucket and config group ID.
@@ -70,18 +83,16 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 	dbName := config.Name
 	ctx = b.addDatabaseLogContext(ctx, &config.DbConfig)
 
-	registryUpdated := false
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig into bucket %s starting (attempt %d/%d)", bucketName, attempt, configUpdateMaxRetryAttempts)
-
+	err, _ = base.RetryLoopWithOptions(ctx, "InsertConfig", func(retryState base.RetryState) (bool, error, any) {
+		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig into bucket %s starting (attempt %d/%d)", bucketName, retryState.Attempt, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		registry, existingConfig, err := b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "InsertConfig unable to retrieve registry and database: %v", err)
-			return 0, err
+			return false, err, nil
 		}
 		if existingConfig != nil {
-			return 0, base.ErrAlreadyExists
+			return false, base.ErrAlreadyExists, nil
 		}
 
 		// If metadataID is not set on the config, compute
@@ -94,17 +105,16 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		previousVersionConflicts, upsertErr := registry.upsertDatabaseConfig(ctx, groupID, config)
 		if upsertErr != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "InsertConfig unable to update registry: %v", upsertErr)
-			return 0, upsertErr
+			return false, upsertErr, nil
 		}
 
 		// If there are conflicts with previous versions of in-progress database updates, wait for those to complete
 		if len(previousVersionConflicts) > 0 {
-			err := b.WaitForConflictingUpdates(ctx, bucketName, previousVersionConflicts)
-			if err != nil {
-				return 0, err
+			if err := b.WaitForConflictingUpdates(ctx, bucketName, previousVersionConflicts); err != nil {
+				return false, err, nil
 			}
 			// try again
-			continue
+			return true, nil, nil
 		}
 
 		// Persist registry
@@ -112,27 +122,22 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Registry updated successfully")
-			registryUpdated = true
-			break
+			return false, nil, nil
 		}
 
 		// retry on cas mismatch, otherwise return error
 		if !base.IsCasMismatch(writeErr) {
 			base.InfofCtx(ctx, base.KeyConfig, "InsertConfig unable to persist registry: %v", writeErr)
-			return 0, writeErr
+			return false, writeErr, nil
 		}
-
-		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig encountered cas mismatch error while persisting registry: %v", writeErr)
-
-		// Check for context cancel before retrying
-		select {
-		case <-ctx.Done():
-			return 0, fmt.Errorf("Exiting InsertConfig - context cancelled")
-		default:
+		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig encountered cas mismatch error while persisting registry, retrying (attempt %d/%d): %v", retryState.Attempt, configUpdateMaxRetryAttempts, writeErr)
+		return true, writeErr, nil
+	}, registryRetrySleeper(configUpdateMaxRetryAttempts))
+	if err != nil {
+		if base.IsCasMismatch(err) {
+			return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
 		}
-	}
-	if !registryUpdated {
-		return 0, fmt.Errorf("InsertConfig failed to persist registry after %d attempts", configUpdateMaxRetryAttempts)
+		return 0, err
 	}
 	// Step 3. Write the database config
 	timeUpdated := time.Now().UTC()
@@ -155,25 +160,22 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 //  4. Update the registry to remove the previous version
 func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID, dbName string, updateCallback func(bucketConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error)) (newCAS uint64, err error) {
 	var updatedConfig *DatabaseConfig
-	var registry *GatewayRegistry
 	var previousVersion string
 	var createdAtTime *time.Time
 
-	registryUpdated := false
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
+	err, _ = base.RetryLoopWithOptions(ctx, "UpdateConfig", func(retryState base.RetryState) (bool, error, any) {
+		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", retryState.Attempt, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
-		var existingConfig *DatabaseConfig
-		registry, existingConfig, err = b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
+		registry, existingConfig, err := b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
 		if existingConfig != nil {
 			ctx = b.addDatabaseLogContext(ctx, &existingConfig.DbConfig)
 		}
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig unable to retrieve registry and database: %v", err)
-			return 0, err
+			return false, err, nil
 		}
 		if existingConfig == nil {
-			return 0, base.ErrNotFound
+			return false, base.ErrNotFound, nil
 		}
 		createdAtTime = existingConfig.CreatedAt
 
@@ -184,23 +186,22 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		var callbackErr error
 		updatedConfig, callbackErr = updateCallback(existingConfig)
 		if callbackErr != nil {
-			return 0, callbackErr
+			return false, callbackErr, nil
 		}
 
 		// Update database in registry
 		previousVersionConflicts, err := registry.upsertDatabaseConfig(ctx, groupID, updatedConfig)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while upserting database config for conflicting updates: %v", err)
-			return 0, err
+			return false, err, nil
 		}
 		// If there are conflicts with previous versions of in-progress database updates, wait for those to complete
 		if len(previousVersionConflicts) > 0 {
-			err := b.WaitForConflictingUpdates(ctx, bucketName, previousVersionConflicts)
-			if err != nil {
+			if err := b.WaitForConflictingUpdates(ctx, bucketName, previousVersionConflicts); err != nil {
 				base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while waiting for conflicting updates: %v", err)
-				return 0, err
+				return false, err, nil
 			}
-			continue
+			return true, nil, nil
 		}
 
 		// Persist registry
@@ -208,27 +209,22 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
-			registryUpdated = true
-			break
+			return false, nil, nil
 		}
 
 		// retry on cas mismatch, otherwise return error
 		if !base.IsCasMismatch(writeErr) {
 			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while persisting updated registry: %v", writeErr)
-			return 0, writeErr
+			return false, writeErr, nil
 		}
-
-		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered cas mismatch error while persisting updated registry: %v", writeErr)
-
-		// Check for context cancel before retrying
-		select {
-		case <-ctx.Done():
-			return 0, fmt.Errorf("Exiting UpdateConfig - context cancelled, last error: %w", writeErr)
-		default:
+		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered cas mismatch error while persisting updated registry, retrying (attempt %d/%d): %v", retryState.Attempt, updateConfigRegistryPersistMaxRetryAttempts, writeErr)
+		return true, writeErr, nil
+	}, registryRetrySleeper(updateConfigRegistryPersistMaxRetryAttempts))
+	if err != nil {
+		if base.IsCasMismatch(err) {
+			return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts:", updateConfigRegistryPersistMaxRetryAttempts)
 		}
-	}
-	if !registryUpdated {
-		return 0, fmt.Errorf("UpdateConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
+		return 0, err
 	}
 
 	// Step 2. Update the config document
@@ -246,29 +242,36 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	// Step 3. After config is successfully updated, finalize the update by removing the previous
 	// version from the registry. Re-read + CAS retry tolerates concurrent registry writers
 	// (e.g. cluster compat heartbeats) that may have bumped CAS since step 2.
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		registry, err = b.getGatewayRegistry(ctx, bucketName)
+	finalizeErr, _ := base.RetryLoopWithOptions(ctx, "UpdateConfig finalize", func(retryState base.RetryState) (bool, error, any) {
+		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
-			return 0, base.RedactErrorf("Error fetching registry to finalize update of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err)
+			return false, base.RedactErrorf("Error fetching registry to finalize update of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err), nil
 		}
-		if err = registry.removePreviousVersion(groupID, dbName, previousVersion); err != nil {
+		if err := registry.removePreviousVersion(groupID, dbName, previousVersion); err != nil {
 			// Already removed by a concurrent finalize — the update has effectively been
 			// fully applied, treat as success.
 			if errors.Is(err, base.ErrNotFound) || errors.Is(err, base.ErrConfigVersionMismatch) {
-				return casOut, nil
+				return false, nil, nil
 			}
-			return 0, base.RedactErrorf("Error removing previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), err)
+			return false, base.RedactErrorf("Error removing previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), err), nil
 		}
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
-			return casOut, nil
+			return false, nil, nil
 		}
 		if !base.IsCasMismatch(writeErr) {
-			return 0, base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), writeErr)
+			return false, base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful update: %w", base.MD(groupID), base.MD(dbName), writeErr), nil
 		}
-		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
+		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", retryState.Attempt, configUpdateMaxRetryAttempts)
+		return true, writeErr, nil
+	}, registryRetrySleeper(configUpdateMaxRetryAttempts))
+	if finalizeErr != nil {
+		if base.IsCasMismatch(finalizeErr) {
+			return 0, base.RedactErrorf("UpdateConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
+		}
+		return 0, finalizeErr
 	}
-	return 0, base.RedactErrorf("UpdateConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
+	return casOut, nil
 }
 
 // DeleteConfig deletes a database config
@@ -278,55 +281,45 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 //  4. Update the registry to remove the database definition altogether
 func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID, dbName string) (err error) {
 	var existingCas uint64
-	var registry *GatewayRegistry
-
-	registryUpdated := false
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
-		var existingConfig *DatabaseConfig
+	err, _ = base.RetryLoopWithOptions(ctx, "DeleteConfig", func(retryState base.RetryState) (bool, error, any) {
+		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", retryState.Attempt, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
-		registry, existingConfig, err = b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
+		registry, existingConfig, err := b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
 		if err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig unable to retrieve registry and database: %v", err)
-			return err
+			return false, err, nil
 		}
 		if existingConfig == nil {
-			return base.ErrNotFound
+			return false, base.ErrNotFound, nil
 		}
 		existingCas = existingConfig.cfgCas
 
 		// Step 2. Update registry, mark database deleted in registry
-		err = registry.deleteDatabase(groupID, dbName)
-		if err != nil {
+		if err := registry.deleteDatabase(groupID, dbName); err != nil {
 			base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig unable to delete database from registry: %v", err)
-			return err
+			return false, err, nil
 		}
 
 		// Persist registry
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "DeleteConfig persisted updated registry successfully")
-			registryUpdated = true
-			break
+			return false, nil, nil
 		}
 
 		// retry on cas mismatch, otherwise return error
 		if !base.IsCasMismatch(writeErr) {
 			base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig failed to write updated registry: %v", writeErr)
-			return writeErr
+			return false, writeErr, nil
 		}
-
-		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig encountered cas mismatch error while persisting updated registry: %v", writeErr)
-
-		// Check for context cancel before retrying
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("Exiting DeleteConfig - context cancelled, last error: %w", writeErr)
-		default:
+		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig encountered cas mismatch error while persisting updated registry, retrying (attempt %d/%d): %v", retryState.Attempt, configUpdateMaxRetryAttempts, writeErr)
+		return true, writeErr, nil
+	}, registryRetrySleeper(configUpdateMaxRetryAttempts))
+	if err != nil {
+		if base.IsCasMismatch(err) {
+			return fmt.Errorf("DeleteConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
 		}
-	}
-	if !registryUpdated {
-		return fmt.Errorf("DeleteConfig failed to persist updated registry after %d attempts:", configUpdateMaxRetryAttempts)
+		return err
 	}
 
 	err = b.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), existingCas)
@@ -339,25 +332,29 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	// Step 3. After config is successfully deleted, finalize the delete by removing the previous
 	// version from the registry. Re-read + CAS retry tolerates concurrent registry writers
 	// (e.g. cluster compat heartbeats) that may have bumped CAS since step 2.
-	for attempt := 1; attempt <= configUpdateMaxRetryAttempts; attempt++ {
-		registry, err = b.getGatewayRegistry(ctx, bucketName)
+	finalizeErr, _ := base.RetryLoopWithOptions(ctx, "DeleteConfig finalize", func(retryState base.RetryState) (bool, error, any) {
+		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
-			return base.RedactErrorf("Error fetching registry to finalize delete of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err)
+			return false, base.RedactErrorf("Error fetching registry to finalize delete of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err), nil
 		}
 		if !registry.removeDatabase(groupID, dbName) {
 			base.InfofCtx(ctx, base.KeyConfig, "Database not found in registry during finalization")
-			return nil
+			return false, nil, nil
 		}
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
-			return nil
+			return false, nil, nil
 		}
 		if !base.IsCasMismatch(writeErr) {
-			return base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr)
+			return false, base.RedactErrorf("Error persisting removal of previous version of config group: %s, database: %s from registry after successful delete: %w", base.MD(groupID), base.MD(dbName), writeErr), nil
 		}
-		base.DebugfCtx(ctx, base.KeyConfig, "DeleteConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", attempt, configUpdateMaxRetryAttempts)
+		base.DebugfCtx(ctx, base.KeyConfig, "DeleteConfig CAS mismatch finalizing registry, retrying (attempt %d/%d)", retryState.Attempt, configUpdateMaxRetryAttempts)
+		return true, writeErr, nil
+	}, registryRetrySleeper(configUpdateMaxRetryAttempts))
+	if finalizeErr != nil && base.IsCasMismatch(finalizeErr) {
+		return base.RedactErrorf("DeleteConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
 	}
-	return base.RedactErrorf("DeleteConfig failed to finalize registry after %d CAS retry attempts for database %s", configUpdateMaxRetryAttempts, base.MD(dbName))
+	return finalizeErr
 }
 
 // WaitForConflictingUpdates is called when an upsert is in conflict with previous versions found in the registry.  Previous
@@ -773,13 +770,14 @@ type RegisterNodeVersionOpts struct {
 //
 // Uses CAS retry on conflict. Returns the registry as written.
 func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, opts RegisterNodeVersionOpts) (*GatewayRegistry, error) {
-	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
+	var registeredRegistry *GatewayRegistry
+	err, _ := base.RetryLoopWithOptions(ctx, "RegisterNodeVersion", func(retryState base.RetryState) (bool, error, any) {
 		registry, err := b.getGatewayRegistry(ctx, opts.BucketName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get registry for node registration: %w", err)
+			return false, fmt.Errorf("failed to get registry for node registration: %w", err), nil
 		}
 		if registry.ClusterCompatVersionHWM.GreaterThan(opts.Version) {
-			return nil, base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway cluster compat version %s. This Sync Gateway is %s.", base.MD(opts.BucketName), registry.ClusterCompatVersionHWM, opts.Version)
+			return false, base.RedactErrorf("Bucket %q has metadata from a newer Sync Gateway cluster compat version %s. This Sync Gateway is %s.", base.MD(opts.BucketName), registry.ClusterCompatVersionHWM, opts.Version), nil
 		}
 		if registry.Nodes == nil {
 			registry.Nodes = make(map[string]*base.RegistryNode)
@@ -836,10 +834,10 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, opts Registe
 		err = b.setGatewayRegistry(ctx, opts.BucketName, registry)
 		if err != nil {
 			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(opts.BucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
-				continue
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch registering node version in bucket %s, retrying (attempt %d/%d)", base.MD(opts.BucketName), retryState.Attempt, nodeVersionUpdateMaxRetryAttempts)
+				return true, err, nil
 			}
-			return nil, fmt.Errorf("failed to write registry for node registration: %w", err)
+			return false, fmt.Errorf("failed to write registry for node registration: %w", err), nil
 		}
 		if len(pruned) > 0 {
 			base.InfofCtx(ctx, base.KeyConfig, "Pruned %d stale cluster compat node entries from bucket %s: %v", len(pruned), base.MD(opts.BucketName), base.MD(pruned))
@@ -850,40 +848,51 @@ func (b *bootstrapContext) RegisterNodeVersion(ctx context.Context, opts Registe
 		if hwmBumped {
 			base.InfofCtx(ctx, base.KeyConfig, "Updated cluster compat version high-water mark in bucket %s from %s to %s", base.MD(opts.BucketName), previousHWM, ccv)
 		}
-		return registry, nil
+		registeredRegistry = registry
+		return false, nil, nil
+	}, registryRetrySleeper(nodeVersionUpdateMaxRetryAttempts))
+	if err != nil {
+		if base.IsCasMismatch(err) {
+			return nil, base.RedactErrorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(opts.BucketName))
+		}
+		return nil, err
 	}
-	return nil, base.RedactErrorf("RegisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(opts.BucketName))
+	return registeredRegistry, nil
 }
 
 // DeregisterNodeVersion removes a node's version entry from the given bucket's registry.
 // Best-effort with CAS retry — errors are logged but not fatal.
 func (b *bootstrapContext) DeregisterNodeVersion(ctx context.Context, bucketName, nodeUID string) {
-	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
+	err, _ := base.RetryLoopWithOptions(ctx, "DeregisterNodeVersion", func(retryState base.RetryState) (bool, error, any) {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
 			if errors.Is(err, errBucketDoesNotExist) {
 				base.InfofCtx(ctx, base.KeyConfig, "DeregisterNodeVersion: Bucket %s no longer exists in cluster. Skipping deregistration.", base.MD(bucketName))
-				return
+				return false, nil, nil
 			}
 			base.WarnfCtx(ctx, "Failed to get registry for node deregistration from bucket %s: %v", base.MD(bucketName), err)
-			return
+			return false, nil, nil
 		}
 		if _, exists := registry.Nodes[nodeUID]; !exists {
 			// Already gone (or registry was never written) — nothing to do.
-			return
+			return false, nil, nil
 		}
 		delete(registry.Nodes, nodeUID)
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err == nil {
-			return
+			return false, nil, nil
 		}
 		if !base.IsCasMismatch(err) {
 			base.WarnfCtx(ctx, "Failed to deregister node from bucket %s: %v", base.MD(bucketName), err)
-			return
+			return false, nil, nil
 		}
-		base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
+		base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch deregistering node from bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), retryState.Attempt, nodeVersionUpdateMaxRetryAttempts)
+		return true, err, nil
+	}, registryRetrySleeper(nodeVersionUpdateMaxRetryAttempts))
+
+	if err != nil {
+		base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 	}
-	base.WarnfCtx(ctx, "DeregisterNodeVersion failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 }
 
 // minRegistryNodeClusterCompatVersion returns the minimum cluster compat version across all
@@ -917,13 +926,15 @@ func minPreCCVAwareNodeClusterCompatVersion(preCCVAwareNodes map[string]*base.Re
 // If a freeze is already present, it is left unchanged (idempotent). Uses CAS retry on conflict.
 // Returns the freeze record now in effect.
 func (b *bootstrapContext) SetRegistryFreeze(ctx context.Context, bucketName string, version base.ClusterCompatVersion) (*base.RegistryFreeze, error) {
-	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
+	var activeFreeze *base.RegistryFreeze
+	err, _ := base.RetryLoopWithOptions(ctx, "SetRegistryFreeze", func(retryState base.RetryState) (bool, error, any) {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get registry for freeze: %w", err)
+			return false, fmt.Errorf("failed to get registry for freeze: %w", err), nil
 		}
 		if registry.Frozen != nil {
-			return registry.Frozen, nil
+			activeFreeze = registry.Frozen
+			return false, nil, nil
 		}
 		freeze := &base.RegistryFreeze{
 			Version:  version,
@@ -933,39 +944,49 @@ func (b *bootstrapContext) SetRegistryFreeze(ctx context.Context, bucketName str
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {
 			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch setting registry freeze in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
-				continue
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch setting registry freeze in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), retryState.Attempt, nodeVersionUpdateMaxRetryAttempts)
+				return true, err, nil
 			}
-			return nil, fmt.Errorf("failed to write registry freeze: %w", err)
+			return false, fmt.Errorf("failed to write registry freeze: %w", err), nil
 		}
-		return freeze, nil
+		activeFreeze = freeze
+		return false, nil, nil
+	}, registryRetrySleeper(nodeVersionUpdateMaxRetryAttempts))
+	if err != nil {
+		if base.IsCasMismatch(err) {
+			return nil, base.RedactErrorf("SetRegistryFreeze failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+		}
+		return nil, err
 	}
-	return nil, base.RedactErrorf("SetRegistryFreeze failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+	return activeFreeze, nil
 }
 
 // ClearRegistryFreeze removes the cluster compat version freeze from the given bucket's registry.
 // No-op if no freeze is set. Uses CAS retry on conflict.
 func (b *bootstrapContext) ClearRegistryFreeze(ctx context.Context, bucketName string) error {
-	for attempt := 1; attempt <= nodeVersionUpdateMaxRetryAttempts; attempt++ {
+	err, _ := base.RetryLoopWithOptions(ctx, "ClearRegistryFreeze", func(retryState base.RetryState) (bool, error, any) {
 		registry, err := b.getGatewayRegistry(ctx, bucketName)
 		if err != nil {
-			return fmt.Errorf("failed to get registry for freeze clear: %w", err)
+			return false, fmt.Errorf("failed to get registry for freeze clear: %w", err), nil
 		}
 		if registry.Frozen == nil {
-			return nil
+			return false, nil, nil
 		}
 		registry.Frozen = nil
 		err = b.setGatewayRegistry(ctx, bucketName, registry)
 		if err != nil {
 			if base.IsCasMismatch(err) {
-				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch clearing registry freeze in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), attempt, nodeVersionUpdateMaxRetryAttempts)
-				continue
+				base.DebugfCtx(ctx, base.KeyConfig, "CAS mismatch clearing registry freeze in bucket %s, retrying (attempt %d/%d)", base.MD(bucketName), retryState.Attempt, nodeVersionUpdateMaxRetryAttempts)
+				return true, err, nil
 			}
-			return fmt.Errorf("failed to write registry freeze clear: %w", err)
+			return false, fmt.Errorf("failed to write registry freeze clear: %w", err), nil
 		}
-		return nil
+		return false, nil, nil
+	}, registryRetrySleeper(nodeVersionUpdateMaxRetryAttempts))
+	if err != nil && base.IsCasMismatch(err) {
+		return base.RedactErrorf("ClearRegistryFreeze failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
 	}
-	return base.RedactErrorf("ClearRegistryFreeze failed after %d CAS retry attempts for bucket %s", nodeVersionUpdateMaxRetryAttempts, base.MD(bucketName))
+	return err
 }
 
 // pruneStaleNodes deletes entries from nodes whose HeartbeatAt is older than expiry. The
