@@ -121,17 +121,20 @@ gh stack view --json          # never bare `gh stack view` - it opens a TUI
 gh stack submit --auto --open # pushes, creates non-draft PRs, links the stack
 ```
 
-`gh stack submit` sets each PR's base to the branch below it. Update the bodies afterwards (`gh pr edit N --body-file`) — `--auto` generates them from commit messages, so every PR in the stack still needs the real body, attribution footer included.
+`gh stack submit` sets each PR's base to the branch below it. Fix the titles and bodies afterwards (`gh pr edit N --title ... --body-file ...`) — `--auto` derives both from the commit message, so every PR in the stack still needs the real body with its attribution footer, and any `(test-only)` title suffix has to be added back.
 
 When a branch name is already taken (usually the upstream PR used the same ticket key), suffix the release: `CBG-5414-4.1.2`.
 
 ## PR title and body
 
-Title — the ticket is the **backport** ticket, the subject is the **upstream PR title with its own ticket prefix stripped**:
+Title — the ticket is the **backport** ticket, the subject is the **upstream PR title with its own ticket prefix stripped**, and a test-only backport carries a `(test-only)` suffix:
 
 ```
 [4.1.2 Backport] CBG-5591: stop indexes being built on default when not required
+[4.1.2 Backport] CBG-5603: add coverage for default-collection index skip (test-only)
 ```
+
+The suffix is the only addition allowed to the title — do not use it to summarise anything else. See [The `test-only` marker](#the-test-only-marker) for when it applies.
 
 Body — exactly this shape, nothing else (no repo PR template). The last line is the attribution footer, and it is **not optional** — a reviewer must be able to tell at a glance that a skill opened this PR:
 
@@ -139,6 +142,8 @@ Body — exactly this shape, nothing else (no repo PR template). The last line i
 CBG-5591
 
 Clean cherry pick of #8495 to 4.1.2
+
+test-only
 
 🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
@@ -158,6 +163,23 @@ Changes from main commit:
 
 One bullet per deviation, naming the file and the reason. "Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. For a stacked PR, add a line naming the PR it sits on.
 
+### The `test-only` marker
+
+`test-only` tells a reviewer the PR carries no production risk, so it earns a much lighter review. It goes in two places, and they must agree:
+
+- the title, as a `(test-only)` suffix — this is what makes a low-risk PR obvious in a list view
+- the body, on its own line between the cherry-pick line (and any deviation bullets) and the footer
+
+Include it only when the branch changes **no non-test Go file**. Check the real diff, do not judge from the commit subject:
+
+```bash
+git diff --name-only origin/release/x.y.z...HEAD -- '*.go' | grep -v '_test\.go$'
+```
+
+Empty output → add the line. Any output → leave it off, even for a one-line production change. Clean and unclean backports both get it; the two markers are independent — an unclean cherry-pick of a test-only change is still test-only.
+
+Go files that are not named `*_test.go` count as production files whatever they contain — test helpers such as `base/util_testing.go` and the `testing/` packages compile into the shipped binary, so a PR touching them is not test-only.
+
 The footer goes on every backport PR, including stacked ones, and survives every later `gh pr edit --body-file` — rewriting a body drops it unless you carry it over. Write bodies from a file so the footer is part of the text you author, not something appended by hand:
 
 ```bash
@@ -174,6 +196,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - Calling lint clean after a `golangci-lint` run that used the default config instead of `.golangci-strict.yml`, or a format check that can't fail
 - Leaving the auto-generated PR body or the repo PR template in place
 - Submitting or editing a PR body without the `sync-gateway-backport` attribution footer
+- Claiming `test-only` from the commit subject or the ticket instead of the file list — a reviewer who trusts that line skips the production change hidden under it
 - Silently dropping part of the upstream commit because the file doesn't exist on the release branch — find where that code lives on the branch, or say you dropped it
 
 ## Common mistakes
@@ -186,3 +209,6 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | Dropping an upstream test file that has no counterpart on the branch | Apply its changes to wherever that test lives on the release branch |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
+| `test-only` on a PR that also touches a test helper or `testing/` package | Only `*_test.go` files are test files; everything else Go is production |
+| Title says `(test-only)` but the body line is missing, or the reverse | Both come from the same check — set both or neither |
+| `(test-only)` suffix dropped by an auto-generated stacked PR title | Re-apply it with `gh pr edit N --title` after `gh stack submit` |
