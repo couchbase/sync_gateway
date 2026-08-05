@@ -1059,14 +1059,6 @@ Database:
               description: The amount of time (in seconds) to keep entries in the cache beyond the minimum retained.
               type: integer
               default: 60
-            late_log_expiry_seconds:
-              description: The amount of time (in seconds) after which late-arriving (out-of-order) entries are pruned from a channel's late-sequence queue, even if a continuous _changes feed is still parked on them. Bounds late-sequence memory for slow or stalled feeds.
-              type: integer
-              default: 300
-            late_log_max_length:
-              description: The maximum number of late-arriving (out-of-order) entries retained per channel. When exceeded, a lagging continuous _changes feed's late-sequence position is dropped and it is reset to its low sequence, keeping late-sequence memory bounded.
-              type: integer
-              default: 500
             max_length:
               description: The maximum number of entries to maintain in the cache per channel.
               type: integer

@@ -151,8 +151,6 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 				MaxLength:            base.Ptr(db.DefaultChannelCacheMaxLength),
 				MinLength:            base.Ptr(db.DefaultChannelCacheMinLength),
 				ExpirySeconds:        base.Ptr(int(db.DefaultChannelCacheAge.Seconds())),
-				LateLogMaxLength:     base.Ptr(db.DefaultLateLogMaxLength),
-				LateLogExpirySeconds: base.Ptr(int(db.DefaultLateLogAge.Seconds())),
 			},
 		},
 		StartOffline:          base.Ptr(false),

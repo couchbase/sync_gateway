@@ -80,17 +80,18 @@ func fastFeedBroadcast(cacheOptions CacheOptions) CacheOptions {
 
 // shortWaitCacheWithLateLogMax returns the standard short-wait test cache options with a small
 // lateLogs cap, so the length-based force-prune (channel_cache_single.go _purgeLateLogEntries) fires
-// within a short test rather than only after 500 late entries accumulate.
+// within a short test rather than only after 500 late entries accumulate. Late logs uses the same maximum as chanel cache
+// configuration.
 func shortWaitCacheWithLateLogMax(lateLogMax int) CacheOptions {
 	cacheOptions := fastFeedBroadcast(shortWaitCache())
-	cacheOptions.LateLogMaxLength = lateLogMax
+	cacheOptions.ChannelCacheMaxLength = lateLogMax
 	return cacheOptions
 }
 
 // TestLateLogsBoundedWhenConsumerStops is the fix-side counterpart to the CBG-5610 reproduction. It
 // drives a continuous _changes feed that registers a late-sequence listener and
 // then stops consuming (an abandoned/hung client) - but asserts that NumEntriesInLateFeed stays bounded
-// by LateLogMaxLength instead of growing forever. Without the length cap this same scenario grows the
+// by ChannelCacheMaxLength instead of growing forever. Without the length cap this same scenario grows the
 // count unbounded with the cycle count (the behaviour the reproduction test used to assert); with the
 // cap, _purgeLateLogEntries force-drops the stalled feed's pinned lastSequence and the queue plateaus.
 func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
@@ -150,7 +151,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 		writeSeq(seq - 1) // resolves seq-1 late -> AddLateSequence -> force-prune
 
 		require.LessOrEqualf(t, abcCache.lateLogCount(), int64(lateLogMax),
-			"ABC's lateLogs must stay bounded by LateLogMaxLength (%d) even though feed2 is abandoned - "+
+			"ABC's lateLogs must stay bounded by ChannelCacheMaxLength (%d) even though feed2 is abandoned - "+
 				"the length cap should force-prune its stuck lastSequence", lateLogMax)
 	}
 
@@ -235,7 +236,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 		writeSeq(seq - 1) // resolves seq-1 late
 
 		require.LessOrEqualf(t, abcCache.lateLogCount(), int64(lateLogMax),
-			"ABC's lateLogs must stay bounded by LateLogMaxLength (%d) while feed2 lags", lateLogMax)
+			"ABC's lateLogs must stay bounded by ChannelCacheMaxLength (%d) while feed2 lags", lateLogMax)
 
 		if (i+1)%feed2DrainEvery == 0 {
 			drainFeed2() // feed2 returns; if its lastSequence was pruned this forces a rollback
@@ -301,7 +302,7 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	cacheOptions := fastFeedBroadcast(shortWaitCache())
-	cacheOptions.LateLogMaxLength = 100000 // large: isolate the age path so the length cap never fires
+	cacheOptions.ChannelCacheMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	// Large LateLogAge so the CleanAgedLateLogs background task (which runs on this interval) doesn't fire
 	// during the test and reclaim the entries before we can assert they accumulated. The manual sweep below
 	// lowers ABC's own threshold to force the age-based reclaim deterministically.
@@ -466,7 +467,7 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 	testStats := dbstats.Cache()
 
 	cache := newSingleChannelCache(collection, channels.NewID("raceChan", collection.GetCollectionID()), 0, testStats)
-	cache.options.LateLogMaxLength = 5 // force _purgeLateLogEntries to reassign the slice on nearly every add
+	cache.options.ChannelCacheMaxLength = 5 // force _purgeLateLogEntries to reassign the slice on nearly every add
 
 	const releaserGoroutines = 4
 	const iterations = 2000
@@ -515,13 +516,13 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 
 	require.GreaterOrEqual(t, testStats.NumEntriesInLateFeed.Value(), int64(0),
 		"NumEntriesInLateFeed must never go negative under concurrent churn")
-	require.LessOrEqualf(t, testStats.NumEntriesInLateFeed.Value(), int64(cache.options.LateLogMaxLength),
-		"lateLogs must stay bounded by the length cap (%d) under concurrent churn - the sentinel isn't counted", cache.options.LateLogMaxLength)
+	require.LessOrEqualf(t, testStats.NumEntriesInLateFeed.Value(), int64(cache.options.ChannelCacheMaxLength),
+		"lateLogs must stay bounded by the length cap (%d) under concurrent churn - the sentinel isn't counted", cache.options.ChannelCacheMaxLength)
 }
 
-// TestLateLogOptionsPropagation verifies that the LateLogMaxLength / LateLogAge cache options are propagated
+// TestLateLogOptionsPropagation verifies that the LateLogAge cache option is propagated
 // to each per-channel cache by newChannelCacheWithOptions, and that non-positive values fall back to the
-// package defaults rather than disabling the caps.
+// package defaults rather than disabling the caps. Also verifies that late logs max length is set to chanel cache max length.
 func TestLateLogOptionsPropagation(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -535,17 +536,17 @@ func TestLateLogOptionsPropagation(t *testing.T) {
 
 	// Configured (positive) values are applied to the per-channel cache.
 	options := DefaultCacheOptions().ChannelCacheOptions
-	options.LateLogMaxLength = 7
+	options.ChannelCacheMaxLength = 7
 	options.LateLogAge = 42 * time.Second
 	sc := newChannelCacheWithOptions(ctx, collection, channels.NewID("configured", collection.GetCollectionID()), 0, options, cacheStats)
-	require.Equal(t, 7, sc.options.LateLogMaxLength)
+	require.Equal(t, 7, sc.options.ChannelCacheMaxLength)
 	require.Equal(t, 42*time.Second, sc.options.LateLogAge)
 
 	// Non-positive values fall back to the defaults - the caps are never disabled by a zero value.
-	options.LateLogMaxLength = 0
+	options.ChannelCacheMaxLength = 0
 	options.LateLogAge = 0
 	scDefault := newChannelCacheWithOptions(ctx, collection, channels.NewID("defaulted", collection.GetCollectionID()), 0, options, cacheStats)
-	require.Equal(t, DefaultLateLogMaxLength, scDefault.options.LateLogMaxLength)
+	require.Equal(t, DefaultChannelCacheMaxLength, scDefault.options.ChannelCacheMaxLength)
 	require.Equal(t, DefaultLateLogAge, scDefault.options.LateLogAge)
 }
 
@@ -560,7 +561,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	cacheOptions := fastFeedBroadcast(shortWaitCache())
-	cacheOptions.LateLogMaxLength = 100000 // large: isolate the age path so the length cap never fires
+	cacheOptions.ChannelCacheMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	cacheOptions.LateLogAge = time.Millisecond
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
@@ -670,7 +671,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 }
 
 // TestLateLogsHealthyFeedsNoRollback is the no-regression guard for the normal path: with the shipped
-// default caps (LateLogMaxLength=500, LateLogAge=5m) and consumers that keep up, a steady skip/late load
+// default caps (ChannelCacheMaxLength=500, LateLogAge=5m) and consumers that keep up, a steady skip/late load
 // must never force a rollback, must never lose data, and must keep lateLogs collapsed by the ordinary
 // zero-listener purge (NumEntriesInLateFeed stays near its baseline rather than growing with the load).
 func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
@@ -775,7 +776,7 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 		cacheStats := dbstats.Cache()
 		sc := newSingleChannelCache(collection, channels.NewID("edge", collection.GetCollectionID()), 0, cacheStats)
-		sc.options.LateLogMaxLength = lateLogMax
+		sc.options.ChannelCacheMaxLength = lateLogMax
 		return sc, cacheStats
 	}
 
@@ -868,7 +869,7 @@ func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 	// Large age and length caps so neither the length force-prune nor a legitimate age-out of the (fresh)
 	// non-sentinel entry can fire - the only thing that could drop the sentinel here is the zero-arrived bug.
 	sc.options.LateLogAge = 5 * time.Minute
-	sc.options.LateLogMaxLength = 100000
+	sc.options.ChannelCacheMaxLength = 100000
 
 	// A continuous feed that connected before any late sequence arrived parks on the sentinel (Sequence 0).
 	since := sc.RegisterLateSequenceClient()
@@ -966,8 +967,8 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	const spikeSize = 2000
 
 	cacheOptions := fastFeedBroadcast(shortWaitCache())
-	cacheOptions.LateLogMaxLength = 10 * spikeSize // large: the length force-prune must never fire during the spike
-	cacheOptions.LateLogAge = time.Hour            // large: the age sweep must never reclaim entries during the test
+	cacheOptions.ChannelCacheMaxLength = 10 * spikeSize // large: the length force-prune must never fire during the spike
+	cacheOptions.LateLogAge = time.Hour                 // large: the age sweep must never reclaim entries during the test
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
@@ -1106,7 +1107,7 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 // stalls without reading (a hung/abandoned client). A spike of thousands of skipped sequences then all resolve
 // (arrive late) at once while it is stalled. With the default caps:
 //
-//   - lateLogs stay bounded by LateLogMaxLength instead of growing with the spike (the leak this branch fixes:
+//   - lateLogs stay bounded by ChannelCacheMaxLength instead of growing with the spike (the leak this branch fixes:
 //     before compaction the stalled feed pinned the front and the queue grew unbounded with every arrival);
 //   - the length force-prune drops even the stalled feed's referenced sentinel, so when the feed next reads that
 //     position its getLateFeed call fails and the changes loop rolls it back (LateFeedForcedRollbacks) - the
@@ -1129,14 +1130,14 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is stalled. Must
 	// exceed the length cap so the force-prune fires.
 	const spikeSize = 2000
-	require.Greater(t, spikeSize, DefaultLateLogMaxLength,
-		"the spike must exceed LateLogMaxLength for the length force-prune to fire")
+	require.Greater(t, spikeSize, DefaultChannelCacheMaxLength,
+		"the spike must exceed DefaultChannelCacheMaxLength for the length force-prune to fire")
 
 	// In-order writes used only to fill the feed's output buffer so the goroutine blocks. Must exceed the feed's
 	// hard-coded output buffer capacity (50 in changes.go); the exact block point is confirmed via len==cap below.
 	const bufferFillers = 60
 
-	// Shipped default late-log caps (LateLogMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
+	// Shipped default late-log caps (DefaultChannelCacheMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
 	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
 	// never fires.
 	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
@@ -1223,11 +1224,11 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// FIX 1 - bounded: despite thousands of late arrivals behind a stalled feed, lateLogs never grew past the
 	// length cap. Without compaction (the pre-fix behaviour, TestLateLogsSpikeNotPrunedUntilNewLateSequence) the
 	// stalled feed would have pinned the spike in place and the queue would hold spikeSize+1 entries.
-	require.Equalf(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
-		"the length force-prune must bound ABC's lateLogs at LateLogMaxLength (%d) even under a %d-sequence spike behind a stalled feed",
-		DefaultLateLogMaxLength, spikeSize)
+	require.Equalf(t, abcCache.lateLogCount(), int64(DefaultChannelCacheMaxLength),
+		"the length force-prune must bound ABC's lateLogs at DefaultChannelCacheMaxLength (%d) even under a %d-sequence spike behind a stalled feed",
+		DefaultChannelCacheMaxLength, spikeSize)
 	t.Logf("spike resolved with feed stalled: ABC lateLogs bounded at %d (cap %d, spike %d), forced_rollbacks=%d",
-		abcCache.lateLogCount(), DefaultLateLogMaxLength, spikeSize, forcedRollbacks())
+		abcCache.lateLogCount(), DefaultChannelCacheMaxLength, spikeSize, forcedRollbacks())
 
 	// FIX 2 - the forced rollback happens inside the real changes loop: the stalled feed's referenced sentinel
 	// was force-compacted away by the length cap. Nothing has rolled back yet (the feed hasn't read a late
@@ -1251,7 +1252,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 		"the feed's sentinel was force-compacted away by the length cap; its getLateFeed must have rolled back inside the changes loop")
 
 	// FIX 3 - lateLogs remain bounded after recovery: the spike left no residue on the channel cache.
-	require.Equal(t, abcCache.lateLogCount(), int64(DefaultLateLogMaxLength),
+	require.Equal(t, abcCache.lateLogCount(), int64(DefaultChannelCacheMaxLength),
 		"ABC's lateLogs must remain bounded by the length cap after the feed recovers")
 
 	t.Logf("feed recovered to seq %d; ABC lateLogs=%d, forced_rollbacks=%d",
@@ -1268,14 +1269,14 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is stalled. Must
 	// exceed the length cap so the force-prune fires.
 	const spikeSize = 2000
-	require.Greater(t, spikeSize, DefaultLateLogMaxLength,
-		"the spike must exceed LateLogMaxLength for the length force-prune to fire")
+	require.Greater(t, spikeSize, DefaultChannelCacheMaxLength,
+		"the spike must exceed DefaultChannelCacheMaxLength for the length force-prune to fire")
 
 	// In-order writes used only to fill the feed's output buffer so the goroutine blocks. Must exceed the feed's
 	// hard-coded output buffer capacity (50 in changes.go); the exact block point is confirmed via len==cap below.
 	const bufferFillers = 60
 
-	// Shipped default late-log caps (LateLogMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
+	// Shipped default late-log caps (DefaultChannelCacheMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
 	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
 	// never fires.
 	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))

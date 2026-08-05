@@ -31,7 +31,6 @@ var (
 	DefaultChannelCacheMaxNumber       = 50000            // Default of 50k channel caches
 	DefaultCompactHighWatermarkPercent = 80               // Default compaction high watermark (percent of MaxNumber)
 	DefaultCompactLowWatermarkPercent  = 60               // Default compaction low watermark (percent of MaxNumber)
-	DefaultLateLogMaxLength            = 500              // Don't hold more than this many late-arriving entries per channel
 	DefaultLateLogAge                  = 5 * time.Minute  // Force-prune late-arriving entries older than this, even if a feed is still parked on them
 )
 

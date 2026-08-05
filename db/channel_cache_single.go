@@ -128,7 +128,6 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
 		ChannelCacheAge:       DefaultChannelCacheAge,
 		MaxNumChannels:        DefaultChannelCacheMaxNumber,
-		LateLogMaxLength:      DefaultLateLogMaxLength,
 		LateLogAge:            DefaultLateLogAge,
 	}
 	cache.logs = make(LogEntries, 0)
@@ -160,16 +159,12 @@ func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHa
 	base.DebugfCtx(ctx, base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
 		base.UD(cache.channelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
 
-	if options.LateLogMaxLength > 0 {
-		cache.options.LateLogMaxLength = options.LateLogMaxLength
-	}
-
 	if options.LateLogAge > 0 {
 		cache.options.LateLogAge = options.LateLogAge
 	}
 
 	base.DebugfCtx(ctx, base.KeyCache, "Initialized late-sequence log for channel %q with maxLength:%v age:%v",
-		base.UD(cache.channelID), cache.options.LateLogMaxLength, cache.options.LateLogAge)
+		base.UD(cache.channelID), cache.options.ChannelCacheMaxLength, cache.options.LateLogAge)
 
 	return cache
 }
@@ -182,8 +177,7 @@ type ChannelCacheOptions struct {
 	CompactHighWatermarkPercent int           // Compact HWM (as percent of MaxNumChannels)
 	CompactLowWatermarkPercent  int           // Compact LWM (as percent of MaxNumChannels)
 	ChannelQueryLimit           int           // Query limit
-	LateLogMaxLength            int           // Don't hold more than this many late-arriving entries in each per-channel lateLogs
-	LateLogAge                  time.Duration // Force-prune late-arriving entries older than this, even if a feed is still parked on them
+	LateLogAge                  time.Duration // Force-prune late-arriving entries older than this, even if a feed is still parked on them. Internally exposed only.
 }
 
 func (c *singleChannelCacheImpl) ChannelID() channels.ID {
@@ -903,14 +897,13 @@ func (c *singleChannelCacheImpl) releaseLateLogsForEviction() {
 func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
 	// Drop leading entries that no active feed still references. But also if late feed length is above maximum.
 	// If a stalled or slow feed's listener is pinning the front of the queue
-	// and it has grown past LateLogMaxLength, force-drop leading entries even though a listener still
+	// and it has grown past ChannelCacheMaxAge, force-drop leading entries even though a listener still
 	// references them. Any feed whose lastSequence is dropped will fail its next GetLateSequencesSince
 	// lookup and be reset to its low sequence (see the "Missing previous sequence" path there) - this is
 	// the lateLogs analogue of the channel cache raising validFrom and forcing a query backfill. Always
 	// keep at least one entry so new listeners can still register. Note, the cap is inclusive of the sentinel
 	// entry kept at the start of the list.
-	for len(c.lateLogs) > 1 && (c.lateLogs[0].getListenerCount() == 0 || len(c.lateLogs) > c.options.LateLogMaxLength) {
-		fmt.Println(c.lateLogs[0].getListenerCount(), len(c.lateLogs), c.options.LateLogMaxLength)
+	for len(c.lateLogs) > 1 && (c.lateLogs[0].getListenerCount() == 0 || len(c.lateLogs) > c.options.ChannelCacheMaxLength) {
 		c._dropLeadingLateLog()
 	}
 }

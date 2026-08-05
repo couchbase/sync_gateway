@@ -146,7 +146,6 @@ func DefaultCacheOptions() CacheOptions {
 			CompactHighWatermarkPercent: DefaultCompactHighWatermarkPercent,
 			CompactLowWatermarkPercent:  DefaultCompactLowWatermarkPercent,
 			ChannelQueryLimit:           DefaultQueryPaginationLimit,
-			LateLogMaxLength:            DefaultLateLogMaxLength,
 			LateLogAge:                  DefaultLateLogAge,
 		},
 	}
