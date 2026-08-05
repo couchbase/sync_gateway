@@ -550,19 +550,19 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// verify insert at start (PBS)
 	pbsCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("PBS", collectionID))
 	require.NoError(t, err)
-	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
+	verifyCacheSequences(t, pbsCache, []uint64{3, 5, 6})
 	// verify insert at middle (ABC)
 	abcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("ABC", collectionID))
 	require.NoError(t, err)
-	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
+	verifyCacheSequences(t, abcCache, []uint64{1, 2, 3, 5, 6})
 	// verify insert at end (NBC)
 	nbcCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("NBC", collectionID))
 	require.NoError(t, err)
-	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
+	verifyCacheSequences(t, nbcCache, []uint64{1, 3})
 	// verify insert to empty cache (TBS)
 	tbsCache, err := db.changeCache.getChannelCache().getSingleChannelCache(ctx, channels.NewID("TBS", collectionID))
 	require.NoError(t, err)
-	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
+	verifyCacheSequences(t, tbsCache, []uint64{3})
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
@@ -844,7 +844,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	err = appendFromFeed(&changes, feed, 3, defaultWaitForSequence)
 	require.NoError(t, err)
 	assert.Len(t, changes, 3)
-	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
+	verifyChangesFullSequences(t, changes, []string{"1", "2", "2::6"})
 
 	_, incrErr := dbCollection.dataStore.Incr(ctx, db.MetadataKeys.SyncSeqKey(), 7, 7, 0)
 	require.NoError(t, incrErr)
@@ -874,7 +874,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	//                                                // MISSING 2::8
 	//   {Seq:2::9, ID:doc-9, Changes:[map[rev:1-a]]}
 	// ]
-	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
+	verifyChangesFullSequences(t, changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"})
 	// Notes:
 	// 1. 2::8 is the user sequence
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
@@ -1009,6 +1009,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 // each iteration, and returns them appended to entries. Fails the test if numEntries aren't
 // received within maxWaitTime.
 func drainFeed(t *testing.T, entries []*ChangeEntry, feed <-chan *ChangeEntry, numEntries int, maxWaitTime time.Duration) []*ChangeEntry {
+	ctx := base.TestCtx(t)
 	timeout := time.After(maxWaitTime)
 	received := 0
 	for received < numEntries {
@@ -1018,6 +1019,7 @@ func drainFeed(t *testing.T, entries []*ChangeEntry, feed <-chan *ChangeEntry, n
 			if entry == nil {
 				continue
 			}
+			base.DebugfCtx(ctx, base.KeySGTest, "drainFeed: received change entry %v", entry.Seq)
 			entries = append(entries, entry)
 			received++
 		case <-timeout:
@@ -1128,7 +1130,7 @@ func TestChannelRace(t *testing.T) {
 
 	// Sequence 7 is sent with a compound sequence ID (triggered by 5, the highest contiguous sequence at
 	// the time) since 6 was still outstanding; 6 is then sent on its own once it arrives, filling the gap.
-	assert.True(t, verifyChangesFullSequences(entries, []string{"1", "2", "3", "4", "5", "5::7", "6", "8", "9"}))
+	verifyChangesFullSequences(t, entries, []string{"1", "2", "3", "4", "5", "5::7", "6", "8", "9"})
 }
 
 // Test that housekeeping goroutines get terminated when change cache is stopped
@@ -1218,52 +1220,36 @@ func shortWaitCache() CacheOptions {
 	return cacheOptions
 }
 
-func verifyCacheSequences(singleCache SingleChannelCache, sequences []uint64) bool {
-
+// verifyCacheSequences asserts a full match on the sequences stored in singleCache's log.
+func verifyCacheSequences(t *testing.T, singleCache SingleChannelCache, sequences []uint64) {
+	t.Helper()
 	cache, ok := singleCache.(*singleChannelCacheImpl)
-	if !ok {
-		return false
+	require.True(t, ok, "expected *singleChannelCacheImpl, got %T", singleCache)
+	actualSequences := make([]uint64, 0, len(cache.logs))
+	for _, entry := range cache.logs {
+		actualSequences = append(actualSequences, entry.Sequence)
 	}
-	if len(cache.logs) != len(sequences) {
-
-		log.Printf("verifyCacheSequences: cache size (%v) not equals to sequences size (%v)",
-			len(cache.logs), len(sequences))
-		return false
-	}
-	for index, seq := range sequences {
-		if cache.logs[index].Sequence != seq {
-			log.Printf("verifyCacheSequences: sequence mismatch at index %v, cache=%v, sequences=%v",
-				index, cache.logs[index].Sequence, seq)
-			return false
-		}
-	}
-	return true
+	require.Equal(t, sequences, actualSequences)
 }
 
-// verifyChangesFullSequences compares for a full match on sequence, including compound elements)
-func verifyChangesFullSequences(changes []*ChangeEntry, sequences []string) bool {
-	if len(changes) != len(sequences) {
-		log.Printf("verifyChangesFullSequences: changes size (%v) not equals to sequences size (%v), changes=%s",
-			len(changes), len(sequences), formatChangeSequences(changes))
-		return false
-	}
-	for index, seq := range sequences {
-		if changes[index].Seq.String() != seq {
-			log.Printf("verifyChangesFullSequences: sequence mismatch at index %v, changes=%s, sequences=%s",
-				index, formatChangeSequences(changes), seq)
-			return false
-		}
-	}
-	return true
+// verifyChangesFullSequences asserts a full match on sequence, including compound elements.
+func verifyChangesFullSequences(t *testing.T, changes []*ChangeEntry, sequences []string) {
+	t.Helper()
+	require.Equal(t, sequences, changeSequences(changes))
 }
 
-// formatChangeSequences renders the sequence numbers of changes for diagnostic logging.
-func formatChangeSequences(changes []*ChangeEntry) string {
+// changeSequences returns the sequence number of each change, in order.
+func changeSequences(changes []*ChangeEntry) []string {
 	seqs := make([]string, 0, len(changes))
 	for _, change := range changes {
 		seqs = append(seqs, change.Seq.String())
 	}
-	return strings.Join(seqs, ", ")
+	return seqs
+}
+
+// formatChangeSequences renders the sequence numbers of changes for diagnostic logging.
+func formatChangeSequences(changes []*ChangeEntry) string {
+	return strings.Join(changeSequences(changes), ", ")
 }
 
 // verifyChangesSequencesIgnoreOrder compares for a match on sequence number only and ignores sequenceID order
