@@ -141,6 +141,14 @@ func TestAllPrincipalIDs(t *testing.T) {
 				userStatement, _ := database.BuildUsersQuery("", 0)
 				requireCoveredQuery(t, database, userStatement, !testCase.useLegacySyncDocsIndex)
 			})
+			t.Run("principalsQueryScansPrincipalIndexes", func(t *testing.T) {
+				expectedIndexes := []string{"sg_users_x1", "sg_roles_x1"}
+				if testCase.useLegacySyncDocsIndex {
+					expectedIndexes = []string{"sg_syncDocs_x1"}
+				}
+				principalsStatement, params := database.BuildPrincipalsQuery("", 0)
+				requireQueryScansIndexes(t, database, principalsStatement, params, expectedIndexes)
+			})
 
 			authenticator := database.Authenticator(ctx)
 

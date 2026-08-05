@@ -482,6 +482,16 @@ func replaceIndexTokensQuery(statement string, idx SGIndex, numPartitions uint32
 	return strings.Replace(statement, indexToken, idx.fullIndexName(numPartitions), -1)
 }
 
+// replaceIndexTokensQueryMultiIdx is replaceIndexTokensQuery for a query that hints more than one
+// index, so N1QL can union-scan them.
+func replaceIndexTokensQueryMultiIdx(statement string, idxs []SGIndex, numPartitions uint32) string {
+	indexNames := make([]string, 0, len(idxs))
+	for _, idx := range idxs {
+		indexNames = append(indexNames, idx.fullIndexName(numPartitions))
+	}
+	return strings.Replace(statement, indexToken, strings.Join(indexNames, ","), -1)
+}
+
 // GetIndexName returns names of the indexes that would be created for specific options.
 func GetIndexNames(options InitializeIndexOptions, indexDefs map[SGIndexType]SGIndex) []string {
 	indexNames := make([]string, 0)

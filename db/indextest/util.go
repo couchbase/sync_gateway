@@ -96,6 +96,26 @@ func requireCoveredQuery(t *testing.T, database *db.Database, statement string, 
 	require.Equal(t, isCovered, covered, "query covered by index; expectedToBeCovered: %t, Plan: %s", isCovered, planJSON)
 }
 
+// requireQueryScansIndexes asserts the query is served by exactly the given indexes. A hint naming
+// a missing index is dropped by the server, so check the plan rather than the statement.
+func requireQueryScansIndexes(t *testing.T, database *db.Database, statement string, params map[string]any, expectedIndexes []string) {
+	t.Helper()
+	n1QLStore, ok := base.AsN1QLStore(database.MetadataStore)
+	require.True(t, ok)
+	plan, explainErr := n1QLStore.ExplainQuery(base.TestCtx(t), statement, params)
+	require.NoError(t, explainErr, "Error generating explain for %+v", statement)
+
+	planJSON := base.MustJSONMarshal(t, plan)
+	var explain struct {
+		OptimizerHints struct {
+			HintsWithError []string `json:"hints_with_error"`
+		} `json:"optimizer_hints"`
+	}
+	require.NoError(t, base.JSONUnmarshal(planJSON, &explain))
+	require.Empty(t, explain.OptimizerHints.HintsWithError, "query hints an index that does not exist. Plan: %s", planJSON)
+	require.ElementsMatch(t, expectedIndexes, db.ScannedIndexesFromPlan(plan), "Plan: %s", planJSON)
+}
+
 // createOldNonXattrIndexes creates non-xattr SG indexes (e.g. sg_access_1) on each provided datastore,
 // simulating a bucket that was previously used with a non-xattr SG deployment.
 func createOldNonXattrIndexes(t *testing.T, datastores ...base.DataStore) {
