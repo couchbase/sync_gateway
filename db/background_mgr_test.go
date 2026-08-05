@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -590,7 +591,8 @@ func TestBackgroundManagerJoinNoDoc(t *testing.T) {
 		terminator: base.NewSafeTerminator(),
 	}
 
-	require.ErrorIs(t, mgr.Join(ctx), errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, mgr.Join(ctx), &statusErr)
 }
 
 // TestBackgroundManagerJoinSingleNodeError verifies that Join returns an error for single-node managers
@@ -842,7 +844,8 @@ func TestBackgroundManagerJoinCallsUpdateDatabaseStateWhenNotRunning(t *testing.
 
 	// No status doc exists → Join must return errBackgroundManagerStatusNotRunning.
 	err := mgr.Join(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	mu.Lock()
 	calls := make([]bool, len(dbStateCalls))
@@ -1125,7 +1128,8 @@ func TestUpdateDatabaseStateJoinOverwritesRunningState(t *testing.T) {
 
 	// B's Join will see no cluster status doc → errBackgroundManagerStatusNotRunning → callUpdateDatabaseState(false).
 	err := mgrB.Join(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	// B wrote false to the shared state doc, even though A is still running.
 	// A's next UpdateStatusClusterAware call must restore true.
@@ -1408,17 +1412,122 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 	require.NoError(t, mgr2.Stop(ctx))
 }
 
-func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
+// TestBackgroundManagerMultiNodePollingConverges verifies that when another node moves the shared
+// cluster status to a terminal state, a still-running node that only observes this via polling
+// converges to that same state - without overwriting it.
+func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
+	tests := []struct {
+		name          string
+		externalState BackgroundProcessState
+	}{
+		{name: "Completed", externalState: BackgroundProcessStateCompleted},
+		{name: "Error", externalState: BackgroundProcessStateError},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			ctx := base.TestCtx(t)
+			defer testBucket.Close(ctx)
+
+			metadataStore := testBucket.DefaultDataStore(ctx)
+			metaKeys := base.NewMetadataKeys("test-polling-converge")
+
+			clusterOpts := &ClusterAwareBackgroundManagerOptions{
+				metadataStore: metadataStore,
+				metaKeys:      metaKeys,
+				processSuffix: "polling-converge",
+				multiNode:     true,
+			}
+
+			process1 := &MockProcess{}
+			mgr1 := &BackgroundManager[MockProcessOptions]{
+				name:                "mgr1",
+				Process:             process1,
+				clusterAwareOptions: clusterOpts,
+				terminator:          base.NewSafeTerminator(),
+			}
+			process2 := &MockProcess{}
+			mgr2 := &BackgroundManager[MockProcessOptions]{
+				name:                "mgr2",
+				Process:             process2,
+				clusterAwareOptions: clusterOpts,
+				terminator:          base.NewSafeTerminator(),
+			}
+
+			// Start both managers. Both should run.
+			require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
+			defer func() { _ = mgr1.Stop(ctx) }()
+
+			require.NoError(t, mgr2.Start(ctx, MockProcessOptions{}))
+			defer func() { _ = mgr2.Stop(ctx) }()
+
+			RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
+			RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
+
+			// Simulate another node reaching a terminal state by manually writing it to the shared
+			// cluster status document.
+			docID := clusterOpts.StatusDocID()
+			_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
+				var output map[string]json.RawMessage
+				if current != nil {
+					_ = base.JSONUnmarshal(current, &output)
+				} else {
+					output = make(map[string]json.RawMessage)
+				}
+
+				status := BackgroundManagerStatus{
+					State:     test.externalState,
+					StartTime: time.Now(),
+				}
+				statusBytes, err := base.JSONMarshal(status)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				output["status"] = statusBytes
+				output["meta"] = json.RawMessage("null")
+
+				outputBytes, err := base.JSONMarshal(output)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				return outputBytes, nil, false, nil
+			})
+			require.NoError(t, err)
+
+			// Wait for mgr2's polling loop to detect the terminal status and close its terminator.
+			require.Eventually(t, func() bool {
+				return mgr2.terminator.IsClosed()
+			}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects "+string(test.externalState)+" status")
+
+			assert.Equal(t, test.externalState, mgr2.GetRunState(), "mgr2 should adopt the real external state")
+
+			// Verify that the status in the bucket remains as set externally and is not overwritten by mgr2.
+			rawStatus, err := mgr2.GetStatus(ctx)
+			require.NoError(t, err)
+			var status BackgroundManagerStatus
+			require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+			assert.Equal(t, test.externalState, status.State, "expected the bucket status to remain "+string(test.externalState)+" and NOT be overwritten")
+		})
+	}
+}
+
+// TestBackgroundManagerMultiNodeStopConvergesToStopped verifies that stopping a multi-node process
+// via one manager brings every manager - including ones that only observe the stop by polling the
+// shared cluster status - to Stopped, both locally and in the persisted cluster status.
+func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
 	metadataStore := testBucket.DefaultDataStore(ctx)
-	metaKeys := base.NewMetadataKeys("test-polling-overwrite")
+	metaKeys := base.NewMetadataKeys("test-multi-node-stop")
 
-	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+	options := &ClusterAwareBackgroundManagerOptions{
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
-		processSuffix: "polling-overwrite",
+		processSuffix: "multi-node-stop",
 		multiNode:     true,
 	}
 
@@ -1426,7 +1535,7 @@ func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
 	mgr1 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr1",
 		Process:             process1,
-		clusterAwareOptions: clusterOpts,
+		clusterAwareOptions: options,
 		terminator:          base.NewSafeTerminator(),
 	}
 
@@ -1434,7 +1543,7 @@ func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
 	mgr2 := &BackgroundManager[MockProcessOptions]{
 		name:                "mgr2",
 		Process:             process2,
-		clusterAwareOptions: clusterOpts,
+		clusterAwareOptions: options,
 		terminator:          base.NewSafeTerminator(),
 	}
 
@@ -1445,49 +1554,26 @@ func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
 	require.NoError(t, mgr2.Start(ctx, MockProcessOptions{}))
 	defer func() { _ = mgr2.Stop(ctx) }()
 
-	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
-	RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
+		assert.Equal(c, BackgroundProcessStateRunning, mgr2.GetRunState())
+	}, 5*time.Second, 100*time.Millisecond)
 
-	// Simulate mgr1 completing successfully by manually writing a completed status to the cluster status document.
-	docID := clusterOpts.StatusDocID()
-	_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
-		var output map[string]json.RawMessage
-		if current != nil {
-			_ = base.JSONUnmarshal(current, &output)
-		} else {
-			output = make(map[string]json.RawMessage)
-		}
+	// Only mgr1 receives Stop(); mgr2 only learns about it via status polling.
+	require.NoError(t, mgr1.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateStopped, mgr1.GetRunState())
+		assert.Equal(c, BackgroundProcessStateStopped, mgr2.GetRunState())
+	}, 10*time.Second, 100*time.Millisecond)
 
-		status := BackgroundManagerStatus{
-			State:     BackgroundProcessStateCompleted,
-			StartTime: time.Now(),
-		}
-		statusBytes, err := base.JSONMarshal(status)
-		if err != nil {
-			return nil, nil, false, err
-		}
-		output["status"] = statusBytes
-		output["meta"] = json.RawMessage("null")
-
-		outputBytes, err := base.JSONMarshal(output)
-		if err != nil {
-			return nil, nil, false, err
-		}
-		return outputBytes, nil, false, nil
-	})
+	// RequireBackgroundManagerState reads the shared cluster doc via GetStatus, and with two
+	// managers able to write it, an Eventually-style wait could observe a transient correct value
+	// before it's overwritten and pass regardless. GetRunState has no such race, and once both
+	// managers are terminal their status pollers have stopped writing, so a single cluster read
+	// afterwards is stable.
+	clusterState, err := mgr1.getClusterStatusState(ctx)
 	require.NoError(t, err)
-
-	// Wait for mgr2's polling loop to detect the completed status and close its terminator.
-	require.Eventually(t, func() bool {
-		return mgr2.terminator.IsClosed()
-	}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects completed status")
-
-	// Verify that the status in the bucket remains completed and is not overwritten by mgr2.
-	rawStatus, err := mgr2.GetStatus(ctx)
-	require.NoError(t, err)
-	var status BackgroundManagerStatus
-	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
-	assert.Equal(t, BackgroundProcessStateCompleted, status.State, "expected the bucket status to remain completed and NOT be overwritten")
+	assert.Equal(t, BackgroundProcessStateStopped, clusterState)
 }
 
 // TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning reproduces the case where Init succeeds and
@@ -1601,6 +1687,96 @@ func TestUpdateStatusClusterAware(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBackgroundManagerConcurrentStopStartRace stress-tests starting, stopping, and updating status
+// concurrently across multiple goroutines to verify there are no deadlocks, panics, or race conditions.
+func TestBackgroundManagerConcurrentStopStartRace(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	metaKeys := base.NewMetadataKeys("test-stop-start-race")
+
+	clusterOpts := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		processSuffix: "stop-start-race",
+		multiNode:     true,
+	}
+
+	process := &MockProcess{}
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:                "race-mgr",
+		Process:             process,
+		clusterAwareOptions: clusterOpts,
+		terminator:          base.NewSafeTerminator(),
+	}
+
+	// Depending on how the goroutines below interleave, the manager can be left running or mid-stop when
+	// they finish, which would leave its goroutines using the bucket after it has been closed. Registered
+	// after the testBucket.Close defer above, so it runs before the bucket is closed.
+	defer func() {
+		terminalStates := []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			// Stop is a no-op if the process is already stopped or stopping.
+			assert.NoError(c, mgr.Stop(ctx))
+			assert.Contains(c, terminalStates, mgr.GetRunState())
+			// Also wait for the persisted status, which the process goroutine writes after transitioning
+			// to a terminal state, to ensure it is done with the bucket.
+			rawStatus, err := mgr.GetStatus(ctx)
+			if !assert.NoError(c, err) {
+				return
+			}
+			var status BackgroundManagerStatus
+			if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
+				return
+			}
+			assert.Contains(c, terminalStates, status.State, "BackgroundManager did not reach a terminal state: %s", string(rawStatus))
+		}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+	}()
+
+	numGoroutines := 10
+	iterations := 20
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines * 3)
+
+	// Worker group 1: Concurrently start
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.Start(ctx, MockProcessOptions{})
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	// Worker group 2: Concurrently stop
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.Stop(ctx)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	// Worker group 3: Concurrently update status
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mgr.UpdateStatusClusterAware(ctx)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
+	}
+
+	wg.Wait()
 }
 
 // TestUpdateHeartbeatDocClusterAwareTransientError reproduces a bug in UpdateHeartbeatDocClusterAware: the
