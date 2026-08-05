@@ -122,11 +122,18 @@ pipeline {
         stage('Checkout Scm') {
             steps {
                 cleanWs(disableDeferredWipeout: false)
-                git(
-                    url: 'git@github.com:couchbase/sync_gateway.git',
-                    branch: "${params.SG_COMMIT}",
-                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
-                )
+                // SG_COMMIT may be an arbitrary commit SHA rather than a branch name. The build
+                // chooser only resolves a branch spec against existing remote-tracking refs, so a
+                // bare SHA won't resolve unless it's fetched into a ref of the same name.
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: params.SG_COMMIT]],
+                    userRemoteConfigs: [[
+                        url: 'git@github.com:couchbase/sync_gateway.git',
+                        credentialsId: 'CB_SG_Robot_Github_SSH_Key',
+                        refspec: "+${params.SG_COMMIT}:refs/remotes/origin/${params.SG_COMMIT}"
+                    ]]
+                ])
             }
         }
         stage('Run E2E Tests') {

@@ -253,29 +253,23 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'main') {
-                    def slackUtils = load('integration-test/slackUtils.groovy')
-                    slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
-                }
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
             }
         }
         failure {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'main') {
-                    def slackUtils = load('integration-test/slackUtils.groovy')
-                    slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL)
-                }
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL)
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                if ("${env.BRANCH_NAME}" == 'main') {
-                    def slackUtils = load('integration-test/slackUtils.groovy')
-                    slackUtils.slackSendFailure('main SGW pipeline', 'aborted', env.BUILD_URL)
-                }
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
             }
         }
         cleanup {
