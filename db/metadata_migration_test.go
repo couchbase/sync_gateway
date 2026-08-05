@@ -10,10 +10,14 @@ package db
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"maps"
 	"testing"
 
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -39,6 +43,171 @@ func seedFallback(ctx context.Context, t *testing.T, ms *base.MetadataStore, key
 	// the write can miss the just-seeded doc until the vBucket's scan view catches up. Block here
 	// so callers can't forget to wait for visibility before exercising scan-backed code.
 	base.RequireDocsVisibleToRangeScan(t, ms.Fallback(), []string{key})
+}
+
+// scanErrorDataStore wraps a DataStore so its range scan returns an iterator that yields no items
+// and reports scanErr via Err() — the shape gocb produces when a scan aborts mid-stream. Next()
+// returning nil while Err() is non-nil only happens against Couchbase Server; this wrapper lets a
+// Rosmar unit test exercise it deterministically.
+type scanErrorDataStore struct {
+	base.DataStore
+	scanErr error
+}
+
+func (s *scanErrorDataStore) Scan(ctx context.Context, scanType sgbucket.ScanType, opts sgbucket.ScanOptions) (sgbucket.ScanResultIterator, error) {
+	rss, ok := base.AsRangeScanStore(s.DataStore)
+	if !ok {
+		return nil, fmt.Errorf("underlying datastore %T does not support range scan", s.DataStore)
+	}
+	iter, err := rss.Scan(ctx, scanType, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &scanErrorIterator{ScanResultIterator: iter, scanErr: s.scanErr}, nil
+}
+
+type scanErrorIterator struct {
+	sgbucket.ScanResultIterator
+	scanErr error
+}
+
+func (it *scanErrorIterator) Next(context.Context) *sgbucket.ScanResultItem { return nil }
+func (it *scanErrorIterator) Err() error                                    { return it.scanErr }
+
+// TestMigrateMetadataScanError verifies that a fallback range scan which aborts mid-stream is never
+// mistaken for a clean drain. Next() returns nil for both a clean end-of-stream and an abort, so
+// MigrateMetadata must consult iter.Err(): swallowing the error would let the orchestrator
+// SetMigrationComplete() with un-migrated docs still on the fallback.
+//
+// A dropped collection is fatal (no retry can help); anything else may be transient, so the pass is
+// flagged unclean via ScanAborted and the orchestrator retries it.
+func TestMigrateMetadataScanError(t *testing.T) {
+	testCases := []struct {
+		name      string
+		scanErr   error
+		wantFatal bool
+	}{
+		{
+			name:      "collection dropped is fatal",
+			scanErr:   gocb.ErrCollectionNotFound,
+			wantFatal: true,
+		},
+		{
+			name:      "transient scan error is retried",
+			scanErr:   errors.New("range scan aborted: partition stream lost"),
+			wantFatal: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			ms := newMigrationTestStore(t, bucket)
+
+			// Seed an in-scope user doc so the fallback genuinely has metadata to migrate; the
+			// aborted scan reads none of it, which must not be reported as a completed migration.
+			const metadataID = "scanErrDB"
+			keys := base.NewMetadataKeys(metadataID)
+			seedFallback(ctx, t, ms, keys.UserKey("alice"), []byte(`{"name":"alice"}`))
+
+			msWithScanErr := base.NewMetadataStore(ms.Primary(),
+				&scanErrorDataStore{DataStore: ms.Fallback(), scanErr: testCase.scanErr})
+
+			stats := &MigrationStats{}
+			_, err := MigrateMetadata(ctx, msWithScanErr, metadataID, nil, nil, stats)
+			if testCase.wantFatal {
+				require.ErrorIs(t, err, testCase.scanErr, "a dropped collection must fail the migration")
+				return
+			}
+			require.NoError(t, err, "a transient scan error must not fail the migration outright")
+			require.True(t, stats.ScanAborted.Load(), "a truncated scan must not look like a clean pass")
+			require.Zero(t, stats.DocsMigrated.Load())
+		})
+	}
+}
+
+// fallbackFetchErrorDataStore wraps a DataStore so its range scan still works (delegated) but every
+// per-doc xattr fetch fails with fetchErr — the shape of the fallback collection being dropped after
+// the scan yielded keys but before their bodies could be moved.
+type fallbackFetchErrorDataStore struct {
+	base.DataStore
+	fetchErr error
+}
+
+func (s *fallbackFetchErrorDataStore) Scan(ctx context.Context, scanType sgbucket.ScanType, opts sgbucket.ScanOptions) (sgbucket.ScanResultIterator, error) {
+	rss, ok := base.AsRangeScanStore(s.DataStore)
+	if !ok {
+		return nil, fmt.Errorf("underlying datastore %T does not support range scan", s.DataStore)
+	}
+	return rss.Scan(ctx, scanType, opts)
+}
+
+func (s *fallbackFetchErrorDataStore) GetWithXattrs(context.Context, string, []string) ([]byte, map[string][]byte, uint64, error) {
+	return nil, nil, 0, s.fetchErr
+}
+
+// TestMigrateMetadataCollectionDroppedDuringMoveFailsPass verifies that when a per-doc move fails
+// because the fallback collection was dropped mid-migration, the pass aborts with a fatal error
+// rather than counting the doc as a transient per-doc error and grinding on. Without this, every
+// remaining key incurs a full KV timeout and the migration never reaches a terminal state in time.
+func TestMigrateMetadataCollectionDroppedDuringMoveFailsPass(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	ms := newMigrationTestStore(t, bucket)
+
+	const metadataID = "moveErrDB"
+	keys := base.NewMetadataKeys(metadataID)
+	seedFallback(ctx, t, ms, keys.UserKey("alice"), []byte(`{"name":"alice"}`))
+
+	// Scan still yields the seeded key, but the per-doc body fetch reports the collection is gone.
+	msWithFetchErr := base.NewMetadataStore(ms.Primary(),
+		&fallbackFetchErrorDataStore{DataStore: ms.Fallback(), fetchErr: gocb.ErrCollectionNotFound})
+
+	stats := &MigrationStats{}
+	_, err := MigrateMetadata(ctx, msWithFetchErr, metadataID, nil, nil, stats)
+	require.ErrorIs(t, err, gocb.ErrCollectionNotFound, "a dropped fallback collection during a per-doc move must fail the pass")
+}
+
+// primaryAddErrorDataStore wraps a DataStore so every Add fails with addErr, standing in for the
+// primary metadata collection going away mid-migration.
+type primaryAddErrorDataStore struct {
+	base.DataStore
+	addErr error
+}
+
+func (s *primaryAddErrorDataStore) Add(context.Context, string, uint32, any) (bool, error) {
+	return false, s.addErr
+}
+
+// TestMigrateMetadataPrimaryCollectionDroppedFailsPass verifies that a dropped PRIMARY collection is
+// fatal too, not just a dropped fallback. Counting it as a per-doc error would burn a full KV
+// timeout on every remaining key across every retry pass without ever making progress.
+func TestMigrateMetadataPrimaryCollectionDroppedFailsPass(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	ms := newMigrationTestStore(t, bucket)
+
+	const metadataID = "primaryErrDB"
+	keys := base.NewMetadataKeys(metadataID)
+	seedFallback(ctx, t, ms, keys.UserKey("alice"), []byte(`{"name":"alice"}`))
+
+	msWithAddErr := base.NewMetadataStore(
+		&primaryAddErrorDataStore{DataStore: ms.Primary(), addErr: gocb.ErrCollectionNotFound}, ms.Fallback())
+
+	stats := &MigrationStats{}
+	_, err := MigrateMetadata(ctx, msWithAddErr, metadataID, nil, nil, stats)
+	require.ErrorIs(t, err, gocb.ErrCollectionNotFound, "a dropped primary collection must fail the pass")
+
+	// The doc must be left on the fallback — nothing was written to primary.
+	exists, existsErr := ms.Fallback().Exists(ctx, keys.UserKey("alice"))
+	require.NoError(t, existsErr)
+	require.True(t, exists, "an unmigrated doc must stay on the fallback")
 }
 
 // TestMigrateMetadataEmptyFallback verifies the new-DB fast path: empty fallback yields a
@@ -442,7 +611,7 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 
 	classify := func(metadataID string, siblingMetadataIDs []string, key string) *MigrationStats {
 		stats := &MigrationStats{}
-		handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, siblingMetadataIDs, nil, key, stats)
+		require.NoError(t, handleMigrationKey(ctx, nil, base.NewMetadataKeys(metadataID), metadataID, siblingMetadataIDs, nil, key, stats))
 		return stats
 	}
 
@@ -571,7 +740,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 					require.NoError(t, err, "seed fallback %s", tc.key)
 				}
 				stats := &MigrationStats{}
-				handleMigrationKey(ctx, ms, keys, migratingID, siblings, syncFnKeys, tc.key, stats)
+				require.NoError(t, handleMigrationKey(ctx, ms, keys, migratingID, siblings, syncFnKeys, tc.key, stats))
 
 				switch tc.want {
 				case dispMigrated:

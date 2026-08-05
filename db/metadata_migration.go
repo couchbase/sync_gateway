@@ -29,6 +29,10 @@ type MigrationStats struct {
 	DocsUnknownPrefix    atomic.Int64
 	Errors               atomic.Int64
 	SeqPoisonPillApplied atomic.Int64
+	// ScanAborted is set when the fallback range scan ended early on a possibly-transient error.
+	// The pass saw an unknown subset of the fallback, so it must not be treated as clean, but it
+	// is worth retrying. Kept separate from Errors, which counts per-doc failures.
+	ScanAborted atomic.Bool
 }
 
 // MigrateMetadata runs a single range-scan pass over the fallback collection and dispatches
@@ -39,9 +43,13 @@ type MigrationStats struct {
 //
 // Returns the number of unrecognised-prefix fallback keys seen this pass (DocsUnknownPrefix),
 // reported for observability only. The orchestrator does NOT retry on this count — unknown-prefix
-// docs are left in place on the fallback and do not block completion. Retries are driven solely by
-// per-doc move/delete errors (stats.Errors); a doc written underneath an in-flight scan that is
-// in-scope is either moved on a later error-forced pass or written directly to primary by the wrapper.
+// docs are left in place on the fallback and do not block completion. Retries are driven by per-doc
+// move/delete errors (stats.Errors) and a truncated scan (stats.ScanAborted); a doc written
+// underneath an in-flight scan that is in-scope is either moved on a later error-forced pass or
+// written directly to primary by the wrapper.
+//
+// A returned error is fatal for the whole migration and no retry pass can clear it — currently only
+// a collection dropped out from under the scan or a per-doc move.
 func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, stats *MigrationStats) (remaining int, err error) {
 	if ms == nil {
 		return 0, errors.New("MigrateMetadata: nil MetadataStore")
@@ -75,7 +83,23 @@ func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID str
 			return int(stats.DocsUnknownPrefix.Load()), ctxErr
 		}
 		stats.DocsScannedTotal.Add(1)
-		handleMigrationKey(ctx, ms, keys, metadataID, siblingMetadataIDs, dbSyncFunctionKeys, item.ID, stats)
+		if err := handleMigrationKey(ctx, ms, keys, metadataID, siblingMetadataIDs, dbSyncFunctionKeys, item.ID, stats); err != nil {
+			return int(stats.DocsUnknownPrefix.Load()), err
+		}
+	}
+
+	// Next returns nil for both a clean end-of-stream and a mid-stream abort, so consult Err to tell
+	// them apart. A truncated scan must never look clean, or the orchestrator would
+	// SetMigrationComplete with in-scope docs still on the fallback.
+	if scanErr := iter.Err(); scanErr != nil {
+		// A dropped fallback collection can never be scanned again - fail the whole migration.
+		if base.IsCollectionOutdatedError(scanErr) {
+			return int(stats.DocsUnknownPrefix.Load()), fmt.Errorf("metadata migration scan aborted: %w", scanErr)
+		}
+		// Anything else (a partition stream lost to rebalance, a temporary failure) may well
+		// succeed next time, so flag the pass as unclean and let the pass loop retry it.
+		base.WarnfCtx(ctx, "metadata migration: scan ended early, will retry pass: %v", scanErr)
+		stats.ScanAborted.Store(true)
 	}
 
 	// In-scope leftovers tell the orchestrator whether to schedule another pass. Out-of-
@@ -103,7 +127,9 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 			return false, nil, 0
 		}
 		if err != nil {
-			return true, err, 0
+			// A dropped/recreated fallback collection is terminal - retrying here would
+			// spin on full KV timeouts forever.
+			return !base.IsCollectionOutdatedError(err), err, 0
 		}
 		var existing base.SyncSeqMigrationPill
 		if jsonErr := base.JSONUnmarshal(raw, &existing); jsonErr != nil || !existing.SGMetadataMigrationPill {
@@ -121,7 +147,7 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 				return false, mErr, 0
 			}
 			if _, wErr := ms.Fallback().WriteCas(ctx, seqKey, 0, cas, payload, 0); wErr != nil {
-				return true, wErr, 0
+				return !base.IsCollectionOutdatedError(wErr), wErr, 0
 			}
 			stats.SeqPoisonPillApplied.Add(1)
 		}
@@ -191,7 +217,11 @@ func syncFunctionKeysForDB(groupID string, collectionNames map[string]map[string
 // Anything else that doesn't match a known family is split between out-of-scope (sibling-DB
 // standard form, bucket-level bootstrap docs, and `_sync:syncInfo` which the design plan keeps
 // in the source collection) and genuinely unknown.
-func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, key string, stats *MigrationStats) {
+//
+// It returns a non-nil error only for a fatal, non-retryable condition — currently a fallback
+// collection dropped mid-migration — which the caller must propagate to abort the whole pass.
+// Ordinary per-doc failures are recorded in stats and return nil so the run can continue.
+func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, key string, stats *MigrationStats) error {
 	// Ownership of a fallback key is decided by two helpers, chosen per key family:
 	//
 	//   isOurs         — plain prefix match. Used for the non-inverted families
@@ -270,7 +300,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		// JSON-bodied metadata. moveFallbackDoc(binary=false) preserves the JSON
 		// datatype flag so strict readers (auth, RawJSONTranscoder) can decode the
 		// migrated doc on primary.
-		moveFallbackDoc(ctx, ms, key, false, stats)
+		return moveFallbackDoc(ctx, ms, key, false, stats)
 
 	// matching binary sync docs for this database
 	case
@@ -279,12 +309,12 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		// Binary-bodied metadata (8/16-byte little-endian uint64 payload written by
 		// sequenceAllocator.releaseSequence / releaseSequenceRange). Must preserve
 		// the Binary datatype flag — change_listener.go relies on these docs.
-		moveFallbackDoc(ctx, ms, key, true, stats)
+		return moveFallbackDoc(ctx, ms, key, true, stats)
 
 	// heartbeater - don't migrate just cleanup
 	case
 		keys.IsHeartbeaterKey(key):
-		deleteFallbackDoc(ctx, ms, key, stats)
+		return deleteFallbackDoc(ctx, ms, key, stats)
 
 	// never migrate using range scan
 	case key == keys.SyncSeqKey(),
@@ -344,6 +374,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		base.WarnfCtx(ctx, "metadata migration: unrecognised prefix, leaving on fallback: %s", base.UD(key))
 		stats.DocsUnknownPrefix.Add(1)
 	}
+	return nil
 }
 
 // moveFallbackDoc moves a single doc from the fallback collection to the primary
@@ -370,15 +401,21 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 // here is fresher than ours and must not be overwritten — we just drop the stale
 // fallback shadow. Add/AddRaw both return (added=false, err=nil) on duplicate; the
 // IsCasMismatch check is defensive for backends that surface a CAS error instead.
-func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, binary bool, stats *MigrationStats) {
+func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, binary bool, stats *MigrationStats) error {
 	raw, expiry, err := fetchFallbackBodyAndExpiry(ctx, ms, key)
 	if base.IsDocNotFoundError(err) {
-		return
+		return nil
 	}
 	if err != nil {
+		// A dropped/outdated collection is terminal for the whole migration — every remaining key
+		// would incur the same full KV timeout. Abort the pass rather than count this as a
+		// transient per-doc error and grind on.
+		if base.IsCollectionOutdatedError(err) {
+			return fmt.Errorf("metadata migration: fallback collection unavailable fetching %s: %w", base.UD(key), err)
+		}
 		base.WarnfCtx(ctx, "metadata migration: fallback fetch failed for %s: %v", base.UD(key), err)
 		stats.Errors.Add(1)
-		return
+		return nil
 	}
 	var addErr error
 	if binary {
@@ -391,27 +428,39 @@ func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, bi
 		_, addErr = ms.Primary().Add(ctx, key, expiry, raw)
 	}
 	if addErr != nil && !base.IsCasMismatch(addErr) {
+		// Same reasoning as the fallback fetch above, for the primary side.
+		if base.IsCollectionOutdatedError(addErr) {
+			return fmt.Errorf("metadata migration: primary collection unavailable adding %s: %w", base.UD(key), addErr)
+		}
 		base.WarnfCtx(ctx, "metadata migration: primary add failed for %s: %v", base.UD(key), addErr)
 		stats.Errors.Add(1)
-		return
+		return nil
 	}
 	if delErr := ms.Fallback().Delete(ctx, key); delErr != nil && !base.IsDocNotFoundError(delErr) {
+		if base.IsCollectionOutdatedError(delErr) {
+			return fmt.Errorf("metadata migration: fallback collection unavailable deleting %s: %w", base.UD(key), delErr)
+		}
 		base.WarnfCtx(ctx, "metadata migration: fallback delete failed for %s: %v", base.UD(key), delErr)
 		stats.Errors.Add(1)
-		return
+		return nil
 	}
 	stats.DocsMigrated.Add(1)
+	return nil
 }
 
 // deleteFallbackDoc just removes the fallback doc
 // This is used in cases like transient heartbeat documents where it does not make sense to move.
-func deleteFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, stats *MigrationStats) {
+func deleteFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, stats *MigrationStats) error {
 	if delErr := ms.Fallback().Delete(ctx, key); delErr != nil && !base.IsDocNotFoundError(delErr) {
+		if base.IsCollectionOutdatedError(delErr) {
+			return fmt.Errorf("metadata migration: fallback collection unavailable deleting %s: %w", base.UD(key), delErr)
+		}
 		base.WarnfCtx(ctx, "metadata migration: fallback delete failed for %s: %v", base.UD(key), delErr)
 		stats.Errors.Add(1)
-		return
+		return nil
 	}
 	stats.DocsMigrated.Add(1)
+	return nil
 }
 
 // fetchFallbackBodyAndExpiry reads a fallback doc's body and expiry in a single

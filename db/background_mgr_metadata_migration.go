@@ -251,7 +251,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigr
 				return err
 			}
 
-			// Completion gates ONLY on per-doc move/delete errors. A failed in-scope move
+			// Completion gates on per-doc move/delete errors and a truncated scan. A failed in-scope move
 			// increments stats.Errors and leaves the doc on the fallback, which the wrapper
 			// would then permanently ignore — so those must clear before we
 			// SetMigrationComplete(). Errors are typically transient (CAS races), so a non-clean
@@ -263,8 +263,12 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigr
 			// doc written directly to the bucket can't wedge the migration. They are still logged
 			// per-key by handleMigrationKey; we additionally warn with the count here so the
 			// completion event itself records the leftovers.
+			//
+			// A pass whose range scan ended early (ScanAborted) saw only part of the fallback, so it
+			// can't be trusted to have verified it clear either - retry it on the same terms.
 			passErrors := stats.Errors.Load()
-			if passErrors == 0 {
+			scanAborted := stats.ScanAborted.Load()
+			if passErrors == 0 && !scanAborted {
 				if remaining > 0 {
 					base.WarnfCtx(ctx, "[%s] migration completing with %d unrecognised-prefix doc(s) left on %s; see per-key warnings above", metadataMigrationLoggingID, remaining, ms.Fallback().GetName())
 				}
@@ -273,11 +277,11 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigr
 			}
 
 			if pass+1 >= maxPasses {
-				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d per-doc error(s) on the last pass", metadataMigrationLoggingID, maxPasses, passErrors)
+				base.WarnfCtx(ctx, "[%s] gave up after %d passes with %d per-doc error(s) on the last pass (scan aborted: %t)", metadataMigrationLoggingID, maxPasses, passErrors, scanAborted)
 				if promStats != nil {
 					promStats.AbandonedRuns.Add(1)
 				}
-				return fmt.Errorf("%s still not clear of metadata after %d passes: %d per-doc error(s) remain", ms.Fallback().GetName(), maxPasses, passErrors)
+				return fmt.Errorf("%s still not clear of metadata after %d passes: %d per-doc error(s) remain, scan aborted: %t", ms.Fallback().GetName(), maxPasses, passErrors, scanAborted)
 			}
 		}
 

@@ -390,6 +390,13 @@ func (c *Collection) isRecoverableReadError(err error) bool {
 		return false
 	}
 
+	// gocbcore always-retries KV_COLLECTION_OUTDATED, so a read against a dropped collection burns
+	// its whole deadline and surfaces as a timeout. Retrying that just repeats the wait, so fail
+	// fast to let callers (e.g. metadata migration over a dropped fallback) reach a terminal state.
+	if IsCollectionOutdatedError(err) {
+		return false
+	}
+
 	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) || errors.Is(err, gocb.ErrTimeout) {
 		return true
 	}
