@@ -576,7 +576,7 @@ func (c *DatabaseCollection) QueryResync(ctx context.Context, limit int, startSe
 	return c.QueryChannels(ctx, channels.UserStarChannel, startSeq, endSeq, limit, false)
 }
 
-// Query to retrieve the set of user and role doc ids, using the syncDocs index
+// Query to retrieve the set of user and role doc ids, using the syncDocs index or the user and role indexes
 func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query

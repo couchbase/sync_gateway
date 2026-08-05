@@ -105,11 +105,14 @@ func requireQueryScansIndexes(t *testing.T, database *db.Database, statement str
 	plan, explainErr := n1QLStore.ExplainQuery(base.TestCtx(t), statement, params)
 	require.NoError(t, explainErr, "Error generating explain for %+v", statement)
 
-	planJSON, err := base.JSONMarshal(plan)
-	require.NoError(t, err)
-	hints, _ := plan["optimizer_hints"].(map[string]any)
-	_, hasHintErrors := hints["hints_with_error"]
-	require.False(t, hasHintErrors, "query hints an index that does not exist. Plan: %s", planJSON)
+	planJSON := base.MustJSONMarshal(t, plan)
+	var explain struct {
+		OptimizerHints struct {
+			HintsWithError []string `json:"hints_with_error"`
+		} `json:"optimizer_hints"`
+	}
+	require.NoError(t, base.JSONUnmarshal(planJSON, &explain))
+	require.Empty(t, explain.OptimizerHints.HintsWithError, "query hints an index that does not exist. Plan: %s", planJSON)
 	require.ElementsMatch(t, expectedIndexes, db.ScannedIndexesFromPlan(plan), "Plan: %s", planJSON)
 }
 
