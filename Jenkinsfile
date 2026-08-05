@@ -1,17 +1,3 @@
-import jenkins.model.Jenkins
-
-@NonCPS
-def jenkinsServerEnvVar(String name) {
-    def envVarsNodePropertyList = Jenkins.instance.globalNodeProperties.getAll(hudson.slaves.EnvironmentVariablesNodeProperty)
-    if (envVarsNodePropertyList && envVarsNodePropertyList[0]) {
-        def value = envVarsNodePropertyList[0].envVars.get(name)
-        if (value) {
-            return value
-        }
-    }
-    return "ERROR: ${name} is not configured as a Jenkins global environment variable"
-}
-
 pipeline {
     agent { label 'sgw-pipeline-ec2' }
 
@@ -231,8 +217,8 @@ pipeline {
                                         [backingStore: 'cbs', testDirectory: 'tests/dev_e2e'],
                                         [backingStore: 'cbs', testDirectory: 'tests/QE'],
                                     ]
-                                    def couchbaseLiteVersion = jenkinsServerEnvVar('DEFAULT_COUCHBASE_LITE_VERSION')
-                                    def couchbaseServerVersion = jenkinsServerEnvVar('DEFAULT_COUCHBASE_SERVER_VERSION')
+                                    def couchbaseLiteVersion = env.DEFAULT_COUCHBASE_LITE_VERSION
+                                    def couchbaseServerVersion = env.DEFAULT_COUCHBASE_SERVER_VERSION
                                     e2eModes.each { mode ->
                                         build job: 'Couchbase Lite E2E', wait: false, parameters: [
                                             string(name: 'SG_COMMIT', value: env.SG_COMMIT),
