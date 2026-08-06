@@ -9,11 +9,13 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -161,9 +163,59 @@ type SGFeedSourceParams struct {
 	DbName string `json:"sg_dbname,omitempty"`
 }
 
+// Equal reports whether p and other are the same, ignoring Collections order (unstable, see
+// cbgtFeedParams) and JSON key order (jsoniter doesn't guarantee one). Compares via
+// JSONMarshalCanonical rather than field-by-field since the embedded cbgt types could grow
+// new fields in a version bump.
+func (p SGFeedSourceParams) Equal(other SGFeedSourceParams) bool {
+	p.Collections = slices.Clone(p.Collections)
+	slices.Sort(p.Collections)
+	other.Collections = slices.Clone(other.Collections)
+	slices.Sort(other.Collections)
+
+	pBytes, err := JSONMarshalCanonical(p)
+	if err != nil {
+		return false
+	}
+	otherBytes, err := JSONMarshalCanonical(other)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(pBytes, otherBytes)
+}
+
+// SGFeedSourceParamsEqual unmarshals a and b as SGFeedSourceParams and reports whether they're equal.
+func SGFeedSourceParamsEqual(a, b string) bool {
+	var pa, pb SGFeedSourceParams
+	if err := JSONUnmarshal([]byte(a), &pa); err != nil {
+		return false
+	}
+	if err := JSONUnmarshal([]byte(b), &pb); err != nil {
+		return false
+	}
+	return pa.Equal(pb)
+}
+
 type SGFeedIndexParams struct {
 	// Used to retrieve the dest implementation (importListener))
 	DestKey string `json:"destKey,omitempty"`
+}
+
+// Equal returns true if p and other represent the same feed index parameters.
+func (p SGFeedIndexParams) Equal(other SGFeedIndexParams) bool {
+	return p.DestKey == other.DestKey
+}
+
+// SGFeedIndexParamsEqual unmarshals a and b as SGFeedIndexParams and reports whether they're equal.
+func SGFeedIndexParamsEqual(a, b string) bool {
+	var pa, pb SGFeedIndexParams
+	if err := JSONUnmarshal([]byte(a), &pa); err != nil {
+		return false
+	}
+	if err := JSONUnmarshal([]byte(b), &pb); err != nil {
+		return false
+	}
+	return pa.Equal(pb)
 }
 
 // cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string. This contains information to for a given information , to be passed as feedparams during cbgt.Manager init.
