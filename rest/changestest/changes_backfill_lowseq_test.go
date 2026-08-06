@@ -329,6 +329,7 @@ func TestMultiChannelChangesWithTriggeredSequence(t *testing.T) {
 	// — the exact compound format that CBG-5429 fixes.
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/sg-user", rest.GetUserPayload(t, "", rest.RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), []string{"ABC", "DEF"}, nil))
 	rest.RequireStatus(t, resp, http.StatusOK)
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Use the last_seq from the post-seq7 response as the since value. This since has LowSeq
 	// set, and after the DEF grant the changes feed will add TriggeredBy, producing a compound
