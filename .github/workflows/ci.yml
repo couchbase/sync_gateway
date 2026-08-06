@@ -354,7 +354,7 @@ jobs:
     steps:
       - id: govulncheck
         # tag for repo at v1 is not updated
-        uses: golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f
         with:
            go-version-input: *go_version
            go-package: ./...
