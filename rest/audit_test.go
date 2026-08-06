@@ -1350,12 +1350,12 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "get changes compound since, include_docs",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes?since=5:10&include_docs=true", "", requestUser), http.StatusOK)
+					RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes?since=10:5&include_docs=true", "", requestUser), http.StatusOK)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType:    "normal",
 					base.AuditFieldIncludeDocs: true,
-					base.AuditFieldSince:       "5:10",
+					base.AuditFieldSince:       "10:5",
 				},
 			},
 			{
@@ -1476,13 +1476,13 @@ func TestAuditChangesFeedStart(t *testing.T) {
 			{
 				name: "blip changes with compound since",
 				auditableCode: func(t testing.TB, docID string, docVersion DocVersion) {
-					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "1:10"})
+					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: "10:1"})
 					btcRunner.WaitForVersion(btc.id, docID, docVersion)
 					btcRunner.UnsubPullChanges(btc.id)
 				},
 				expectedFields: map[string]any{
 					base.AuditFieldFeedType: "normal",
-					base.AuditFieldSince:    "1:10",
+					base.AuditFieldSince:    "10:1",
 				},
 			},
 		}
