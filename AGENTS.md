@@ -13,6 +13,7 @@ go test ./...                    # unit tests, in-memory Rosmar backing store
 - **Integration tests** against a real Couchbase Server are covered in [docs/TESTING.md](docs/TESTING.md): starting a local cluster with `integration-test/start_cbs.py`, the `SG_TEST_*` environment variables, and the bucket pool.
 - **Python tooling** (`tools/`): See [tools/AGENTS.md](tools/AGENTS.md).
 - **Lint**: CI enforces `.golangci-strict.yml`; reproduce it locally with `pre-commit run golangci-lint --all-files`. Some conventions are enforced here rather than written down — the linter message explains the fix.
+- **CI tools** are pinned by `tool` directives in `go.mod` and run as `go tool <name>` — `gotestsum`, `addlicense`, `goimports`, `goveralls`. No install step is needed. `cbdinocluster` is pinned in its own module: `go -C integration-test/tools tool cbdinocluster`.
 
 Git: `main` is the current in-development version. Released versions and backports live in `release/x.y.z` branches. Feature branches are named `CBG-xxxx` after the Jira ticket.
 
