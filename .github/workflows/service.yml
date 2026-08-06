@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Verify service script installation.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # build sync gateway since the executable is needed for service installation
       - uses: actions/setup-go@v6
         with:

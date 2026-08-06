@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
 
 env:
-  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@v6
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@v7
   ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@v6
   ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@v4.0.0
   GO_VERSION: &go_version 1.26.5
