@@ -1374,42 +1374,171 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	collection2Name := rt.GetDbCollections()[1].Name
 	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
 
-	collectionPayload := fmt.Sprintf(`,"%s": {
-					"admin_channels":["a"]
-				}`, collection2Name)
-	userPayload := `{
-		%s
-		"admin_channels":["foo", "bar"],
+	// Create user bob with initial collection access
+	initialUserPayload := fmt.Sprintf(`{
+		"email": "bob@couchbase.com",
+		"password": "letmein",
+		"admin_channels": ["foo", "bar"],
 		"collection_access": {
 			"%s": {
 				"%s": {
-					"admin_channels":[%s]
+					"admin_channels": ["foo"]
+				},
+				"%s": {
+					"admin_channels": ["a"]
 				}
-				%s
 			}
 		}
-	}`
+	}`, scopeName, collection1Name, collection2Name)
+	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/bob", initialUserPayload), http.StatusCreated)
 
-	putResponse := rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
-		scopeName, collection1Name, `"foo"`, collectionPayload))
-	RequireStatus(t, putResponse, 201)
+	testCases := []struct {
+		name             string
+		channels         string // "null" or standard JSON array string, e.g. `["foo"]`
+		expectedStatus   int
+		expectedChannels base.Set
+	}{
+		{
+			name:             "UpdateUser",
+			channels:         `["foo", "bar"]`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: channels.BaseSetOf(t, "foo", "bar"),
+		},
+		{
+			name:             "DeleteAdminChannels",
+			channels:         `[]`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: nil,
+		},
+		{
+			name:             "SetCollectionToNil",
+			channels:         `null`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: nil,
+		},
+	}
 
-	// Upsert one collection and preserve existing
-	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
-		scopeName, collection1Name, `"foo", "bar"`, ""))
-	RequireStatus(t, putResponse, 200)
-	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
-	RequireStatus(t, getResponse, 200)
-	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), collection2Name)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var payload string
+			if tc.channels == "null" {
+				payload = fmt.Sprintf(`{
+					"collection_access": {
+						"%s": {
+							"%s": null
+						}
+					}
+				}`, scopeName, collection1Name)
+			} else {
+				payload = fmt.Sprintf(`{
+					"collection_access": {
+						"%s": {
+							"%s": {
+								"admin_channels": %s
+							}
+						}
+					}
+				}`, scopeName, collection1Name, tc.channels)
+			}
 
-	// Delete collection admin channels
-	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
-		scopeName, collection1Name, ``, ""))
-	RequireStatus(t, putResponse, 200)
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/bob", payload), tc.expectedStatus)
 
-	getResponse = rt.SendAdminRequest("GET", "/db/_user/bob", "")
-	RequireStatus(t, getResponse, 200)
-	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
+			getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+			RequireStatus(t, getResponse, http.StatusOK)
+
+			var responseConfig auth.PrincipalConfig
+			err := json.Unmarshal(getResponse.Body.Bytes(), &responseConfig)
+			require.NoError(t, err)
+
+			var actualChannels base.Set
+			if responseConfig.CollectionAccess != nil && responseConfig.CollectionAccess[scopeName] != nil {
+				if colAccess, exists := responseConfig.CollectionAccess[scopeName][collection1Name]; exists {
+					actualChannels = colAccess.ExplicitChannels_
+				}
+			}
+			assert.Equal(t, tc.expectedChannels, actualChannels)
+		})
+	}
+
+	// Create role1 with initial collection access
+	initialRolePayload := fmt.Sprintf(`{
+		"collection_access": {
+			"%s": {
+				"%s": {
+					"admin_channels": ["foo"]
+				}
+			}
+		}
+	}`, scopeName, collection1Name)
+	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_role/role1", initialRolePayload), http.StatusCreated)
+
+	roleTestCases := []struct {
+		name             string
+		channels         string // "null" or standard JSON array string, e.g. `["foo"]`
+		expectedStatus   int
+		expectedChannels base.Set
+	}{
+		{
+			name:             "UpdateRole",
+			channels:         `["foo", "bar"]`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: channels.BaseSetOf(t, "foo", "bar"),
+		},
+		{
+			name:             "DeleteRoleAdminChannels",
+			channels:         `[]`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: nil,
+		},
+		{
+			name:             "SetRoleCollectionToNil",
+			channels:         `null`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: nil,
+		},
+	}
+
+	for _, tc := range roleTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var payload string
+			if tc.channels == "null" {
+				payload = fmt.Sprintf(`{
+					"collection_access": {
+						"%s": {
+							"%s": null
+						}
+					}
+				}`, scopeName, collection1Name)
+			} else {
+				payload = fmt.Sprintf(`{
+					"collection_access": {
+						"%s": {
+							"%s": {
+								"admin_channels": %s
+							}
+						}
+					}
+				}`, scopeName, collection1Name, tc.channels)
+			}
+
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_role/role1", payload), tc.expectedStatus)
+
+			getResponse := rt.SendAdminRequest("GET", "/db/_role/role1", "")
+			RequireStatus(t, getResponse, http.StatusOK)
+
+			var responseConfig auth.PrincipalConfig
+			err := json.Unmarshal(getResponse.Body.Bytes(), &responseConfig)
+			require.NoError(t, err)
+
+			var actualChannels base.Set
+			if responseConfig.CollectionAccess != nil && responseConfig.CollectionAccess[scopeName] != nil {
+				if colAccess, exists := responseConfig.CollectionAccess[scopeName][collection1Name]; exists {
+					actualChannels = colAccess.ExplicitChannels_
+				}
+			}
+			assert.Equal(t, tc.expectedChannels, actualChannels)
+		})
+	}
 
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Scopes = GetCollectionsConfig(rt.TB(), rt.TestBucket, 1)
@@ -1430,11 +1559,35 @@ func TestPutUserCollectionAccess(t *testing.T) {
 		}
 		readOnlyCollectionPayload := fmt.Sprintf(`,"%s": {
 					"%s":%s
-				}`, collection2Name, property, rdOnlyValue)
-		putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
-		RequireStatus(t, putResponse, 400)
-		putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userPayload, ``, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
-		RequireStatus(t, putResponse, 400)
+				}`, collection1Name, property, rdOnlyValue)
+
+		userPayload := fmt.Sprintf(`{
+			"email":"bob@couchbase.com",
+			"password":"letmein",
+			"admin_channels":["foo", "bar"],
+			"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["ABC"]
+					}
+					%s
+				}
+			}
+		}`, scopeName, collection1Name, readOnlyCollectionPayload)
+
+		rolePayload := fmt.Sprintf(`{
+			"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["ABC"]
+					}
+					%s
+				}
+			}
+		}`, scopeName, collection1Name, readOnlyCollectionPayload)
+
+		RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/bob2", userPayload), 400)
+		RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_role/role12", rolePayload), 400)
 	}
 }
 
