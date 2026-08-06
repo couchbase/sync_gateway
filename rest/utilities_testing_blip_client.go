@@ -2047,6 +2047,45 @@ func (btcc *BlipTesterCollectionClient) WaitForPullRevMessage(docID string, vers
 	return msg
 }
 
+// WaitForPullNoRevMessage will return the norev message received by the client for the given docID/version as
+// part of a pull replication. This includes norevs that were bodyless and therefore not applied to the client's
+// local document - every message received by the replication is stored regardless of how (or whether) it was
+// subsequently applied to client state.
+// If the message is not found after 10 seconds, the test will fail.
+func (btcc *BlipTesterCollectionClient) WaitForPullNoRevMessage(docID string, version DocVersion) *blip.Message {
+	btcc.TB().Helper()
+	var msg *blip.Message
+	var lookupVersion DocVersion
+	if btcc.UseHLV() && !version.CV.IsEmpty() {
+		lookupVersion = DocVersion{CV: version.CV}
+	} else {
+		lookupVersion = DocVersion{RevTreeID: version.RevTreeID}
+	}
+	require.EventuallyWithT(btcc.TB(), func(c *assert.CollectT) {
+		var matches []*blip.Message
+		for _, m := range btcc.parent.pullReplication.GetMessages() {
+			if m.Profile() != db.MessageNoRev || m.Properties[db.NorevMessageId] != docID {
+				continue
+			}
+			var incomingVersion DocVersion
+			if btcc.UseHLV() {
+				_, incomingVersion = btcc.parent.getVersionsFromRevMessage(m)
+			} else {
+				incomingVersion = DocVersion{RevTreeID: m.Properties[db.NorevMessageRev]}
+			}
+			if incomingVersion == lookupVersion {
+				matches = append(matches, m)
+			}
+		}
+		if !assert.NotEmpty(c, matches, "norev message not found for docID %q version %v in pull replication messages", docID, version) {
+			return
+		}
+		require.Len(btcc.TB(), matches, 1, "expected exactly one norev message for docID %q version %v, got %d", docID, version, len(matches))
+		msg = matches[0]
+	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for pull norev message")
+	return msg
+}
+
 // GetPullRevMessage returns the last successful rev message that wrote the given docID/DocVersion on the client.
 func (btcc *BlipTesterCollectionClient) GetPullRevMessage(docID string, version DocVersion) (msg *blip.Message, found bool) {
 	btcc.seqLock.RLock()
@@ -2095,6 +2134,15 @@ func (btcRunner *BlipTestClientRunner) WaitForDoc(clientID uint32, docID string)
 // WaitForPullRevMessage blocks until the given doc ID and rev ID has been stored by the client as part of a pull replication and returns the message when found. If document is not found after 10 seconds, test will fail.
 func (btcRunner *BlipTestClientRunner) WaitForPullRevMessage(clientID uint32, docID string, version DocVersion) *blip.Message {
 	return btcRunner.SingleCollection(clientID).WaitForPullRevMessage(docID, version)
+}
+
+// WaitForPullNoRevMessage blocks until a norev message for the given doc ID and version has been received by the
+// client as part of a pull replication and returns the message when found, even if the norev was ignored to avoid
+// clobbering a known-good revision. If not found after 10 seconds, test will fail.
+func (btcRunner *BlipTestClientRunner) WaitForPullNoRevMessage(clientID uint32, docID string, version DocVersion) *blip.Message {
+	btcc := btcRunner.SingleCollection(clientID)
+	btcc.TB().Helper()
+	return btcc.WaitForPullNoRevMessage(docID, version)
 }
 
 // WaitForPushRevMessage blocks until the given doc ID and rev ID has been stored by the client as part of a push replication and returns the message when found. If document is not found after 10 seconds, test will fail.
@@ -2247,6 +2295,17 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			updatedHLV.UpdateWithIncomingHLV(opts.incomingHLV)
 		}
 	}
+	// A bodyless norev must never clobber a document we already have real content for. Leave the doc's active
+	// revision, _seqStore entry, _revisionsBySeq and _seqsByVersions untouched: this norev never applied to
+	// client state, so it must not be discoverable as a revision the client holds (via
+	// getAllRevisions/_proposeChangesEntryForDoc) or as a second, stale-looking _seqStore pointer to the same
+	// doc that would be yielded twice by changes iteration. Waiters use WaitForPullNoRevMessage, which reads
+	// the raw pull replication message log directly.
+	if opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil {
+		require.Equal(btcc.TB(), db.MessageNoRev, opts.msg.Profile(), "only norev messages should hit this bodyless-clobber guard")
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", docID, opts.incomingVersion)
+		return
+	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
@@ -2261,13 +2320,15 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 
 	if !hasLocalDoc {
 		doc = newClientDocument(docID, newClientSeq, &docRev)
+		btcc._seqStore[newClientSeq] = doc
+		btcc._seqFromDocID[docID] = newClientSeq
 	} else {
 		// remove existing entry and replace with new seq
 		delete(btcc._seqStore, doc._latestSeq)
 		doc._addNewRev(docRev)
+		btcc._seqStore[newClientSeq] = doc
+		btcc._seqFromDocID[docID] = newClientSeq
 	}
-	btcc._seqStore[newClientSeq] = doc
-	btcc._seqFromDocID[docID] = newClientSeq
 
 	if opts.replacedVersion != nil {
 		// store the new sequence for a replaced rev for tests waiting for this specific rev
