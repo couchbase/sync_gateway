@@ -357,8 +357,9 @@ func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridL
 func (btcc *BlipTesterCollectionClient) _resolveConflictLWW(incomingHLV *db.HybridLogicalVector, incomingBody []byte, latestLocalRev *clientDocRev) (body []byte, hlv db.HybridLogicalVector) {
 	latestLocalHLV := latestLocalRev.HLV
 	updatedHLV := latestLocalRev.HLV.Copy()
-	// resolve conflict in favor of remote document
-	if incomingHLV.Version > latestLocalHLV.Version {
+	// Resolve conflict in favor of the remote document, including on a tie: this mirrors real Couchbase Lite's
+	// LWW conflict resolution, which favors the incoming (remote) revision rather than the existing local one.
+	if incomingHLV.Version >= latestLocalHLV.Version {
 		updatedHLV.UpdateWithIncomingHLV(incomingHLV)
 		return incomingBody, *updatedHLV
 	}
@@ -1050,6 +1051,11 @@ func (btc *BlipTesterClient) ID() uint32 {
 // TB returns testing.TB for the current test
 func (btc *BlipTesterClient) TB() testing.TB {
 	return btc.rt.TB()
+}
+
+// SetHLCClockForTest overrides the client's HLC clock function, for deterministic HLV version generation in tests.
+func (btc *BlipTesterClient) SetHLCClockForTest(clockFn func() uint64) {
+	btc.hlc.SetClockForTest(clockFn)
 }
 
 // Close shuts down all the clients and clears all messages stored.
