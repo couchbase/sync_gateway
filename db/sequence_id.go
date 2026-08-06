@@ -52,6 +52,11 @@ func (s SequenceID) String() string {
 	return s.intSeqToString()
 }
 
+// intSeqToString implements the formatting rules documented on String() above. A non-zero LowSeq
+// or TriggeredBy is silently omitted from the result in three cases:
+//   - omit LowSeq when it's higher than the current sequence (non-backfill)
+//   - omit LowSeq when it's higher than the triggeredBy sequence (backfill)
+//   - omit TriggeredBy when it's higher than the current sequence
 func (s SequenceID) intSeqToString() string {
 	backfillActive := s.TriggeredBy > 0 && s.Seq < s.TriggeredBy
 	if backfillActive {
@@ -176,8 +181,9 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 
 }
 
-// SafeSequence returns the safe sequence after which the changes have to be sent. If LowSeq is
-// set, then LowSeq is the SafeSequence, since it's the last contiguous sequence; else it's Seq.
+// SafeSequence returns the sequence to resume the changes feed from: LowSeq, the last contiguous
+// sequence, when it's set and still behind Seq; otherwise Seq. A LowSeq that hasn't stayed behind
+// Seq is stale for the same reason described on String(), and is ignored here too.
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 && s.LowSeq < s.Seq {
 		return s.LowSeq

@@ -340,4 +340,28 @@ func TestMultiChannelChangesWithTriggeredSequence(t *testing.T) {
 	// missed and this assertion will fail.
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "sg-user")
 	require.Len(t, changes.Results, 4)
+
+	// The DEF backfill is now complete, but seq 8 is still skipped so last_seq is still
+	// LowSeq::Seq (e.g. "7::10"), not a bare sequence. Replay that since as-is: since the
+	// backfill already finished and LowSeq hasn't moved, this must not retrigger the backfill -
+	// it should come back empty.
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq.String())
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "sg-user")
+	require.Len(t, changes.Results, 0)
+
+	// Fill in seq 8, the last remaining skipped sequence. Even though the DEF backfill already
+	// completed above, the late-arriving sequence should still reach the client - and we expect
+	// the entire DEF backfill to be resent, not just the new doc at seq 8.
+	db.WriteDirect(t, collection, []string{"DEF"}, 8)
+	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "sg-user")
+	require.Len(t, changes.Results, 6)
+
+	// All four DEF backfill docs (seqs 3, 4, 7, 8) should now have been delivered.
+	for _, docID := range []string{"doc-3", "doc-4", "doc-7", "doc-8"} {
+		require.Truef(t, changesHaveDoc(changes, docID), "expected DEF doc %q in changes results; got %v", docID, changeDocIDs(changes))
+	}
+
+	// The backfill and the skipped-sequence gap are both fully resolved at this point, so
+	// last_seq collapses back to a simple sequence rather than a compound one.
+	assert.Equal(t, "10", changes.Last_Seq.String())
 }
