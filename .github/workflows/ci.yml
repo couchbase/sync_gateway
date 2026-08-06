@@ -297,7 +297,7 @@ jobs:
           uv run -- pytest
       - name: Run ty
         run: |
-          uvx ty check
+          uv run -- ty check
 
   test-stats-definition-exporter:
     runs-on: ${{ matrix.os }}
