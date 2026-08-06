@@ -505,11 +505,19 @@ func waitForBackgroundManagerState[T backgroundManagerResponse](rt *RestTester, 
 	return response
 }
 
+// GetActiveDatabase returns the DatabaseContext for dbName, expanding the "{{.db}}" template if used.
+func (rt *RestTester) GetActiveDatabase(dbName string) *db.DatabaseContext {
+	rt.TB().Helper()
+	dbc, err := rt.ServerContext().GetActiveDatabase(rt.mustTemplateResource(dbName))
+	require.NoError(rt.TB(), err)
+	return dbc
+}
+
 func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
 	rt.TB().Helper()
 	resyncStatus := waitForBackgroundManagerState[db.ResyncManagerResponseDCP](rt, "/"+dbName+"/_resync", status)
 	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, status) {
-		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().ResyncManager)
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetActiveDatabase(dbName).ResyncManager)
 	}
 	return resyncStatus
 }
@@ -518,7 +526,11 @@ func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, d
 // the REST API until that state is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForTombstoneCompactionStatus(state db.BackgroundProcessState) db.TombstoneManagerResponse {
 	rt.TB().Helper()
-	return waitForBackgroundManagerState[db.TombstoneManagerResponse](rt, "/{{.db}}/_compact", state)
+	response := waitForBackgroundManagerState[db.TombstoneManagerResponse](rt, "/{{.db}}/_compact", state)
+	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, state) {
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().TombstoneCompactionManager)
+	}
+	return response
 }
 
 // WaitForMetadataMigrationStatus waits for the expectedState of the metadata migration background job to be reached by polling
@@ -532,7 +544,11 @@ func (rt *RestTester) WaitForMetadataMigrationStatus(status db.BackgroundProcess
 // the REST API until that state is reached on the named db. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForMetadataMigrationStatusForDB(status db.BackgroundProcessState, dbName string) db.MigrationManagerResponse {
 	rt.TB().Helper()
-	return waitForBackgroundManagerState[db.MigrationManagerResponse](rt, "/"+dbName+"/_metadata_migration", status)
+	response := waitForBackgroundManagerState[db.MigrationManagerResponse](rt, "/"+dbName+"/_metadata_migration", status)
+	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, status) {
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetActiveDatabase(dbName).MetadataMigrationManager)
+	}
+	return response
 }
 
 // UpdatePersistedBucketName will update the persisted config bucket name to name specified in parameters
