@@ -353,6 +353,7 @@ func TestMultiChannelChangesWithTriggeredSequence(t *testing.T) {
 	// completed above, the late-arriving sequence should still reach the client - and we expect
 	// the entire DEF backfill to be resent, not just the new doc at seq 8.
 	db.WriteDirect(t, collection, []string{"DEF"}, 8)
+	rt.WaitForSequenceNotSkipped(8)
 	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "sg-user")
 	require.Len(t, changes.Results, 6)
 
