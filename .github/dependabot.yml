@@ -18,6 +18,10 @@ updates:
       interval: "weekly"
     registries:
       - gh-private
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
 registries:
   gh-private:
     type: git

@@ -15,15 +15,19 @@ Changing a REST handler, a query parameter, or a response schema means updating 
 Validates every API root defined in `.redocly.yaml`:
 
 ```sh
-$ npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
+$ npm ci
+$ npx redocly lint --config=.redocly.yaml --format=stylish
 ```
+
+Redocly is pinned in `package.json` and `package-lock.json`. `npm ci` installs that exact version.
 
 This is wired into both the `redocly-lint` pre-commit hook (which fires on any change under
 `docs/api/` or to `.redocly.yaml`) and the `openapi` CI workflow, so it usually runs without you
-invoking it directly. `yamllint` also runs over this directory in both places.
+invoking it directly. The hook runs `npm ci` for you, so it needs no setup. `yamllint` also runs
+over this directory in both places.
 
 ## Preview
 
 ```sh
-$ npx --yes @redocly/cli@2 preview-docs --config=.redocly.yaml
+$ npx redocly preview-docs --config=.redocly.yaml
 ```
