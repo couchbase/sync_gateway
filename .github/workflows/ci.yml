@@ -32,12 +32,12 @@ concurrency:
   cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
 
 env:
-  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@v6
-  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@v6
-  ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@v4.0.0
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+  ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b # v4.0.0
   GO_VERSION: &go_version 1.26.5
   GOTESTSUM_VERSION: 1.13.0
-  GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@v0.9.0
+  GO_TEST_ANNOTATIONS_VERSION: &go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
 
 jobs:
   build:
@@ -70,7 +70,7 @@ jobs:
         with:
           go-version: *go_version
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
           args: --config=.golangci-strict.yml
@@ -118,7 +118,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
           path: test.log
@@ -154,7 +154,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -191,7 +191,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -226,7 +226,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -264,7 +264,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -291,7 +291,7 @@ jobs:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
       - uses: *actions_checkout_version
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - name: Run test
         run: |
           uv run -- pytest
@@ -332,7 +332,7 @@ jobs:
         run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
           path: test.log
