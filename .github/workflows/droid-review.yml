@@ -55,7 +55,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Droid Review
-        uses: Factory-AI/droid-action@07a08ac9ba352c395d921fbc4c310e6d1ee850a1 # v4.0.0
+        uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4 # v4.0.0
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           review_model: gpt-5.2
