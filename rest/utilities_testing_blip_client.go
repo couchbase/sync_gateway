@@ -2077,10 +2077,9 @@ func (btcc *BlipTesterCollectionClient) WaitForPullNoRevMessage(docID string, ve
 				matches = append(matches, m)
 			}
 		}
-		if !assert.NotEmpty(c, matches, "norev message not found for docID %q version %v in pull replication messages", docID, version) {
+		if !assert.Len(c, matches, 1, "expected exactly one norev message for docID %q version %v in pull replication messages, got %d", docID, version, len(matches)) {
 			return
 		}
-		require.Len(btcc.TB(), matches, 1, "expected exactly one norev message for docID %q version %v, got %d", docID, version, len(matches))
 		msg = matches[0]
 	}, 10*time.Second, 5*time.Millisecond, "BlipTesterClient timed out waiting for pull norev message")
 	return msg
@@ -2303,7 +2302,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	// the raw pull replication message log directly.
 	if opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil {
 		require.Equal(btcc.TB(), db.MessageNoRev, opts.msg.Profile(), "only norev messages should hit this bodyless-clobber guard")
-		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %q: no body for version %#v", docID, opts.incomingVersion)
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %s: no body for version %#v", base.UD(docID), opts.incomingVersion)
 		return
 	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
