@@ -27,6 +27,11 @@ concurrency:
     }}
   cancel-in-progress: true
 
+env:
+  # Pinned action versions, referenced by the steps below through their YAML anchors.
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ACTIONS_DROID_VERSION: &actions_droid_version Factory-AI/droid-action@07a08ac9ba352c395d921fbc4c310e6d1ee850a1 # v4
+
 jobs:
   droid:
     if: |
@@ -50,12 +55,12 @@ jobs:
       actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: *actions_checkout_version
         with:
           fetch-depth: 1
 
       - name: Run Droid Review
-        uses: Factory-AI/droid-action@07a08ac9ba352c395d921fbc4c310e6d1ee850a1 # v4
+        uses: *actions_droid_version
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           review_model: gpt-5.2

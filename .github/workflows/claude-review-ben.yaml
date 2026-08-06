@@ -20,6 +20,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # Pinned action versions, referenced by the steps below through their YAML anchors.
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ACTIONS_CLAUDE_CODE_VERSION: &actions_claude_code_version anthropics/claude-code-action@c038e4dcdedfbbca18dfb17df35a17e40ded4ddc # v1.0.186
+
 jobs:
   claude-review-ben:
     # issue_comment always runs in the base repo with access to secrets, including for comments on
@@ -41,11 +46,11 @@ jobs:
       actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: *actions_checkout_version
         with:
           fetch-depth: 1
       - name: Run Claude Review
-        uses: anthropics/claude-code-action@c038e4dcdedfbbca18dfb17df35a17e40ded4ddc # v1.0.186
+        uses: *actions_claude_code_version
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The Claude GitHub App is not installed on this repo, so Claude authenticates to GitHub
