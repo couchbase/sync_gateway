@@ -744,7 +744,7 @@ func (s *SyncData) IsSGWriteXattrOnly(ctx context.Context, cas uint64, isDelete 
 // IsSGWrite - used during on-demand import. Check SyncData and HLV to determine if the document was written by Sync Gateway or by a Couchbase Server SDK write.
 func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 	// If the raw body is available, use SyncData.IsSGWrite
-	if rawBody != nil && len(rawBody) > 0 {
+	if len(rawBody) > 0 {
 		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(ctx, doc.Cas, rawBody, doc.rawUserXattr, doc.HLV)
 		return isSgWriteFeed, crc32MatchFeed, bodyChangedFeed
 	}

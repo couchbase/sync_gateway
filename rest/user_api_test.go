@@ -1374,42 +1374,109 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	collection2Name := rt.GetDbCollections()[1].Name
 	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
 
-	collectionPayload := fmt.Sprintf(`,"%s": {
-					"admin_channels":["a"]
-				}`, collection2Name)
-	userPayload := `{
-		%s
-		"admin_channels":["foo", "bar"],
+	// assertCollectionAccess PUTs a collection_access update for collection1 at principalURL and asserts the
+	// resulting admin_channels on GET.
+	assertCollectionAccess := func(t *testing.T, principalURL, channelsJSON string, expectedStatus int, expectedChannels base.Set) {
+		var payload string
+		if channelsJSON == "null" {
+			payload = fmt.Sprintf(`{"collection_access": {"%s": {"%s": null}}}`, scopeName, collection1Name)
+		} else {
+			payload = fmt.Sprintf(`{"collection_access": {"%s": {"%s": {"admin_channels": %s}}}}`, scopeName, collection1Name, channelsJSON)
+		}
+
+		RequireStatus(t, rt.SendAdminRequest("PUT", principalURL, payload), expectedStatus)
+
+		getResponse := rt.SendAdminRequest("GET", principalURL, "")
+		RequireStatus(t, getResponse, http.StatusOK)
+
+		var responseConfig auth.PrincipalConfig
+		require.NoError(t, json.Unmarshal(getResponse.Body.Bytes(), &responseConfig))
+
+		var actualChannels base.Set
+		if colAccess, exists := responseConfig.CollectionAccess[scopeName][collection1Name]; exists {
+			actualChannels = colAccess.ExplicitChannels_
+		}
+		assert.Equal(t, expectedChannels, actualChannels)
+	}
+
+	collectionAccessTestCases := []struct {
+		name             string
+		channels         string // "null" or standard JSON array string, e.g. `["foo"]`
+		expectedStatus   int
+		expectedChannels base.Set
+	}{
+		{
+			name:             "UpdateChannels",
+			channels:         `["foo", "bar"]`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: channels.BaseSetOf(t, "foo", "bar"),
+		},
+		{
+			name:             "DeleteAdminChannels",
+			channels:         `[]`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: nil,
+		},
+		{
+			name:             "SetCollectionToNil",
+			channels:         `null`,
+			expectedStatus:   http.StatusOK,
+			expectedChannels: nil,
+		},
+	}
+
+	for _, tc := range collectionAccessTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fresh user and role for this test case, each with initial access to collection1.
+			userName := "user" + SafeDocumentName(t, tc.name)
+			userPayload := fmt.Sprintf(`{
+				"email": "%s@couchbase.com",
+				"password": "letmein",
+				"collection_access": {
+					"%s": {
+						"%s": {
+							"admin_channels": ["foo"]
+						}
+					}
+				}
+			}`, userName, scopeName, collection1Name)
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/"+userName, userPayload), http.StatusCreated)
+
+			roleName := "role" + SafeDocumentName(t, tc.name)
+			rolePayload := fmt.Sprintf(`{
+				"collection_access": {
+					"%s": {
+						"%s": {
+							"admin_channels": ["foo"]
+						}
+					}
+				}
+			}`, scopeName, collection1Name)
+			RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_role/"+roleName, rolePayload), http.StatusCreated)
+
+			t.Run("user", func(t *testing.T) {
+				assertCollectionAccess(t, "/db/_user/"+userName, tc.channels, tc.expectedStatus, tc.expectedChannels)
+			})
+			t.Run("role", func(t *testing.T) {
+				assertCollectionAccess(t, "/db/_role/"+roleName, tc.channels, tc.expectedStatus, tc.expectedChannels)
+			})
+		})
+	}
+
+	// Create a user with access to collection2 to verify collections removed from the db config are hidden from
+	// GET /_user responses.
+	hiddenCollectionUserPayload := fmt.Sprintf(`{
+		"email": "hidden@couchbase.com",
+		"password": "letmein",
 		"collection_access": {
 			"%s": {
 				"%s": {
-					"admin_channels":[%s]
+					"admin_channels": ["a"]
 				}
-				%s
 			}
 		}
-	}`
-
-	putResponse := rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
-		scopeName, collection1Name, `"foo"`, collectionPayload))
-	RequireStatus(t, putResponse, 201)
-
-	// Upsert one collection and preserve existing
-	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
-		scopeName, collection1Name, `"foo", "bar"`, ""))
-	RequireStatus(t, putResponse, 200)
-	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
-	RequireStatus(t, getResponse, 200)
-	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), collection2Name)
-
-	// Delete collection admin channels
-	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
-		scopeName, collection1Name, ``, ""))
-	RequireStatus(t, putResponse, 200)
-
-	getResponse = rt.SendAdminRequest("GET", "/db/_user/bob", "")
-	RequireStatus(t, getResponse, 200)
-	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
+	}`, scopeName, collection2Name)
+	RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/hiddencollectionuser", hiddenCollectionUserPayload), http.StatusCreated)
 
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Scopes = GetCollectionsConfig(rt.TB(), rt.TestBucket, 1)
@@ -1417,7 +1484,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
-	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/hiddencollectionuser", "")
 	RequireStatus(t, userResponse, http.StatusOK)
 	assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
 
@@ -1430,11 +1497,35 @@ func TestPutUserCollectionAccess(t *testing.T) {
 		}
 		readOnlyCollectionPayload := fmt.Sprintf(`,"%s": {
 					"%s":%s
-				}`, collection2Name, property, rdOnlyValue)
-		putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
-		RequireStatus(t, putResponse, 400)
-		putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userPayload, ``, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
-		RequireStatus(t, putResponse, 400)
+				}`, collection1Name, property, rdOnlyValue)
+
+		userPayload := fmt.Sprintf(`{
+			"email":"bob@couchbase.com",
+			"password":"letmein",
+			"admin_channels":["foo", "bar"],
+			"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["ABC"]
+					}
+					%s
+				}
+			}
+		}`, scopeName, collection1Name, readOnlyCollectionPayload)
+
+		rolePayload := fmt.Sprintf(`{
+			"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["ABC"]
+					}
+					%s
+				}
+			}
+		}`, scopeName, collection1Name, readOnlyCollectionPayload)
+
+		RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/bob2", userPayload), 400)
+		RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_role/role12", rolePayload), 400)
 	}
 }
 

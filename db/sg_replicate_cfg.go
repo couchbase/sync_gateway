@@ -272,11 +272,11 @@ func (rc *ReplicationConfig) Upsert(ctx context.Context, c *ReplicationUpsertCon
 		rc.CollectionsEnabled = *c.CollectionsEnabled
 	}
 
-	if c.CollectionsLocal != nil && len(c.CollectionsLocal) > 0 {
+	if len(c.CollectionsLocal) > 0 {
 		rc.CollectionsLocal = c.CollectionsLocal
 	}
 
-	if c.CollectionsRemote != nil && len(c.CollectionsRemote) > 0 {
+	if len(c.CollectionsRemote) > 0 {
 		rc.CollectionsRemote = c.CollectionsRemote
 	}
 
@@ -1690,12 +1690,10 @@ func (l *ReplicationHeartbeatListener) reloadNodes() (localNodePresent bool, err
 	}
 
 	nodeUUIDs := make([]string, 0)
-	if nodeSet != nil {
-		for _, nodeDef := range nodeSet {
-			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
-			if nodeDef.UUID == l.mgr.localNodeUUID {
-				localNodePresent = true
-			}
+	for _, nodeDef := range nodeSet {
+		nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+		if nodeDef.UUID == l.mgr.localNodeUUID {
+			localNodePresent = true
 		}
 	}
 
