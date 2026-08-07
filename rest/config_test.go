@@ -3074,10 +3074,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 	require.NoError(t, err)
 
 	// assert the config is picked as invalid db config
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
-		assert.Equal(c, 1, len(invalidDatabases))
-	}, time.Second*10, time.Millisecond*100)
+	rt.WaitForInvalidDatabase("db1")
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/", "")
 	RequireStatus(t, resp, http.StatusNotFound)

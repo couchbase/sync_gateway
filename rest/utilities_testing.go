@@ -1107,6 +1107,27 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
+// WaitForDatabase waits for the named database to become active on the server context (e.g. after config polling picks up a valid config), and returns its database context. Fails the test harness if this does not happen within the timeout.
+func (rt *RestTester) WaitForDatabase(dbName string) *db.DatabaseContext {
+	rt.TB().Helper()
+	var dbCtx *db.DatabaseContext
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		var err error
+		dbCtx, err = rt.ServerContext().GetActiveDatabase(dbName)
+		assert.NoError(c, err)
+	}, 10*time.Second, 100*time.Millisecond)
+	return dbCtx
+}
+
+// WaitForInvalidDatabase waits for the server context to track dbName as an invalid database config. Fails the test harness if this does not happen within the timeout.
+func (rt *RestTester) WaitForInvalidDatabase(dbName string) {
+	rt.TB().Helper()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(rt.TB())
+		assert.Contains(c, invalidDatabases, dbName)
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
 // WaitForBucketMetadataMigrationComplete polls the bucket-wide metadata migration status doc until
 // its bootstrap migration reports complete. Bootstrap only transitions to complete once every per-DB
 // entry is complete, so this is the signal that metadata migration has finished for the ENTIRE bucket
@@ -2704,7 +2725,7 @@ func (sc *ServerContext) BootstrapDocKeysToMigrate(t *testing.T, ctx context.Con
 }
 
 // AllInvalidDatabaseNames returns the names of all the databases that have invalid configs. Testing only since this locks the database context.
-func (sc *ServerContext) AllInvalidDatabaseNames(_ *testing.T) []string {
+func (sc *ServerContext) AllInvalidDatabaseNames(_ testing.TB) []string {
 	sc.invalidDatabaseConfigTracking.m.RLock()
 	defer sc.invalidDatabaseConfigTracking.m.RUnlock()
 	dbs := make([]string, 0, len(sc.invalidDatabaseConfigTracking.dbNames))
