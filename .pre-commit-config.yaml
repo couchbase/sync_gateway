@@ -40,8 +40,10 @@ repos:
       - id: ty
         name: ty
         language: system
-        entry: uvx ty check
+        entry: uv run -- ty check
         types: [python]
+        # ty checks the whole project via [tool.ty.src] in pyproject.toml
+        pass_filenames: false
 
       - id: manifest-product-config-sorted
         name: manifest/product-config.json keys sorted
