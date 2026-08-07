@@ -853,6 +853,12 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 }
 
 func TestCfgNodePoller_StartPolling(t *testing.T) {
+	if !UnitTestUrlIsWalrus() {
+		// synctest gives gocb's operation-timeout timers a fake clock, so real network ops against
+		// CBS time out almost instantly instead of waiting for a real response.
+		t.Skip("synctest is incompatible with real gocb network I/O against Couchbase Server")
+	}
+
 	bucket := GetTestBucket(t)
 	defer bucket.Close(t.Context())
 	datastore := bucket.GetMetadataStore()
