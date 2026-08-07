@@ -37,7 +37,7 @@ extend-select = ["I", "B006"] # isort, mutable default argument
 # test only dependencies
 [dependency-groups]
 dev = [
-  "pytest>=9.0.3",
+  "pytest>=9.1.1",
   "pytest-httpserver>=1.1.5",
   "ruff>=0.16.1",
   "trustme>=1.2.1",
