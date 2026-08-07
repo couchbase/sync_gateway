@@ -34,7 +34,7 @@ concurrency:
 env:
   # Pinned action versions, referenced by the steps below through their YAML anchors.
   ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
   ACTIONS_UPLOAD_ARTIFACT_VERSION: &actions_upload_artifact_version actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
   ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b # v4.0.0
   ACTIONS_SETUP_UV_VERSION: &actions_setup_uv_version astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
