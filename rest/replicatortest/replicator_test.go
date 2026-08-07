@@ -749,11 +749,11 @@ func TestReplicationStatusActions(t *testing.T) {
 
 		// Verify replication has restarted from zero. Since docs have already been replicated,
 		// expect no docs read, two docs checked.
-		statError := rt1.WaitForCondition(func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			status := rt1.GetReplicationStatus(replicationID)
-			return status.DocsCheckedPull == 2 && status.DocsRead == 0
-		})
-		assert.NoError(t, statError)
+			assert.Equal(c, int64(2), status.DocsCheckedPull)
+			assert.Equal(c, int64(0), status.DocsRead)
+		}, 10*time.Second, 100*time.Millisecond)
 	})
 }
 
@@ -1085,31 +1085,20 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		changesResults.RequireDocIDs(t, []string{docAllChannels1, docAllChannels2})
 
 		// wait for both replications to have pushed, and total pushed to equal 2
-		assert.NoError(t, activeRT.WaitForCondition(func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			abcStatus := activeRT.GetReplicationStatus("rep_ABC")
-			if abcStatus.DocsCheckedPush != 2 {
-				t.Logf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
-				t.Logf("abcStatus=%+v", abcStatus)
-				return false
-			}
+			assert.Equal(c, int64(2), abcStatus.DocsCheckedPush, "abcStatus=%+v", abcStatus)
 			defStatus := activeRT.GetReplicationStatus("rep_DEF")
-			if defStatus.DocsCheckedPush != 2 {
-				t.Logf("defStatus.DocsCheckedPush not 2, is %v", defStatus.DocsCheckedPush)
-				t.Logf("defStatus=%+v", defStatus)
-				return false
-			}
+			assert.Equal(c, int64(2), defStatus.DocsCheckedPush, "defStatus=%+v", defStatus)
 
 			// DocsWritten is incremented on a successful write, but ALSO in the race scenario where the remote responds
 			// to the changes message to say it needs the rev, but then receives the rev from another source. This means that
 			// in this test, DocsWritten can be any value between 0 and 2 for each replication, but should be at least 2
 			// for both replications
 			totalDocsWritten := abcStatus.DocsWritten + defStatus.DocsWritten
-			if totalDocsWritten < 2 || totalDocsWritten > 4 {
-				t.Logf("Total docs written is not between 2 and 4, is abc=%v, def=%v", abcStatus.DocsWritten, defStatus.DocsWritten)
-				return false
-			}
-			return true
-		}))
+			assert.GreaterOrEqual(c, totalDocsWritten, int64(2))
+			assert.LessOrEqual(c, totalDocsWritten, int64(4))
+		}, 10*time.Second, 100*time.Millisecond)
 
 		// Validate doc contents
 		docAll1Body := remoteRT.GetDocBody(docAllChannels1)
@@ -1770,14 +1759,13 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
 
 		// Wait for nodes to add themselves back to cluster
-		err := activeRT.WaitForCondition(func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			clusterDef, err := activeRTMgr.GetSGRCluster()
-			if err != nil {
-				return false
+			if !assert.NoError(c, err) {
+				return
 			}
-			return len(clusterDef.Nodes) == 2
-		})
-		assert.NoError(t, err, "Nodes did not re-register after removal")
+			assert.Len(c, clusterDef.Nodes, 2)
+		}, 10*time.Second, 100*time.Millisecond, "Nodes did not re-register after removal")
 
 		// Wait and validate replications are rebalanced
 		activeRT.WaitForAssignedReplications(1)
@@ -6440,15 +6428,16 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				rest.RequireStatus(t, response, http.StatusOK)
 
 				// Wait for expected property value on remote to determine replication complete
-				waitErr := remoteRT.WaitForCondition(func() bool {
-					var remoteDoc db.Body
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					var remoteDoc struct {
+						Prop string `json:"prop"`
+					}
 					rawResponse := remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
-					require.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc))
-					prop, ok := remoteDoc["prop"].(string)
-					t.Logf("-- Waiting for property: %v, got property: %v", test.expectedResult.propertyValue, prop)
-					return ok && prop == test.expectedResult.propertyValue
-				})
-				require.NoError(t, waitErr)
+					if !assert.NoError(c, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc)) {
+						return
+					}
+					assert.Equal(c, test.expectedResult.propertyValue, remoteDoc.Prop)
+				}, 10*time.Second, 100*time.Millisecond)
 
 				localDoc := activeRT.GetDocBody(docID)
 				localRevID := localDoc.ExtractRev()
@@ -7230,8 +7219,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 		// Check checkpoint document was wrote to bucket with correct status
 		// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
 		expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(replicationID)
-		lastSeq, err := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
-		require.NoError(t, err)
+		lastSeq := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
 		assert.Equal(t, seq, lastSeq)
 
 		err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(replicationID)

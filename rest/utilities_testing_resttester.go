@@ -308,44 +308,40 @@ func (rt *RestTester) WaitForTombstoneRevIDOnly(docID string, deleteVersion DocV
 	rt.WaitForTombstone(docID, deleteVersion)
 }
 
-func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
+func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) string {
+	rt.TB().Helper()
 	var lastSeq string
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		val, _, err := rt.GetSingleDataStore().GetRaw(rt.Context(), expectedName)
-		if err != nil {
-			rt.TB().Logf("Error getting checkpoint: %v - will retry", err)
-			return false
+		if !assert.NoError(c, err) {
+			return
 		}
 		var config struct { // db.replicationCheckpoint
 			LastSeq string `json:"last_sequence"`
 		}
-		err = json.Unmarshal(val, &config)
-		if err != nil {
-			rt.TB().Logf("Error unmarshalling checkpoint: %v - will retry", err)
-			return false
+		if !assert.NoError(c, json.Unmarshal(val, &config)) {
+			return
 		}
 		lastSeq = config.LastSeq
-		return lastSeq != ""
-	}
-	return lastSeq, rt.WaitForCondition(successFunc)
+		assert.NotEqual(c, "", lastSeq)
+	}, 10*time.Second, 100*time.Millisecond)
+	return lastSeq
 }
 
 func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
 	rt.TB().Helper()
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		ar := rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators()
-		return ar == count
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "mismatch on number of active replicators")
+		assert.Equal(c, count, ar)
+	}, 10*time.Second, 100*time.Millisecond, "mismatch on number of active replicators")
 }
 
 func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 	rt.TB().Helper()
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		bs := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(name).Pull.GetBlipSender()
-		return bs != nil
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "blip sender on active replicator not initialized")
+		assert.NotNil(c, bs)
+	}, 10*time.Second, 100*time.Millisecond, "blip sender on active replicator not initialized")
 }
 
 // CreateReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
@@ -387,11 +383,10 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 
 func (rt *RestTester) WaitForAssignedReplications(count int) {
 	rt.TB().Helper()
-	successFunc := func() bool {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
-		return len(replicationStatuses) == count
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc))
+		assert.Len(c, replicationStatuses, count)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func (rt *RestTester) GetActiveReplicatorCount() int {
@@ -402,22 +397,17 @@ func (rt *RestTester) GetActiveReplicatorCount() int {
 
 func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
 	rt.TB().Helper()
-	var count int
-	successFunc := func() bool {
-		count = rt.GetActiveReplicatorCount()
-		return count == expCount
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, expCount, rt.GetActiveReplicatorCount())
+	}, 10*time.Second, 100*time.Millisecond, "Mismatch in active replicator count")
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
 	rt.TB().Helper()
-	var status db.ReplicationStatus
-	successFunc := func() bool {
-		status = rt.GetReplicationStatusForDB(dbName, replicationID)
-		return status.Status == targetStatus
-	}
-	require.NoError(rt.TB(), rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		status := rt.GetReplicationStatusForDB(dbName, replicationID)
+		assert.Equal(c, targetStatus, status.Status)
+	}, 10*time.Second, 100*time.Millisecond, "Expected status: %s", targetStatus)
 }
 
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
