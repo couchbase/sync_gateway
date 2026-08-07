@@ -46,6 +46,20 @@ def slackMessage(String title, String status, String link, Map details = [:]) {
     return lines.join('\n')
 }
 
+// Returns a Slack-formatted link to the currently checked-out commit on GitHub, followed by its
+// subject line, e.g. "<https://github.com/couchbase/sync_gateway/commit/abc123...|abc1234> Fix the thing".
+def gitCommitLink() {
+    def sha = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+    def message = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+    return "<https://github.com/couchbase/sync_gateway/commit/${sha}|${sha.take(7)}> ${message}"
+}
+
+// Returns a Slack-formatted link to an arbitrary Sync Gateway ref (branch, tag, or commit SHA)
+// on GitHub, e.g. "<https://github.com/couchbase/sync_gateway/commit/main|main>".
+def refLink(String ref) {
+    return "<https://github.com/couchbase/sync_gateway/commit/${ref}|${ref}>"
+}
+
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
 // .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,
