@@ -12,7 +12,11 @@ package base
 
 import (
 	"expvar"
+	"fmt"
 	"math"
+	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -198,4 +202,170 @@ func TestSgwFloatStatMarshalNonFinite(t *testing.T) {
 			require.Equal(t, 0.0, viaString)
 		})
 	}
+}
+
+// newTestSgwStats returns an empty stats tree, separate from the package-level SyncGatewayStats.
+func newTestSgwStats() *SgwStats {
+	return &SgwStats{sgwStatsFields: sgwStatsFields{DbStats: map[string]*DbStats{}}}
+}
+
+// TestSgwStatsSerializedFieldsAreEmbedded fails when an exported field is declared on SgwStats
+// instead of sgwStatsFields, because String() copies only sgwStatsFields and would drop it.
+func TestSgwStatsSerializedFieldsAreEmbedded(t *testing.T) {
+	for _, field := range reflect.VisibleFields(reflect.TypeFor[SgwStats]()) {
+		if !field.IsExported() {
+			continue
+		}
+		// Promoted fields have an index path through the embedded struct, declared fields do not.
+		assert.Greater(t, len(field.Index), 1,
+			"SgwStats.%s must be declared in sgwStatsFields so String() serializes it", field.Name)
+	}
+}
+
+// TestClearDBStatsRemovesFromSerialization checks that a database removed by ClearDBStats no longer
+// appears in the expvar/stats log output.
+func TestClearDBStatsRemovesFromSerialization(t *testing.T) {
+	stats := newTestSgwStats()
+	const dbName = "TestClearDBStatsRemovesFromSerialization_db"
+
+	_, err := stats.NewDBStats(dbName, false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	assert.Contains(t, stats.String(), dbName)
+
+	stats.ClearDBStats(dbName)
+	require.NotContains(t, stats.String(), dbName)
+}
+
+// TestStatsSerializationConcurrentWithDBRegistration is a -race guard on the narrowed
+// dbStatsMapMutex section (CBG-5472): String() marshals a shallow copy of the map outside the lock,
+// so it can read a *DbStats that ClearDBStats is unregistering from Prometheus. This is not a
+// reproducer for the stats logger stall - that was on _databasesLock, see
+// rest.TestStatsLoggerIndependentOfDatabaseLock.
+func TestStatsSerializationConcurrentWithDBRegistration(t *testing.T) {
+	// TestMain sets this true, which would skip the Prometheus path this test wants to exercise.
+	defer func(skip bool) { SkipPrometheusStatsRegistration = skip }(SkipPrometheusStatsRegistration)
+	SkipPrometheusStatsRegistration = false
+
+	stats := newTestSgwStats()
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			for range 1000 {
+				_ = stats.String()
+			}
+		})
+	}
+	for i := range 10 {
+		wg.Go(func() {
+			// Distinct db name per goroutine so concurrent registrations never collide in Prometheus.
+			name := fmt.Sprintf("TestStatsSerializationConcurrentWithDBRegistration_db_%d", i)
+			for range 100 {
+				_, err := stats.NewDBStats(name, false, false, false, false, nil, nil)
+				assert.NoError(t, err)
+				stats.ClearDBStats(name)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+// TestClearDBStatsConcurrentWithReplicatorRegistration is a regression test for ClearDBStats
+// iterating DbReplicatorStats without dbReplicatorStatsMutex, which panicked with "concurrent map
+// read and map write" when a replication registered during teardown. Fails without -race too.
+func TestClearDBStatsConcurrentWithReplicatorRegistration(t *testing.T) {
+	stats := newTestSgwStats()
+	const dbName = "TestClearDBStatsConcurrentWithReplicatorRegistration_db"
+
+	dbStats, err := stats.NewDBStats(dbName, false, false, false, false, nil, nil)
+	require.NoError(t, err)
+
+	// Pre-populate the map so ClearDBStats takes longer to iterate, widening the race window.
+	for i := range 100 {
+		_, err := dbStats.DBReplicatorStats(fmt.Sprintf("seed_%d", i))
+		require.NoError(t, err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := range 100 {
+			_, err := dbStats.DBReplicatorStats(fmt.Sprintf("repl_%d", i))
+			assert.NoError(t, err)
+		}
+	})
+
+	// Iterates DbReplicatorStats concurrently with the registrations above.
+	stats.ClearDBStats(dbName)
+	wg.Wait()
+}
+
+// newTestDbStats returns a DbStats holding only the replicator map, bypassing NewDBStats so a test
+// can use the same dbName twice.
+func newTestDbStats(dbName string) *DbStats {
+	return &DbStats{dbName: dbName, DbReplicatorStats: map[string]*DbReplicatorStats{}}
+}
+
+// TestDBReplicatorStatsFailedRegistrationNotCached checks that a DBReplicatorStats call which fails
+// partway through registration leaves nothing usable-looking behind. The entry is added to the map
+// before its stats are populated, so a retry returns a struct of nil stats and no error.
+func TestDBReplicatorStatsFailedRegistrationNotCached(t *testing.T) {
+	// TestMain sets this true, which would skip registration and so never produce a failure.
+	defer func(skip bool) { SkipPrometheusStatsRegistration = skip }(SkipPrometheusStatsRegistration)
+	SkipPrometheusStatsRegistration = false
+
+	const dbName = "TestDBReplicatorStatsFailedRegistrationNotCached_db"
+	const replicationID = "repl"
+
+	// Two DbStats sharing a dbName describe identical Prometheus metrics, so the second
+	// registration of the same replication ID collides and fails.
+	first, second := newTestDbStats(dbName), newTestDbStats(dbName)
+
+	firstStats, err := first.DBReplicatorStats(replicationID)
+	require.NoError(t, err)
+	require.NotNil(t, firstStats.NumAttachmentBytesPushed)
+	defer first.unregisterReplicationStats(replicationID)
+
+	_, err = second.DBReplicatorStats(replicationID)
+	require.Error(t, err, "expected the duplicate Prometheus registration to fail")
+
+	retry, err := second.DBReplicatorStats(replicationID)
+	if err != nil {
+		return // reporting the failure to the caller is the correct behaviour
+	}
+	require.NotNil(t, retry.NumAttachmentBytesPushed,
+		"retry returned a cached half-initialized entry with no error")
+}
+
+// TestDBReplicatorStatsConcurrentSameID checks that concurrent callers for one replication ID never
+// see the entry before its stats are populated. The entry is published to the map before the fields
+// are set, so a caller that arrives during that window receives a struct of nil stats.
+func TestDBReplicatorStatsConcurrentSameID(t *testing.T) {
+	dbStats := newTestDbStats("TestDBReplicatorStatsConcurrentSameID_db")
+
+	var partial atomic.Int64
+	var wg sync.WaitGroup
+	// Each replication ID is one chance to observe the window, so use plenty.
+	for i := range 50 {
+		replicationID := fmt.Sprintf("repl_%d", i)
+		start := make(chan struct{})
+		for range 4 {
+			wg.Go(func() {
+				<-start
+				replicatorStats, err := dbStats.DBReplicatorStats(replicationID)
+				if !assert.NoError(t, err) {
+					return
+				}
+				// The last field DBReplicatorStats populates, so it stays nil for the whole
+				// window between publishing the entry and finishing it.
+				if replicatorStats.ProcessedSequenceLenPostCleanup == nil {
+					partial.Add(1)
+				}
+			})
+		}
+		close(start)
+	}
+	wg.Wait()
+
+	require.Zero(t, partial.Load(),
+		"%d callers received an entry before its stats were populated", partial.Load())
 }
