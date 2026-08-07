@@ -939,6 +939,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
+	h.db.OIDCValidationRequired(dbConfig.OIDCConfig)
+
 	validateReplications := true
 	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
 	if err != nil {
