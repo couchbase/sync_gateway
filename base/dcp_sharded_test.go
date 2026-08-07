@@ -13,10 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/couchbase/cbgt"
@@ -857,204 +857,193 @@ func TestCfgNodePoller_StartPolling(t *testing.T) {
 	defer bucket.Close(t.Context())
 	datastore := bucket.GetMetadataStore()
 
-	waitTime := 100 * time.Millisecond
-	if !UnitTestUrlIsWalrus() || IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
-		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
-		waitTime = 10 * time.Second
-	}
-
 	// Polling should stop when context is cancelled
 	t.Run("start_polling_stops_on_context_cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithCancelCause(t.Context())
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(t.Context())
 
-		var eventCount atomic.Int32
-		poller := &cfgNodePoller{
-			ctx:          ctx,
-			keyWatcher:   make(map[string]uint64),
-			datastore:    datastore,
-			fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
-			pollInterval: 5 * time.Millisecond,
-		}
+			var eventCount atomic.Int32
+			poller := &cfgNodePoller{
+				ctx:          ctx,
+				keyWatcher:   make(map[string]uint64),
+				datastore:    datastore,
+				fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
+				pollInterval: 5 * time.Millisecond,
+			}
 
-		key := "stop_on_cancel_test"
+			key := "stop_on_cancel_test"
 
-		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
-		require.NoError(t, err)
-		require.True(t, added)
+			added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
+			require.NoError(t, err)
+			require.True(t, added)
 
-		t.Cleanup(func() {
-			_ = datastore.Delete(ctx, key)
+			t.Cleanup(func() {
+				_ = datastore.Delete(ctx, key)
+			})
+
+			err = poller.Register(key)
+			require.NoError(t, err)
+
+			poller.startPolling(ctx)
+			synctest.Wait() // poller is now blocked awaiting its first tick
+
+			// Cancel context to stop polling
+			cancel(errors.New("test: stopping polling"))
+			synctest.Wait() // wait for the polling goroutine to observe cancellation and exit
+
+			// Update document after cancellation
+			err = datastore.Set(ctx, key, 0, nil, []byte(`{"updated": true}`))
+			require.NoError(t, err)
+
+			// Record event count before waiting
+			countBeforeWait := eventCount.Load()
+
+			// Advance well past further poll intervals to prove no more polls happen
+			time.Sleep(poller.pollInterval * 10)
+
+			// Event count should not have increased after cancellation
+			countAfterWait := eventCount.Load()
+			require.Equal(t, countBeforeWait, countAfterWait, "no events should fire after context cancellation")
 		})
-
-		err = poller.Register(key)
-		require.NoError(t, err)
-
-		poller.startPolling(ctx)
-
-		// Wait for at least one poll cycle
-		time.Sleep(20 * time.Millisecond)
-
-		// Cancel context to stop polling
-		cancel(errors.New("test: stopping polling"))
-
-		// Wait for goroutine to stop
-		time.Sleep(20 * time.Millisecond)
-
-		// Update document after cancellation
-		err = datastore.Set(ctx, key, 0, nil, []byte(`{"updated": true}`))
-		require.NoError(t, err)
-
-		// Record event count before waiting
-		countBeforeWait := eventCount.Load()
-
-		// Wait to ensure no more polls happen
-		time.Sleep(30 * time.Millisecond)
-
-		// Event count should not have increased after cancellation
-		countAfterWait := eventCount.Load()
-		require.Equal(t, countBeforeWait, countAfterWait, "no events should fire after context cancellation")
 	})
 
 	// Changes should be detected within the poll interval
 	t.Run("start_polling_polls_at_interval", func(t *testing.T) {
-		ctx, cancel := context.WithCancelCause(t.Context())
-		defer cancel(nil)
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(t.Context())
+			defer cancel(nil)
 
-		var eventCount atomic.Int32
-		poller := &cfgNodePoller{
-			ctx:          ctx,
-			keyWatcher:   make(map[string]uint64),
-			datastore:    datastore,
-			fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
-			pollInterval: 10 * time.Millisecond,
-		}
+			var eventCount atomic.Int32
+			poller := &cfgNodePoller{
+				ctx:          ctx,
+				keyWatcher:   make(map[string]uint64),
+				datastore:    datastore,
+				fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
+				pollInterval: 10 * time.Millisecond,
+			}
 
-		key := "poll_interval_test"
+			key := "poll_interval_test"
 
-		err := poller.Register(key)
-		require.NoError(t, err)
+			err := poller.Register(key)
+			require.NoError(t, err)
 
-		poller.startPolling(ctx)
+			poller.startPolling(ctx)
+			synctest.Wait() // poller is now blocked awaiting its first tick
 
-		// Create document - should be detected on next poll
-		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
-		require.NoError(t, err)
-		require.True(t, added)
+			// Create document - should be detected on next poll
+			added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
+			require.NoError(t, err)
+			require.True(t, added)
 
-		t.Cleanup(func() {
-			_ = datastore.Delete(ctx, key)
+			t.Cleanup(func() {
+				_ = datastore.Delete(ctx, key)
+			})
+
+			// Advance virtual time by one poll interval so the change is detected
+			time.Sleep(poller.pollInterval)
+			synctest.Wait()
+
+			require.Equal(t, int32(1), eventCount.Load(), "event should be fired within poll interval")
 		})
-
-		// Wait for poll to detect the change
-		require.Eventually(t, func() bool {
-			return eventCount.Load() >= 1
-		}, waitTime, 5*time.Millisecond, "event should be fired within poll interval")
 	})
 
 	// Multiple sequential changes should all be detected over time
 	t.Run("start_polling_detects_changes_over_time", func(t *testing.T) {
-		ctx, cancel := context.WithCancelCause(t.Context())
-		defer cancel(nil)
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(t.Context())
+			defer cancel(nil)
 
-		var eventCount atomic.Int32
-		poller := &cfgNodePoller{
-			ctx:          ctx,
-			keyWatcher:   make(map[string]uint64),
-			datastore:    datastore,
-			fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
-			pollInterval: 10 * time.Millisecond,
-		}
+			var eventCount atomic.Int32
+			poller := &cfgNodePoller{
+				ctx:          ctx,
+				keyWatcher:   make(map[string]uint64),
+				datastore:    datastore,
+				fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
+				pollInterval: 10 * time.Millisecond,
+			}
 
-		key := "changes_over_time_test"
+			key := "changes_over_time_test"
 
-		added, err := datastore.Add(ctx, key, 0, []byte(`{"version": 1}`))
-		require.NoError(t, err)
-		require.True(t, added)
+			added, err := datastore.Add(ctx, key, 0, []byte(`{"version": 1}`))
+			require.NoError(t, err)
+			require.True(t, added)
 
-		t.Cleanup(func() {
-			_ = datastore.Delete(ctx, key)
+			t.Cleanup(func() {
+				_ = datastore.Delete(ctx, key)
+			})
+
+			err = poller.Register(key)
+			require.NoError(t, err)
+
+			poller.startPolling(ctx)
+			synctest.Wait() // poller is now blocked awaiting its first tick
+
+			// First update
+			err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 2}`))
+			require.NoError(t, err)
+			time.Sleep(poller.pollInterval)
+			synctest.Wait()
+			require.Equal(t, int32(1), eventCount.Load(), "first update should be detected")
+
+			// Second update
+			err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 3}`))
+			require.NoError(t, err)
+			time.Sleep(poller.pollInterval)
+			synctest.Wait()
+			require.Equal(t, int32(2), eventCount.Load(), "second update should be detected")
+
+			// Third update
+			err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 4}`))
+			require.NoError(t, err)
+			time.Sleep(poller.pollInterval)
+			synctest.Wait()
+			require.Equal(t, int32(3), eventCount.Load(), "third update should be detected")
 		})
-
-		err = poller.Register(key)
-		require.NoError(t, err)
-
-		poller.startPolling(ctx)
-
-		// First update
-		err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 2}`))
-		require.NoError(t, err)
-
-		// Wait for first event
-		require.Eventually(t, func() bool {
-			return eventCount.Load() >= 1
-		}, waitTime, 5*time.Millisecond, "first update should be detected")
-
-		// Second update
-		err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 3}`))
-		require.NoError(t, err)
-
-		// Wait for second event
-		require.Eventually(t, func() bool {
-			return eventCount.Load() >= 2
-		}, waitTime, 5*time.Millisecond, "second update should be detected")
-
-		// Third update
-		err = datastore.Set(ctx, key, 0, nil, []byte(`{"version": 4}`))
-		require.NoError(t, err)
-
-		// Wait for third event
-		require.Eventually(t, func() bool {
-			return eventCount.Load() >= 3
-		}, waitTime, 5*time.Millisecond, "third update should be detected")
 	})
 
 	// No polling should occur after context is cancelled
 	t.Run("start_polling_no_poll_after_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancelCause(t.Context())
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(t.Context())
 
-		var eventCount atomic.Int32
-		poller := &cfgNodePoller{
-			ctx:          ctx,
-			keyWatcher:   make(map[string]uint64),
-			datastore:    datastore,
-			fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
-			pollInterval: 10 * time.Millisecond,
-		}
+			var eventCount atomic.Int32
+			poller := &cfgNodePoller{
+				ctx:          ctx,
+				keyWatcher:   make(map[string]uint64),
+				datastore:    datastore,
+				fireEvent:    func(docID string, cas uint64, err error) { eventCount.Add(1) },
+				pollInterval: 10 * time.Millisecond,
+			}
 
-		key := "no_poll_after_cancel_test"
+			key := "no_poll_after_cancel_test"
 
-		err := poller.Register(key)
-		require.NoError(t, err)
+			err := poller.Register(key)
+			require.NoError(t, err)
 
-		poller.startPolling(ctx)
-		cancel(errors.New("test: stopping polling"))
+			poller.startPolling(ctx)
+			synctest.Wait() // poller is now blocked awaiting its first tick
 
-		// Wait for goroutine to stop
-		time.Sleep(20 * time.Millisecond)
+			cancel(errors.New("test: stopping polling"))
+			synctest.Wait() // wait for the polling goroutine to observe cancellation and exit
 
-		// Now create the document
-		added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
-		require.NoError(t, err)
-		require.True(t, added)
+			// Now create the document
+			added, err := datastore.Add(ctx, key, 0, []byte(`{"test": true}`))
+			require.NoError(t, err)
+			require.True(t, added)
 
-		t.Cleanup(func() {
-			_ = datastore.Delete(ctx, key)
+			t.Cleanup(func() {
+				_ = datastore.Delete(ctx, key)
+			})
+
+			// Advance virtual time; no poll should occur since polling stopped
+			time.Sleep(poller.pollInterval * 5)
+			require.Equal(t, int32(0), eventCount.Load(), "no events should fire after context cancellation")
 		})
-
-		// Wait and verify no events were fired
-		time.Sleep(50 * time.Millisecond)
-		require.Equal(t, int32(0), eventCount.Load(), "no events should fire after context cancellation")
 	})
 }
 
 func TestCfgNodePollerDistributed(t *testing.T) {
-
-	waitTime := 100 * time.Millisecond
-	if !UnitTestUrlIsWalrus() || IsRaceDetectorEnabled(t) || os.Getenv("CI") != "" {
-		// Increase wait time for CI tests against Couchbase Server, they can take longer to run.
-		// Generally everything runs in 10 seconds, but when it does not, it is not worth flagging the failures.
-		waitTime = 10 * time.Second
-	}
+	waitTime := 10 * time.Second
 
 	ctx := t.Context()
 	bucket := GetTestBucket(t)
@@ -1088,12 +1077,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		cas, err := nodeA.Set(key, []byte(`{"source": "nodeA", "ver": 1}`), 0)
 		require.NoError(t, err)
 
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, cas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, cas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1172,12 +1161,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		cas, err := nodeA.Set(key, []byte(`{"source": "nodeA", "ver": 1}`), 0)
 		require.NoError(t, err)
 
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, cas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, cas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1209,7 +1198,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 			failedNodeEvents = eventsB
 		}
 
-		failedEvent := RequireChanRecvWithTimeout(t, failedNodeEvents, waitTime)
+		failedEvent := RequireChanRecv(t, failedNodeEvents)
 		assert.Equal(t, key, failedEvent.Key)
 		assert.Equal(t, successCas, failedEvent.CAS, "should detect the winner's CAS")
 		assert.NoError(t, failedEvent.Error)
@@ -1232,13 +1221,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for Node A to detect its own write
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, initialCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
 		// Wait for Node B to detect the creation
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, initialCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1248,13 +1237,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should detect its own deletion
-		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA = RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, delCas, eventA.CAS, "Node A: CAS should be 0 for deletion")
 		assert.NoError(t, eventA.Error)
 
 		// Node B should detect deletion via polling
-		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB = RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, delCas, eventB.CAS, "Node B: CAS should be 0 for deletion")
 		assert.NoError(t, eventB.Error)
@@ -1430,12 +1419,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Wait for both nodes to sync initial state
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, cas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, cas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1501,7 +1490,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should detect its own write
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, initialCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
@@ -1511,7 +1500,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should detect its own update
-		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA = RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, updatedCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
@@ -1535,12 +1524,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes should detect this new update
-		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA = RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, finalCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, finalCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1570,13 +1559,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node A should only detect key1 (its own subscription)
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key1, eventA.Key, "Node A should only receive events for key1")
 		assert.Equal(t, casA1, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
 		// Node B should only detect key2 (its own subscription)
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key2, eventB.Key, "Node B should only receive events for key2")
 		assert.Equal(t, casB2, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1602,7 +1591,7 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Node B should detect the update to key2 (even though Node A made the change)
-		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB = RequireChanRecv(t, eventsB)
 		assert.Equal(t, key2, eventB.Key, "Node B should receive update for key2")
 		assert.Equal(t, casA2, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1634,12 +1623,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes detect creation
-		eventA := RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA := RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, initialCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB := RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB := RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, initialCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
@@ -1650,12 +1639,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes detect deletion
-		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA = RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, delCas, eventA.CAS, "Node A: CAS should be 0 for deletion")
 		assert.NoError(t, eventA.Error)
 
-		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB = RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, delCas, eventB.CAS, "Node B: CAS should be 0 for deletion")
 		assert.NoError(t, eventB.Error)
@@ -1665,13 +1654,13 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes should detect resurrection with new non-zero CAS
-		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA = RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, resurrectCas, eventA.CAS, "Node A should detect resurrection with new CAS")
 		assert.Greater(t, eventA.CAS, uint64(0), "Resurrected document should have non-zero CAS")
 		assert.NoError(t, eventA.Error)
 
-		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB = RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, resurrectCas, eventB.CAS, "Node B should detect resurrection with new CAS")
 		assert.Greater(t, eventB.CAS, uint64(0), "Resurrected document should have non-zero CAS")
@@ -1682,12 +1671,12 @@ func TestCfgNodePollerDistributed(t *testing.T) {
 		require.NoError(t, err)
 
 		// Both nodes detect the update after resurrection
-		eventA = RequireChanRecvWithTimeout(t, eventsA, waitTime)
+		eventA = RequireChanRecv(t, eventsA)
 		assert.Equal(t, key, eventA.Key)
 		assert.Equal(t, finalCas, eventA.CAS)
 		assert.NoError(t, eventA.Error)
 
-		eventB = RequireChanRecvWithTimeout(t, eventsB, waitTime)
+		eventB = RequireChanRecv(t, eventsB)
 		assert.Equal(t, key, eventB.Key)
 		assert.Equal(t, finalCas, eventB.CAS)
 		assert.NoError(t, eventB.Error)
