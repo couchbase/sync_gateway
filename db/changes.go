@@ -946,7 +946,8 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 					// Newly added channel so initiate backfill:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				} else if backfillInOtherChannel {
-					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy - 1}
+					// If we're in a backfill for another channel, this channel should use triggeredBy-1 as Seq
+					chanOpts.Since = SequenceID{LowSeq: options.Since.LowSeq, Seq: options.Since.TriggeredBy - 1}
 				}
 
 				feed := col.changesFeed(ctx, singleChannelCache, chanOpts, to)

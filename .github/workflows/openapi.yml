@@ -43,13 +43,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'release/')}}
 
+env:
+  # Pinned action versions, referenced by the steps below through their YAML anchors.
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ACTIONS_REDOCLY_PROBLEM_MATCHERS_VERSION: &actions_redocly_problem_matchers_version r7kamura/redocly-problem-matchers@3b6f82af579316596ff52f605498423b2a69e483 # v1.2.0
+  ACTIONS_YAMLLINT_VERSION: &actions_yamllint_version karancode/yamllint-github-action@4052d365f09b8d34eb552c363d1141fd60e2aeb2 # v3.0.0
+
 jobs:
   api_validation:
     runs-on: ubuntu-latest
     name: OpenAPI Validation
     steps:
-      - uses: actions/checkout@v6
-      - uses: r7kamura/redocly-problem-matchers@v1
+      - uses: *actions_checkout_version
+      - uses: *actions_redocly_problem_matchers_version
       - name: redocly lint
         run: |-
           npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
@@ -58,7 +64,7 @@ jobs:
     name: 'yamllint'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: karancode/yamllint-github-action@master
+      - uses: *actions_checkout_version
+      - uses: *actions_yamllint_version
         with:
           yamllint_file_or_dir: 'docs/api'

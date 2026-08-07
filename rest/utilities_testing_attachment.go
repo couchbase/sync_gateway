@@ -25,7 +25,11 @@ import (
 // is reached. Fails test harness if it is not reached within timeout.
 func (rt *RestTester) WaitForAttachmentCompactionStatus(expectedState db.BackgroundProcessState) db.AttachmentManagerResponse {
 	rt.TB().Helper()
-	return waitForBackgroundManagerState[db.AttachmentManagerResponse](rt, "/{{.db}}/_compact?type=attachment", expectedState)
+	response := waitForBackgroundManagerState[db.AttachmentManagerResponse](rt, "/{{.db}}/_compact?type=attachment", expectedState)
+	if !slices.Contains([]db.BackgroundProcessState{db.BackgroundProcessStateRunning, db.BackgroundProcessStateStopping}, expectedState) {
+		db.WaitForBackgroundManagerHeartbeatDocRemoval(rt.TB(), rt.GetDatabase().AttachmentCompactionManager)
+	}
+	return response
 }
 
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
