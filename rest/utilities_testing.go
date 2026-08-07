@@ -971,16 +971,6 @@ func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, m
 	return nil
 }
 
-func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value any), maxNumAttempts, timeToSleepMs int) error {
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", conditionFunc, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
 	request := Request(method, rt.mustTemplateResource(resource), body)
 
