@@ -98,6 +98,10 @@ const (
 
 	ChanCacheChannelsEvictedNRUDesc = "The total number of active channel cache channels evicted, based on 'not recently used' criteria."
 
+	NumEntriesInLateFeedDesc = "The total number of late-arriving-sequence entries currently held across all channels."
+
+	LateFeedForcedRollbacksDesc = "The total number of times a continuous _changes feed was forced to roll back to its low sequence because its lastSequence had been pruned from a channel's lateLogs by the length or age cap."
+
 	ChanCacheCompactCountDesc = "The total number of channel cache compaction runs."
 
 	ChanCacheCompactTimeDesc = "The total amount of time taken by channel cache compaction across all compaction runs."
