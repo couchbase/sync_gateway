@@ -67,8 +67,43 @@ type FileLogger struct {
 	cancelFunc       context.CancelCauseFunc // cancelFunc is used to stop the log rotation goroutine
 	rotationDoneChan chan struct{}           // rotationDoneChan is used to signal when the log rotation goroutine has stopped
 
+	// bufferMu guards buffer. Logging keeps running against the previous global logger while
+	// InitLogging constructs its replacement, and the replacement reads the old logger's buffer to
+	// carry forward any not-yet-flushed content - so that read must not race with a concurrent
+	// write via fileLoggerMemoryWriter. A pointer so copying a FileLogger by value (as
+	// AuditLogger's constructor does) doesn't copy a lock. nil is safe to use with the helpers
+	// below and simply means "no concurrent writer to guard against" (ad-hoc/test FileLoggers).
+	bufferMu *sync.Mutex
+
 	// FileLoggerConfig stores the initial config used to instantiate FileLogger
 	config FileLoggerConfig
+}
+
+// fileLoggerMemoryWriter is the io.Writer NewMemoryLogger uses as a FileLogger's output, writing
+// into buffer under bufferMu so it can't race with a bufferedContent() snapshot taken by another
+// FileLogger being constructed to replace this one (see InitLogging).
+type fileLoggerMemoryWriter struct {
+	l *FileLogger
+}
+
+func (w *fileLoggerMemoryWriter) Write(p []byte) (int, error) {
+	w.l.bufferMu.Lock()
+	defer w.l.bufferMu.Unlock()
+	return w.l.buffer.Write(p)
+}
+
+// bufferedContent safely returns the contents of l's pre-init log buffer, for handing off to a
+// newly-created FileLogger in NewFileLogger. l may still be actively receiving writes via
+// fileLoggerMemoryWriter while this runs, so this must not be a raw read of l.buffer.
+func (l *FileLogger) bufferedContent() string {
+	if l == nil {
+		return ""
+	}
+	if l.bufferMu != nil {
+		l.bufferMu.Lock()
+		defer l.bufferMu.Unlock()
+	}
+	return l.buffer.String()
 }
 
 type FileLoggerConfig struct {
@@ -88,8 +123,10 @@ type logRotationConfig struct {
 	compress             *bool           `json:"-"`                                 // Compress rotated logs, not exposed to users
 }
 
-// NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, buffer *strings.Builder) (*FileLogger, error) {
+// NewFileLogger returns a new FileLogger from a config. previous, if non-nil, is the FileLogger
+// this one is replacing - any content buffered on it (e.g. by NewMemoryLogger before real logging
+// config was available) is carried forward so it can still be flushed via FlushBufferToLog.
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, previous *FileLogger) (*FileLogger, error) {
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
@@ -113,11 +150,12 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		closed:           make(chan struct{}),
 		cancelFunc:       cancelFunc,
 		rotationDoneChan: rotationDoneChan,
+		bufferMu:         &sync.Mutex{},
 	}
 	logger.Enabled.Set(*config.Enabled)
 
-	if buffer != nil {
-		logger.buffer = *buffer
+	if previous != nil {
+		logger.buffer.WriteString(previous.bufferedContent())
 	}
 
 	// Only create the collateBuffer channel and worker if required.
@@ -134,11 +172,17 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 }
 
 func (l *FileLogger) FlushBufferToLog() {
+	if l.bufferMu != nil {
+		l.bufferMu.Lock()
+	}
 	// Need to clear hanging new line to avoid empty line
 	logString := strings.TrimSuffix(l.buffer.String(), "\n")
 
 	// Clear buffer as we no longer need it
 	l.buffer.Reset()
+	if l.bufferMu != nil {
+		l.bufferMu.Unlock()
+	}
 
 	if l.Enabled.IsTrue() {
 		l.log(logString)

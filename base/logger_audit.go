@@ -186,8 +186,9 @@ func (l *AuditLogger) getAuditLoggerConfig() *AuditLoggerConfig {
 	return &c
 }
 
-// NewAuditLogger returns a new AuditLogger from a config.
-func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, buffer *strings.Builder, globalFields map[string]any) (*AuditLogger, error) {
+// NewAuditLogger returns a new AuditLogger from a config. previous, if non-nil, is the FileLogger
+// the new one is replacing - see NewFileLogger.
+func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath string, minAge int, previous *FileLogger, globalFields map[string]any) (*AuditLogger, error) {
 	if config == nil {
 		config = &AuditLoggerConfig{}
 	}
@@ -203,7 +204,7 @@ func NewAuditLogger(ctx context.Context, config *AuditLoggerConfig, logFilePath 
 		config.CollationBufferSize = Ptr(defaultFileLoggerCollateBufferSize)
 	}
 
-	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, nil, buffer)
+	fl, err := NewFileLogger(ctx, &config.FileLoggerConfig, LevelNone, auditLogName, logFilePath, minAge, nil, previous)
 	if err != nil {
 		return nil, err
 	}

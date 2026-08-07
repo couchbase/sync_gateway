@@ -2,9 +2,10 @@
 // The 'Run E2E Tests' stage overwrites integration-test/slackUtils.groovy and .github/slack_usernames.yaml
 // with the latest versions from main before this runs, so both stay current regardless of which SG_COMMIT
 // is under test.
-def e2eDetails() {
+def e2eDetails(slackUtils) {
     return [
         SG_COMMIT: params.SG_COMMIT,
+        Commit: slackUtils.gitCommitLink(),
         BACKING_STORE: params.BACKING_STORE,
         TEST_DIRECTORY: params.TEST_DIRECTORY,
         COUCHBASE_LITE_VERSION: params.COUCHBASE_LITE_VERSION,
@@ -159,7 +160,7 @@ pipeline {
         success {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                def message = slackUtils.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails())
+                def message = slackUtils.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails(slackUtils))
                 slackSend(channel: 'syncgatewaybot', color: 'good', message: message)
                 def dmTarget = slackUtils.slackUserIdForBuild()
                 if (dmTarget) {
@@ -170,7 +171,7 @@ pipeline {
         failure {
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails())
+                slackUtils.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails(slackUtils))
             }
         }
         cleanup {
