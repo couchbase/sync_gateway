@@ -42,7 +42,7 @@ env:
   # tag for repo at v1 is not updated
   ACTIONS_GOVULNCHECK_VERSION: &actions_govulncheck_version golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
   ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
-  GO_VERSION: &go_version 1.26.5
+  GO_MOD_FILE: &go_mod_file go.mod
   GOTESTSUM_VERSION: 1.13.0
 
 jobs:
@@ -52,7 +52,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: go-build
         run: go build "./..."
 
@@ -63,7 +63,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - run: go install github.com/google/addlicense@latest
       - run: addlicense -check -f licenses/addlicense.tmpl .
 
@@ -74,7 +74,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: golangci-lint
         uses: *actions_golangci_lint_version
         with:
@@ -101,7 +101,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Build
@@ -139,7 +139,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
@@ -176,7 +176,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
@@ -211,7 +211,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
@@ -249,7 +249,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
@@ -315,7 +315,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
       - name: Install gotestsum
@@ -351,7 +351,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: *go_version
+          go-version-file: *go_mod_file
       - name: Build
         run: go build "./tools/cache_perf_tool"
   govulncheck:
@@ -361,5 +361,7 @@ jobs:
       - id: govulncheck
         uses: *actions_govulncheck_version
         with:
-          go-version-input: *go_version
+          # blank this or the action's 'stable' default overrides the file
+          go-version-input: ''
+          go-version-file: *go_mod_file
           go-package: ./...
