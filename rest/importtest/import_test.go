@@ -64,10 +64,7 @@ func TestImportFeed(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
-	})
-	require.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value, 1)
 
 	xattrs, _, err := dataStore.GetXattrs(rt.Context(), mobileKey, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)

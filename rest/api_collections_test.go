@@ -235,10 +235,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	require.True(t, ok)
 
 	// ensure the doc is picked up by the import DCP feed and actually gets imported
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
-	})
-	require.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 	rt.WaitForDoc(docID)
 }
@@ -263,10 +260,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	}
 
 	// ensure the docs are picked up by the import DCP feed and actually gets imported
-	err := rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == numCollections
-	})
-	require.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, int64(numCollections))
 
 	rt.WaitForPendingChanges()
 

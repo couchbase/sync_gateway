@@ -6523,10 +6523,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	response := rt1.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
 	rest.RequireStatus(t, response, http.StatusCreated)
 
-	err = rt2.WaitForCondition(func() bool {
-		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value, errorCountBefore+1)
 
 	assert.Equal(t, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
 	assert.Equal(t, db.PreHydrogenTargetAllowConflictsError.Error(), ar.GetStatus(ctx1).ErrorMessage)
