@@ -1532,10 +1532,15 @@ func TestClusterCompatRefreshIntervalUnclamped(t *testing.T) {
 // TestSyncInfoUpgradeGate tests syncInfo write gate during a rolling upgrade.
 // With a 4.0 peer present, writes must stay legacy JSON and once all peers reach 4.1+, writes flip to V1.
 func TestSyncInfoUpgradeGate(t *testing.T) {
-	rt := NewRestTesterPersistentConfig(t)
+	rt := NewRestTesterPersistentConfigNoDB(t)
 	defer rt.Close()
 
+	// Pre-mark syncInfo as migrated so attachment migration doesn't start and race with this
+	// test's own syncInfo writes below.
 	ctx := base.TestCtx(t)
+	require.NoError(t, base.SetSyncInfoMetaVersion(ctx, rt.GetTestBucket().GetSingleDataStore(), db.MetaVersionValue, nil))
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
 	bucketName := rt.Bucket().GetName()
 	ccm := rt.ServerContext().ClusterCompat
 	require.NotNil(t, ccm)
