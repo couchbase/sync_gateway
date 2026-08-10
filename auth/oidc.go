@@ -98,6 +98,51 @@ type OIDCOptions struct {
 	DefaultProvider *string         `json:"default_provider,omitempty"` // Issuer used when not specified by client
 }
 
+// SetRevalidationFlags marks which of the configured providers need their OIDC discovery document
+// fetched during the next config validation pass.
+//
+// A provider is marked when it is absent from existing, or when a discovery-relevant field differs
+// from the running definition - so a config update that leaves a provider untouched does not re-run
+// discovery against a provider that was already accepted. Pass a nil existing map on database
+// creation, where there is no prior config and every provider is therefore new.
+//
+// Assignment is unconditional: provider pointers can be shared with a running DatabaseContext and
+// merged in place by base.ConfigMerge, so a flag left over from an earlier pass must be cleared
+// rather than left standing.
+//
+// This decides only "new or changed". Whether validation runs at all is governed separately by the
+// disable_oidc_validation query parameter, which is ANDed with this flag during config validation.
+func (opts *OIDCOptions) SetRevalidationFlags(existing OIDCProviderMap) {
+	if opts == nil {
+		return
+	}
+	for name, provider := range opts.Providers {
+		if provider == nil {
+			continue
+		}
+		// Indexing a nil map is safe and yields ok == false, so a nil existing map marks every
+		// provider as new - which is exactly the database-creation case.
+		existingProvider, ok := existing[name]
+		provider.ForceRevalidation = !ok || ProviderDiscoveryConfigChanged(existingProvider, provider)
+	}
+}
+
+// ProviderDiscoveryConfigChanged reports whether any field affecting OIDC discovery or issuer
+// validation differs between a currently-running provider and an incoming one.
+//
+// InsecureSkipVerify is deliberately excluded: it is stamped server-side at database load from
+// Options.UnsupportedOptions.OidcTlsSkipVerify and is never present in a request body, so comparing
+// it would report every provider as changed whenever that option is enabled.
+func ProviderDiscoveryConfigChanged(existing, incoming *OIDCProvider) bool {
+	if existing == nil || incoming == nil {
+		return true
+	}
+	return existing.Issuer != incoming.Issuer ||
+		existing.DiscoveryURI != incoming.DiscoveryURI ||
+		existing.DisableConfigValidation != incoming.DisableConfigValidation ||
+		base.ValDefault(existing.ClientID, "") != base.ValDefault(incoming.ClientID, "")
+}
+
 // OIDCClient represents client configurations to authenticate end-users
 // with an OpenID Connect provider.
 type OIDCClient struct {
@@ -188,10 +233,15 @@ type OIDCProvider struct {
 	// enabled by default.
 	InsecureSkipVerify bool
 
-	// ForceRevalidation is used internally during config validation to indicate this provider is
-	// already known/unchanged and does not need its discovery/issuer info re-checked on this
-	// validation pass. Defaults to false, so a provider validates by default unless something
-	// explicitly marks it as already-known. It must not be configurable or persisted.
+	// ForceRevalidation records whether this provider's OIDC discovery document must be re-fetched
+	// during the next config validation pass. It is set by OIDCOptions.SetRevalidationFlags
+	// immediately before validation runs, and is true only for providers that are new or whose
+	// discovery-relevant fields changed - so an unrelated config update does not re-run discovery
+	// against providers that were already accepted.
+	//
+	// Defaults to false, so any config-validation path that does not call SetRevalidationFlags
+	// performs no network discovery. json:"-" keeps it out of persisted configs and off the admin
+	// API surface; it must never be user-settable.
 	ForceRevalidation bool `json:"-"`
 }
 

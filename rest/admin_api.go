@@ -63,6 +63,10 @@ func (h *handler) handleCreateDB() error {
 			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
+		// No database exists yet, so there is nothing to compare against: a nil existing map marks
+		// every provider as new, leaving OIDC validation governed solely by disable_oidc_validation.
+		config.OIDCConfig.SetRevalidationFlags(nil)
+
 		validateReplications := true
 		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
 			return base.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -939,7 +943,13 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
-	h.db.OIDCValidationRequired(dbConfig.OIDCConfig)
+	// Mark only the providers that are new or changed relative to the running database, so an update
+	// that leaves a provider untouched does not re-run discovery against it.
+	//
+	// h.db.OIDCProviders is populated by StartOnlineProcesses, so it is nil for an offline database
+	// and every provider is then treated as new. That is conservative, and matches the behaviour
+	// before per-provider revalidation was introduced.
+	dbConfig.OIDCConfig.SetRevalidationFlags(h.db.OIDCProviders)
 
 	validateReplications := true
 	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
@@ -986,6 +996,18 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := dbConfig.validatePersistentDbConfig(); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
+		// Recompute against the running providers now that the merge has happened, so this does not
+		// depend on base.ConfigMerge's pointer semantics to carry the flags across. Idempotent on
+		// the PUT path (same pointers, same answer), and it also catches a provider present in the
+		// bucket config but not in this node's running database - one added by a peer node since
+		// this node loaded its config.
+		//
+		// Compare against h.db.OIDCProviders, never oldBucketDbConfig: that is a shallow copy taken
+		// before ConfigMerge, so on a POST it aliases the merged provider map and every provider
+		// would compare as unchanged, silently disabling revalidation. h.db is captured at request
+		// start, so it stays stable across CAS retries of this closure.
+		bucketDbConfig.OIDCConfig.SetRevalidationFlags(h.db.OIDCProviders)
+
 		if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}

@@ -790,35 +790,6 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-// OIDCValidationRequired marks providers that are new to this database's current config, or whose
-// discovery-relevant fields changed in place, as needing (re-)validation on this pass - e.g. when
-// removing one provider, another unchanged, already-accepted provider shouldn't have its
-// discovery/issuer info re-checked just because the config as a whole is being updated. An
-// unchanged, already-known provider is left at its default of not requiring validation.
-func (context *DatabaseContext) OIDCValidationRequired(oidcConfig *auth.OIDCOptions) {
-	if oidcConfig == nil {
-		return
-	}
-	for name, provider := range oidcConfig.Providers {
-		if provider == nil {
-			continue
-		}
-		existing, ok := context.OIDCProviders[name]
-		if !ok || oidcProviderDiscoveryConfigChanged(existing, provider) {
-			provider.ForceRevalidation = true
-		}
-	}
-}
-
-// oidcProviderDiscoveryConfigChanged reports whether any field that affects OIDC discovery/issuer
-// validation differs between the currently running provider and the incoming one.
-func oidcProviderDiscoveryConfigChanged(existing, incoming *auth.OIDCProvider) bool {
-	return existing.Issuer != incoming.Issuer ||
-		existing.DiscoveryURI != incoming.DiscoveryURI ||
-		existing.DisableConfigValidation != incoming.DisableConfigValidation ||
-		base.ValDefault(existing.ClientID, "") != base.ValDefault(incoming.ClientID, "")
-}
-
 // _stopOnlineProcesses is called to represent an error condition from startOnlineProcesses, or from DatabaseContext.Close. Most of the objects are not safe to close twice, since they have internal terminator objects and goroutines that wait on closed channels. Acquire the bucket lock, to avoid calling this function multiple times.
 func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	db.mutationListener.Stop(ctx)
@@ -2506,6 +2477,12 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range db.Options.OIDCOptions.Providers {
+			if provider == nil {
+				// An explicit null in the providers map unmarshals to a nil provider. DbConfig.validate
+				// skips these too, but a config pairing one with a valid provider still passes validation.
+				base.WarnfCtx(ctx, "No provider definition for %q - skipping", base.UD(name))
+				continue
+			}
 			if provider.Issuer == "" || base.ValDefault(provider.ClientID, "") == "" {
 				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
 				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
