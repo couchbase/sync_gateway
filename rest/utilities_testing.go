@@ -971,16 +971,6 @@ func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, m
 	return nil
 }
 
-func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value any), maxNumAttempts, timeToSleepMs int) error {
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", conditionFunc, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
 	request := Request(method, rt.mustTemplateResource(resource), body)
 
@@ -1299,8 +1289,7 @@ func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Req.Method, response.Req.URL, response.Body)
 }
 
-func AssertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
-	t.Helper()
+func AssertStatus(t assert.TestingT, response *TestResponse, expectedStatus int) bool {
 	return assert.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
