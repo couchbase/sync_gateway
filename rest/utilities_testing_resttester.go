@@ -311,15 +311,16 @@ func (rt *RestTester) WaitForTombstoneRevIDOnly(docID string, deleteVersion DocV
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) string {
 	rt.TB().Helper()
 	var lastSeq string
+	ds := rt.GetSingleDataStore()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		val, _, err := rt.GetSingleDataStore().GetRaw(rt.Context(), expectedName)
+		val, _, err := ds.GetRaw(rt.Context(), expectedName)
 		if !assert.NoError(c, err) {
 			return
 		}
 		var config struct { // db.replicationCheckpoint
 			LastSeq string `json:"last_sequence"`
 		}
-		if !assert.NoError(c, json.Unmarshal(val, &config)) {
+		if !assert.NoError(c, base.JSONUnmarshal(val, &config), "Could not unmarshal %s", string(val)) {
 			return
 		}
 		lastSeq = config.LastSeq
@@ -330,16 +331,22 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) string 
 
 func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
 	rt.TB().Helper()
+	database := rt.GetDatabase()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		ar := rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators()
+		ar := database.SGReplicateMgr.GetNumberActiveReplicators()
 		assert.Equal(c, count, ar)
 	}, 10*time.Second, 100*time.Millisecond, "mismatch on number of active replicators")
 }
 
 func (rt *RestTester) WaitForPullBlipSenderInitialisation(name string) {
 	rt.TB().Helper()
+	database := rt.GetDatabase()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		bs := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(name).Pull.GetBlipSender()
+		replicator := database.SGReplicateMgr.GetActiveReplicator(name)
+		if !assert.NotNil(c, replicator, "replicator %s does not exist", replicator) {
+			return
+		}
+		bs := replicator.Pull.GetBlipSender()
 		assert.NotNil(c, bs)
 	}, 10*time.Second, 100*time.Millisecond, "blip sender on active replicator not initialized")
 }
@@ -384,7 +391,14 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 func (rt *RestTester) WaitForAssignedReplications(count int) {
 	rt.TB().Helper()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/?localOnly=true", "")
+		if !AssertStatus(c, rawResponse, http.StatusOK) {
+			return
+		}
+		var replicationStatuses []db.ReplicationStatus
+		if !assert.NoError(c, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replicationStatuses)) {
+			return
+		}
 		assert.Len(c, replicationStatuses, count)
 	}, 10*time.Second, 100*time.Millisecond)
 }
@@ -405,7 +419,10 @@ func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
 	rt.TB().Helper()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		status := rt.GetReplicationStatusForDB(dbName, replicationID)
+		rawResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_replicationStatus/"+replicationID, "")
+		RequireStatus(rt.TB(), rawResponse, 200)
+		var status db.ReplicationStatus
+		require.NoError(rt.TB(), base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 		assert.Equal(c, targetStatus, status.Status)
 	}, 10*time.Second, 100*time.Millisecond, "Expected status: %s", targetStatus)
 }
@@ -484,12 +501,12 @@ func waitForBackgroundManagerState[T backgroundManagerResponse](rt *RestTester, 
 	var response T
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		resp := rt.SendAdminRequest("GET", url, "")
-		// Use c (not rt.TB()) for all assertions so that failures are recorded on the
-		// CollectT and not on the real testing.T. EventuallyWithT runs the condition in a
-		// goroutine; calling rt.TB().Errorf/FailNow from that goroutine after the test
-		// has completed causes a "Fail in goroutine after TestXxx has completed" panic.
-		require.Equal(c, http.StatusOK, resp.Code)
-		require.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &response))
+		if !assert.Equal(c, http.StatusOK, resp.Code) {
+			return
+		}
+		if !assert.NoError(c, base.JSONUnmarshal(resp.BodyBytes(), &response)) {
+			return
+		}
 		assert.Equal(c, state, response.GetState())
 	}, timeout, pollInterval, "waiting for %s to reach state %q", url, state)
 	return response
