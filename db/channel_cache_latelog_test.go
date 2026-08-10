@@ -738,6 +738,39 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 
 	finalSeq := seq
 
+	// The final late sequence can need one more notify cycle to reach the feeds than WaitForSequenceNotSkipped +
+	// drainBoth() observes (cache commit and feed wakeup are decoupled). Earlier cycles get backstopped by the
+	// next writeSeq's drain; the last one has no such backstop, so wait here without requiring a fresh
+	// "caught up" marker.
+	awaitAllSequences := func(feed <-chan *ChangeEntry, seen map[uint64]bool) {
+		t.Helper()
+		allSeen := func() bool {
+			for s := uint64(1); s <= finalSeq; s++ {
+				if !seen[s] {
+					return false
+				}
+			}
+			return true
+		}
+		deadline := time.After(10 * time.Second)
+		for !allSeen() {
+			select {
+			case event, ok := <-feed:
+				if !ok {
+					t.Fatal("changes feed closed before all sequences were seen")
+					return
+				}
+				if event != nil {
+					seen[event.Seq.Seq] = true
+				}
+			case <-deadline:
+				return
+			}
+		}
+	}
+	awaitAllSequences(feed1, feed1Seen)
+	awaitAllSequences(feed2, feed2Seen)
+
 	// No data loss: both healthy feeds received every written sequence.
 	for _, feed := range []struct {
 		name string
