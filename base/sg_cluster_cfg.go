@@ -50,7 +50,7 @@ type CfgEventNotifyFunc func(docID string, cas uint64, err error)
 
 var ErrCfgCasError = &cbgt.CfgCASError{}
 
-// newCfgSGBase build constructs a CfgSG.
+// newCfgSGBase constructs a CfgSG.
 func newCfgSGBase(ctx context.Context) *CfgSG {
 	cancelCtx, cancelFn := context.WithCancelCause(ctx)
 	return &CfgSG{
@@ -68,7 +68,7 @@ func newCfgSG(ctx context.Context, datastore sgbucket.DataStore, keyPrefix strin
 	c.keyPrefix = keyPrefix
 
 	if useNodePoller {
-		c.nodePoller = newCfgNodePoller(ctx, datastore, c.FireEvent, pollInterval)
+		c.nodePoller = newCfgNodePoller(c.ctx, datastore, c.FireEvent, pollInterval)
 	}
 
 	return c, nil
