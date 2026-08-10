@@ -59,10 +59,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for doc to be imported
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 	// Ensure sync function has ran twice (once for PUT and once for xattr addition)
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -80,10 +77,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 	require.NoError(t, err)
 
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value, 1)
 
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
 	assert.NoError(t, err)
@@ -100,10 +94,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	err = dataStore.Set(ctx, docKey, 0, nil, map[string]any{})
 	assert.NoError(t, err)
 
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 2
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value, 2)
 
 	var syncData3 db.SyncData
 	xattrs, _, err = dataStore.GetXattrs(ctx, docKey, []string{base.SyncXattrName})
@@ -121,10 +112,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	err = dataStore.Set(ctx, docKey, 0, nil, updateVal)
 	assert.NoError(t, err)
 
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 2)
 
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
@@ -172,10 +160,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 	// Ensure sync function has been ran on import
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -192,10 +177,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 2)
 
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -268,10 +250,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusConflict)
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -287,10 +266,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusConflict)
 
 	// Wait for import
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
-	})
-	assert.NoError(t, err)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 2)
 
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
