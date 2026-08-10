@@ -124,13 +124,20 @@ type CacheOptions struct {
 	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  int           // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
+	// Broadcast ticker intervals for waking continuous _changes feeds. Zero means use the package default
+	// (DefaultBroadcastChangesTime / SkippedSequenceBroadcastChangesTime). Internal tuning knob - primarily
+	// so tests can avoid the 500ms skipped-sequence slow mode dominating runtime. Not exposed via REST config.
+	BroadcastChangesInterval         time.Duration // Normal-mode feed broadcast interval
+	SkippedSequenceBroadcastInterval time.Duration // Slow-mode feed broadcast interval (skipped sequences present)
 }
 
 func DefaultCacheOptions() CacheOptions {
 	return CacheOptions{
-		CachePendingSeqMaxWait: DefaultCachePendingSeqMaxWait,
-		CachePendingSeqMaxNum:  DefaultCachePendingSeqMaxNum,
-		CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
+		CachePendingSeqMaxWait:           DefaultCachePendingSeqMaxWait,
+		CachePendingSeqMaxNum:            DefaultCachePendingSeqMaxNum,
+		CacheSkippedSeqMaxWait:           DefaultSkippedSeqMaxWait,
+		BroadcastChangesInterval:         DefaultBroadcastChangesTime,
+		SkippedSequenceBroadcastInterval: SkippedSequenceBroadcastChangesTime,
 		ChannelCacheOptions: ChannelCacheOptions{
 			ChannelCacheAge:             DefaultChannelCacheAge,
 			ChannelCacheMinLength:       DefaultChannelCacheMinLength,
@@ -139,6 +146,7 @@ func DefaultCacheOptions() CacheOptions {
 			CompactHighWatermarkPercent: DefaultCompactHighWatermarkPercent,
 			CompactLowWatermarkPercent:  DefaultCompactLowWatermarkPercent,
 			ChannelQueryLimit:           DefaultQueryPaginationLimit,
+			LateLogAge:                  DefaultLateLogAge,
 		},
 	}
 }

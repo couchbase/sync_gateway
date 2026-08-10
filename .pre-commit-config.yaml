@@ -40,8 +40,10 @@ repos:
       - id: ty
         name: ty
         language: system
-        entry: uvx ty check
+        entry: uv run -- ty check
         types: [python]
+        # ty checks the whole project via [tool.ty.src] in pyproject.toml
+        pass_filenames: false
 
       - id: manifest-product-config-sorted
         name: manifest/product-config.json keys sorted
@@ -53,7 +55,11 @@ repos:
       - id: redocly-lint
         name: redocly lint
         language: system
-        entry: npx --yes @redocly/cli@2 lint --config=.redocly.yaml --format=stylish
+        # npm ci installs from the lockfile, so no manual setup step and no
+        # stale node_modules after a version bump
+        entry: >-
+          bash -c 'npm ci --no-audit --no-fund --silent &&
+          ./node_modules/.bin/redocly lint --config=.redocly.yaml --format=stylish'
         files: ^(docs/api/|\.redocly\.yaml$)
         pass_filenames: false
 

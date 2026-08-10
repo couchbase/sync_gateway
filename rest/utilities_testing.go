@@ -433,6 +433,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 	return rt.TestBucket.Bucket
 }
 
+// GetTestBucket returns the underlying TestBucket, initializing it first if necessary.
+func (rt *RestTester) GetTestBucket() *base.TestBucket {
+	rt.Bucket()
+	return rt.TestBucket
+}
+
 // MetadataStore returns the datastore for the database on the RestTester
 func (rt *RestTester) MetadataStore() base.DataStore {
 	return rt.GetDatabase().MetadataStore

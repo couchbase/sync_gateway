@@ -54,12 +54,8 @@ export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
-GO_VERSION=go$(go list -m -f '{{.GoVersion}}')
-echo "Sync Gateway go.mod version is ${GO_VERSION}"
-go install "golang.org/dl/${GO_VERSION}@latest"
-~/go/bin/"${GO_VERSION}" download
-GOROOT=$(~/go/bin/"${GO_VERSION}" env GOROOT)
-PATH=${GOROOT}/bin:$PATH
+# go fetches the toolchain named in go.mod on demand
+go version
 
 echo "Downloading tool dependencies..."
 go install gotest.tools/gotestsum@latest

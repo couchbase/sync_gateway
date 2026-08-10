@@ -52,22 +52,27 @@ func (s SequenceID) String() string {
 	return s.intSeqToString()
 }
 
+// intSeqToString implements the formatting rules documented on String() above. A non-zero LowSeq
+// or TriggeredBy is silently omitted from the result in three cases:
+//   - omit LowSeq when it's higher than the current sequence (non-backfill)
+//   - omit LowSeq when it's higher than the triggeredBy sequence (backfill)
+//   - omit TriggeredBy when it's higher than the current sequence
 func (s SequenceID) intSeqToString() string {
-
-	if s.LowSeq > 0 && s.LowSeq < s.Seq {
-		if s.TriggeredBy > 0 {
+	backfillActive := s.TriggeredBy > 0 && s.Seq < s.TriggeredBy
+	if backfillActive {
+		if s.LowSeq > 0 && s.LowSeq < s.TriggeredBy {
 			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
-		} else {
-			return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
-
 		}
-	} else if s.TriggeredBy > 0 {
 		return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
-	} else {
-		return strconv.FormatUint(s.Seq, 10)
 	}
+	if s.LowSeq > 0 && s.LowSeq < s.Seq {
+		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+	}
+	return strconv.FormatUint(s.Seq, 10)
 }
 
+// seqStr converts a decoded JSON sequence value - a string or json.Number - to its string form,
+// for use with ParseJSONSequenceID/ParsePlainSequenceID. Returns "" for any other type.
 func seqStr(ctx context.Context, seq any) string {
 	switch seq := seq.(type) {
 	case string:
@@ -91,6 +96,9 @@ func ParsePlainSequenceID(str string) (s SequenceID, err error) {
 	return parseIntegerSequenceID(str)
 }
 
+// parseIntegerSequenceID parses a colon-delimited sequence string into a SequenceID. A single
+// component is Seq; two components are TriggeredBy:Seq; three are LowSeq:TriggeredBy:Seq. An
+// empty string returns a zero-value SequenceID.
 func parseIntegerSequenceID(str string) (SequenceID, error) {
 	if str == "" {
 		return SequenceID{}, nil
@@ -129,6 +137,9 @@ func parseIntegerSequenceID(str string) (SequenceID, error) {
 	return s, nil
 }
 
+// ParseIntSequenceComponent parses a single colon-delimited component of a sequence string. When
+// allowEmpty is true, an empty component parses as 0 instead of returning an error - used for the
+// optional TriggeredBy component in the LowSeq:TriggeredBy:Seq form (e.g. "5::10").
 func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error) {
 	value := uint64(0)
 	if allowEmpty && component == "" {
@@ -139,6 +150,8 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 
 }
 
+// MarshalJSON implements json.Marshaler, encoding a SequenceID via String() when TriggeredBy or
+// LowSeq is set (any compound form), or as a bare integer for a simple sequence.
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
 	if s.TriggeredBy > 0 || s.LowSeq > 0 {
@@ -149,10 +162,13 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 
 }
 
+// UnmarshalJSON implements json.Unmarshaler for SequenceID.
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
 	return s.unmarshalIntSequence(data)
 }
 
+// unmarshalIntSequence parses a SequenceID from JSON data that may be either a quoted string
+// (e.g. `"5:10"`) or a bare JSON number (e.g. `10`).
 func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 	var raw string
 	err := base.JSONUnmarshal(data, &raw)
@@ -165,14 +181,19 @@ func (s *SequenceID) unmarshalIntSequence(data []byte) error {
 
 }
 
+// SafeSequence returns the sequence to resume the changes feed from: LowSeq, the last contiguous
+// sequence, when it's set and still behind Seq; otherwise Seq. A LowSeq that hasn't stayed behind
+// Seq is stale for the same reason described on String(), and is ignored here too.
 func (s SequenceID) SafeSequence() uint64 {
-	if s.LowSeq > 0 {
+	if s.LowSeq > 0 && s.LowSeq < s.Seq {
 		return s.LowSeq
 	} else {
 		return s.Seq
 	}
 }
 
+// IsNonZero reports whether the sequence's Seq value is non-zero. TriggeredBy and LowSeq are not
+// considered.
 func (s SequenceID) IsNonZero() bool {
 	return s.Seq > 0
 }
@@ -183,21 +204,44 @@ func (s SequenceID) Equals(s2 SequenceID) bool {
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
-// The tricky part is that "n" sorts after "n:m" for any nonzero m
+// The tricky part is that "y" sorts after "y:z" for any nonzero z
 func (s SequenceID) Before(s2 SequenceID) bool {
-	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
-	if s.TriggeredBy == s2.TriggeredBy {
-		if s.SafeSequence() == s2.SafeSequence() {
-			// If both are equal, one sequence must be a non-zero LowSeq - sort those after the actual sequence.
-			return s.Seq < s2.Seq
+
+	// s in format x:y:z or x::z
+	if s.LowSeq != 0 {
+		if s.LowSeq == s2.LowSeq {
+			return SequenceID{TriggeredBy: s.TriggeredBy, Seq: s.Seq}.Before(SequenceID{TriggeredBy: s2.TriggeredBy, Seq: s2.Seq})
 		}
-		return s.SafeSequence() < s2.SafeSequence() // the simple case: untriggered, or triggered by same sequence
-	} else if s.TriggeredBy == 0 {
-		return s.SafeSequence() < s2.TriggeredBy // s2 triggered but not s
-	} else if s2.TriggeredBy == 0 {
-		return s.TriggeredBy <= s2.SafeSequence() // s triggered but not s2
+		if s2.LowSeq != 0 {
+			return s.LowSeq < s2.LowSeq
+		}
+		if s2.TriggeredBy != 0 {
+			return s.LowSeq < s2.TriggeredBy
+		}
+		return s.LowSeq < s2.Seq
+	}
+
+	// s in format x:y
+	if s.TriggeredBy != 0 {
+		if s2.LowSeq != 0 {
+			return s.TriggeredBy <= s2.LowSeq
+		}
+		if s2.TriggeredBy != 0 {
+			if s.TriggeredBy == s2.TriggeredBy {
+				return s.Seq < s2.Seq
+			}
+			return s.TriggeredBy < s2.TriggeredBy
+		}
+		return s.TriggeredBy <= s2.Seq // "n" sorts after "n:m" for any nonzero m
+	}
+
+	// s in format x (simple sequence)
+	if s2.LowSeq != 0 {
+		return s.Seq <= s2.LowSeq
+	} else if s2.TriggeredBy != 0 {
+		return s.Seq < s2.TriggeredBy
 	} else {
-		return s.TriggeredBy < s2.TriggeredBy // both triggered, but by different sequences
+		return s.Seq < s2.Seq
 	}
 }
 
