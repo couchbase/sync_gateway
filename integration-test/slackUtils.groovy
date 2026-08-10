@@ -51,7 +51,8 @@ def slackMessage(String title, String status, String link, Map details = [:]) {
 def gitCommitLink() {
     def sha = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
     def message = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
-    return "<https://github.com/couchbase/sync_gateway/commit/${sha}|${sha.take(7)}> ${message}"
+    def safeMessage = message.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return "<https://github.com/couchbase/sync_gateway/commit/${sha}|${sha.take(7)}> ${safeMessage}"
 }
 
 // Returns a Slack-formatted link to an arbitrary Sync Gateway ref (branch, tag, or commit SHA)
