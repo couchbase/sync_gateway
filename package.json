@@ -3,6 +3,6 @@
   "private": true,
   "description": "Tooling-only manifest. Pins the OpenAPI linter used by CI and pre-commit.",
   "devDependencies": {
-    "@redocly/cli": "2.45.0"
+    "@redocly/cli": "2.46.0"
   }
 }
