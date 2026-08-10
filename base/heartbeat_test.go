@@ -302,7 +302,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 
 	dataStore := testBucket.GetSingleDataStore()
 
-	cfgCB, err := NewCbgtCfgMem()
+	cfgCB, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 
 	// Simulate the three nodes self-registering into the cfg
@@ -335,7 +335,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 
 	testManager := cbgt.NewManagerEx(
