@@ -463,7 +463,8 @@ OIDC-token:
     refresh_token:
       type: string
     expires_in:
-      type: string
+      type: integer
+      minimum: 0
     id_token:
       type: string
   title: OIDC-token
@@ -3106,6 +3107,8 @@ Status:
             (cgroupv2 `memory.max` or cgroupv1 `memory.limit_in_bytes`). Only present when
             running inside a cgroup with a memory limit configured.
           type: integer
+          format: int64
+          minimum: 0
           example: 2147483648
     node_uid:
       description: |-

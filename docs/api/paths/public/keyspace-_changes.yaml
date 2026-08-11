@@ -61,16 +61,21 @@ get:
           _doc_ids: Filter by document ID, using the `doc_ids` parameter. Requires `feed=normal`.
     - name: channels
       in: query
-      description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+      description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannel`.'
       schema:
         type: string
     - name: doc_ids
       in: query
-      description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma separated list of document IDs instead.'
+      description: 'A JSON array of document IDs, serialized to a string, to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma-separated list of document IDs instead.'
       schema:
-        type: array
-        items:
-          type: string
+        type: string
+      examples:
+        jsonArray:
+          summary: Serialized JSON array
+          value: '["doc1","doc2"]'
+        commaSeparated:
+          summary: Comma-separated list
+          value: 'doc1,doc2'
     - name: heartbeat
       in: query
       description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration. If heartbeat is non zero, it must be at least 25000 milliseconds.
@@ -137,34 +142,36 @@ post:
           properties:
             limit:
               description: Maximum number of changes to return.
-              type: string
+              type: integer
             style:
               description: Controls whether to return the current winning revision (`main_only`) or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
               type: string
             active_only:
               description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
-              type: string
+              type: boolean
             include_docs:
               description: Include the body associated with each document.
               type: boolean
             revocations:
               description: 'If true, revocation messages will be sent on the changes feed.'
-              type: string
+              type: boolean
             filter:
               description: Set a filter to either filter by channels or document IDs.
               type: string
             channels:
-              description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+              description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannel`.'
               type: string
             doc_ids:
-              description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`.'
-              type: string
+              description: 'A JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`.'
+              type: array
+              items:
+                type: string
             heartbeat:
               description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration.
-              type: string
+              type: integer
             timeout:
               description: 'This is the maximum period (in milliseconds) to wait for a change before the response is sent, even if there are no results. This is only applicable for `feed=longpoll` or `feed=continuous` changes feeds. Setting to 0 results in no timeout.'
-              type: string
+              type: integer
             feed:
               description: 'The type of changes feed to use. '
               type: string
