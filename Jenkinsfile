@@ -240,7 +240,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
             }
         }
         failure {
@@ -248,14 +248,14 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL)
+                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
             }
         }
         cleanup {
