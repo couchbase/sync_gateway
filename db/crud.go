@@ -1586,6 +1586,10 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				// the new document has a dominating hlv, so we can just update local revtree with incoming revtree
 				if !opts.ISGRWrite {
 					previousRevTreeID = doc.GetRevTreeID()
+					// The new revision is parented to the local current rev rather than the incoming
+					// history, so its generation has to be recomputed from that parent.
+					prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
+					newGeneration = prevGeneration + 1
 				} else {
 					// align rev tree here for ISGR replications
 					alignErr := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, false)

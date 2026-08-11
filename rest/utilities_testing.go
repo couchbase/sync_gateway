@@ -2811,6 +2811,29 @@ func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, exp
 	require.Equal(t, 1, activeLeafCount)
 }
 
+// RequireStrictlyIncreasingRevTreeGenerations walks every branch of a document's rev tree from leaf to
+// root and requires each revision to be at least one generation higher than its parent.
+func RequireStrictlyIncreasingRevTreeGenerations(t *testing.T, ctx context.Context, doc *db.Document) {
+	t.Helper()
+	for _, leafRevID := range doc.History.GetLeaves() {
+		var branch []string
+		for revID := leafRevID; revID != ""; {
+			revInfo, ok := doc.History[revID]
+			require.True(t, ok, "rev %q missing from rev tree for doc %q", revID, doc.ID)
+			branch = append(branch, revID)
+			revID = revInfo.Parent
+		}
+		// branch runs leaf -> root, so generations must strictly decrease as we walk it.
+		for i := 1; i < len(branch); i++ {
+			childGeneration, _ := db.ParseRevID(ctx, branch[i-1])
+			parentGeneration, _ := db.ParseRevID(ctx, branch[i])
+			require.Greater(t, childGeneration, parentGeneration,
+				"doc %q: revision %q is not a higher generation than its parent %q (branch from leaf: %v)",
+				doc.ID, branch[i-1], branch[i], branch)
+		}
+	}
+}
+
 // ClearServerContextLoggingGlobals clears the global variables related to logging in ServerContext and allows testing initialization of a server context's logging parameters.
 func ClearServerContextLoggingGlobals(t *testing.T) {
 	// the end of the test must clean up global logging
