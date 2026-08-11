@@ -1800,6 +1800,111 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	})
 }
 
+// TestReplicationHeartbeatRemovalPushWithConfigReload is a push-replication variant of
+// TestReplicationHeartbeatRemoval
+// that races the heartbeat-driven node removal/rebalance against a concurrent db config reload
+// (PUT /{db}/_config).  This matches the sequence seen in the field, where an admin config PUT (which
+// closes and reopens the DatabaseContext) landed while the sg-replicate manager was simultaneously
+// reassigning replications due to a transient node-membership blip.
+func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only (replication rebalance)")
+	}
+
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		t.Cleanup(reduceTestCheckpointInterval(50 * time.Millisecond))
+		t.Cleanup(db.SuspendSequenceBatching())
+
+		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+
+		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
+		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
+		_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
+		_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
+		activeRT.WaitForPendingChanges()
+
+		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault, "")
+		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForAssignedReplications(2)
+		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+
+		changesResults := remoteRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
+		changesResults.RequireDocIDs(t, []string{docABC1, docDEF1})
+
+		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
+		defer activeRT2.Close()
+
+		activeRT.WaitForAssignedReplications(1)
+		activeRT2.WaitForAssignedReplications(1)
+
+		activeRTUUID := activeRT.GetDatabase().UUID
+		activeRT2UUID := activeRT2.GetDatabase().UUID
+		activeRTMgr := activeRT.GetDatabase().SGReplicateMgr
+		activeRT2Mgr := activeRT2.GetDatabase().SGReplicateMgr
+		dbName := activeRT.GetDatabase().Name
+		currentConfig := activeRT.ServerContext().GetDatabaseConfig(dbName).DatabaseConfig
+
+		// Race a db config reload against the heartbeat-driven rebalance on activeRT - this is the
+		// combination seen in production (PUT /db/_config landing while node membership was flapping).
+		// Reload the current config as-is (just to force a reload, bypassing REST-layer config validation
+		// quirks unrelated to the race) rather than mutating it.
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, activeRTMgr.RemoveNode(activeRT2UUID))
+		}()
+		go func() {
+			defer wg.Done()
+			err := activeRT.ServerContext().ReloadDatabaseWithConfig(base.NewNonCancelCtx(), currentConfig)
+			t.Logf("ReloadDatabaseWithConfig error: %v", err)
+		}()
+		wg.Wait()
+		assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
+
+		// Wait for nodes to add themselves back to the cluster (re-fetch the manager from the active
+		// database in case the config reload replaced the DatabaseContext / SGReplicateMgr).
+		err := activeRT.WaitForCondition(func() bool {
+			clusterDef, err := activeRT.GetDatabase().SGReplicateMgr.GetSGRCluster()
+			if err != nil {
+				return false
+			}
+			return len(clusterDef.Nodes) == 2
+		})
+		require.NoError(t, err, "Nodes did not re-register after removal")
+
+		activeRT.WaitForAssignedReplications(1)
+		activeRT2.WaitForAssignedReplications(1)
+
+		docABC2 := rest.SafeDocumentName(t, t.Name()+"ABC2")
+		_ = activeRT.PutDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
+		docDEF2 := rest.SafeDocumentName(t, t.Name()+"DEF2")
+		_ = activeRT.PutDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
+
+		// If a push replicator is orphaned on the pre-reload DatabaseContext, its changes feed never
+		// delivers these documents and this times out - even though replication status continues to
+		// report db.ReplicationStateRunning.
+		changesResults = remoteRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since="+changesResults.Last_Seq.String(), "", true)
+		changesResults.RequireDocIDs(t, []string{docABC2, docDEF2})
+
+		// Both replications must still report running.  A replicator orphaned on the pre-reload
+		// DatabaseContext shares these status documents with the live one, so if it terminates its
+		// changes feed and completes, it publishes a stopped status over the healthy replication.
+		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+
+		activeRT.GetDatabase().SGReplicateMgr.Stop()
+		activeRT.GetDatabase().SGReplicateMgr = nil
+		activeRT2.GetDatabase().SGReplicateMgr.Stop()
+		activeRT2.GetDatabase().SGReplicateMgr = nil
+	})
+}
+
 // Repros CBG-2416
 func TestDBReplicationStatsTeardown(t *testing.T) {
 	base.LongRunningTest(t)

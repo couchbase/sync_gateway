@@ -798,3 +798,91 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeGroupB", cfg.AssignedNode)
 }
+
+// TestRefreshReplicationCfgAfterStop asserts that RefreshReplicationCfg does not create an
+// ActiveReplicator once the manager has been stopped.
+//
+// Stop() closes clusterSubscribeTerminator to tell the SubscribeCfgChanges goroutine to exit, but that
+// goroutine's select also has a case reading cfg change events.  Per the Go spec, when more than one
+// case is ready select makes a uniform pseudo-random choice, so a cfg change arriving as the terminator
+// is closed can be serviced instead of the exit.  The resulting RefreshReplicationCfg can then run after
+// Stop()'s teardown loop has already walked activeReplicators, adding a replicator that nothing will
+// ever stop.
+//
+// The production chain of events this stands in for:
+//  1. An admin PUT /{db}/_config closes the DatabaseContext, which calls SGReplicateMgr.Stop().
+//  2. Concurrently, another node's heartbeat-driven rebalance writes the shared cluster cfg, leaving a
+//     replication assigned to the node whose manager is shutting down.
+//  3. The cfg event from that write races the close of clusterSubscribeTerminator, and the subscriber
+//     services it - running RefreshReplicationCfg against a manager that has already been stopped.
+//
+// Note the config update is only what makes the local manager stop; it is not the source of the racing
+// cfg event.  A reload removes the old DatabaseContext before building the new one, and each
+// DatabaseContext registers under a fresh UUID, so the incoming context cannot assign replications back
+// to the outgoing node.
+//
+// The test asserts the invariant rather than reproducing the scheduling: after Stop(), a
+// RefreshReplicationCfg must be a no-op.  A second manager plays the part of the other node in step 2 -
+// it is also the only way to restore the assignment, since Stop() removes the local node (unassigning
+// its replications) and closes clusterUpdateTerminator, after which the stopped manager can no longer
+// update the cfg itself.
+//
+// The replication is configured with TargetState stopped so that RefreshReplicationCfg creates and
+// registers the replicator without attempting to reach a remote - this test is about the orphaned entry
+// in activeReplicators, and keeping it hermetic avoids needing a live passive peer in the db package.
+func TestRefreshReplicationCfgAfterStop(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	testCfg, err := base.NewCfgSG(ctx, testDB.MetadataStore, "", false)
+	require.NoError(t, err)
+
+	const (
+		localNodeUUID = "localNode"
+		replicationID = "replicationToOrphan"
+	)
+
+	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testCfg)
+	require.NoError(t, err)
+	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+	require.NoError(t, mgr.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:                 replicationID,
+			Direction:          ActiveReplicatorTypePush,
+			Remote:             "http://localhost:4984/remotedb",
+			Continuous:         true,
+			CollectionsEnabled: base.TestsUseNamedCollections(),
+		},
+		AssignedNode: localNodeUUID,
+		TargetState:  ReplicationStateStopped,
+	}))
+
+	// Nothing has been initialized yet, so any entry present after Stop() is unambiguously an orphan.
+	require.Equal(t, 0, mgr.GetNumberActiveReplicators())
+
+	mgr.Stop()
+
+	// Restore the local node's assignment in the shared cfg, recreating the state carried by a cfg
+	// change that arrives while Stop() is in progress - at that point Stop() has signalled the
+	// subscriber to exit but has not yet removed the local node.
+	otherMgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testCfg)
+	require.NoError(t, err)
+	defer otherMgr.Stop()
+	require.NoError(t, otherMgr.RegisterNode(localNodeUUID))
+
+	replications, err := mgr.GetReplications()
+	require.NoError(t, err)
+	reassigned, exists := replications[replicationID]
+	require.True(t, exists, "test precondition: replication missing from cfg")
+	require.Equal(t, localNodeUUID, reassigned.AssignedNode,
+		"test precondition: replication must be assigned to the stopped manager's node")
+
+	// The racing refresh.
+	require.NoError(t, mgr.RefreshReplicationCfg(ctx))
+
+	assert.Equal(t, 0, mgr.GetNumberActiveReplicators(),
+		"RefreshReplicationCfg created an ActiveReplicator after the manager was stopped - it is orphaned, and nothing will ever stop it")
+}

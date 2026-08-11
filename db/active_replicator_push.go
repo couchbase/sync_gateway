@@ -166,9 +166,15 @@ func (apr *ActivePushReplicator) Stop() error {
 	if err := apr.stopAndDisconnect(); err != nil {
 		return err
 	}
+	const sendChangesTeardownWait = 10 * time.Second
 	teardownStart := time.Now()
-	for apr.activeSendChanges.Load() != 0 && (time.Since(teardownStart) < time.Second*10) {
+	for apr.activeSendChanges.Load() != 0 && (time.Since(teardownStart) < sendChangesTeardownWait) {
 		time.Sleep(10 * time.Millisecond)
+	}
+	// A send changes goroutine that hasn't exited by now is blocked in its changes feed, and won't be
+	// reclaimed by this Stop - surface it rather than returning as though teardown completed.
+	if remaining := apr.activeSendChanges.Load(); remaining != 0 {
+		base.WarnfCtx(apr.ctx, "Timed out after %v waiting for %d send changes goroutine(s) to exit while stopping push replication %s - goroutine(s) will not be reclaimed", sendChangesTeardownWait, remaining, base.UD(apr.config.ID))
 	}
 	return nil
 }

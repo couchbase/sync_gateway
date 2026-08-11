@@ -13,6 +13,7 @@ package db
 import (
 	"log"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -131,4 +132,45 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	// Wait for user notification of updated role
 	WaitForUserWaiterChange(t, userWaiter)
+}
+
+// TestChangeWaiterWaitAfterListenerStop asserts that a ChangeWaiter.Wait() that begins after the
+// changeListener has been stopped returns, rather than blocking forever.
+//
+// changeListener.Stop() issues a single tapNotifier.Broadcast() to release waiters that are already
+// parked, and terminates the broadcaster goroutine.  A waiter that enters Wait() after that point has
+// missed the broadcast: no further Notify/notifyKey/NotifyCheckForTermination will occur on a stopped
+// listener, so nothing remains to wake it.  The listener.terminator check in changeListener.Wait() is
+// evaluated only after tapNotifier.Wait() returns, so a closed terminator cannot release a goroutine
+// that is already parked on the sync.Cond.
+//
+// This is the mechanism behind a permanently-parked GenerateChanges goroutine - a push replicator
+// started against a DatabaseContext that is midway through Close() builds its changes feed on an
+// already-stopped mutationListener.  Note that DatabaseContext._stopOnlineProcesses stops
+// mutationListener before SGReplicateMgr, so any replication started during teardown hits exactly this.
+func TestChangeWaiterWaitAfterListenerStop(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	waiter := db.mutationListener.NewWaiter([]channels.ID{channels.NewID("ABC", 0)}, false)
+
+	// Stop the listener before waiting.  Close() will call this again during teardown, which is a no-op.
+	db.mutationListener.Stop(ctx)
+
+	// Run Wait() on a separate goroutine like a changes feed would be n the real world.
+	// On failure the goroutine stays parked for the remainder of
+	// the package run, which is the leak this test exists to catch.
+	waitReturned := make(chan uint32, 1)
+	go func() {
+		waitReturned <- waiter.Wait(ctx)
+	}()
+
+	select {
+	case response := <-waitReturned:
+		assert.Equal(t, WaiterClosed, response, "Wait() after listener stop should report WaiterClosed")
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "ChangeWaiter.Wait() did not return after the changeListener was stopped - goroutine is parked permanently")
+	}
 }

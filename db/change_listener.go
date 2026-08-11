@@ -211,13 +211,21 @@ func (listener *changeListener) Stop(ctx context.Context) {
 		return
 	}
 
-	if listener.terminator != nil {
-		close(listener.terminator)
-	}
-
+	// Close the terminator and broadcast while holding the notifier's lock.  Wait() checks the terminator
+	// under the same lock before parking, so this ordering guarantees a waiter either observes the closed
+	// terminator and returns, or is already parked and is released by the broadcast below.  Stop() issues
+	// exactly one broadcast and the broadcaster goroutine then exits, so a waiter that parked after an
+	// unsynchronised broadcast would never be woken again.
 	if listener.tapNotifier != nil {
+		listener.tapNotifier.L.Lock()
+		if listener.terminator != nil {
+			close(listener.terminator)
+		}
 		// Unblock any change listeners blocked on tapNotifier.Wait()
 		listener.tapNotifier.Broadcast()
+		listener.tapNotifier.L.Unlock()
+	} else if listener.terminator != nil {
+		close(listener.terminator)
 	}
 
 	// Wait for mutation feed worker to terminate.
@@ -355,6 +363,16 @@ func (listener *changeListener) Wait(ctx context.Context, keys []channels.ID, co
 
 		if curCounter != counter || listener._terminateCheckCounter != terminateCheckCounter {
 			return curCounter, listener._terminateCheckCounter
+		}
+
+		// Don't park if this changeListener has already been terminated.  Stop() broadcasts once and then
+		// its broadcaster goroutine exits, so nothing would ever wake a waiter that parks after that
+		// point - the check below only runs once tapNotifier.Wait() has returned.  Stop() closes the
+		// terminator while holding tapNotifier.L, so this check cannot miss a concurrent Stop().
+		select {
+		case <-listener.terminator:
+			return 0, 0
+		default:
 		}
 
 		listener.tapNotifier.Wait()
