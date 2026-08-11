@@ -154,7 +154,7 @@ func (p *SyncGatewayPeer) DeleteDocument(dsName sgbucket.DataStoreName, docID st
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+func (p *SyncGatewayPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, _ []byte, topology Topology) db.Body {
 	p.TB().Helper()
 	collection, ctx := p.getCollection(dsName)
 	var doc *db.Document
@@ -201,7 +201,7 @@ func (p *SyncGatewayPeer) WaitForCV(dsName sgbucket.DataStoreName, docID string,
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
 	p.TB().Helper()
-	docBytes := p.WaitForDocVersion(dsName, docID, expected, topology)
+	docBytes := p.WaitForDocVersion(dsName, docID, expected, nil, topology)
 	require.Empty(p.TB(), docBytes, "expected tombstone for docID %s, got %s. Replications:\n%s", docID, docBytes, topology.GetDocState(p.TB(), dsName, docID))
 }
 

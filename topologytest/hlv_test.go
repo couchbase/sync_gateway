@@ -58,7 +58,7 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
 		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
-		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, topology)
+		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, expectedVersion.body, topology)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
 	base.InfofCtx(ctx, base.KeySGTest, "found matching doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
@@ -116,7 +116,7 @@ func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID st
 		if peer.Type() == PeerTypeCouchbaseLite {
 			body = peer.WaitForCV(dsName, docID, winner.docMeta, topology)
 		} else {
-			body = peer.WaitForDocVersion(dsName, docID, winner.docMeta, topology)
+			body = peer.WaitForDocVersion(dsName, docID, winner.docMeta, winner.body, topology)
 		}
 		requireBodyEqual(t, winner.body, body)
 	}

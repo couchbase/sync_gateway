@@ -99,6 +99,63 @@ var TopologySpecifications = []TopologySpecification{
 			},
 		},
 	},
+	{
+		/*
+			+ - - - - - - +
+			' +---------+ '
+			' |  cbs1   | '
+			' +---------+ '
+			' +---------+ '
+			' |   sg1   | '
+			' +---------+ '
+			+ - - - - - - +
+			      ^
+			      |
+			  +---+---+
+			  |       |
+			  v       v
+			+---------+  +---------+
+			|   cbl1  |  |cbl2 (v3)|
+			+---------+  +---------+
+		*/
+		description: "2x CBL (1 default, 1 v3)<->SG<->CBS 1.1",
+		peers: map[string]PeerOptions{
+			"cbs1": {Type: PeerTypeCouchbaseServer, BucketID: PeerBucketID1},
+			"sg1":  {Type: PeerTypeSyncGateway, BucketID: PeerBucketID1},
+			"cbl1": {Type: PeerTypeCouchbaseLite},
+			"cbl2": {Type: PeerTypeCouchbaseLiteV3},
+		},
+		replications: []PeerReplicationDefinition{
+			{
+				activePeer:  "cbl1",
+				passivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				},
+			},
+			{
+				activePeer:  "cbl1",
+				passivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+			{
+				activePeer:  "cbl2",
+				passivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPull,
+				},
+			},
+			{
+				activePeer:  "cbl2",
+				passivePeer: "sg1",
+				config: PeerReplicationConfig{
+					direction: PeerReplicationDirectionPush,
+				},
+			},
+		},
+	},
 
 	{
 		/*

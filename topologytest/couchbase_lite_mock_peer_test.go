@@ -166,9 +166,12 @@ func (p *CouchbaseLiteMockPeer) DeleteDocument(dsName sgbucket.DataStoreName, do
 }
 
 // WaitForDocVersion waits for a document to reach a specific version. The test will fail if the document does not reach the expected version in 20s.
-func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body {
+func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, expectedBody []byte, topology Topology) db.Body {
 	p.TB().Helper()
-	compareHLV := !topology.CompareRevTreeOnly()
+	// A v3 peer only tracks rev-tree IDs, a default (v4) peer only tracks CVs/HLVs. In a topology that mixes both
+	// CBL protocol versions, a write from the other protocol version won't have this peer's comparable field
+	// populated in expected - fall back to comparing body content, which converges regardless of writer protocol.
+	compareRevTree := p.Type() == PeerTypeCouchbaseLiteV3
 	var data []byte
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var actual *DocMetadata
@@ -181,10 +184,13 @@ func (p *CouchbaseLiteMockPeer) WaitForDocVersion(dsName sgbucket.DataStoreName,
 		if !assert.NotNil(c, data, "Expected a live revision for docID:%+v on %s, but latest revision is a tombstone", docID, p) {
 			return
 		}
-		if compareHLV {
-			assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
-		} else {
+		switch {
+		case compareRevTree && expected.RevTreeID != "":
 			assertRevTreeIDEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		case !compareRevTree && expected.HasHLV():
+			assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		default:
+			assert.JSONEq(c, string(expectedBody), string(data), "Actual body does not match expected on %s for peer %s.\nActual Body: %s\n%s", docID, p, data, topology.GetDocState(c, dsName, docID))
 		}
 	}, totalWaitTime, pollInterval)
 	var body db.Body
@@ -217,15 +223,25 @@ func (p *CouchbaseLiteMockPeer) WaitForCV(dsName sgbucket.DataStoreName, docID s
 // WaitForTombstoneVersion waits for a document to reach a specific version, this must be a tombstone. The test will fail if the document does not reach the expected version in 20s.
 func (p *CouchbaseLiteMockPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) {
 	p.TB().Helper()
-	client := p.getSingleSGBlipClient().CollectionClient(dsName)
-	expectedVersion := db.DocVersion{CV: expected.CV(p.TB())}
-	if p.Type() == PeerTypeCouchbaseLiteV3 {
-		expectedVersion = db.DocVersion{RevTreeID: expected.RevTreeID}
-	}
+	// See the comment in WaitForDocVersion: a v3 peer only tracks rev-tree IDs, a default (v4) peer only tracks
+	// CVs/HLVs, so a delete from the other protocol version won't have this peer's comparable field populated in
+	// expected. There's no body to fall back on for a tombstone, so confirming this peer's latest revision is
+	// itself a tombstone is sufficient proof of convergence in that case.
+	compareRevTree := p.Type() == PeerTypeCouchbaseLiteV3
 	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
-		isTombstone, err := client.IsVersionTombstone(docID, expectedVersion)
-		require.NoError(c, err)
-		assert.True(c, isTombstone, "expected docID %s on peer %s to be deleted.", docID, p)
+		data, actual := p.getLatestDocVersion(dsName, docID)
+		if !assert.NotNil(c, actual, "Could not find docID:%+v on %s\nVersion %#v", docID, p, expected) {
+			return
+		}
+		if !assert.Nil(c, data, "expected docID %s on peer %s to be deleted, found live body: %s", docID, p, data) {
+			return
+		}
+		switch {
+		case compareRevTree && expected.RevTreeID != "":
+			assertRevTreeIDEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		case !compareRevTree && expected.HasHLV():
+			assertHLVEqual(c, dsName, docID, p.name, *actual, data, expected, topology)
+		}
 	}, totalWaitTime, pollInterval, topology.GetDocState(p.TB(), dsName, docID))
 }
 
@@ -271,7 +287,7 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 		btcRunner:   rest.NewBlipTesterClientRunner(sg.rt.TB().(*testing.T)),
 		direction:   config.direction,
 	}
-	const username = "user"
+	username := p.name
 	sg.rt.CreateUser(username, []string{"*"})
 	switch p.Type() {
 	case PeerTypeCouchbaseLite:
@@ -285,7 +301,7 @@ func (p *CouchbaseLiteMockPeer) CreateReplication(peer Peer, config PeerReplicat
 	// do not inherit testing.Context()'s cancellation since it can cancel t.Cleanup() calls out of order
 	ctx := base.CorrelationIDLogCtx(context.WithoutCancel(sg.rt.TB().Context()), p.name)
 	replication.btc = replication.btcRunner.NewBlipTesterClientOptsWithRTAndContext(ctx, sg.rt, &rest.BlipTesterClientOpts{
-		Username: "user",
+		Username: username,
 		AllowCreationWithoutBlipTesterClientRunner: true,
 		SourceID: p.SourceID(),
 	},

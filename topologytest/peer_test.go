@@ -55,8 +55,8 @@ type Peer interface {
 	// DeleteDocument deletes a document on the peer. The test will fail if the document does not exist.
 	DeleteDocument(dsName sgbucket.DataStoreName, docID string) DocMetadata
 
-	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
-	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body
+	// WaitForDocVersion waits for a document to reach a specific version. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s. expectedBody is used as a fallback convergence check when expected is missing the version identifier (rev-tree ID or CV) this peer compares on - this happens when the write came from a Couchbase Lite peer of a different protocol version than this one.
+	WaitForDocVersion(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, expectedBody []byte, topology Topology) db.Body
 
 	// WaitForCV waits for a document to reach a specific CV. Returns the state of the document at that version. The test will fail if the document does not reach the expected version in 20s.
 	WaitForCV(dsName sgbucket.DataStoreName, docID string, expected DocMetadata, topology Topology) db.Body
@@ -541,7 +541,7 @@ func TestPeerImplementation(t *testing.T) {
 				require.Empty(t, createVersion.docMeta.RevTreeID)
 			}
 
-			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta, topology)
+			peer.WaitForDocVersion(collectionName, docID, createVersion.docMeta, createBody, topology)
 			// Check Get after creation
 			roundtripGetVersion, roundtripGetbody := peer.GetDocument(collectionName, docID)
 			require.Equal(t, createVersion.docMeta, roundtripGetVersion)
@@ -558,7 +558,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, updateVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta, topology)
+			peer.WaitForDocVersion(collectionName, docID, updateVersion.docMeta, updateBody, topology)
 
 			// Check Get after update
 			roundtripGetVersion, roundtripGetbody = peer.GetDocument(collectionName, docID)
@@ -596,7 +596,7 @@ func TestPeerImplementation(t *testing.T) {
 			} else {
 				require.Empty(t, resurrectionVersion.docMeta.RevTreeID)
 			}
-			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta, topology)
+			peer.WaitForDocVersion(collectionName, docID, resurrectionVersion.docMeta, resurrectionBody, topology)
 
 			ctx := peer.Context()
 			if peer.Type() != PeerTypeCouchbaseLite {
