@@ -52,6 +52,9 @@ compact-type:
     enum:
       - attachment
       - tombstone
+    x-enumDescriptions:
+      attachment: Clean up legacy (pre-3.0) attachments.
+      tombstone: Purge the JSON bodies of old, non-current revisions.
   description: |-
     This is the type of compaction to use. The type must be either:
     * `attachment` for cleaning up legacy (pre-3.0) attachments
@@ -168,7 +171,7 @@ include_doc:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include the body associated with the document.
 include_docs:
   name: include_docs
@@ -199,7 +202,7 @@ limit-result-rows:
   in: query
   required: false
   schema:
-    type: number
+    type: integer
   description: This limits the number of result rows returned. Using a value of `0` has the same effect as the value `1`.
 log-level:
   name: logLevel
@@ -241,7 +244,7 @@ offline:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: 'If true, the OpenID Connect provider is requested to confirm with the user the permissions requested and refresh the OIDC token. To do this, access_type=offline and prompt=consent is set on the redirection link.'
 oidc-code:
   name: code
@@ -331,8 +334,8 @@ replicationid:
   required: true
   schema:
     type: string
-    minimum: 1
-    maximum: 160
+    minLength: 1
+    maxLength: 160
   description: What replication to target based on its replication ID.
 replicator2:
   name: replicator2
@@ -494,6 +497,7 @@ stale:
     enum:
       - ok
       - update_after
+      - "false"
 key:
   name: key
   in: query

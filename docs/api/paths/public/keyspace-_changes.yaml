@@ -33,6 +33,9 @@ get:
         enum:
           - main_only
           - all_docs
+        x-enumDescriptions:
+          main_only: Return only the current winning revision.
+          all_docs: Return all leaf revisions, including conflicts and deleted conflicts.
     - name: active_only
       in: query
       description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
@@ -53,6 +56,9 @@ get:
         enum:
           - sync_gateway/bychannel
           - _doc_ids
+        x-enumDescriptions:
+          sync_gateway/bychannel: Filter by channel, using the `channels` parameter.
+          _doc_ids: Filter by document ID, using the `doc_ids` parameter. Requires `feed=normal`.
     - name: channels
       in: query
       description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
@@ -90,6 +96,11 @@ get:
           - longpoll
           - continuous
           - websocket
+        x-enumDescriptions:
+          normal: Return all current changes at once, then close the connection.
+          longpoll: Return current changes, then hold the connection open to wait for more before responding again.
+          continuous: Stream each change as it happens, over a single long-lived connection.
+          websocket: Stream changes over a WebSocket connection.
     - name: version_type
       in: query
       description: 'The preferred type of document versioning to use for the changes feed.'

@@ -86,7 +86,7 @@ post:
                       - type: string
                         example: foo
                         description: A string value to be used as the user XATTR.
-                      - type: integer
+                      - type: number
                         example: 100
                         description: A number value to be used as the user XATTR.
                       - type: boolean
@@ -163,7 +163,7 @@ post:
                     example: channel1
               expiry:
                 description: The document expiry (TTL in seconds) as determined by the sync function.
-                type: number
+                type: integer
                 example: 300
               exception:
                 $ref: ../../components/schemas.yaml#/DiagnosticFunctionException
