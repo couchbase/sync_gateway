@@ -149,6 +149,17 @@ func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 		rest.GetUserPayload(t, "", rest.RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), []string{"ABC", "DEF", "GHI"}, nil))
 	rest.RequireStatus(t, resp, http.StatusOK) // GHI grant -> seqAddedAt 5
 
+	// Wait for the grant sequences to be cached before writing the docs below. The grants are
+	// written to the metadata collection while the docs go to the data collection, and each
+	// collection has its own DCP feed - so seqs 4/5 can still be pending when 6/7/9 arrive. With
+	// MaxWaitPending=5ms the cache would then push 4 and 5 to the skipped queue, making
+	// oldestSkipped=4 (LowSeq=3) rather than the oldestSkipped=8 (LowSeq=7) this test relies on,
+	// and the initial last_seq would come back as "3:4:2" instead of "4:2".
+	// WaitForSequenceNotSkipped is the required gate here: WaitForSequence/WaitForPendingChanges
+	// only check nextSequence, which advances past 4 and 5 precisely when they get skipped.
+	rt.WaitForSequenceNotSkipped(4)
+	rt.WaitForSequenceNotSkipped(5)
+
 	// ABC @6,7,9 with a gap at 8 => oldestSkipped=8, LowSeq=7.
 	// This gives LowSeq(7) >= TriggeredBy(4) and TriggeredBy(4) < GHI grant(5) <= LowSeq(7).
 	db.WriteDirect(t, collection, []string{"ABC"}, 6)
