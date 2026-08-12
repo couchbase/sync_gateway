@@ -4966,7 +4966,7 @@ func TestRevTreeConflictCheck(t *testing.T) {
 			// localHistory is newest-first (as on the wire), so build the tree oldest-first
 			for i := lenLocalHistory - 1; i >= 0; i-- {
 				revID := testCase.localHistory[i]
-				err := doc.History.addRevision(ctx, revID,
+				err := doc.History.addRevision(ctx, doc.ID,
 					RevInfo{
 						ID:      revID,
 						Parent:  parent, // set the parent of this revision to the element of docHistory from the last iteration
