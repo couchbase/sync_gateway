@@ -54,7 +54,14 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=40 -failfast "./topologytest"
+        run: |
+          for i in {1..40}; do
+            echo "Running iteration $i of 40..."
+            if ! gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -failfast "./topologytest"; then
+              echo "Tests failed on iteration $i"
+              exit 1
+            fi
+          done
         shell: bash
       - name: Test Summary
         if: always()
