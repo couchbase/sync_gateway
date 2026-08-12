@@ -413,12 +413,13 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 		b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
 
-		go func(terminator *base.SafeTerminator) {
+		terminator := b.terminator
+		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
 			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
 			for {
 				select {
 				case <-ticker.C:
-					err = b.UpdateHeartbeatDocClusterAware(ctx)
+					err := b.UpdateHeartbeatDocClusterAware(ctx)
 					if err != nil {
 						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
 						b.SetError(err)
@@ -428,7 +429,7 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 					return
 				}
 			}
-		}(b.terminator)
+		})
 
 		b.setRunState(BackgroundProcessStateRunning)
 		return nil
