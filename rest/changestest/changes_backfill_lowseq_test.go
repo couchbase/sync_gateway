@@ -132,6 +132,13 @@ func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("sg-user", []string{"ABC"}) // seq 1
+	// Each mutation of the user doc must be cached before the next one overwrites it. The caching
+	// feed is xattr-only, so principal doc events are resolved by re-reading the doc and comparing
+	// CAS (changeCache.fetchMetadataDocBody) - if the doc has already been mutated again, the event
+	// is dropped ("a newer mutation will be processed") and its sequence never reaches the cache.
+	// The orphaned sequence then lands in the skipped queue and stays there, pinning lowSequence
+	// below the sequence this test needs it at.
+	rt.WaitForSequenceNotSkipped(1)
 
 	// DEF backfill doc @2, GHI backfill doc @3 (both low).
 	db.WriteDirect(t, collection, []string{"DEF"}, 2)
@@ -145,19 +152,16 @@ func TestChangesBackfillGrantSuppressedByCompoundLowSeq(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/sg-user",
 		rest.GetUserPayload(t, "", rest.RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), []string{"ABC", "DEF"}, nil))
 	rest.RequireStatus(t, resp, http.StatusOK) // DEF grant -> seqAddedAt 4
+	// As above - seq 4 must be cached before the GHI grant overwrites the user doc, otherwise the
+	// seq 4 event is dropped on CAS mismatch and seq 4 is stuck in the skipped queue, leaving
+	// oldestSkipped=4 (LowSeq=3) and an initial last_seq of "3:4:2" instead of "4:2".
+	rt.WaitForSequenceNotSkipped(4)
+
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/sg-user",
 		rest.GetUserPayload(t, "", rest.RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), []string{"ABC", "DEF", "GHI"}, nil))
 	rest.RequireStatus(t, resp, http.StatusOK) // GHI grant -> seqAddedAt 5
-
-	// Wait for the grant sequences to be cached before writing the docs below. The grants are
-	// written to the metadata collection while the docs go to the data collection, and each
-	// collection has its own DCP feed - so seqs 4/5 can still be pending when 6/7/9 arrive. With
-	// MaxWaitPending=5ms the cache would then push 4 and 5 to the skipped queue, making
-	// oldestSkipped=4 (LowSeq=3) rather than the oldestSkipped=8 (LowSeq=7) this test relies on,
-	// and the initial last_seq would come back as "3:4:2" instead of "4:2".
-	// WaitForSequenceNotSkipped is the required gate here: WaitForSequence/WaitForPendingChanges
-	// only check nextSequence, which advances past 4 and 5 precisely when they get skipped.
-	rt.WaitForSequenceNotSkipped(4)
+	// Gate on seq 5 as well, so it can't still be pending when 6/7/9 arrive - with
+	// MaxWaitPending=5ms the cache would push it to the skipped queue and pin lowSequence at 4.
 	rt.WaitForSequenceNotSkipped(5)
 
 	// ABC @6,7,9 with a gap at 8 => oldestSkipped=8, LowSeq=7.
