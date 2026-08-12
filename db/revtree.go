@@ -395,7 +395,7 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) addRevision(docid string, info RevInfo) error {
+func (tree RevTree) addRevision(ctx context.Context, docid string, info RevInfo) error {
 	revid := info.ID
 	if revid == "" {
 		return fmt.Errorf("doc: %v, RevTree addRevision, empty revid is illegal", docid)
@@ -407,6 +407,14 @@ func (tree RevTree) addRevision(docid string, info RevInfo) error {
 		parent, ok := tree[p]
 		if !ok {
 			return fmt.Errorf("doc: %v, RevTree addRevision, parent id %q is missing", docid, p)
+		}
+		// A revision must be at least one generation higher than its parent. If it isn't, the branch can
+		// no longer be encoded as a _revisions list (splitRevisionList requires start >= len(ids)), which
+		// makes the document unreplicatable to pre-4.0 clients. See CBG-5713.
+		if generation, _, err := parseRevID(revid); err == nil {
+			if parentGeneration, _, parentErr := parseRevID(p); parentErr == nil && generation <= parentGeneration {
+				base.AssertfCtx(ctx, "doc: %s, RevTree addRevision, revision %q is not a higher generation than its parent %q", base.UD(docid), revid, p)
+			}
 		}
 		// we're adding a new child, so strip the channels from the parent - they're now superseded
 		parent.Channels = nil
