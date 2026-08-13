@@ -1193,7 +1193,6 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 }
 
 func TestBackgroundManagerJoinConcurrentWhileStopping(t *testing.T) {
-	t.Skip("this test might not be valid pending CBG-5435")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
@@ -1414,7 +1413,6 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 // cluster status to a terminal state, a still-running node that only observes this via polling
 // converges to that same state - without overwriting it.
 func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
-	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	tests := []struct {
 		name          string
 		externalState BackgroundProcessState
