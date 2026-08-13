@@ -568,6 +568,10 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", dcpClient.GetMetadataKeyPrefix())
 }
 
+// CreateLegacyAttachmentDoc writes a doc with pre-4.0 attachment metadata in its _sync xattr, plus
+// the v1 attachment body doc it references, and returns the attachment doc ID.
+//
+// This document will under go an import which will generate a new mutation.
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
 
 	attDigest := Sha1DigestKey(attBody)

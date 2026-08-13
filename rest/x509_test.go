@@ -101,7 +101,13 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close(ctx)
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
+		CustomTestBucket: tb,
+		useTLSServer:     true,
+	})
 	defer rt.Close()
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
