@@ -308,30 +308,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
-		b.SetError(err)
-		b.updateTerminalStatus(ctx)
+		b.finishRun(ctx, err)
 		return err
 	}
 
 	if b.mode() == backgroundManagerModeSingleNode {
-		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
-		go func(terminator *base.SafeTerminator) {
-			defer b.backgroundManagerStatusUpdateWaitGroup.Done()
-			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					err := b.UpdateSingleNodeClusterAwareStatus(ctx)
-					if err != nil {
-						base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
-					}
-				case <-terminator.Done():
-					ticker.Stop()
-					return
-				}
-			}
-		}(b.terminator)
-
+		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
+			b.startPollingSingleNodeStatus(ctx, b.terminator)
+		})
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
@@ -342,22 +326,8 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error: %v", err)
-			b.SetError(err)
 		}
-
-		b.Terminate()
-
-		b.statusLock.Lock()
-		if b.status.State == BackgroundProcessStateStopping {
-			b.status.State = BackgroundProcessStateStopped
-		} else if b.status.State == BackgroundProcessStateRunning {
-			b.status.State = BackgroundProcessStateCompleted
-		}
-		b.statusLock.Unlock()
-
-		// Once our background process run has completed we should update the completed status and delete the heartbeat
-		// doc
-		b.updateTerminalStatus(ctx)
+		b.finishRun(ctx, err)
 	}()
 
 	if b.mode() != backgroundManagerModeLocal {
@@ -382,6 +352,29 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	}
 
 	return nil
+}
+
+// finishRun waits for the process's terminator-driven goroutines to exit, transitions the local status to its
+// terminal state, and persists that terminal status. Called once Process.Run has returned (or failed to start).
+// If err is non-nil, the local status is marked as errored before finalizing.
+func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
+	if err != nil {
+		b.setLastErrorMessage(err.Error())
+	}
+
+	b.terminate()
+
+	b.statusLock.Lock()
+	if b.status.State == BackgroundProcessStateStopping {
+		b.status.State = BackgroundProcessStateStopped
+	} else if b.status.State == BackgroundProcessStateRunning {
+		b.status.State = BackgroundProcessStateCompleted
+	}
+	b.statusLock.Unlock()
+
+	// Once our background process run has completed we should update the completed status and delete the heartbeat
+	// doc
+	b.updateTerminalStatus(ctx)
 }
 
 // markStart changes the local status to started. previousStatus is the last known cluster status, used to check
@@ -415,20 +408,7 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 		terminator := b.terminator
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
-			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					err := b.UpdateHeartbeatDocClusterAware(ctx)
-					if err != nil {
-						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
-						b.SetError(err)
-					}
-				case <-terminator.Done():
-					ticker.Stop()
-					return
-				}
-			}
+			b.startHeartbeat(ctx, terminator)
 		})
 
 		b.setRunState(BackgroundProcessStateRunning)
@@ -652,9 +632,9 @@ func (b *BackgroundManager[O]) Stop(ctx context.Context) error {
 	return nil
 }
 
-// Terminate stops the process via terminator channel
+// terminate stops the process via terminator channel
 // Only to be used internally to this file and by tests.
-func (b *BackgroundManager[O]) Terminate() {
+func (b *BackgroundManager[O]) terminate() {
 	b.terminator.Close()
 	b.backgroundManagerStatusUpdateWaitGroup.Wait()
 }
@@ -728,12 +708,14 @@ func (b *BackgroundManager[O]) setStartTime(startTime time.Time) {
 	b.status.StartTime = startTime
 }
 
-// SetError sets the last known error, transitions the state to BackgroundManagerStateError and terminates the process.
+// SetError sets the last known error, transitions the state to BackgroundManagerStateError, and closes the
+// terminator to stop the already-running process. It does not wait for the process's goroutines to exit - that
+// happens in finishRun, once Process.Run notices the terminator closed and returns.
 func (b *BackgroundManager[O]) SetError(err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	b.setLastErrorMessage(err.Error())
-	b.Terminate()
+	b.terminator.Close()
 }
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
@@ -887,7 +869,45 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
 			}
 		case <-terminator.Done():
-			ticker.Stop()
+			return
+		}
+	}
+}
+
+// startPollingSingleNodeStatus starts a loop which periodically writes the local status to the cluster status
+// document, for single-node cluster aware background managers.
+func (b *BackgroundManager[O]) startPollingSingleNodeStatus(ctx context.Context, terminator *base.SafeTerminator) {
+	ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			err := b.UpdateSingleNodeClusterAwareStatus(ctx)
+			if err != nil {
+				base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
+			}
+		case <-terminator.Done():
+			return
+		}
+	}
+}
+
+// startHeartbeat starts a loop which periodically refreshes the expiry of the single-node heartbeat doc, signalling
+// to other nodes that this process is still running. On a persistent failure to update the heartbeat, it records the
+// error and closes the terminator itself, rather than going through SetError - this goroutine is a member of
+// backgroundManagerStatusUpdateWaitGroup, and SetError calls Terminate, which waits on that same WaitGroup.
+func (b *BackgroundManager[O]) startHeartbeat(ctx context.Context, terminator *base.SafeTerminator) {
+	ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			err := b.UpdateHeartbeatDocClusterAware(ctx)
+			if err != nil {
+				base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
+				b.setLastErrorMessage(err.Error())
+				terminator.Close()
+				return
+			}
+		case <-terminator.Done():
 			return
 		}
 	}

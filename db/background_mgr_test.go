@@ -165,7 +165,6 @@ func TestBackgroundManagerModes(t *testing.T) {
 }
 
 func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
-	t.Skip("CBG-5376 temporarily skip test which flakes in CI")
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
