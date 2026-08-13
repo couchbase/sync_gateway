@@ -35,9 +35,9 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(expectedState db.Backgro
 // CreateLegacyAttachmentDoc writes a doc with pre-4.0 attachment metadata in its _sync xattr, plus
 // the v1 attachment body doc it references, and returns the attachment doc ID.
 //
-// This doc will be imported, moving the attachment metadata to _globalSync. Tests must disable
-// auto-import (DbConfig.AutoImport = false), or DCP may deliver both mutations and attachment
-// compaction marks the same attachment twice.
+// If auto-import is enabled, this doc may be imported, moving the attachment metadata to _globalSync.
+// Tests that rely on stable legacy metadata should disable auto-import (DbConfig.AutoImport = false),
+// otherwise DCP may deliver both mutations and attachment compaction can mark the same attachment twice.
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
 	attDigest := db.Sha1DigestKey(attBody)
 
