@@ -213,14 +213,15 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	err = mgr1.Stop(ctx)
 	require.NoError(t, err)
 
-	// Both should stop because they watch the same status doc
+	// Both should stop because they watch the same status doc. mgr2 can adopt the terminal state via
+	// polling before its own Process.Run notices the terminator closing, so wait for StopRequested here
+	// too instead of asserting it right after GetRunState() converges.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Contains(c, []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted}, mgr1.GetRunState(), "expected mgr1 to be stopped or completed")
 		assert.Contains(c, []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted}, mgr2.GetRunState(), "expected mgr2 to be stopped or completed")
+		assert.True(c, process1.StopRequested.Load(), "mgr1 should have received stop request")
+		assert.True(c, process2.StopRequested.Load(), "mgr2 should have received stop request")
 	}, 15*time.Second, 500*time.Millisecond)
-
-	require.True(t, process1.StopRequested.Load(), "mgr1 should have received stop request")
-	require.True(t, process2.StopRequested.Load(), "mgr2 should have received stop request")
 
 	// 5. Restart (from Stopped state)
 	err = mgr1.Start(ctx, MockProcessOptions{})
@@ -1514,7 +1515,6 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 // via one manager brings every manager - including ones that only observe the stop by polling the
 // shared cluster status - to Stopped, both locally and in the persisted cluster status.
 func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
-	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
@@ -1577,9 +1577,6 @@ func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
 // Process.Run is launched in its own goroutine, but the subsequent persist of the initial cluster status fails.
 // Start() returns that error to the caller, even though Run is already executing in the background.
 func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T) {
-
-	t.Skip("This test will pass after the fix in CBG-5660")
-
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)
