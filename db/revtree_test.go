@@ -1317,3 +1317,557 @@ func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
 	}
 	return body
 }
+
+// buildRevTree constructs a RevTree from a parent -> child spec, without going via addRevision (which
+// deliberately rejects the non-increasing generations these tests need to build).
+func buildRevTree(t *testing.T, revs map[string]string) RevTree {
+	t.Helper()
+	tree := make(RevTree, len(revs))
+	for revid, parent := range revs {
+		tree[revid] = &RevInfo{ID: revid, Parent: parent}
+	}
+	for revid, info := range tree {
+		if info.Parent == "" {
+			continue
+		}
+		_, ok := tree[info.Parent]
+		require.True(t, ok, "test fixture for %q references parent %q that isn't in the tree", revid, info.Parent)
+	}
+	return tree
+}
+
+// revTreeDigest is a realistic 32-character digest. Rev IDs are map keys and are parsed per step, so
+// digest length affects the cost of the walks BenchmarkRevTreeGenerations measures.
+const revTreeDigest = "d6a4d4a2e0ba7dbc4dbc0c0dcbe0f6a3"
+
+// linearRevTree returns a clean chain of n revisions, and the leaf rev ID.
+func linearRevTree(n int) (RevTree, string) {
+	tree := make(RevTree, n)
+	parent, leaf := "", ""
+	for i := 1; i <= n; i++ {
+		id := fmt.Sprintf("%d-%s", i, revTreeDigest)
+		tree[id] = &RevInfo{ID: id, Parent: parent}
+		parent, leaf = id, id
+	}
+	return tree, leaf
+}
+
+// corruptRevTree returns a chain of n revisions where the last dupes of them all share the top
+// generation - the CBG-5713 customer document shape - and the leaf rev ID.
+func corruptRevTree(n, dupes int) (RevTree, string) {
+	tree, leaf := linearRevTree(n - dupes)
+	parent := leaf
+	topGen := n - dupes
+	for i := range dupes {
+		id := fmt.Sprintf("%d-%032x", topGen, i)
+		tree[id] = &RevInfo{ID: id, Parent: parent}
+		parent, leaf = id, id
+	}
+	return tree, leaf
+}
+
+func TestHasNonIncreasingGenerations(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testCases := []struct {
+		name       string
+		revs       map[string]string // revID -> parentID
+		currentRev string
+		expected   bool
+	}{
+		{
+			name:       "clean linear tree",
+			revs:       map[string]string{"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc"},
+			currentRev: "3-abc",
+		},
+		{
+			name:       "single root revision",
+			revs:       map[string]string{"1-abc": ""},
+			currentRev: "1-abc",
+		},
+		{
+			// gaps push the leaf generation up, so they must not trip the predicate
+			name:       "clean tree with generation gaps",
+			revs:       map[string]string{"1-abc": "", "5-abc": "1-abc", "12-abc": "5-abc"},
+			currentRev: "12-abc",
+		},
+		{
+			// a pruned tree is rooted above generation 1
+			name:       "clean pruned tree",
+			revs:       map[string]string{"8-abc": "", "9-abc": "8-abc", "10-abc": "9-abc"},
+			currentRev: "10-abc",
+		},
+		{
+			name:       "duplicate generation at the leaf",
+			revs:       map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"},
+			currentRev: "2-def",
+			expected:   true,
+		},
+		{
+			name:       "duplicate generation mid-branch",
+			revs:       map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "3-ghi": "2-def"},
+			currentRev: "3-ghi",
+			expected:   true,
+		},
+		{
+			name: "run of duplicate generations",
+			revs: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "2-ghi": "2-def", "2-jkl": "2-ghi",
+			},
+			currentRev: "2-jkl",
+			expected:   true,
+		},
+		{
+			// The gap from 1-abc to 11-abc inflates the leaf generation enough that the branch still
+			// encodes as a _revisions list, so this replicates (with wrong ancestor rev IDs) rather
+			// than producing a noRev. It is still a violation and must be reported.
+			name:       "parent generation higher than child, masked by a gap",
+			revs:       map[string]string{"1-abc": "", "11-abc": "1-abc", "10-abc": "11-abc"},
+			currentRev: "10-abc",
+			expected:   true,
+		},
+		{
+			// Once pruning shortens the branch, gen(leaf) exceeds the branch length and the corruption
+			// stops producing a noRev - the quiet case. Checking the invariant still catches it.
+			name:       "duplicate generation in a pruned tree",
+			revs:       map[string]string{"8-abc": "", "9-abc": "8-abc", "9-def": "9-abc"},
+			currentRev: "9-def",
+			expected:   true,
+		},
+		{
+			// corruption on a branch that isn't the one being asked about
+			name: "corruption confined to another branch",
+			revs: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc",
+				"2-xxx": "1-abc", "2-yyy": "2-xxx",
+			},
+			currentRev: "3-abc",
+		},
+		{
+			name:       "malformed current rev is not flagged",
+			revs:       map[string]string{"1-abc": ""},
+			currentRev: "not-a-rev",
+		},
+		{
+			name:       "current rev absent from tree is not flagged",
+			revs:       map[string]string{"1-abc": ""},
+			currentRev: "2-abc",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := buildRevTree(t, tc.revs)
+			assert.Equal(t, tc.expected, tree.hasNonIncreasingGenerations(ctx, tc.currentRev))
+		})
+	}
+}
+
+// TestHasNonIncreasingGenerationsCleanTrees asserts no false positives on clean branches of any length -
+// this runs on every write, so a false positive would repair documents that don't need it.
+func TestHasNonIncreasingGenerationsCleanTrees(t *testing.T) {
+	ctx := base.TestCtx(t)
+	for _, n := range []int{1, 2, 50, 500} {
+		tree, leaf := linearRevTree(n)
+		assert.False(t, tree.hasNonIncreasingGenerations(ctx, leaf), "clean linear tree of %d revs", n)
+	}
+}
+
+// TestHasNonIncreasingGenerationsPrunedIsStillDetected pruning shortens the branch while the leaf generation keeps
+// climbing, so the documents that have been corrupt longest are exactly the ones it would skip.
+func TestHasNonIncreasingGenerationsPrunedIsStillDetected(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	// a corrupt branch pruned to 10 revisions, with 4 revisions sharing generation 196
+	tree := make(RevTree, 10)
+	parent := ""
+	for gen := 190; gen <= 195; gen++ {
+		id := fmt.Sprintf("%d-abc", gen)
+		tree[id] = &RevInfo{ID: id, Parent: parent}
+		parent = id
+	}
+	leaf := ""
+	for i := range 4 {
+		id := fmt.Sprintf("196-dup%d", i)
+		tree[id] = &RevInfo{ID: id, Parent: parent}
+		parent, leaf = id, id
+	}
+
+	leafGen, _, err := parseRevID(leaf)
+	require.NoError(t, err)
+	require.Greater(t, leafGen, len(tree), "fixture must defeat the gen(leaf) >= len(tree) rule-out")
+
+	assert.True(t, tree.hasNonIncreasingGenerations(ctx, leaf))
+	require.Error(t, tree.verifyIncreasingGenerations())
+}
+
+func TestRepairGenerations(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testCases := []struct {
+		name              string
+		revs              map[string]string // revID -> parentID
+		currentRev        string
+		expectedCurrent   string
+		expectedRenames   map[string]string
+		expectedRevTree   map[string]string // full expected tree after repair, revID -> parentID
+		expectedErrSubstr string
+	}{
+		{
+			name:            "no repair needed leaves the tree untouched",
+			revs:            map[string]string{"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc"},
+			currentRev:      "3-abc",
+			expectedCurrent: "3-abc",
+			expectedRevTree: map[string]string{"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc"},
+		},
+		{
+			name:            "run of duplicate generations is renumbered, digests kept",
+			revs:            map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "2-ghi": "2-def"},
+			currentRev:      "2-ghi",
+			expectedCurrent: "4-ghi",
+			expectedRenames: map[string]string{"2-def": "3-def", "2-ghi": "4-ghi"},
+			expectedRevTree: map[string]string{"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc", "4-ghi": "3-def"},
+		},
+		{
+			name:            "parent generation higher than child",
+			revs:            map[string]string{"1-abc": "", "11-abc": "1-abc", "10-abc": "11-abc"},
+			currentRev:      "10-abc",
+			expectedCurrent: "12-abc",
+			expectedRenames: map[string]string{"10-abc": "12-abc"},
+			expectedRevTree: map[string]string{"1-abc": "", "11-abc": "1-abc", "12-abc": "11-abc"},
+		},
+		{
+			name:            "generation gaps are preserved, not normalised",
+			revs:            map[string]string{"1-abc": "", "9-abc": "1-abc", "9-def": "9-abc"},
+			currentRev:      "9-def",
+			expectedCurrent: "10-def",
+			expectedRenames: map[string]string{"9-def": "10-def"},
+			expectedRevTree: map[string]string{"1-abc": "", "9-abc": "1-abc", "10-def": "9-abc"},
+		},
+		{
+			// open question 3: a conflict branch hanging off the corruption must come with it?????
+			name: "branched tree, conflict branch re-pointed",
+			revs: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "2-ghi": "2-def",
+				"3-xxx": "2-def",
+			},
+			currentRev:      "2-ghi",
+			expectedCurrent: "4-ghi",
+			expectedRenames: map[string]string{"2-def": "3-def", "2-ghi": "4-ghi", "3-xxx": "4-xxx"},
+			expectedRevTree: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc", "4-ghi": "3-def",
+				"4-xxx": "3-def",
+			},
+		},
+		{
+			// a conflict branch that doesn't descend from a renamed revision must not move
+			name: "branched tree, untouched branch is left alone",
+			revs: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc",
+				"2-xxx": "1-abc", "3-xxx": "2-xxx",
+			},
+			currentRev:      "2-def",
+			expectedCurrent: "3-def",
+			expectedRenames: map[string]string{"2-def": "3-def"},
+			expectedRevTree: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc",
+				"2-xxx": "1-abc", "3-xxx": "2-xxx",
+			},
+		},
+		{
+			// corruption on a non-winning branch is still repaired - the whole tree is renumbered
+			name: "corruption on a non-winning branch is repaired",
+			revs: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc",
+				"2-xxx": "1-abc", "2-yyy": "2-xxx",
+			},
+			currentRev:      "3-abc",
+			expectedCurrent: "3-abc",
+			expectedRenames: map[string]string{"2-yyy": "3-yyy"},
+			expectedRevTree: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc",
+				"2-xxx": "1-abc", "3-yyy": "2-xxx",
+			},
+		},
+		{
+			// renumbering 2-def to 3-def would collide with the existing sibling
+			// work out how to handle this!!!!!!!!
+			name:              "renumbering that would collide is refused",
+			revs:              map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "3-def": "2-abc"},
+			currentRev:        "2-def",
+			expectedErrSubstr: "duplicate revision",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := buildRevTree(t, tc.revs)
+			newCurrentRev, renamed, err := tree.repairGenerations(ctx, tc.currentRev)
+
+			if tc.expectedErrSubstr != "" {
+				require.ErrorContains(t, err, tc.expectedErrSubstr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.expectedCurrent, newCurrentRev)
+			assert.Equal(t, tc.expectedRenames, renamed)
+
+			actual := make(map[string]string, len(tree))
+			for revid, info := range tree {
+				assert.Equal(t, revid, info.ID, "RevInfo.ID must match its key")
+				actual[revid] = info.Parent
+			}
+			assert.Equal(t, tc.expectedRevTree, actual)
+
+			// the repaired tree must satisfy the invariant on every branch, and be free of the
+			// replication symptom on the winning branch
+			require.NoError(t, tree.verifyIncreasingGenerations())
+			assert.False(t, tree.hasNonIncreasingGenerations(ctx, newCurrentRev))
+		})
+	}
+}
+
+// TestRepairGenerationsPreservesRevInfo asserts the repair only rewrites IDs and parent pointers - a
+// renamed revision keeps its body, tombstone flag, channels and attachment marker.
+func TestRepairGenerationsPreservesRevInfo(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tree := RevTree{
+		"1-abc": &RevInfo{ID: "1-abc"},
+		"2-abc": &RevInfo{ID: "2-abc", Parent: "1-abc"},
+		"2-def": &RevInfo{ID: "2-def", Parent: "2-abc", Body: []byte(`{"foo":"bar"}`), HasAttachments: true},
+		"2-ghi": &RevInfo{ID: "2-ghi", Parent: "2-def", Deleted: true, Channels: base.SetOf("ABC"), BodyKey: "_sync:rb:key"},
+	}
+
+	newCurrentRev, renamed, err := tree.repairGenerations(ctx, "2-ghi")
+	require.NoError(t, err)
+	require.Equal(t, "4-ghi", newCurrentRev)
+	require.Equal(t, map[string]string{"2-def": "3-def", "2-ghi": "4-ghi"}, renamed)
+
+	moved := tree["3-def"]
+	require.NotNil(t, moved)
+	assert.Equal(t, []byte(`{"foo":"bar"}`), moved.Body)
+	assert.True(t, moved.HasAttachments)
+
+	leaf := tree["4-ghi"]
+	require.NotNil(t, leaf)
+	assert.True(t, leaf.Deleted)
+	assert.Equal(t, base.SetOf("ABC"), leaf.Channels)
+	assert.Equal(t, "_sync:rb:key", leaf.BodyKey)
+}
+
+// TestRepairGenerationsSurvivesMarshalling guards the dangling-parent hazard: MarshalJSON writes a
+// parent index of -1 for a parent that isn't in the tree (SG issue #2847), so a missed re-point would
+// silently detach a branch rather than fail.
+func TestRepairGenerationsSurvivesMarshalling(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tree := buildRevTree(t, map[string]string{
+		"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "2-ghi": "2-def",
+		"3-xxx": "2-def",
+	})
+
+	newCurrentRev, _, err := tree.repairGenerations(ctx, "2-ghi")
+	require.NoError(t, err)
+
+	marshalled, err := tree.MarshalJSON()
+	require.NoError(t, err)
+	roundTripped := RevTree{}
+	require.NoError(t, roundTripped.UnmarshalJSON(marshalled))
+
+	require.NoError(t, roundTripped.verifyIncreasingGenerations())
+	assert.False(t, roundTripped.hasNonIncreasingGenerations(ctx, newCurrentRev))
+	assert.Len(t, roundTripped, len(tree))
+	// 1-abc is the only root; any dropped re-point would show up as a second one
+	for revid, info := range roundTripped {
+		if revid != "1-abc" {
+			assert.NotEmpty(t, info.Parent, "revision %q became a root", revid)
+		}
+	}
+}
+
+// TestRepairGenerationsRefusesCycle asserts the repair bails on a tree containing a cycle rather than
+// renumbering a tree it cannot fully walk.
+func TestRepairGenerationsRefusesCycle(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tree := RevTree{
+		"1-abc": &RevInfo{ID: "1-abc"},
+		"2-abc": &RevInfo{ID: "2-abc", Parent: "1-abc"},
+		// 3-abc and 4-abc point at each other, so neither is reachable from the root
+		"3-abc": &RevInfo{ID: "3-abc", Parent: "4-abc"},
+		"4-abc": &RevInfo{ID: "4-abc", Parent: "3-abc"},
+	}
+	_, _, err := tree.repairGenerations(ctx, "2-abc")
+	require.ErrorContains(t, err, "unreachable from any root")
+}
+
+// TestRepairGenerationsDanglingParent asserts a revision whose parent is absent is treated as a root,
+// matching how MarshalJSON serializes it, rather than being reported as a cycle.
+func TestRepairGenerationsDanglingParent(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tree := RevTree{
+		"5-abc": &RevInfo{ID: "5-abc", Parent: "4-missing"},
+		"5-def": &RevInfo{ID: "5-def", Parent: "5-abc"},
+	}
+	newCurrentRev, renamed, err := tree.repairGenerations(ctx, "5-def")
+	require.NoError(t, err)
+	assert.Equal(t, "6-def", newCurrentRev)
+	assert.Equal(t, map[string]string{"5-def": "6-def"}, renamed)
+	assert.Equal(t, "4-missing", tree["5-abc"].Parent, "dangling parent should be left as-is")
+}
+
+// BenchmarkRevTreeGenerations sizes the CBG-5713 generation checks against winningRevision, which
+// documentUpdateFunc already runs unconditionally on every write (db/crud.go:2736).
+// hasNonIncreasingGenerations is intended to run in the same place, so that ratio is the number that
+// matters - see the rationale on hasNonIncreasingGenerations for why the O(1) rule-out was dropped in
+// favour of always walking the branch.
+func BenchmarkRevTreeGenerations(b *testing.B) {
+	ctx := base.TestCtx(b)
+	const dupes = 4
+
+	for _, n := range []int{50, 100} {
+		clean, cleanLeaf := linearRevTree(n)
+		corrupt, corruptLeaf := corruptRevTree(n, dupes)
+
+		b.Run(fmt.Sprintf("detect/clean/n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				_ = clean.hasNonIncreasingGenerations(ctx, cleanLeaf)
+			}
+		})
+
+		b.Run(fmt.Sprintf("detect/corrupt/n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				_ = corrupt.hasNonIncreasingGenerations(ctx, corruptLeaf)
+			}
+		})
+
+		// what every write already pays, for comparison
+		b.Run(fmt.Sprintf("baseline/winningRevision/n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				_, _, _ = clean.winningRevision(ctx)
+			}
+		})
+
+		// only ever runs on a document that is already corrupt
+		b.Run(fmt.Sprintf("repair/n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				b.StopTimer()
+				tree, leaf := corruptRevTree(n, dupes)
+				b.StartTimer()
+
+				if _, _, err := tree.repairGenerations(ctx, leaf); err != nil {
+					b.Fatalf("repairGenerations: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestNonIncreasingGenerationsHistoryEncoding ties hasNonIncreasingGenerations to the wire behaviour it
+// reasons about, by running the pipeline sendRevision actually uses to build a rev message:
+// getHistory -> encodeRevisions -> toHistory. It pins down which trees produce the loud failure (an
+// error, which sendRevision turns into a noRev) and which encode "successfully" but hand the client
+// ancestors under rev IDs that don't exist in the tree.
+//
+// The last case is the control: a clean tree with generation gaps mis-states its ancestors too, because
+// _revisions can only express start, start-1, start-2 ... That lossiness is long-standing accepted
+// behaviour, which is why the quiet case is a lower-severity
+// problem than the noRev, even though both warrant repair.
+func TestNonIncreasingGenerationsHistoryEncoding(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testCases := []struct {
+		name string
+		revs map[string]string // revID -> parentID
+		// currentRev is the rev being sent
+		currentRev string
+		// detected is what hasNonIncreasingGenerations reports
+		detected bool
+		// noRev is true when toHistory errors, which sendRevision turns into a noRev
+		noRev bool
+		// ancestorsOnWire is the ancestor list the client receives, which is not necessarily the
+		// ancestor list in the tree - nil when noRev is true
+		ancestorsOnWire []string
+		// ancestorsInTree is the truth, for comparison
+		ancestorsInTree []string
+		// collidesWithRealRevision is true when a mis-stated ancestor reuses a rev ID that genuinely
+		// exists elsewhere in the tree. That is the worst of the quiet cases: the client is handed a
+		// revision it may well hold, positioned wrongly in the ancestry, so nothing looks amiss.
+		collidesWithRealRevision bool
+	}{
+		{
+			name:            "clean tree replicates accurately",
+			revs:            map[string]string{"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc"},
+			currentRev:      "3-abc",
+			detected:        false,
+			ancestorsOnWire: []string{"2-abc", "1-abc"},
+			ancestorsInTree: []string{"2-abc", "1-abc"},
+		},
+		{
+			// the loud case: 3 revisions but the leaf is only at generation 2, so splitRevisionList
+			// rejects the encoding and the document is skipped for replication entirely
+			name:            "duplicate generation short-circuits to a noRev",
+			revs:            map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"},
+			currentRev:      "2-def",
+			detected:        true,
+			noRev:           true,
+			ancestorsInTree: []string{"2-abc", "1-abc"},
+		},
+		{
+			// the quiet case: the gap lifts the leaf generation clear of the branch length, so this
+			// encodes - and every ancestor arrives renamed
+			name:            "violation masked by a gap replicates with wrong ancestor IDs",
+			revs:            map[string]string{"1-abc": "", "11-abc": "1-abc", "10-abc": "11-abc"},
+			currentRev:      "10-abc",
+			detected:        true,
+			ancestorsOnWire: []string{"9-abc", "8-abc"},
+			ancestorsInTree: []string{"11-abc", "1-abc"},
+		},
+		{
+			// same shape as a corrupt document that has since been pruned. Note 8-abc is a real
+			// revision here, sent as the parent of 9-def when it is actually its grandparent.
+			name:                     "duplicate generation in a pruned tree replicates with wrong ancestor IDs",
+			revs:                     map[string]string{"8-abc": "", "9-abc": "8-abc", "9-def": "9-abc"},
+			currentRev:               "9-def",
+			detected:                 true,
+			ancestorsOnWire:          []string{"8-abc", "7-abc"},
+			ancestorsInTree:          []string{"9-abc", "8-abc"},
+			collidesWithRealRevision: true,
+		},
+		{
+			// control: no violation at all, but gaps still mis-state the ancestors
+			name:            "clean tree with gaps also replicates with wrong ancestor IDs",
+			revs:            map[string]string{"1-abc": "", "5-abc": "1-abc", "12-abc": "5-abc"},
+			currentRev:      "12-abc",
+			detected:        false,
+			ancestorsOnWire: []string{"11-abc", "10-abc"},
+			ancestorsInTree: []string{"5-abc", "1-abc"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := buildRevTree(t, tc.revs)
+
+			require.Equal(t, tc.detected, tree.hasNonIncreasingGenerations(ctx, tc.currentRev),
+				"hasNonIncreasingGenerations disagrees with the documented behaviour for this tree")
+
+			// the pipeline sendRevision uses to build the rev message history
+			revHistory, err := tree.getHistory(tc.currentRev)
+			require.NoError(t, err)
+			require.Equal(t, append([]string{tc.currentRev}, tc.ancestorsInTree...), revHistory)
+
+			ancestors, err := toHistory(encodeRevisions(ctx, "doc", revHistory), map[string]bool{}, 0)
+			if tc.noRev {
+				// blip_sync_context.sendRevision turns this into sendNoRev
+				require.ErrorContains(t, err, "invalid revision history")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.ancestorsOnWire, ancestors)
+
+			// every case that isn't a noRev still replicates - the question is only whether what it
+			// sends is true, and whether the client has any way to tell
+			require.Len(t, ancestors, len(tc.ancestorsInTree))
+			collides := false
+			for i, rev := range ancestors {
+				if rev != tc.ancestorsInTree[i] && tree.contains(rev) {
+					collides = true
+				}
+			}
+			assert.Equal(t, tc.collidesWithRealRevision, collides)
+		})
+	}
+}
