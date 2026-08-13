@@ -39,7 +39,7 @@ type MockProcessOptions struct {
 type MockProcess struct {
 	InitCalled           bool
 	RunCalled            bool
-	StopRequested        bool
+	StopRequested        atomic.Bool
 	SleepDuration        time.Duration
 	updateStatusCallback updateStatusCallbackFunc
 	lock                 sync.Mutex
@@ -70,9 +70,7 @@ func (m *MockProcess) Run(ctx context.Context, options MockProcessOptions, persi
 	for {
 		select {
 		case <-terminator.Done():
-			m.lock.Lock()
-			m.StopRequested = true
-			m.lock.Unlock()
+			m.StopRequested.Store(true)
 			return nil
 		case <-ticker.C:
 			if m.SleepDuration > 0 {
@@ -97,7 +95,7 @@ func (m *MockProcess) ResetStatus() {
 	defer m.lock.Unlock()
 	m.InitCalled = false
 	m.RunCalled = false
-	m.StopRequested = false
+	m.StopRequested.Store(false)
 }
 
 func TestBackgroundManagerModes(t *testing.T) {
@@ -159,7 +157,7 @@ func TestBackgroundManagerModes(t *testing.T) {
 			}, 5*time.Second, 100*time.Millisecond)
 
 			assert.True(t, process.RunCalled)
-			assert.True(t, process.StopRequested)
+			assert.True(t, process.StopRequested.Load())
 		})
 	}
 }
@@ -221,8 +219,8 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 		assert.Contains(c, []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted}, mgr2.GetRunState(), "expected mgr2 to be stopped or completed")
 	}, 15*time.Second, 500*time.Millisecond)
 
-	require.True(t, process1.StopRequested, "mgr1 should have received stop request")
-	require.True(t, process2.StopRequested, "mgr2 should have received stop request")
+	require.True(t, process1.StopRequested.Load(), "mgr1 should have received stop request")
+	require.True(t, process2.StopRequested.Load(), "mgr2 should have received stop request")
 
 	// 5. Restart (from Stopped state)
 	err = mgr1.Start(ctx, MockProcessOptions{})
