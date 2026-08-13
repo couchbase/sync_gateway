@@ -571,7 +571,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 // CreateLegacyAttachmentDoc writes a doc with pre-4.0 attachment metadata in its _sync xattr, plus
 // the v1 attachment body doc it references, and returns the attachment doc ID.
 //
-// This document will under go an import which will generate a new mutation.
+// This helper performs a db.Put followed by a direct _sync xattr update, producing multiple KV mutations.
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
 
 	attDigest := Sha1DigestKey(attBody)
