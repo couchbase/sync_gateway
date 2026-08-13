@@ -7,7 +7,6 @@ def e2eDetails(slackUtils) {
         SG_COMMIT: slackUtils.refLink(params.SG_COMMIT),
         Commit: slackUtils.gitCommitLink(),
         BACKING_STORE: params.BACKING_STORE,
-        TEST_DIRECTORY: params.TEST_DIRECTORY,
         COUCHBASE_LITE_VERSION: params.COUCHBASE_LITE_VERSION,
         COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
     ]
@@ -23,11 +22,6 @@ pipeline {
             name: 'BACKING_STORE',
             choices: ['rosmar', 'cbs'],
             description: 'Backing store to use'
-        )
-        choice(
-            name: 'TEST_DIRECTORY',
-            choices: ['tests/dev_e2e', 'tests/QE'],
-            description: 'Directory for tests'
         )
         string(
             name: 'COUCHBASE_LITE_TESTS_COMMIT',

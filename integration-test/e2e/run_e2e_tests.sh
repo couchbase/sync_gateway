@@ -11,14 +11,13 @@
 set -eux -o pipefail
 
 # Resolve the script and repository directories
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-REPO_DIR="$( dirname "$( dirname "${SCRIPT_DIR}" )" )"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}")"  && pwd)"
+REPO_DIR="$( dirname "$( dirname "${SCRIPT_DIR}")")"
 
 # Check for required environment variables
 : "${BACKING_STORE:?BACKING_STORE must be set}"
 : "${COUCHBASE_LITE_TESTS_COMMIT:?COUCHBASE_LITE_TESTS_COMMIT must be set}"
 : "${COUCHBASE_LITE_VERSION:?COUCHBASE_LITE_VERSION must be set}"
-: "${TEST_DIRECTORY:?TEST_DIRECTORY must be set}"
 
 # Validate BACKING_STORE
 if [[ "$BACKING_STORE" != "rosmar" && "$BACKING_STORE" != "cbs" ]]; then
@@ -38,6 +37,10 @@ fi
 export GIT_CONFIG_GLOBAL="${SCRIPT_DIR}/.gitconfig.e2e"
 export GOPRIVATE="github.com/couchbaselabs/go-fleecedelta"
 git config --global url.git@github.com:couchbaselabs/go-fleecedelta.insteadOf https://github.com/couchbaselabs/go-fleecedelta
+git config --global filter.lfs.required true
+git config --global filter.lfs.clean "git-lfs clean -- %f"
+git config --global filter.lfs.smudge "git-lfs smudge -- %f"
+git config --global filter.lfs.process "git-lfs filter-process"
 
 # Clean up any existing clone to make local re-runs idempotent
 rm -rf couchbase-lite-tests
@@ -62,4 +65,4 @@ uv run -- ./environment/local/start_local.py "${START_LOCAL_ARGS[@]}"
 
 TOPOLOGY_CONFIG="$(cat environment/local/topology_config)"
 # shellcheck disable=SC2086
-uv run pytest --config "${TOPOLOGY_CONFIG}" --junitxml="${TEST_DIRECTORY}/junit_report.xml" -o junit_logging=all -o junit_log_passing_tests=false "./${TEST_DIRECTORY}" ${PYTEST_EXTRA_ARGS:-}
+uv run pytest --config "${TOPOLOGY_CONFIG}" --junitxml="tests/junit_report.xml" -o junit_logging=all -o junit_log_passing_tests=false "./tests" ${PYTEST_EXTRA_ARGS:-}
