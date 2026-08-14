@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -110,6 +111,7 @@ type BackgroundManager[O any] struct {
 	name                                   string
 	terminator                             *base.SafeTerminator
 	backgroundManagerStatusUpdateWaitGroup sync.WaitGroup
+	pendingRunError                        atomic.Pointer[error]
 	clusterAwareOptions                    *ClusterAwareBackgroundManagerOptions
 	lock                                   sync.Mutex
 	Process                                BackgroundManagerProcessI[O]
@@ -301,15 +303,9 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.setStartTime(previousStatus.StartTime)
 	}
 
-	// Capture the terminator markStart just created rather than reading the mutable b.terminator field later on -
-	// a subsequent Start() call can reassign b.terminator once this one returns, and this goroutine tree must keep
-	//operating on the instance created for THIS run, not whatever b.terminator happens to be by the time it runs.
-	//terminator := b.terminator
-
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
-		b.SetError(err)
-		b.updateTerminalStatus(ctx)
+		b.finishRun(ctx, err)
 		return err
 	}
 
@@ -327,22 +323,8 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error: %v", err)
-			b.SetError(err)
 		}
-
-		b.Terminate()
-
-		b.statusLock.Lock()
-		if b.status.State == BackgroundProcessStateStopping {
-			b.status.State = BackgroundProcessStateStopped
-		} else if b.status.State == BackgroundProcessStateRunning {
-			b.status.State = BackgroundProcessStateCompleted
-		}
-		b.statusLock.Unlock()
-
-		// Once our background process run has completed we should update the completed status and delete the heartbeat
-		// doc
-		b.updateTerminalStatus(ctx)
+		b.finishRun(ctx, err)
 	}()
 
 	if b.mode() != backgroundManagerModeLocal {
@@ -357,16 +339,50 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			err = b.UpdateSingleNodeClusterAwareStatus(ctx)
 		}
 		if err != nil {
+			/* FIXME later
+			if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
+				// Another node already transitioned the cluster to a terminal state before this join/resume
+				// could be recorded. Adopt that state locally and stop, the same way startMultiNodeStatusUpdater
+				// does for a mid-run update - rather than going through SetError, which would report our own
+				// "error" state and, once finishRun persists it, clobber the terminal state the other node
+				// already wrote.
+				b.compareAndSwapRunState(BackgroundProcessStateRunning, stateErr.state)
+				b.terminator.Close()
+				return err
+			}
+			*/
 			base.ErrorfCtx(ctx, "Failed to update background manager status on start: %v", err)
-			// Process.Run's goroutine is already launched by this point, so without this the caller would
-			// get an error back while the process keeps running in the background unbeknownst to them.
-			// SetError both marks the state as Error and terminates the already-running process.
 			b.SetError(err)
 			return err
 		}
 	}
 
 	return nil
+}
+
+// finishRun waits for the process's terminator-driven goroutines to exit, transitions the local status to its
+// terminal state, and persists that terminal status. Called once Process.Run has returned (or failed to start).
+// If err is non-nil, or SetError was called while this run was in progress, the local status is marked as
+// errored before finalizing.
+func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
+	if pending := b.pendingRunError.Swap(nil); pending != nil {
+		err = *pending
+	}
+
+	if err != nil {
+		b.setLastErrorMessage(err.Error())
+	}
+
+	b.Terminate()
+
+	b.updateRunState(map[BackgroundProcessState]BackgroundProcessState{
+		BackgroundProcessStateStopping: BackgroundProcessStateStopped,
+		BackgroundProcessStateRunning:  BackgroundProcessStateCompleted,
+	})
+
+	// Once our background process run has completed we should update the completed status and delete the heartbeat
+	// doc
+	b.updateTerminalStatus(ctx)
 }
 
 // markStart changes the local status to started. previousStatus is the last known cluster status, used to check
@@ -398,10 +414,9 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 		b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
 
-		// TODO: put this in backgroundManagerStatusUpdateWaitGroup so it doesn't outlive a run
-		go func(terminator *base.SafeTerminator) {
-			b.startHeartbeatWriter(ctx, terminator)
-		}(b.terminator)
+		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
+			b.startHeartbeatWriter(ctx, b.terminator)
+		})
 
 		b.setRunState(BackgroundProcessStateRunning)
 		return nil
@@ -700,12 +715,11 @@ func (b *BackgroundManager[O]) setStartTime(startTime time.Time) {
 	b.status.StartTime = startTime
 }
 
-// SetError sets the last known error, transitions the state to BackgroundManagerStateError and terminates the process.
+// SetError records the error that ended this run and closes the terminator to stop the already-running process. The
+// status will be serialized when the run ends.
 func (b *BackgroundManager[O]) SetError(err error) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	b.setLastErrorMessage(err.Error())
-	b.Terminate()
+	b.pendingRunError.Store(&err)
+	b.terminator.Close()
 }
 
 // UpdateStatusClusterAware reads the local status and writes that value to the bucket. This will update the "status" and "meta" keys of the status document.
@@ -744,9 +758,9 @@ func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Co
 }
 
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status.
-// When mode is backgroundManagerStatusUpdate and the cluster doc shows a terminal
-// state while the local state is running, it returns errBackgroundManagerStatusNotRunning without
-// writing. When mode is backgroundManagerStatusStart or backgroundManagerStatusResume the write always proceeds.
+// When mode is backgroundManagerStatusUpdate or backgroundManagerStatusResume and the cluster doc shows a
+// terminal state while the local state is running, it returns errBackgroundManagerStatusNotRunning without
+// writing. When mode is backgroundManagerStatusStart the write always proceeds.
 func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context, mode backgroundManagerUpdateClusterStatusMode) error {
 	docID := b.clusterAwareOptions.StatusDocID()
 	var previousStatus []byte
@@ -771,6 +785,13 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			// that we transition properly when our process terminates, and report not running so that caller can
 			// terminate the background manager on this node.
 			if mode == backgroundManagerStatusUpdate {
+				/*
+					// terminate the background manager on this node. This also applies to backgroundManagerStatusResume
+					// (Join, or a crash-recovery resume): the cluster doc can transition to a terminal state between the
+					// caller's initial read and this CAS-protected write, and without this check that write would
+					// unconditionally stomp the terminal state back to "running".
+					if mode == backgroundManagerStatusUpdate || mode == backgroundManagerStatusResume {
+				*/
 				if status, ok := output["status"]; ok {
 					bucketState, err := unmarshalBackgroundProcessState(status)
 					if err != nil {
@@ -894,7 +915,6 @@ func (b *BackgroundManager[O]) startMultiNodeStatusUpdater(ctx context.Context, 
 				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
 			}
 		case <-terminator.Done():
-			ticker.Stop()
 			return
 		}
 	}
@@ -920,9 +940,15 @@ func (b *BackgroundManager[O]) stopProcess(ctx context.Context) {
 
 // compareAndSwapRunState does a compare and swap on the run state. If the existing state does not match the old state then no update occurs.
 func (b *BackgroundManager[O]) compareAndSwapRunState(oldState BackgroundProcessState, newState BackgroundProcessState) {
+	b.updateRunState(map[BackgroundProcessState]BackgroundProcessState{oldState: newState})
+}
+
+// updateRunState atomically transitions the run state, using stateTransitions as a map of current state to the state
+// to move to. If the current state is not a key in the map, no update occurs.
+func (b *BackgroundManager[O]) updateRunState(stateTransitions map[BackgroundProcessState]BackgroundProcessState) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
-	if b.status.State == oldState {
+	if newState, ok := stateTransitions[b.status.State]; ok {
 		b.status.State = newState
 	}
 }

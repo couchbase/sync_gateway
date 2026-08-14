@@ -1864,3 +1864,110 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 		})
 	}
 }
+
+// blockedRunProcess is a MockProcess whose Run stays inside the run until the test releases it, instead of
+// returning as soon as the terminator fires. This gives a test explicit control over the window where a run has
+// been told to stop but its goroutines are still alive. It reports the terminator each Run call was handed, so a
+// test can tell which run's terminator the manager is operating on.
+type blockedRunProcess struct {
+	MockProcess
+	// runEntered receives the terminator passed to each Run call.
+	runEntered chan *base.SafeTerminator
+	// release, once closed, lets every in-flight and subsequent Run return.
+	release chan struct{}
+}
+
+func newBlockedRunProcess() *blockedRunProcess {
+	return &blockedRunProcess{
+		runEntered: make(chan *base.SafeTerminator, 2),
+		release:    make(chan struct{}),
+	}
+}
+
+func (p *blockedRunProcess) Run(_ context.Context, _ MockProcessOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	p.lock.Lock()
+	p.RunCalled = true
+	p.lock.Unlock()
+
+	p.runEntered <- terminator
+	<-p.release
+	return nil
+}
+
+// TestBackgroundManagerTerminatorNotReplacedWhileRunning covers CBG-5660: a run that is ended by SetError - here
+// via the status write on the start path failing, the same way a heartbeat error would - while Process.Run is
+// still executing. Until that Run returns, the manager must keep reporting Running and must refuse to begin a new
+// run. Otherwise markStart replaces b.terminator while the first run's goroutines are still using the previous
+// one, so the first run's cleanup closes and waits on the *second* run's terminator - silently killing the new
+// run, while the first run's own goroutines are never signalled and leak.
+func TestBackgroundManagerTerminatorNotReplacedWhileRunning(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	testBucket := base.GetTestBucket(t)
+	// Registered before the release below so that cleanup order (LIFO) releases Process.Run, and lets it finish
+	// with the bucket, before the bucket is closed.
+	t.Cleanup(func() { testBucket.Close(ctx) })
+
+	metaKeys := base.NewMetadataKeys("test-terminator-not-replaced")
+	processSuffix := "terminator-not-replaced"
+	// The key start()'s initial updateMultiNodeClusterAwareStatus call writes to.
+	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
+
+	// Fail only the first write of the status doc, so start() reports an error to its caller after Process.Run
+	// has already been launched. Later writes - including the terminal status written when the run ends - behave
+	// normally.
+	var updateCount atomic.Int32
+	leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
+		PreUpdateCallback: func(key string) error {
+			if key == statusDocID && updateCount.Add(1) == 1 {
+				return errors.New("simulated write failure")
+			}
+			return nil
+		},
+	})
+
+	process := newBlockedRunProcess()
+	releaseRuns := sync.OnceFunc(func() { close(process.release) })
+	// Let Run return however the assertions below turn out, so a failure can't wedge the test on a blocked
+	// process goroutine.
+	t.Cleanup(releaseRuns)
+
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:    "terminator-not-replaced-mgr",
+		Process: process,
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: leakyBucket.DefaultDataStore(ctx),
+			metaKeys:      metaKeys,
+			processSuffix: processSuffix,
+			multiNode:     true,
+		},
+	}
+
+	// Start reports the failed status write to the caller, but Process.Run was launched before that point.
+	require.Error(t, mgr.Start(ctx, MockProcessOptions{}))
+
+	runTerminator := <-process.runEntered
+	require.Same(t, mgr.terminator, runTerminator, "Process.Run should be given the terminator markStart created for this run")
+	require.True(t, runTerminator.IsClosed(), "SetError should have signalled the running process to stop")
+
+	// Run has been told to stop but has not returned yet, so this run is still in progress: the manager must not
+	// begin another one and hand it a new terminator.
+	_ = mgr.Start(ctx, MockProcessOptions{})
+	require.Same(t, runTerminator, mgr.terminator, "terminator was replaced while the previous run was still executing")
+	require.Equal(t, BackgroundProcessStateRunning, mgr.GetRunState(), "state should stay Running until Process.Run returns")
+
+	// Letting Run return applies the error recorded by SetError and frees the manager for a new run.
+	releaseRuns()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateError, mgr.GetRunState())
+		rawStatus, err := mgr.GetStatus(ctx)
+		if !assert.NoError(c, err) {
+			return
+		}
+		var status BackgroundManagerStatus
+		if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
+			return
+		}
+		assert.Equal(c, BackgroundProcessStateError, status.State, "terminal status was not persisted: %s", string(rawStatus))
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+}
