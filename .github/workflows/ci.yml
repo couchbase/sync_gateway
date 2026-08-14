@@ -37,7 +37,6 @@ env:
   ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
   ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
   ACTIONS_SETUP_UV_VERSION: &actions_setup_uv_version astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-  # held at v7: v8+ needs golangci-lint v2.1.0 or newer, and this branch runs v2.0.2
   ACTIONS_GOLANGCI_LINT_VERSION: &actions_golangci_lint_version golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
   ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
 
@@ -74,7 +73,7 @@ jobs:
       - name: golangci-lint
         uses: *actions_golangci_lint_version
         with:
-          version: v2.0.2
+          version: v2.8.0
           args: --config=.golangci-strict.yml
 
   test:
@@ -152,12 +151,15 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_ruff_version
         with:
+          version: "0.15.22"
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: *actions_checkout_version
       - uses: *actions_ruff_version
+        with:
+          version: "0.15.22"
   test-sgcollect:
     runs-on: ${{ matrix.os }}
     strategy:
