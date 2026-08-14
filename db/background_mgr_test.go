@@ -1580,9 +1580,6 @@ func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
 // Process.Run is launched in its own goroutine, but the subsequent persist of the initial cluster status fails.
 // Start() returns that error to the caller, even though Run is already executing in the background.
 func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T) {
-
-	t.Skip("This test will pass after the fix in CBG-5660")
-
 	testBucket := base.GetTestBucket(t)
 	ctx := context.Background()
 	defer testBucket.Close(ctx)

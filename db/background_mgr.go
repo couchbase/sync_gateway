@@ -369,16 +369,9 @@ func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
 		err = *pending
 	}
 
-	if err != nil {
-		b.setLastErrorMessage(err.Error())
-	}
-
 	b.Terminate()
 
-	b.updateRunState(map[BackgroundProcessState]BackgroundProcessState{
-		BackgroundProcessStateStopping: BackgroundProcessStateStopped,
-		BackgroundProcessStateRunning:  BackgroundProcessStateCompleted,
-	})
+	b.setFinalState(err)
 
 	// Once our background process run has completed we should update the completed status and delete the heartbeat
 	// doc
@@ -612,6 +605,34 @@ func (b *BackgroundManager[O]) resetStatus() {
 
 	b.setLastErrorMessage("")
 	b.Process.ResetStatus()
+}
+
+// setFinalState records the error that ended the run, if there was one, and moves the run state to its terminal
+// value. Both happen under a single statusLock acquisition so the run can never be observed partway through
+// finishing: with separate updates the state briefly reads as a terminal Error while the run state transition has
+// not been applied yet, which is enough for a concurrent Start to begin a new run on top of this one.
+//
+// An error takes precedence over the transition below it - a run that errored reports Error whether it was
+// running or stopping at the time.
+func (b *BackgroundManager[O]) setFinalState(err error) {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+
+	if err != nil {
+		b.status.LastErrorMessage = err.Error()
+		b.status.State = BackgroundProcessStateError
+		return
+	}
+
+	switch b.status.State {
+	case BackgroundProcessStateStopping:
+		b.status.State = BackgroundProcessStateStopped
+	case BackgroundProcessStateRunning:
+		b.status.State = BackgroundProcessStateCompleted
+	case BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError:
+		// Already terminal - another path (a peer node's state adopted by the polling loop, say) got here
+		// first, so leave the state it settled on alone.
+	}
 }
 
 // setLastErrorMessage sets the last error message
@@ -940,15 +961,9 @@ func (b *BackgroundManager[O]) stopProcess(ctx context.Context) {
 
 // compareAndSwapRunState does a compare and swap on the run state. If the existing state does not match the old state then no update occurs.
 func (b *BackgroundManager[O]) compareAndSwapRunState(oldState BackgroundProcessState, newState BackgroundProcessState) {
-	b.updateRunState(map[BackgroundProcessState]BackgroundProcessState{oldState: newState})
-}
-
-// updateRunState atomically transitions the run state, using stateTransitions as a map of current state to the state
-// to move to. If the current state is not a key in the map, no update occurs.
-func (b *BackgroundManager[O]) updateRunState(stateTransitions map[BackgroundProcessState]BackgroundProcessState) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
-	if newState, ok := stateTransitions[b.status.State]; ok {
+	if b.status.State == oldState {
 		b.status.State = newState
 	}
 }
