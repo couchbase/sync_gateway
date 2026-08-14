@@ -13,6 +13,7 @@ package manualbucketpooltest
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -481,7 +482,12 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 	})
-	defer rt.Close()
+	// Ensure rt.Close() completes within a couple of mins to avoid test hang
+	defer func() {
+		var wg sync.WaitGroup
+		wg.Go(rt.Close)
+		base.WaitWithTimeout(t, &wg, 2*time.Minute)
+	}()
 
 	// 1. Create in legacy mode so all metadata lands in _default._default.
 	dbConfig := rt.NewDbConfig()
