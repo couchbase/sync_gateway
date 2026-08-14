@@ -23,7 +23,7 @@ concurrency:
 env:
   # Pinned action versions, referenced by the steps below through their YAML anchors.
   ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  ACTIONS_CLAUDE_CODE_VERSION: &actions_claude_code_version anthropics/claude-code-action@c038e4dcdedfbbca18dfb17df35a17e40ded4ddc # v1.0.186
+  ACTIONS_CLAUDE_CODE_VERSION: &actions_claude_code_version anthropics/claude-code-action@239e3a730883eeb5c53db12b0fc9573b3024b126 # v1.0.191
 
 jobs:
   claude-review-ben:
