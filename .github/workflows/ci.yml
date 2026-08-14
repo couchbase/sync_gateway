@@ -31,12 +31,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
 
+env:
+  # Pinned action versions, referenced by the steps below through their YAML anchors.
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+  ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+  ACTIONS_SETUP_UV_VERSION: &actions_setup_uv_version astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+  # held at v7: v8+ needs golangci-lint v2.1.0 or newer, and this branch runs v2.0.2
+  ACTIONS_GOLANGCI_LINT_VERSION: &actions_golangci_lint_version golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
+  ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: go-build
@@ -46,8 +56,8 @@ jobs:
     name: addlicense
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - run: go install github.com/google/addlicense@latest
@@ -57,12 +67,12 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: *actions_golangci_lint_version
         with:
           version: v2.0.2
           args: --config=.golangci-strict.yml
@@ -84,8 +94,8 @@ jobs:
       MallocNanoZone: 0
     name: test (${{ matrix.name }})
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: Build
@@ -95,7 +105,7 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.8.0
+        uses: *actions_go_test_annotations_version
         with:
           test-results: test.json
 
@@ -104,8 +114,8 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: Run Tests
@@ -113,7 +123,7 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.8.0
+        uses: *actions_go_test_annotations_version
         with:
           test-results: test.json
 
@@ -123,8 +133,8 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       SG_TEST_USE_DEFAULT_COLLECTION: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: Run Tests
@@ -132,22 +142,22 @@ jobs:
         shell: bash
       - name: Annotate Failures
         if: always()
-        uses: guyarb/golang-test-annotations@v0.8.0
+        uses: *actions_go_test_annotations_version
         with:
           test-results: test.json
 
   python-format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
+      - uses: *actions_checkout_version
+      - uses: *actions_ruff_version
         with:
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
+      - uses: *actions_checkout_version
+      - uses: *actions_ruff_version
   test-sgcollect:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -155,8 +165,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_uv_version
       - name: Run test
         run: |
           uv run -- pytest
@@ -171,8 +181,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: Build
@@ -184,8 +194,8 @@ jobs:
     runs-on: ubuntu-latest
     name: build cache perf tool
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.25.13
       - name: Build
