@@ -30,7 +30,7 @@ concurrency:
 env:
   # Pinned action versions, referenced by the steps below through their YAML anchors.
   ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  ACTIONS_DROID_VERSION: &actions_droid_version Factory-AI/droid-action@07a08ac9ba352c395d921fbc4c310e6d1ee850a1 # v4
+  ACTIONS_DROID_VERSION: &actions_droid_version Factory-AI/droid-action@e5ae50268211d2e9ac85edb57c28bf253b6627f7 # v6
 
 jobs:
   droid:
