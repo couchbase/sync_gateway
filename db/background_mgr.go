@@ -371,7 +371,29 @@ func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
 
 	b.Terminate()
 
-	b.setFinalState(err)
+	// Hold b.lock for the rest of the teardown so a concurrent Start can't begin a new run between this one
+	// publishing its terminal state and finishing with the bucket. Taken after Terminate rather than around it:
+	// the single-node heartbeat writer can reach markStop (via UpdateHeartbeatDocClusterAware -> Stop), which
+	// needs b.lock, so waiting for the goroutines to drain under the lock would deadlock.
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	// The status updates below have to come after Terminate. The run state is what stops a new Start from
+	// beginning, and b.lock is not held while the goroutines drain, so until they are gone the state has to keep
+	// reporting Running (or Stopping) rather than a terminal state.
+	if err != nil {
+		b.setLastErrorMessage(err.Error())
+	}
+
+	// An errored run is already out of Running/Stopping by this point, so it keeps reporting Error - the
+	// transitions below only apply to a run that ended without one.
+	b.statusLock.Lock()
+	if b.status.State == BackgroundProcessStateStopping {
+		b.status.State = BackgroundProcessStateStopped
+	} else if b.status.State == BackgroundProcessStateRunning {
+		b.status.State = BackgroundProcessStateCompleted
+	}
+	b.statusLock.Unlock()
 
 	// Once our background process run has completed we should update the completed status and delete the heartbeat
 	// doc
@@ -605,34 +627,6 @@ func (b *BackgroundManager[O]) resetStatus() {
 
 	b.setLastErrorMessage("")
 	b.Process.ResetStatus()
-}
-
-// setFinalState records the error that ended the run, if there was one, and moves the run state to its terminal
-// value. Both happen under a single statusLock acquisition so the run can never be observed partway through
-// finishing: with separate updates the state briefly reads as a terminal Error while the run state transition has
-// not been applied yet, which is enough for a concurrent Start to begin a new run on top of this one.
-//
-// An error takes precedence over the transition below it - a run that errored reports Error whether it was
-// running or stopping at the time.
-func (b *BackgroundManager[O]) setFinalState(err error) {
-	b.statusLock.Lock()
-	defer b.statusLock.Unlock()
-
-	if err != nil {
-		b.status.LastErrorMessage = err.Error()
-		b.status.State = BackgroundProcessStateError
-		return
-	}
-
-	switch b.status.State {
-	case BackgroundProcessStateStopping:
-		b.status.State = BackgroundProcessStateStopped
-	case BackgroundProcessStateRunning:
-		b.status.State = BackgroundProcessStateCompleted
-	case BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError:
-		// Already terminal - another path (a peer node's state adopted by the polling loop, say) got here
-		// first, so leave the state it settled on alone.
-	}
 }
 
 // setLastErrorMessage sets the last error message
