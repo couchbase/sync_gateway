@@ -738,6 +738,92 @@ func RawDocWithInlineSyncData(_ testing.TB) string {
 `
 }
 
+// PlantRevTreeForTest writes docID, then rewrites its _sync xattr so the document's revision tree is
+// exactly the supplied one, with currentRev as the current revision. revs maps each revision ID to its
+// parent's ID, with "" for a root, so any shape can be planted - a single non-increasing generation, a
+// branched tree, or corruption confined to a losing branch.
+//
+// The rest of the metadata is made to look like a document that really was written len(revs) times: one
+// sequence is allocated per revision, doc.Sequence is the last of them, and recent_sequences holds them
+// all. Only the tree itself is fabricated.
+func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, body Body, revs map[string]string, currentRev string) {
+	t.Helper()
+	require.Contains(t, slices.Collect(maps.Keys(revs)), currentRev, "currentRev is not in the tree being planted")
+	require.LessOrEqual(t, len(revs), kMaxRecentSequences, "a tree this large would have had its recent_sequences pruned, which this helper does not model")
+
+	// the write allocates the first sequence, so this stands in for the first revision
+	_, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+
+	// one sequence per remaining revision, so the document's sequence history is as long as its tree
+	rewriteSyncDataForTest(t, ctx, collection, docID, len(revs)-1, func(syncData *SyncData) {
+		planted := make(RevTree, len(revs))
+		for revID, parentID := range revs {
+			planted[revID] = &RevInfo{ID: revID, Parent: parentID}
+		}
+		// the current revision keeps the document's channels, so the planted document stays readable
+		planted[currentRev].Channels = syncData.getCurrentChannels()
+		syncData.History = planted
+		syncData.SetRevTreeID(currentRev)
+	})
+}
+
+// RepairRevTreeForTest applies RevTree.repairGenerations to a document already in the bucket and writes
+// the result back under a newly allocated sequence, so the repair is delivered on the caching feed like
+// any other revision. It returns the document's current revision after repair and the old -> new rev ID
+// map. This is a stand-in for the repair-on-write path while that is being designed.
+func RepairRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (newCurrentRev string, renamed map[string]string) {
+	t.Helper()
+
+	rewriteSyncDataForTest(t, ctx, collection, docID, 1, func(syncData *SyncData) {
+		var repairErr error
+		newCurrentRev, renamed, repairErr = syncData.History.repairGenerations(ctx, syncData.GetRevTreeID())
+		require.NoError(t, repairErr)
+		syncData.SetRevTreeID(newCurrentRev)
+	})
+	return newCurrentRev, renamed
+}
+
+// rewriteSyncDataForTest rewrites a document's _sync xattr, allocating sequenceCount new sequences first
+// and appending them to recent_sequences with the last becoming the document's sequence - so the write
+// leaves the sequence metadata looking like sequenceCount real revisions. mutate is applied to the
+// document's SyncData in between. The document body is left untouched.
+func rewriteSyncDataForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, sequenceCount int, mutate func(syncData *SyncData)) {
+	t.Helper()
+
+	sequences := make([]uint64, 0, sequenceCount)
+	for range sequenceCount {
+		sequence, seqErr := collection.dbCtx.sequences.nextSequence(ctx)
+		require.NoError(t, seqErr)
+		sequences = append(sequences, sequence)
+	}
+
+	_, err := collection.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil,
+		func(rawBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+			var syncData SyncData
+			if unmarshalErr := base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData); unmarshalErr != nil {
+				return sgbucket.UpdatedDoc{}, unmarshalErr
+			}
+
+			mutate(&syncData)
+
+			// append the new sequences in allocation order and make the last one current, exactly as
+			// updateAndReturnDoc would have left it
+			syncData.RecentSequences = append(syncData.RecentSequences, sequences...)
+			syncData.Sequence = syncData.RecentSequences[len(syncData.RecentSequences)-1]
+
+			updatedXattr, marshalErr := base.JSONMarshal(syncData)
+			if marshalErr != nil {
+				return sgbucket.UpdatedDoc{}, marshalErr
+			}
+			return sgbucket.UpdatedDoc{
+				Doc:    rawBody,
+				Xattrs: map[string][]byte{base.SyncXattrName: updatedXattr},
+			}, nil
+		})
+	require.NoError(t, err)
+}
+
 // WriteDirect will write a document named doc-{sequence} with a given set of channels. This is used to simulate out of order sequence writes by bypassing typical Sync Gateway CRUD functions.
 func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []string, sequence uint64) {
 	key := fmt.Sprintf("doc-%v", sequence)
