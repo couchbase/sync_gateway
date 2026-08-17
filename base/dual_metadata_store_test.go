@@ -171,7 +171,7 @@ func TestMetadataStoreIncrAfterMigrationCompleteBypassesFallback(t *testing.T) {
 	_, err := ms.Fallback().Incr(ctx, key, 99, 99, 0)
 	require.NoError(t, err)
 
-	ms.SetMigrationComplete()
+	ms.DisableFallbackReads()
 
 	// Wrapper should not consult fallback now; primary doc gets created at the supplied
 	// default value (1) and incremented by amt (0), returning the default value.
@@ -295,7 +295,7 @@ func TestMetadataStoreDroppedFallbackDisablesFallbackReads(t *testing.T) {
 			fallback := &getRawErrorDataStore{DataStore: bucket.DefaultDataStore(ctx), err: testCase.fallbackErr}
 			ms := NewMetadataStore(primary, fallback)
 
-			require.False(t, ms.MigrationComplete(), "fallback must start in play")
+			require.True(t, ms.FallbackReadsEnabled(), "fallback must start in play")
 			require.Equal(t, MetadataStoreModeFallbackActive, GetMetadataStoreMode(ms))
 
 			// Primary has no such key, so this read falls through to the erroring fallback.
@@ -305,7 +305,7 @@ func TestMetadataStoreDroppedFallbackDisablesFallbackReads(t *testing.T) {
 			require.Equal(t, int32(1), fallback.calls.Load(), "first read must consult the fallback")
 
 			if !testCase.wantDisable {
-				assert.False(t, ms.MigrationComplete(), "a transient fallback error must not disable fallback reads")
+				assert.True(t, ms.FallbackReadsEnabled(), "a transient fallback error must not disable fallback reads")
 				assert.Equal(t, MetadataStoreModeFallbackActive, GetMetadataStoreMode(ms))
 				_, _, err = ms.GetRaw(ctx, key)
 				require.Error(t, err)
@@ -314,9 +314,7 @@ func TestMetadataStoreDroppedFallbackDisablesFallbackReads(t *testing.T) {
 			}
 
 			assert.ErrorIs(t, err, testCase.fallbackErr, "the fallback error must still reach the caller")
-			// Reusing migrationComplete is deliberate - see MetadataStore.SetMigrationComplete. It
-			// routes reads to primary only, which is what every existing consumer already checks.
-			assert.True(t, ms.MigrationComplete(), "a dropped fallback collection must disable fallback reads")
+			assert.False(t, ms.FallbackReadsEnabled(), "a dropped fallback collection must disable fallback reads")
 			assert.Equal(t, MetadataStoreModeFallbackInactive, GetMetadataStoreMode(ms))
 
 			// Later reads must short-circuit on primary's not-found rather than pay the fallback

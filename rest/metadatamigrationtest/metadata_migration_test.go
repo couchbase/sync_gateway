@@ -265,7 +265,7 @@ func TestMetadataMigrationGuardHonoursPeerCompletion(t *testing.T) {
 	dbCtx := rt.GetDatabase()
 	ms, ok := dbCtx.MetadataStore.(*base.MetadataStore)
 	require.True(t, ok, "opted-in DB with legacy metadata should have a dual MetadataStore")
-	require.False(t, ms.MigrationComplete(), "precondition: local node must not have marked migration complete")
+	require.True(t, ms.FallbackReadsEnabled(), "precondition: local node must still be reading the fallback")
 
 	// Simulate a peer node completing this DB's migration by stamping the per-DB status entry to
 	// complete directly — this writes only the durable doc, not this node's local flag.
@@ -281,7 +281,7 @@ func TestMetadataMigrationGuardHonoursPeerCompletion(t *testing.T) {
 
 	// The guard reads the authoritative status doc, reports complete, and converges the local flag.
 	require.True(t, dbCtx.MetadataMigrationComplete(ctx), "guard must recognise a peer-completed migration from the status doc")
-	require.True(t, ms.MigrationComplete(), "observing a peer-completed status doc must converge the local migration-complete flag")
+	require.False(t, ms.FallbackReadsEnabled(), "observing a peer-completed status doc must converge the local flag and stop fallback reads")
 }
 
 // TestMetadataMigrationPreservesJSONDatatypeForUserDocs is a regression test for the

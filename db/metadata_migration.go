@@ -90,7 +90,7 @@ func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID str
 
 	// Next returns nil for both a clean end-of-stream and a mid-stream abort, so consult Err to tell
 	// them apart. A truncated scan must never look clean, or the orchestrator would
-	// SetMigrationComplete with in-scope docs still on the fallback.
+	// disable fallback reads with in-scope docs still on the fallback.
 	if scanErr := iter.Err(); scanErr != nil {
 		// A dropped fallback collection can never be scanned again - fail the whole migration.
 		if base.IsCollectionOutdatedError(scanErr) {

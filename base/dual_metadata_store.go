@@ -20,9 +20,9 @@ import (
 
 // MetadataStore is a wrapper for a primary and fallback metadata store for read operations during metadata migration
 type MetadataStore struct {
-	primary           DataStore // _system._mobile scope/collection
-	fallback          DataStore // _default._default scope/collection
-	migrationComplete atomic.Bool
+	primary               DataStore // _system._mobile scope/collection
+	fallback              DataStore // _default._default scope/collection
+	fallbackReadsDisabled atomic.Bool
 }
 
 // Compile-time assertion that *MetadataStore implements DataStore.
@@ -52,20 +52,22 @@ func (ms *MetadataStore) Fallback() DataStore {
 	return ms.fallback
 }
 
-// SetMigrationComplete will set migration complete to true to stop reads falling back to fallback datastore.
+// DisableFallbackReads stops reads consulting the fallback datastore, permanently. Writes are
+// unaffected - they always go to primary.
 //
-// The flag really means "the fallback collection is no longer worth reading". A finished migration is
-// one cause; the other two are a _default._default that is absent at database open
-// (rest.(*ServerContext)._getOrAddDatabaseFromConfig) and one observed to have been dropped while the
-// database is online (noteFallbackErr). In every case anything still resident there is unreachable.
-func (ms *MetadataStore) SetMigrationComplete() {
-	ms.migrationComplete.Store(true)
+// Called whenever the fallback collection stops being worth reading, which happens for three
+// distinct reasons: metadata migration finished (on this node or a peer), _default._default was
+// absent at database open (rest.(*ServerContext)._getOrAddDatabaseFromConfig), or it was observed to
+// have been dropped while the database is online (disableFallbackIfUnrecoverable). In all three cases
+// anything still resident on the fallback is unreachable.
+func (ms *MetadataStore) DisableFallbackReads() {
+	ms.fallbackReadsDisabled.Store(true)
 }
 
-// MigrationComplete reports whether reads should skip the fallback datastore. See
-// SetMigrationComplete for the causes - a completed migration is not the only one.
-func (ms *MetadataStore) MigrationComplete() bool {
-	return ms.migrationComplete.Load()
+// FallbackReadsEnabled reports whether reads should still consult the fallback datastore. See
+// DisableFallbackReads for what turns this off - a completed migration is only one of the causes.
+func (ms *MetadataStore) FallbackReadsEnabled() bool {
+	return !ms.fallbackReadsDisabled.Load()
 }
 
 // MetadataStoreMode classifies a database's metadata store for support / observability.
@@ -73,10 +75,10 @@ type MetadataStoreMode string
 
 const (
 	// MetadataStoreModeFallbackActive means the dual store is wrapping primary+fallback and
-	// fallback reads are still in play (migration not yet complete).
+	// fallback reads are still in play.
 	MetadataStoreModeFallbackActive MetadataStoreMode = "fallback_active"
 	// MetadataStoreModeFallbackInactive means the dual store is wrapping primary+fallback but
-	// migration has completed, so reads no longer fall back.
+	// reads no longer fall back - see DisableFallbackReads for the causes.
 	MetadataStoreModeFallbackInactive MetadataStoreMode = "fallback_inactive"
 )
 
@@ -88,45 +90,42 @@ func GetMetadataStoreMode(ds DataStore) MetadataStoreMode {
 	if !ok {
 		return ""
 	}
-	if ms.MigrationComplete() {
-		return MetadataStoreModeFallbackInactive
+	if ms.FallbackReadsEnabled() {
+		return MetadataStoreModeFallbackActive
 	}
-	return MetadataStoreModeFallbackActive
+	return MetadataStoreModeFallbackInactive
 }
 
-// readFromFallback returns true when err indicates the key was not found in primary and metadata migration has
-// not yet complete, meaning the operation should be retried against the fallback DataStore.
+// readFromFallback returns true when err indicates the key was not found in primary and the fallback
+// datastore is still being read, meaning the operation should be retried against it.
 func (ms *MetadataStore) readFromFallback(ctx context.Context, err error) bool {
-	if IsDocNotFoundError(err) && !ms.migrationComplete.Load() {
+	if IsDocNotFoundError(err) && ms.FallbackReadsEnabled() {
 		DebugfCtx(ctx, KeyCRUD, "falling back to fallback datastore for read")
 		return true
 	}
 	return false
 }
 
-// noteFallbackErr stops fallback reads when err shows the fallback collection has been dropped.
-// gocbcore always-retries KV_COLLECTION_OUTDATED, so one read against a dropped collection burns the
-// whole KV deadline (30s) - left unhandled, every later primary miss pays that again. Sequential
-// readers then stall indefinitely: DCP checkpoint loading is one per vbucket on cbgt's janitor
-// goroutine, which is also the goroutine that services ClosePIndex, so DatabaseContext.Close
-// deadlocks behind it.
+// disableFallbackIfUnrecoverable permanently disables fallback reads when err proves the fallback
+// collection is gone for good. There is no path back: Couchbase Server rejects any user-created
+// collection whose name starts with "_", so a dropped _default._default cannot be recreated for the
+// life of the bucket. Only a fatal, unrecoverable error trips this - a transient failure must not,
+// or legitimate unmigrated metadata would be skipped for the rest of the process lifetime.
 //
-// Reuses migrationComplete rather than tracking this separately - see SetMigrationComplete. Any
-// metadata still on the dropped collection is unreachable either way, so for read-routing purposes a
-// dropped fallback and a finished migration are the same thing.
-//
-// One-way: a recreated _default._default has a new collection UID and is empty. Returns err unchanged
-// so callers can wrap in place.
-func (ms *MetadataStore) noteFallbackErr(ctx context.Context, err error) error {
+// Why it matters: gocbcore always-retries KV_COLLECTION_OUTDATED, so one read against a dropped
+// collection burns the whole KV deadline (30s). Left unhandled, every later primary miss pays that
+// again, and sequential readers stall indefinitely - DCP checkpoint loading is one read per vbucket
+// on cbgt's janitor goroutine, which is also the goroutine that services ClosePIndex, so
+// DatabaseContext.Close deadlocks behind it.
+func (ms *MetadataStore) disableFallbackIfUnrecoverable(ctx context.Context, err error) {
 	if err == nil || !IsCollectionOutdatedError(err) {
-		return err
+		return
 	}
-	if !ms.migrationComplete.Swap(true) {
+	if !ms.fallbackReadsDisabled.Swap(true) {
 		WarnfCtx(ctx, "Metadata fallback collection %s.%s is unavailable (%v) - disabling fallback reads. Any metadata not already migrated to %s.%s is unrecoverable.",
 			MD(ms.fallback.ScopeName()), MD(ms.fallback.CollectionName()), err,
 			MD(ms.primary.ScopeName()), MD(ms.primary.CollectionName()))
 	}
-	return err
 }
 
 // ---- DataStoreName ----
@@ -163,7 +162,7 @@ func (ms *MetadataStore) Get(ctx context.Context, k string, rv any) (cas uint64,
 	cas, err = ms.primary.Get(ctx, k, rv)
 	if ms.readFromFallback(ctx, err) {
 		_, err = ms.fallback.Get(ctx, k, rv)
-		err = ms.noteFallbackErr(ctx, err)
+		ms.disableFallbackIfUnrecoverable(ctx, err)
 	}
 	return cas, err
 }
@@ -172,7 +171,7 @@ func (ms *MetadataStore) GetRaw(ctx context.Context, k string) (v []byte, cas ui
 	v, cas, err = ms.primary.GetRaw(ctx, k)
 	if ms.readFromFallback(ctx, err) {
 		v, _, err = ms.fallback.GetRaw(ctx, k)
-		err = ms.noteFallbackErr(ctx, err)
+		ms.disableFallbackIfUnrecoverable(ctx, err)
 	}
 	return v, cas, err
 }
@@ -181,7 +180,7 @@ func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32
 	expiry, err = ms.primary.GetExpiry(ctx, k)
 	if ms.readFromFallback(ctx, err) {
 		expiry, err = ms.fallback.GetExpiry(ctx, k)
-		err = ms.noteFallbackErr(ctx, err)
+		ms.disableFallbackIfUnrecoverable(ctx, err)
 	}
 	return expiry, err
 }
@@ -191,11 +190,12 @@ func (ms *MetadataStore) Exists(ctx context.Context, k string) (exists bool, err
 	if err != nil && !ms.readFromFallback(ctx, err) {
 		return false, err
 	}
-	if exists || ms.migrationComplete.Load() {
+	if exists || !ms.FallbackReadsEnabled() {
 		return exists, err
 	}
 	exists, err = ms.fallback.Exists(ctx, k)
-	return exists, ms.noteFallbackErr(ctx, err)
+	ms.disableFallbackIfUnrecoverable(ctx, err)
+	return exists, err
 }
 
 // ---- KVStore – write operations (primary only) ----
@@ -253,7 +253,7 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 		}
 
 		// If we know something exists in Primary, do a direct Update there
-		if primaryExists || ms.migrationComplete.Load() {
+		if primaryExists || !ms.FallbackReadsEnabled() {
 			casOut, updateErr := ms.primary.Update(ctx, k, exp, callback)
 			return false, updateErr, casOut
 		}
@@ -266,7 +266,8 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 			return false, updateErr, casOut
 		}
 		if err != nil {
-			return false, ms.noteFallbackErr(ctx, err), 0
+			ms.disableFallbackIfUnrecoverable(ctx, err)
+			return false, err, 0
 		}
 
 		newValue, cbExpiry, isDelete, cbErr := callback(fallbackValue)
@@ -292,7 +293,8 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 				//        but it could be two concurrent Deletes that we should at least have one more attempt for
 				return true, nil, 0
 			}
-			return false, ms.noteFallbackErr(ctx, removeErr), 0
+			ms.disableFallbackIfUnrecoverable(ctx, removeErr)
+			return false, removeErr, 0
 		}
 
 		// Write to primary with CAS=0 to force safe insertion
@@ -321,7 +323,7 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, exp uint32) (casOut uint64, err error) {
 	const maxAttempts = 2
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		if ms.migrationComplete.Load() {
+		if !ms.FallbackReadsEnabled() {
 			return ms.primary.Incr(ctx, k, amt, def, exp)
 		}
 
@@ -348,7 +350,8 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 		}
 		// any other errors bubble up
 		if !IsCounterNonNumeric(fbIncrErr) {
-			return 0, ms.noteFallbackErr(ctx, fbIncrErr)
+			ms.disableFallbackIfUnrecoverable(ctx, fbIncrErr)
+			return 0, fbIncrErr
 		}
 
 		// Fallback returned DELTA_BADVAL - we're mid-migration of the seq - the doc has
@@ -364,7 +367,8 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 			continue
 		}
 		if fbErr != nil {
-			return 0, ms.noteFallbackErr(ctx, fbErr)
+			ms.disableFallbackIfUnrecoverable(ctx, fbErr)
+			return 0, fbErr
 		}
 		var pill SyncSeqMigrationPill
 		if jsonErr := JSONUnmarshal(raw, &pill); jsonErr != nil || !pill.SGMetadataMigrationPill {
@@ -385,7 +389,7 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 		// 3. delete fallback pill
 		if delErr := ms.fallback.Delete(ctx, k); delErr != nil && !IsDocNotFoundError(delErr) {
 			WarnfCtx(ctx, "MetadataStore.Incr: failed to clear migrated fallback counter %s: %v", UD(k), delErr)
-			ms.noteFallbackErr(ctx, delErr) //nolint:errcheck // already logged; the call is for its latching side effect
+			ms.disableFallbackIfUnrecoverable(ctx, delErr)
 		}
 
 		// 4. retry the caller's Incr on the now migrated primary
@@ -400,7 +404,7 @@ func (ms *MetadataStore) GetXattrs(ctx context.Context, k string, xattrKeys []st
 	xattrs, cas, err = ms.primary.GetXattrs(ctx, k, xattrKeys)
 	if ms.readFromFallback(ctx, err) {
 		xattrs, _, err = ms.fallback.GetXattrs(ctx, k, xattrKeys)
-		err = ms.noteFallbackErr(ctx, err)
+		ms.disableFallbackIfUnrecoverable(ctx, err)
 	}
 	return xattrs, cas, err
 }
@@ -409,7 +413,7 @@ func (ms *MetadataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys 
 	v, xv, cas, err = ms.primary.GetWithXattrs(ctx, k, xattrKeys)
 	if ms.readFromFallback(ctx, err) {
 		v, xv, _, err = ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
-		err = ms.noteFallbackErr(ctx, err)
+		ms.disableFallbackIfUnrecoverable(ctx, err)
 	}
 	return v, xv, cas, err
 }
@@ -458,7 +462,7 @@ func (ms *MetadataStore) DeleteWithXattrs(ctx context.Context, k string, xattrKe
 func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (uint64, error) {
 	// If we're updating with a previous.Cas - we'll be updating on top of a prior fetch from the primary datastore, not the fallback data store.
 	// Or if the fallback is no longer in play (migration complete, or the collection was dropped) - avoid the fallback effort...
-	if (previous != nil && previous.Cas != 0) || ms.migrationComplete.Load() {
+	if (previous != nil && previous.Cas != 0) || !ms.FallbackReadsEnabled() {
 		return ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, callback)
 	}
 
@@ -470,7 +474,7 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 		}
 
 		// If we know something exists in Primary, do a direct WriteUpdateWithXattrs there
-		if primaryExists || ms.migrationComplete.Load() {
+		if primaryExists || !ms.FallbackReadsEnabled() {
 			casOut, updateErr := ms.primary.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, nil, opts, callback)
 			return false, updateErr, casOut
 		}
@@ -485,7 +489,8 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 		// A doc with no/partial xattrs is still a fallback hit — surface what we have to the
 		// callback rather than treat it as not-found.
 		if err != nil && !IsXattrNotFoundError(err) && !errors.Is(err, ErrXattrPartialFound) {
-			return false, ms.noteFallbackErr(ctx, err), 0
+			ms.disableFallbackIfUnrecoverable(ctx, err)
+			return false, err, 0
 		}
 
 		updatedDoc, cbErr := callback(fallbackBody, fallbackXattrs, 0)
@@ -515,7 +520,8 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 				//        but it could be two concurrent Tombstones that we should at least have one more attempt for
 				return true, nil, 0
 			}
-			return false, ms.noteFallbackErr(ctx, tombstoneErr), 0
+			ms.disableFallbackIfUnrecoverable(ctx, tombstoneErr)
+			return false, tombstoneErr, 0
 		}
 
 		// Write to primary with CAS=0 to force safe insertion.
@@ -550,7 +556,7 @@ func (ms *MetadataStore) GetSubDocRaw(ctx context.Context, k string, subdocKey s
 	value, casOut, err = ms.primary.GetSubDocRaw(ctx, k, subdocKey)
 	if ms.readFromFallback(ctx, err) {
 		value, _, err = ms.fallback.GetSubDocRaw(ctx, k, subdocKey)
-		err = ms.noteFallbackErr(ctx, err)
+		ms.disableFallbackIfUnrecoverable(ctx, err)
 	}
 	return value, casOut, err
 }
