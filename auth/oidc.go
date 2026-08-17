@@ -102,45 +102,50 @@ type OIDCOptions struct {
 // fetched during the next config validation pass.
 //
 // A provider is marked when it is absent from existing, or when a discovery-relevant field differs
-// from the running definition - so a config update that leaves a provider untouched does not re-run
-// discovery against a provider that was already accepted. Pass a nil existing map on database
-// creation, where there is no prior config and every provider is therefore new.
-//
-// Assignment is unconditional: provider pointers can be shared with a running DatabaseContext and
-// merged in place by base.ConfigMerge, so a flag left over from an earlier pass must be cleared
-// rather than left standing.
+// from the currently-configured definition - so a config update that leaves a provider untouched
+// does not re-run discovery against a provider that was already accepted. Pass a nil existing map
+// on database creation, where there is no prior config and every provider is therefore new.
 //
 // This decides only "new or changed". Whether validation runs at all is governed separately by the
 // disable_oidc_validation query parameter, which is ANDed with this flag during config validation.
+//
+// A nil receiver is a no-op, so callers can invoke this unconditionally.
 func (opts *OIDCOptions) SetRevalidationFlags(existing OIDCProviderMap) {
 	if opts == nil {
+		// DbConfig.OIDCConfig is nil for any config with no "oidc" section - most databases, and
+		// every partial update whose body omits one - so this is a routine input, not an edge case.
 		return
 	}
 	for name, provider := range opts.Providers {
-		if provider == nil {
-			continue
-		}
-		// Indexing a nil map is safe and yields ok == false, so a nil existing map marks every
-		// provider as new - which is exactly the database-creation case.
-		existingProvider, ok := existing[name]
-		provider.ForceRevalidation = !ok || ProviderDiscoveryConfigChanged(existingProvider, provider)
+		// Indexing a nil or incomplete existing map yields a nil, which counts as new.
+		provider.setRevalidationFlag(existing[name])
 	}
 }
 
-// ProviderDiscoveryConfigChanged reports whether any field affecting OIDC discovery or issuer
-// validation differs between a currently-running provider and an incoming one.
+// setRevalidationFlag marks this provider for OIDC discovery validation when it is new - signalled
+// by a nil existing - or when a field affecting discovery or issuer validation differs from the
+// currently-configured definition. A nil receiver is a no-op.
 //
-// InsecureSkipVerify is deliberately excluded: it is stamped server-side at database load from
-// Options.UnsupportedOptions.OidcTlsSkipVerify and is never present in a request body, so comparing
-// it would report every provider as changed whenever that option is enabled.
-func ProviderDiscoveryConfigChanged(existing, incoming *OIDCProvider) bool {
-	if existing == nil || incoming == nil {
-		return true
+// The assignment is unconditional so a flag left over from an earlier validation pass is cleared
+// rather than left standing: provider pointers can be shared with a running DatabaseContext and
+// merged in place by base.ConfigMerge.
+//
+// InsecureSkipVerify is deliberately excluded from the comparison: it is stamped server-side at
+// database load from Options.UnsupportedOptions.OidcTlsSkipVerify and is never present in a request
+// body, so comparing it would report every provider as changed whenever that option is enabled.
+func (op *OIDCProvider) setRevalidationFlag(existing *OIDCProvider) {
+	if op == nil {
+		// {"providers": {"myprovider": null}} unmarshals to a nil provider - nothing to mark.
+		return
 	}
-	return existing.Issuer != incoming.Issuer ||
-		existing.DiscoveryURI != incoming.DiscoveryURI ||
-		existing.DisableConfigValidation != incoming.DisableConfigValidation ||
-		base.ValDefault(existing.ClientID, "") != base.ValDefault(incoming.ClientID, "")
+	if existing == nil {
+		op.ForceRevalidation = true
+		return
+	}
+	op.ForceRevalidation = existing.Issuer != op.Issuer ||
+		existing.DiscoveryURI != op.DiscoveryURI ||
+		existing.DisableConfigValidation != op.DisableConfigValidation ||
+		base.ValDefault(existing.ClientID, "") != base.ValDefault(op.ClientID, "")
 }
 
 // OIDCClient represents client configurations to authenticate end-users

@@ -1379,7 +1379,7 @@ func TestSetRevalidationFlags(t *testing.T) {
 }
 
 // TestSetRevalidationFlagsNilSafety covers the nil inputs the config paths can genuinely produce:
-// a request body with no "oidc" key at all, and a providers map containing an explicit null.
+// a config with no "oidc" section at all, and a providers map containing an explicit null.
 func TestSetRevalidationFlagsNilSafety(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		var opts *OIDCOptions
@@ -1395,15 +1395,4 @@ func TestSetRevalidationFlagsNilSafety(t *testing.T) {
 		opts := &OIDCOptions{Providers: OIDCProviderMap{"provider": nil}}
 		require.NotPanics(t, func() { opts.SetRevalidationFlags(nil) })
 	})
-}
-
-// TestProviderDiscoveryConfigChangedNilHandling checks that a missing provider on either side is
-// reported as changed, so a nil can never be mistaken for "unchanged" and silently skip validation.
-func TestProviderDiscoveryConfigChangedNilHandling(t *testing.T) {
-	provider := &OIDCProvider{
-		JWTConfigCommon: JWTConfigCommon{Issuer: "https://issuer.example.com", ClientID: base.Ptr("client-id")},
-	}
-	assert.True(t, ProviderDiscoveryConfigChanged(nil, provider))
-	assert.True(t, ProviderDiscoveryConfigChanged(provider, nil))
-	assert.True(t, ProviderDiscoveryConfigChanged(nil, nil))
 }

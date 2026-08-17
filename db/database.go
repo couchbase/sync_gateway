@@ -790,6 +790,21 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
+// ConfiguredOIDCProviders returns the OIDC providers this database was loaded with, exactly as
+// supplied in its config. Returns nil when the database has no OIDC configured.
+//
+// Prefer this over OIDCProviders when the question is "what was this database already configured
+// with". OIDCProviders is built in StartOnlineProcesses, so it is nil while the database is offline
+// and it omits providers skipped at load for having no issuer or client ID. Keying config
+// comparisons on this instead keeps their behaviour identical online and offline. For providers
+// present in both, the two maps hold the same pointers.
+func (context *DatabaseContext) ConfiguredOIDCProviders() auth.OIDCProviderMap {
+	if context.Options.OIDCOptions == nil {
+		return nil
+	}
+	return context.Options.OIDCOptions.Providers
+}
+
 // _stopOnlineProcesses is called to represent an error condition from startOnlineProcesses, or from DatabaseContext.Close. Most of the objects are not safe to close twice, since they have internal terminator objects and goroutines that wait on closed channels. Acquire the bucket lock, to avoid calling this function multiple times.
 func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	db.mutationListener.Stop(ctx)
@@ -2480,12 +2495,12 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 			if provider == nil {
 				// An explicit null in the providers map unmarshals to a nil provider. DbConfig.validate
 				// skips these too, but a config pairing one with a valid provider still passes validation.
-				base.WarnfCtx(ctx, "No provider definition for %q - skipping", base.UD(name))
+				base.WarnfCtx(ctx, "No provider definition for %q - skipping provider", base.UD(name))
 				continue
 			}
 			if provider.Issuer == "" || base.ValDefault(provider.ClientID, "") == "" {
 				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
-				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping provider", base.UD(name))
 				continue
 			}
 			provider.Name = name

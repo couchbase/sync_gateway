@@ -3129,9 +3129,9 @@ func TestCreateDBWithInvalidOIDCProvider(t *testing.T) {
 
 // TestOIDCRevalidationOnInPlaceProviderChange verifies that changing an existing provider in place -
 // same name, but a discovery-relevant field altered - is re-validated rather than treated as
-// already-known. SetRevalidationFlags (auth/oidc.go) compares provider content, not just names, via
-// ProviderDiscoveryConfigChanged, so a changed Issuer must still be checked against its discovery
-// document even though the provider name was already present in the running config.
+// already-known. SetRevalidationFlags (auth/oidc.go) compares provider content, not just names, so a
+// changed Issuer must still be checked against its discovery document even though the provider name
+// was already present in the running config.
 func TestOIDCRevalidationOnInPlaceProviderChange(t *testing.T) {
 	mockAuthServer, err := newMockAuthServer()
 	require.NoError(t, err, "Error creating mock oauth2 server")
@@ -3169,7 +3169,7 @@ func TestOIDCRevalidationOnInPlaceProviderChange(t *testing.T) {
 
 // TestOIDCRevalidationSkippedWithTlsSkipVerify checks that resubmitting an OIDC provider's config
 // completely unchanged still succeeds, both with and without oidc_tls_skip_verify enabled.
-// This is why ProviderDiscoveryConfigChanged (auth/oidc.go) deliberately excludes
+// This is why the comparison in auth/oidc.go deliberately excludes
 // InsecureSkipVerify: it is populated server-side from db.Options.UnsupportedOptions.OidcTlsSkipVerify
 // on the running provider, but is never populated on a provider parsed straight from a request body,
 // so comparing it would report every provider as changed whenever that option is enabled.
@@ -3377,12 +3377,12 @@ func TestOIDCNullProviderDefinition(t *testing.T) {
 	})
 }
 
-// TestOIDCRevalidationOnOfflineDatabaseUpdate pins the behaviour for an offline database.
-// DatabaseContext.OIDCProviders is populated by StartOnlineProcesses, so it is nil while the
-// database is offline. SetRevalidationFlags then has nothing to compare against and marks every
-// provider as new, meaning an offline config update revalidates everything. That is conservative
-// rather than permissive, and matches the behaviour before per-provider revalidation existed.
-func TestOIDCRevalidationOnOfflineDatabaseUpdate(t *testing.T) {
+// TestOIDCRevalidationConsistentWhenOffline checks that an offline database skips revalidation for
+// an unchanged provider exactly as an online one does. SetRevalidationFlags compares against
+// DatabaseContext.ConfiguredOIDCProviders rather than OIDCProviders - the latter is populated only
+// by StartOnlineProcesses, so keying on it would make every offline config update revalidate every
+// provider, purely because of when the database happened to be updated.
+func TestOIDCRevalidationConsistentWhenOffline(t *testing.T) {
 	mockAuthServer, err := newMockAuthServer()
 	require.NoError(t, err, "Error creating mock oauth2 server")
 	mockAuthServer.Start()
@@ -3403,13 +3403,23 @@ func TestOIDCRevalidationOnOfflineDatabaseUpdate(t *testing.T) {
 	}
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
-	// The database is offline, so OIDCProviders is nil and "provider1" looks new even though it is
-	// byte-for-byte identical. It gets revalidated - which succeeds here, since the discovery
-	// endpoint is still reachable.
+	// Make discovery unreachable, so anything that does get revalidated fails loudly.
+	mockAuthServer.Shutdown()
+
+	// Resubmitting the identical config against an offline database skips revalidation, exactly as
+	// it would if the database were online.
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
 
-	// With the discovery endpoint unreachable, that same unchanged resubmit now fails - confirming
-	// the offline path really is revalidating rather than skipping.
-	mockAuthServer.Shutdown()
-	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusBadRequest)
+	// A genuine in-place change is still revalidated while offline, and fails because discovery is
+	// unreachable - so the skip above is change detection, not a blanket offline exemption.
+	changedProvider := mockProviderWith("provider1", mockProviderRegister{})
+	changedProvider.Issuer = mockAuthServer.URL + "/some-other-issuer"
+	changedProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(changedProvider.Issuer)
+
+	changedConfig := rt.NewDbConfig()
+	changedConfig.StartOffline = base.Ptr(true)
+	changedConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"provider1": changedProvider},
+	}
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &changedConfig))), http.StatusBadRequest)
 }

@@ -950,14 +950,14 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		validProviders := len(dbConfig.OIDCConfig.Providers)
 		for name, oidc := range dbConfig.OIDCConfig.Providers {
 			if oidc == nil {
-				base.WarnfCtx(ctx, "No provider definition for %q - skipping", base.UD(name))
+				base.WarnfCtx(ctx, "No provider definition for %q - skipping validation", base.UD(name))
 				validProviders--
 				continue
 			}
 			if oidc.Issuer == "" || base.ValDefault(oidc.ClientID, "") == "" {
 				// TODO: rather than being an error, this skips the current provider to avoid a backwards compatibility issue (previously valid
 				// configs becoming invalid). This also means it's duplicated in NewDatabaseContext.
-				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping validation", base.UD(name))
 				validProviders--
 				continue
 			}
