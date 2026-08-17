@@ -1422,6 +1422,7 @@ func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
 		generations := make([]int, 0, len(chain))
 		for _, revID := range chain {
 			generation, _ := db.ParseRevID(ctx, revID)
+			require.Greater(t, generation, 0)
 			generations = append(generations, generation)
 		}
 		t.Logf("rev tree root -> leaf: %v (generations %v)", chain, generations)

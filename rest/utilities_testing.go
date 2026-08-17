@@ -2827,6 +2827,8 @@ func RequireStrictlyIncreasingRevTreeGenerations(t *testing.T, ctx context.Conte
 		for i := 1; i < len(branch); i++ {
 			childGeneration, _ := db.ParseRevID(ctx, branch[i-1])
 			parentGeneration, _ := db.ParseRevID(ctx, branch[i])
+			require.Greater(t, childGeneration, 0)
+			require.Greater(t, parentGeneration, 0)
 			require.Greater(t, childGeneration, parentGeneration,
 				"doc %q: revision %q is not a higher generation than its parent %q (branch from leaf: %v)",
 				doc.ID, branch[i-1], branch[i], branch)
