@@ -23,7 +23,6 @@ import (
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbase/sync_gateway/testing/sgtest"
-	"github.com/shirou/gopsutil/v4/host"
 )
 
 func TestSendingMetricsToNsServerCollector(t *testing.T) {
@@ -50,15 +49,6 @@ func TestSendingMetricsToNsServerCollector(t *testing.T) {
 	// Exercise the production send path rather than re-implementing the POST here.
 	metrics := base.CollectSGWFleetManagerMetrics(ctx, "someNodeID", "myHost")
 	require.NoError(t, rt.ServerContext().sendFleetManagerMetrics(ctx, metrics, rt.ServerContext().Config.Bootstrap.Username, rt.ServerContext().Config.Bootstrap.Password))
-}
-
-func TestSendingMetricsToNsServerCollector1(t *testing.T) {
-	// Exercise the production send path rather than re-implementing the POST here.
-	metrics := base.CollectSGWFleetManagerMetrics(base.TestCtx(t), "someNodeID", "myHost")
-	info, _ := host.Info()
-	fmt.Println(info.OS, info.PlatformVersion)
-	fmt.Println(metrics)
-	fmt.Println(metrics.OSVersion)
 }
 
 // TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole verifies that a user holding only the

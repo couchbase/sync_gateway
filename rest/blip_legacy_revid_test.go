@@ -1434,3 +1434,155 @@ func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
 		}
 	})
 }
+
+// TestInvalidRevTreePullReportsStat covers the detection added for CBG-5713 over a real pull. A document
+// whose rev tree contains a revision that does not exceed its parent's generation is reported on the
+// invalid_rev_tree_count stat, and the two subtests show the two things that can happen to it:
+//
+//   - revTree (pre-4.0) client: the rev tree history cannot be encoded for the wire, so the revision is
+//     skipped with a norev - the loud case the customer sees in their logs.
+//   - versionVector (4.0+) client: no rev tree history is sent, so the document replicates and there is
+//     no norev - but the document is still corrupt, and detection on load is the only thing that says so.
+func TestInvalidRevTreePullReportsStat(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		// 3 revisions with a leaf at generation 2: encodeRevisions produces a _revisions list that
+		// splitRevisionList rejects, which is what makes this unreplicatable over BLIP v3
+		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+			map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		rt.WaitForPendingChanges()
+
+		invalidRevTreeCount := rt.GetDatabase().DbStats.Database().InvalidRevTreeCount
+		noRevSendCount := rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount
+		require.Equal(t, int64(0), invalidRevTreeCount.Value())
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+		defer btcRunner.UnsubPullChanges(client.id)
+
+		if client.UseHLV() {
+			// no rev tree history goes on the wire, so nothing rejects the revision and no norev is
+			// sent - detection on load is the only thing that reports this document
+			base.RequireWaitForStat(t, invalidRevTreeCount.Value, 1)
+			assert.Equal(t, int64(0), noRevSendCount.Value())
+		} else {
+			btcRunner.WaitForPullNoRevMessage(client.id, docID, DocVersion{RevTreeID: "2-def"})
+			base.RequireWaitForStat(t, noRevSendCount.Value, 1)
+			// once when the revision was loaded from the bucket, once when sendRevision failed to
+			// encode its history
+			assert.Equal(t, int64(2), invalidRevTreeCount.Value())
+		}
+	})
+}
+
+// TestDebugInvalidRevTreeWireHistory is an investigation test for what a pre-4.0 client is actually told
+// about a quietly-corrupt document - one whose leaf generation is high enough relative to its branch
+// length that encodeRevisions succeeds and no norev is sent. _revisions can only express
+// start, start-1, start-2 ... so the ancestors on the wire are derived from the leaf generation rather
+// than read from the tree, and for this tree they are revisions that have never existed.
+func TestDebugInvalidRevTreeWireHistory(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // pre-4.0 clients are the ones sent rev tree history
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		// gen 10 leaf on a 3 revision branch: 10 >= 3, so splitRevisionList accepts the encoding
+		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+			map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}, "10-def")
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		rt.WaitForPendingChanges()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+		defer btcRunner.UnsubPullChanges(client.id)
+
+		corruptVersion := DocVersion{RevTreeID: "10-def"}
+		btcRunner.WaitForVersion(client.id, docID, corruptVersion)
+
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, corruptVersion)
+		require.True(t, ok)
+		wireHistory := msg.Properties[db.RevMessageHistory]
+		t.Logf("rev %q sent with history %q", msg.Properties[db.RevMessageRev], wireHistory)
+
+		// what the tree actually says, for comparison
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		for _, wireRev := range strings.Split(wireHistory, ",") {
+			_, inTree := doc.History[wireRev]
+			t.Logf("ancestor %q on the wire: present in Sync Gateway's rev tree = %v", wireRev, inTree)
+		}
+		assert.Equal(t, "9-abc,8-abc", wireHistory, "the true ancestors are 10-abc and 1-abc")
+		assert.Equal(t, int64(0), rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value(), "this is the quiet case - no norev")
+	})
+}
+
+// TestDebugRepairedRevTreeDeliveryToClient is an investigation test for the post-repair transition. A
+// client pulls a quietly-corrupt document, the document is then repaired server side under a new
+// sequence, and the question is whether the repaired revision reaches the client on the same feed and
+// what the client ends up holding. This models the remediation route where a repair heals a document
+// without the user doing anything.
+//
+// TODO(CBG-5718): this only shows what the blip test client does. The client's conflict handling here is
+// CV-based last-write-wins, not Couchbase Lite's rev tree conflict resolution, so the end state a real
+// CBL client reaches after its current revision changes generation still needs confirming against a real
+// client - tracked separately.
+func TestDebugRepairedRevTreeDeliveryToClient(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // pre-4.0 clients are the ones affected
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+			map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}, "10-def")
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		rt.WaitForPendingChanges()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+		defer btcRunner.UnsubPullChanges(client.id)
+
+		// the client picks up the corrupt document with its fabricated ancestry
+		btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: "10-def"})
+
+		// repair under a new sequence, as repair-on-write would
+		newCurrentRev, renamed := db.RepairRevTreeForTest(t, ctx, collection, docID)
+		t.Logf("repaired: current rev %q, renamed %v", newCurrentRev, renamed)
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		rt.WaitForPendingChanges()
+
+		// does the repaired revision reach the client on the same continuous pull?
+		btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: newCurrentRev})
+
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, DocVersion{RevTreeID: newCurrentRev})
+		require.True(t, ok)
+		t.Logf("repaired rev %q sent with history %q", msg.Properties[db.RevMessageRev], msg.Properties[db.RevMessageHistory])
+		clientBody, found := btcRunner.GetVersion(client.id, docID, DocVersion{RevTreeID: newCurrentRev})
+		t.Logf("client body for %s (found %v): %s", newCurrentRev, found, clientBody)
+	})
+}

@@ -828,6 +828,8 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
 func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, attachments AttachmentsMeta, channels base.Set, err error) {
+	c.reportInvalidRevTree(ctx, doc, revid)
+
 	bodyBytes = doc.getRevisionBodyJSON(ctx, revid, c.RevisionBodyLoader)
 
 	// No inline body, so look for separate doc:
@@ -862,6 +864,18 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 	}
 
 	return bodyBytes, attachments, channels, nil
+}
+
+// reportInvalidRevTree warns and bumps InvalidRevTreeCount when the branch ending at revID contains a
+// revision whose generation does not exceed its parent's - the CBG-5713 corruption shape. It is called
+// from the read paths that load a document from the bucket, so it reports once per bucket load rather
+// than once per cache hit.
+func (c *DatabaseCollection) reportInvalidRevTree(ctx context.Context, doc *Document, revID string) {
+	if !doc.History.hasNonIncreasingGenerations(ctx, revID) {
+		return
+	}
+	c.dbStats().Database().InvalidRevTreeCount.Add(1)
+	base.WarnfCtx(ctx, "Invalid rev tree for doc %s rev %s - a revision does not exceed the generation of its parent, so this document's revision history cannot be replicated accurately to pre-4.0 clients. Update the document to repair it.", base.UD(doc.ID), base.MD(revID))
 }
 
 // mergeAttachments copies the attachmentsB map, and merges attachmentsA into it. If both maps are nil, return nil.

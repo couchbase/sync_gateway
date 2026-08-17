@@ -1871,3 +1871,139 @@ func TestNonIncreasingGenerationsHistoryEncoding(t *testing.T) {
 		})
 	}
 }
+
+// TestInvalidRevTreeDetectedOnLoad covers the read-side detection: a document whose rev tree violates
+// the generation invariant is reported once per load from the bucket, with the doc ID and rev in the
+// warning so the affected documents can be identified from the log. Detection only - the revision is
+// still served.
+func TestInvalidRevTreeDetectedOnLoad(t *testing.T) {
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
+
+	// a clean tree is not reported
+	PlantRevTreeForTest(t, ctx, collection, "cleanDoc", Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc"}, "3-abc")
+	dbCtx.FlushRevisionCacheForTest()
+	_, err := collection.GetRev(ctx, "cleanDoc", "3-abc", true, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), invalidRevTreeCount.Value())
+
+	// 3 revisions with a leaf at generation 2 - the loud case, see TestNonIncreasingGenerationsHistoryEncoding
+	PlantRevTreeForTest(t, ctx, collection, "corruptDoc", Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	dbCtx.FlushRevisionCacheForTest()
+
+	// the fixture allocates a sequence per revision, so the planted document's sequence metadata looks
+	// like a document that really was written three times
+	planted, err := collection.GetDocument(ctx, "corruptDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Len(t, planted.RecentSequences, 3)
+	require.Equal(t, planted.RecentSequences[2], planted.Sequence)
+	require.IsIncreasing(t, planted.RecentSequences)
+
+	base.AssertLogContains(t, "Invalid rev tree for doc <ud>corruptDoc</ud> rev 2-def", func() {
+		_, err = collection.GetRev(ctx, "corruptDoc", "2-def", true, nil)
+		require.NoError(t, err)
+	})
+	require.Equal(t, int64(1), invalidRevTreeCount.Value(), "corrupt rev tree was not reported")
+
+	// served from the revision cache, so no second load and no second report
+	_, err = collection.GetRev(ctx, "corruptDoc", "2-def", true, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "reported on a revision cache hit")
+
+	// ...but a load after eviction reports again, so an affected document does not go silent permanently
+	dbCtx.FlushRevisionCacheForTest()
+	_, err = collection.GetRev(ctx, "corruptDoc", "2-def", true, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), invalidRevTreeCount.Value())
+}
+
+// TestDebugFabricatedHistoryGraftsIntoRevTree is an investigation test for what happens when a client
+// pushes back the fabricated ancestry it was given for a quietly-corrupt document. A corrupt-but-
+// encodable tree is sent under ancestor rev IDs that do not exist (see
+// TestNonIncreasingGenerationsHistoryEncoding), and nothing on the write path checks that an incoming
+// rev tree history refers to revisions Sync Gateway actually has.
+//
+// The two subtests are the before and after of a repair, and they behave differently: whether the
+// fabricated revisions are grafted depends entirely on whether the push still has a branch point Sync
+// Gateway recognises. Note the fabricated revisions are strictly decreasing in generation, so the
+// addRevision generation check never rejects them.
+func TestDebugFabricatedHistoryGraftsIntoRevTree(t *testing.T) {
+	// the corrupt tree: a gen 10 leaf on a 3 revision branch, so len(branch) <= gen and this encodes
+	// rather than erroring - the client is told the ancestors are 9-abc and 8-abc
+	corruptTree := map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}
+	// what the client replays on push: its own new revision, then the history it was given
+	fabricatedHistory := []string{"11-ghi", "10-def", "9-abc", "8-abc"}
+
+	t.Run("push while the corrupt tree is still in place", func(t *testing.T) {
+		dbCtx, ctx := setupTestDB(t)
+		defer dbCtx.Close(ctx)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true}, corruptTree, "10-def")
+		logRevTree(t, ctx, collection, "doc1", "before push")
+
+		// 10-def is still a branch point Sync Gateway recognises, so only 11-ghi is new
+		_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+		t.Logf("PutExistingRevWithBody(%v) -> rev %q, err %v", fabricatedHistory, newRev, err)
+
+		logRevTree(t, ctx, collection, "doc1", "after push")
+	})
+
+	t.Run("push after the tree has been repaired", func(t *testing.T) {
+		dbCtx, ctx := setupTestDB(t)
+		defer dbCtx.Close(ctx)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true}, corruptTree, "10-def")
+
+		// the repair renames 10-def, so the branch point the client's push refers to no longer exists
+		newCurrentRev, renamed := RepairRevTreeForTest(t, ctx, collection, "doc1")
+		t.Logf("repaired: current rev %q, renamed %v", newCurrentRev, renamed)
+		logRevTree(t, ctx, collection, "doc1", "after repair")
+
+		_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+		t.Logf("PutExistingRevWithBody(%v) -> rev %q, err %v", fabricatedHistory, newRev, err)
+
+		logRevTree(t, ctx, collection, "doc1", "after push")
+	})
+
+	t.Run("control - push with no known ancestor and no repair involved", func(t *testing.T) {
+		dbCtx, ctx := setupTestDB(t)
+		defer dbCtx.Close(ctx)
+		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+		// a clean document, pushed a history sharing no revision with it - isolates whether the
+		// previous subtest's outcome is about the repair or just about having no branch point
+		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true},
+			map[string]string{"1-abc": "", "2-abc": "1-abc"}, "2-abc")
+		logRevTree(t, ctx, collection, "doc1", "before push")
+
+		_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+		t.Logf("PutExistingRevWithBody(%v) -> rev %q, err %v", fabricatedHistory, newRev, err)
+
+		logRevTree(t, ctx, collection, "doc1", "after push")
+	})
+}
+
+// logRevTree logs a document's rev tree, current revision, leaves and generation validity, for
+// investigation tests where the question is what shape the tree ended up in.
+func logRevTree(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, when string) {
+	t.Helper()
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	rendered := make([]string, 0, len(doc.History))
+	for revID, info := range doc.History {
+		rendered = append(rendered, fmt.Sprintf("%s->%q", revID, info.Parent))
+	}
+	sort.Strings(rendered)
+
+	t.Logf("%s: current %q, leaves %v, tree %v, non-increasing generations on winning branch: %v",
+		when, doc.GetRevTreeID(), doc.History.GetLeaves(), rendered,
+		doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()))
+}
