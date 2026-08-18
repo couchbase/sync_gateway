@@ -5004,12 +5004,14 @@ func TestRevTreeConflictCheck(t *testing.T) {
 			lenLocalHistory := len(testCase.localHistory)
 
 			parent := ""
-			for i, revID := range testCase.localHistory {
-				err := doc.History.addRevision(revID,
+			// localHistory is newest-first (as on the wire), so build the tree oldest-first
+			for i := lenLocalHistory - 1; i >= 0; i-- {
+				revID := testCase.localHistory[i]
+				err := doc.History.addRevision(ctx, doc.ID,
 					RevInfo{
 						ID:      revID,
 						Parent:  parent, // set the parent of this revision to the element of docHistory from the last iteration
-						Deleted: i == lenLocalHistory-1 && testCase.localDelete})
+						Deleted: i == 0 && testCase.localDelete})
 				require.NoError(t, err)
 				parent = revID
 			}
