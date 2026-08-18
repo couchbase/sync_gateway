@@ -768,22 +768,6 @@ func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *Database
 	})
 }
 
-// RepairRevTreeForTest applies RevTree.repairGenerations to a document already in the bucket and writes
-// the result back under a newly allocated sequence, so the repair is delivered on the caching feed like
-// any other revision. It returns the document's current revision after repair and the old -> new rev ID
-// map. This is a stand-in for the repair-on-write path while that is being designed.
-func RepairRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (newCurrentRev string, renamed map[string]string) {
-	t.Helper()
-
-	rewriteSyncDataForTest(t, ctx, collection, docID, 1, func(syncData *SyncData) {
-		var repairErr error
-		newCurrentRev, renamed, repairErr = syncData.History.repairGenerations(ctx, syncData.GetRevTreeID())
-		require.NoError(t, repairErr)
-		syncData.SetRevTreeID(newCurrentRev)
-	})
-	return newCurrentRev, renamed
-}
-
 // rewriteSyncDataForTest rewrites a document's _sync xattr, allocating sequenceCount new sequences first
 // and appending them to recent_sequences with the last becoming the document's sequence - so the write
 // leaves the sequence metadata looking like sequenceCount real revisions. mutate is applied to the
@@ -807,9 +791,13 @@ func rewriteSyncDataForTest(t *testing.T, ctx context.Context, collection *Datab
 
 			mutate(&syncData)
 
-			// append the new sequences in allocation order and make the last one current, exactly as
-			// updateAndReturnDoc would have left it
+			// append the new sequences and make the highest current, exactly as updateAndReturnDoc would
+			// have left it. Sorted for the same reason assignSequence sorts (db/crud.go) - production
+			// never leaves recent_sequences out of order, so a fixture must not either.
 			syncData.RecentSequences = append(syncData.RecentSequences, sequences...)
+			if len(syncData.RecentSequences) > 1 {
+				base.SortedUint64Slice(syncData.RecentSequences).Sort()
+			}
 			syncData.Sequence = syncData.RecentSequences[len(syncData.RecentSequences)-1]
 
 			updatedXattr, marshalErr := base.JSONMarshal(syncData)

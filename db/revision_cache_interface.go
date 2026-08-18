@@ -447,10 +447,6 @@ func revCacheLoaderForDocumentCV(ctx context.Context, backingStore RevisionCache
 }
 
 func (c *DatabaseCollection) getCurrentVersion(ctx context.Context, doc *Document, cv Version, loadBackup bool) (bodyBytes []byte, attachments AttachmentsMeta, channels base.Set, deleted bool, err error) {
-	// the CV path has no revTreeID of its own to check, so check the branch the document's current
-	// revTreeID sits on - that is the branch this load would replicate
-	c.reportInvalidRevTree(ctx, doc, doc.GetRevTreeID())
-
 	if err = doc.HasCurrentVersion(ctx, cv); err != nil {
 		if !loadBackup {
 			// do not attempt to fetch backup revision by CV unless specified
