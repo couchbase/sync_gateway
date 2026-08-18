@@ -203,10 +203,8 @@ func TestSgwFloatStatMarshalNonFinite(t *testing.T) {
 	}
 }
 
-// TestDbReplicatorStatsUnsynchronisedAccess reproduces unsynchronised access to
-// DbStats.DbReplicatorStats.  The map has one mutex, dbReplicatorStatsMutex, and only
-// DBReplicatorStats takes it - so creating a replication's stats races anything else that walks the
-// map.  Run with -race.
+// TestDbReplicatorStatsUnsynchronisedAccess covers concurrent access to DbStats.DbReplicatorStats:
+// creating a replication's stats while something else walks the stats tree.  Run with -race.
 //
 // The expvar case is the one reachable in a running Sync Gateway: any metrics or expvar read that
 // lands while a replication is initialising.  The teardown case needs two live DatabaseContexts
@@ -227,7 +225,7 @@ func TestDbReplicatorStatsUnsynchronisedAccess(t *testing.T) {
 				assert.NoError(t, err)
 			}
 		})
-		// SgwStats.String marshals DbReplicatorStats holding only dbStatsMapMutex.
+		// SgwStats.String marshals the whole tree, including DbReplicatorStats.
 		wg.Go(func() {
 			for range iterations {
 				_ = SyncGatewayStats.String()
@@ -252,7 +250,7 @@ func TestDbReplicatorStatsUnsynchronisedAccess(t *testing.T) {
 					assert.NoError(t, err)
 				}
 			})
-			// ClearDBStats iterates DbReplicatorStats to unregister, holding only dbStatsMapMutex.
+			// ClearDBStats iterates DbReplicatorStats to unregister them.
 			wg.Go(func() {
 				SyncGatewayStats.ClearDBStats(dbName)
 			})

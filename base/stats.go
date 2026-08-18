@@ -111,7 +111,10 @@ type SgwStats struct {
 	DbStats         map[string]*DbStats `json:"per_db"`
 	ReplicatorStats *ReplicatorStats    `json:"per_replication,omitempty"`
 
-	dbStatsMapMutex sync.Mutex
+	// statsLock guards the DbStats map and, via DbStats.statsLock, each DbStats' own maps.  One lock for
+	// the whole tree: the alternative is a per-DbStats mutex with an implicit ordering, which readers
+	// walking the tree have historically forgotten to take.
+	statsLock sync.Mutex
 }
 
 var SyncGatewayStats *SgwStats
@@ -164,9 +167,9 @@ func init() {
 
 // This String() is to satisfy the expvar.Var interface which is used to produce the expvar endpoint output.
 func (s *SgwStats) String() string {
-	s.dbStatsMapMutex.Lock()
+	s.statsLock.Lock()
 	bytes, err := JSONMarshalCanonical(s)
-	s.dbStatsMapMutex.Unlock()
+	s.statsLock.Unlock()
 	if err != nil {
 		ErrorfCtx(context.Background(), "Unable to Marshal SgwStats: %v", err)
 		return "null"
@@ -437,7 +440,9 @@ type DbStats struct {
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 	MigrationStats          *MigrationStats               `json:"metadata_migration,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
-	dbReplicatorStatsMutex  sync.Mutex
+	// statsLock is the owning SgwStats' lock, shared so that writing this DbStats' maps serialises with
+	// anything walking the tree above it.
+	statsLock *sync.Mutex
 }
 
 type CacheStats struct {
@@ -1355,11 +1360,12 @@ type QueryStat struct {
 }
 
 func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, metadataMigrationEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
-	s.dbStatsMapMutex.Lock()
-	defer s.dbStatsMapMutex.Unlock()
+	s.statsLock.Lock()
+	defer s.statsLock.Unlock()
 	dbStats := &DbStats{
 		dbName:            name,
 		DbReplicatorStats: make(map[string]*DbReplicatorStats),
+		statsLock:         &s.statsLock,
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
@@ -1430,8 +1436,8 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 }
 
 func (s *SgwStats) ClearDBStats(name string) {
-	s.dbStatsMapMutex.Lock()
-	defer s.dbStatsMapMutex.Unlock()
+	s.statsLock.Lock()
+	defer s.statsLock.Unlock()
 
 	if _, ok := s.DbStats[name]; !ok {
 		return
@@ -2367,8 +2373,8 @@ func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
 }
 
 func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, error) {
-	d.dbReplicatorStatsMutex.Lock()
-	defer d.dbReplicatorStatsMutex.Unlock()
+	d.statsLock.Lock()
+	defer d.statsLock.Unlock()
 
 	if _, ok := d.DbReplicatorStats[replicationID]; ok {
 		return d.DbReplicatorStats[replicationID], nil
