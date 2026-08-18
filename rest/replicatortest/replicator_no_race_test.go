@@ -97,7 +97,9 @@ func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
 		// Wait for the reloaded context to register, or the removal races registration and no-ops again.
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			cluster, err := activeRT2Mgr.GetSGRCluster()
-			assert.NoError(c, err)
+			if !assert.NoError(c, err) {
+				return
+			}
 			_, ok := cluster.Nodes[reloadedUUID]
 			assert.True(c, ok)
 		}, time.Second*20, time.Millisecond*100, "reloaded node never registered in the cluster cfg")
@@ -107,7 +109,9 @@ func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
 		// Wait for nodes to re-register, re-fetching the manager in case the reload replaced it.
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			clusterDef, err := activeRT.GetDatabase().SGReplicateMgr.GetSGRCluster()
-			assert.NoError(c, err)
+			if !assert.NoError(c, err) {
+				return
+			}
 			assert.Len(c, clusterDef.Nodes, 2)
 		}, time.Second*20, time.Millisecond*100, "Nodes did not re-register after removal")
 
