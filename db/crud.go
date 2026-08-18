@@ -1491,7 +1491,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 
 		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
-		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+		if err := doc.History.addRevision(ctx, newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
 			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
@@ -1627,6 +1627,10 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				// the new document has a dominating hlv, so we can just update local revtree with incoming revtree
 				if !opts.ISGRWrite {
 					previousRevTreeID = doc.GetRevTreeID()
+					// The new revision is parented to the local current rev rather than the incoming
+					// history, so its generation has to be recomputed from that parent.
+					prevGeneration, _ = ParseRevID(ctx, previousRevTreeID)
+					newGeneration = prevGeneration + 1
 				} else {
 					// align rev tree here for ISGR replications
 					alignErr := doc.alignRevTreeHistoryForHLVWrite(ctx, db, opts.NewDoc, opts.RevTreeHistory, false)
@@ -1648,7 +1652,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						return nil, nil, false, nil, err
 					}
 
-					_, err = doc.addNewerRevisionsToRevTreeHistory(opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
+					_, err = doc.addNewerRevisionsToRevTreeHistory(ctx, opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
@@ -1709,7 +1713,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				return nil, nil, false, nil, err
 			}
 			newRev = CreateRevIDWithBytes(newGeneration, previousRevTreeID, encoding)
-			if err := doc.History.addRevision(opts.NewDoc.ID, RevInfo{ID: newRev, Parent: previousRevTreeID, Deleted: opts.NewDoc.Deleted}); err != nil {
+			if err := doc.History.addRevision(ctx, opts.NewDoc.ID, RevInfo{ID: newRev, Parent: previousRevTreeID, Deleted: opts.NewDoc.Deleted}); err != nil {
 				base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(opts.NewDoc.ID), err)
 				return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 			}
@@ -1850,7 +1854,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.addRevision(newDoc.ID,
+			err := doc.History.addRevision(ctx, newDoc.ID,
 				RevInfo{
 					ID:      docHistory[i],
 					Parent:  parent,
@@ -2363,7 +2367,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Create tombstone
 	newGeneration := genOfRevID(ctx, revID) + 1
 	newRevID := CreateRevIDWithBytes(newGeneration, revID, []byte(DeletedDocument))
-	err = doc.History.addRevision(doc.ID,
+	err = doc.History.addRevision(ctx, doc.ID,
 		RevInfo{
 			ID:      newRevID,
 			Parent:  revID,
@@ -4131,7 +4135,7 @@ func (doc *Document) alignRevTreeHistoryForHLVWrite(ctx context.Context, db *Dat
 		}
 	}
 
-	newRev, err := doc.addNewerRevisionsToRevTreeHistory(newDoc, currentRevIndex, parent, revTreeHistory)
+	newRev, err := doc.addNewerRevisionsToRevTreeHistory(ctx, newDoc, currentRevIndex, parent, revTreeHistory)
 	if err != nil {
 		return err
 	}
@@ -4144,10 +4148,10 @@ func (doc *Document) alignRevTreeHistoryForHLVWrite(ctx context.Context, db *Dat
 }
 
 // addNewerRevisionsToRevTreeHistory will add any newer rev tree id's to the local document history
-func (doc *Document) addNewerRevisionsToRevTreeHistory(newDoc *Document, currentRevIndex int, parent string, docHistory []string) (string, error) {
+func (doc *Document) addNewerRevisionsToRevTreeHistory(ctx context.Context, newDoc *Document, currentRevIndex int, parent string, docHistory []string) (string, error) {
 	// currentRevIndex here is the index of the incoming rev tree list to start from.
 	for i := currentRevIndex - 1; i >= 0; i-- {
-		err := doc.History.addRevision(newDoc.ID,
+		err := doc.History.addRevision(ctx, newDoc.ID,
 			RevInfo{
 				ID:      docHistory[i],
 				Parent:  parent, // set the parent of this revision to the element of docHistory from the last iteration

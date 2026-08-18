@@ -695,10 +695,10 @@ func TestAlignRevTreeHistory(t *testing.T) {
 		{
 			name:            "gap in histories, incoming larger",
 			currentRev:      "3-abc",
-			localRevTree:    []string{"1-abc", "2-abc", "3-abc"},
-			incomingRevTree: []string{"12-abc", "10-abc", "11-abc"},
+			localRevTree:    []string{"3-abc", "2-abc", "1-abc"},
+			incomingRevTree: []string{"12-abc", "11-abc", "10-abc"},
 			// rev 4- is new rev created for tombstone here, 12-abc is the active rev
-			expectedRevTree:   []string{"12-abc", "10-abc", "11-abc", "4-cc0337d9d38c8e5fc930ae3deda62bf8", "3-abc", "2-abc", "1-abc"},
+			expectedRevTree:   []string{"12-abc", "11-abc", "10-abc", "4-cc0337d9d38c8e5fc930ae3deda62bf8", "3-abc", "2-abc", "1-abc"},
 			expectedActive:    "12-abc",
 			expectedTombstone: "4-cc0337d9d38c8e5fc930ae3deda62bf8",
 		},
@@ -752,8 +752,9 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			var parent string
 			doc := NewDocument("doc")
 			doc.SetRevTreeID(tc.currentRev)
-			for i := range tc.localRevTree {
-				err := doc.History.addRevision("doc", RevInfo{
+			// localRevTree is newest-first (as on the wire), so build the tree oldest-first
+			for i := len(tc.localRevTree) - 1; i >= 0; i-- {
+				err := doc.History.addRevision(ctx, "doc", RevInfo{
 					ID:     tc.localRevTree[i],
 					Parent: parent,
 				})
