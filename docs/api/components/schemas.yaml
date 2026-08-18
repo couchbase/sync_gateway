@@ -275,7 +275,8 @@ User:
       items:
         type: string
       readOnly: true
-    $ref: '#/CollectionAccessConfig'
+    collection_access:
+      $ref: '#/CollectionAccessConfig'
     email:
       description: The email address of the user.
       type: string
@@ -320,44 +321,43 @@ User:
       readOnly: true
   title: User
 CollectionAccessConfig:
-  collection_access:
-    description: A set of access grants by scope and collection for a specific collection.
+  description: A set of access grants by scope and collection for a specific collection.
+  type: object
+  additionalProperties:
+    maxProperties: 1
+    description: An object keyed by scope, containing a set of collections.
     type: object
+    x-additionalPropertiesName: scopename
     additionalProperties:
-      maxProperties: 1
-      description: An object keyed by scope, containing a set of collections.
+      description: An object keyed by collection name, defines access collections in this scope.
       type: object
-      x-additionalPropertiesName: scopename
-      additionalProperties:
-        description: An object keyed by collection name, defines access collections in this scope.
-        type: object
-        x-additionalPropertiesName: collectionname
-        properties:
-          admin_channels:
-            description: A list of channels to explicitly grant to the user in this collection.
-            type: array
-            items:
-              type: string
-          all_channels:
-            description: |-
-              All the channels that the user has been granted access to in this collection.
-
-              Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
-            type: array
-            items:
-              type: string
-            readOnly: true
-          jwt_channels:
-            description: The channels that the user has been granted access to through channels_claim for this collection.
-            type: array
-            items:
-              type: string
-            readOnly: true
-          jwt_last_updated:
-            description: The last time that the user's JWT channels were updated for this collection.
+      x-additionalPropertiesName: collectionname
+      properties:
+        admin_channels:
+          description: A list of channels to explicitly grant to the user in this collection.
+          type: array
+          items:
             type: string
-            format: date-time
-            readOnly: true
+        all_channels:
+          description: |-
+            All the channels that the user has been granted access to in this collection.
+
+            Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+          type: array
+          items:
+            type: string
+          readOnly: true
+        jwt_channels:
+          description: The channels that the user has been granted access to through channels_claim for this collection.
+          type: array
+          items:
+            type: string
+          readOnly: true
+        jwt_last_updated:
+          description: The last time that the user's JWT channels were updated for this collection.
+          type: string
+          format: date-time
+          readOnly: true
 Role:
   description: Properties associated with a role
   type: object
@@ -384,7 +384,8 @@ Role:
       items:
         type: string
       readOnly: true
-    $ref: '#/CollectionAccessConfig'
+    collection_access:
+      $ref: '#/CollectionAccessConfig'
   title: Role
 User-session-information:
   type: object
@@ -974,7 +975,8 @@ Scopes:
       type: object
       additionalProperties:
         x-additionalPropertiesName: collectionname
-        $ref: '#/CollectionConfig'
+        allOf:
+          - $ref: '#/CollectionConfig'
   title: Scopes
 CollectionConfig:
   description: Collection-specific configuration.
@@ -1605,13 +1607,15 @@ Database:
     roles:
       additionalProperties:
         x-additionalPropertiesName: rolename
-        $ref: '#/Role'
+        allOf:
+          - $ref: '#/Role'
     scopes:
       description: An object keyed by scope name containing config for the specific collection.
       type: object
       additionalProperties:
         x-additionalPropertiesName: scopename
-        $ref: '#/Scopes'
+        allOf:
+          - $ref: '#/Scopes'
       maxProperties: 1
       example:
         scopename:
@@ -1771,7 +1775,8 @@ Database:
     users:
       additionalProperties:
         x-additionalPropertiesName: username
-        $ref: '#/User'
+        allOf:
+          - $ref: '#/User'
     view_query_timeout_secs:
       description: The number of seconds before a view query should timeout.
       type: integer
@@ -1910,7 +1915,8 @@ Database-audit-verbose:
       additionalProperties:
         x-additionalPropertiesName: audit_id
         description: The audit event ID and whether it is enabled or not.
-        $ref: '#/AuditEventVerbose'
+        allOf:
+          - $ref: '#/AuditEventVerbose'
     disabled_users:
       description: List of users for which audit logging is disabled.
       type: array
@@ -2379,14 +2385,16 @@ Startup-config:
       type: object
       additionalProperties:
         x-additionalPropertiesName: bucketname
-        $ref: '#/CredentialsConfig'
+        allOf:
+          - $ref: '#/CredentialsConfig'
       readOnly: true
     database_credentials:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
       type: object
       additionalProperties:
         x-additionalPropertiesName: databasename
-        $ref: '#/CredentialsConfig'
+        allOf:
+          - $ref: '#/CredentialsConfig'
       readOnly: true
     heap_profile_collection_threshold:
       description: Threshold in bytes for automatic collection of heap profiles. If not specified, defaults to 85% of the lesser of cgroup or system memory.
@@ -3447,7 +3455,8 @@ ClusterCompatVersionState:
         currently registered in any tracked bucket registry.
       additionalProperties:
         x-additionalPropertiesName: nodeUID
-        $ref: '#/ClusterCompatVersion'
+        allOf:
+          - $ref: '#/ClusterCompatVersion'
     pre_ccv_aware_nodes:
       type: object
       description: |-
@@ -3463,7 +3472,8 @@ ClusterCompatVersionState:
         are currently observed.
       additionalProperties:
         x-additionalPropertiesName: nodeUUID
-        $ref: '#/ClusterCompatVersion'
+        allOf:
+          - $ref: '#/ClusterCompatVersion'
     frozen_cluster_compat_version:
       allOf:
         - $ref: '#/ClusterCompatVersion'
@@ -3505,7 +3515,8 @@ ClusterInfo:
       type: object
       additionalProperties:
         x-additionalPropertiesName: bucketname
-        $ref: '#/BucketInfo'
+        allOf:
+          - $ref: '#/BucketInfo'
 
 BucketInfo:
   type: object
@@ -3550,7 +3561,8 @@ MetadataMigrationStatus:
       description: Map of database metadata ID to per-database migration state.
       additionalProperties:
         x-additionalPropertiesName: metadataid
-        $ref: '#/DatabaseMigrationStatus'
+        allOf:
+          - $ref: '#/DatabaseMigrationStatus'
     bootstrap:
       $ref: '#/BootstrapMigrationStatus'
 
@@ -3620,7 +3632,8 @@ GatewayRegistry:
       description: Map of config groups, keyed by config group ID
       additionalProperties:
         x-additionalPropertiesName: configgroupid
-        $ref: '#/RegistryConfigGroup'
+        allOf:
+          - $ref: '#/RegistryConfigGroup'
     sg_version:
       type: string
       description: |-
@@ -3652,7 +3665,8 @@ GatewayRegistry:
       type: object
       additionalProperties:
         x-additionalPropertiesName: nodeUID
-        $ref: '#/RegistryNode'
+        allOf:
+          - $ref: '#/RegistryNode'
     frozen_cluster_compat_version:
       allOf:
         - $ref: '#/RegistryFrozenClusterCompatVersion'
@@ -3672,7 +3686,8 @@ GatewayRegistry:
       type: object
       additionalProperties:
         x-additionalPropertiesName: nodeUUID
-        $ref: '#/RegistryPreCCVAwareNode'
+        allOf:
+          - $ref: '#/RegistryPreCCVAwareNode'
 
 RegistryNode:
   type: object
@@ -3744,7 +3759,8 @@ RegistryConfigGroup:
       description: Map of databases in this config group.
       additionalProperties:
         x-additionalPropertiesName: dbname
-        $ref: '#/RegistryDatabase'
+        allOf:
+          - $ref: '#/RegistryDatabase'
 
 RegistryDatabase:
   type: object
@@ -3777,7 +3793,8 @@ RegistryScopes:
   description: Map of scope names to registry scope information.
   additionalProperties:
     x-additionalPropertiesName: scopename
-    $ref: '#/RegistryScope'
+    allOf:
+      - $ref: '#/RegistryScope'
 
 RegistryScope:
   type: object
