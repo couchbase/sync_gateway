@@ -12,8 +12,11 @@ package base
 
 import (
 	"expvar"
+	"fmt"
 	"math"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/testing/require"
 
@@ -198,4 +201,64 @@ func TestSgwFloatStatMarshalNonFinite(t *testing.T) {
 			require.Equal(t, 0.0, viaString)
 		})
 	}
+}
+
+// TestDbReplicatorStatsUnsynchronisedAccess reproduces unsynchronised access to
+// DbStats.DbReplicatorStats.  The map has one mutex, dbReplicatorStatsMutex, and only
+// DBReplicatorStats takes it - so creating a replication's stats races anything else that walks the
+// map.  Run with -race.
+//
+// The expvar case is the one reachable in a running Sync Gateway: any metrics or expvar read that
+// lands while a replication is initialising.  The teardown case needs two live DatabaseContexts
+// sharing a database name, since DbStats is keyed by name.
+func TestDbReplicatorStatsUnsynchronisedAccess(t *testing.T) {
+	const iterations = 200
+
+	t.Run("expvar read while creating", func(t *testing.T) {
+		const dbName = "statsRaceExpvarDb"
+		dbStats, err := SyncGatewayStats.NewDBStats(dbName, false, false, false, false, []string{}, []string{})
+		require.NoError(t, err)
+		defer SyncGatewayStats.ClearDBStats(dbName)
+
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			for i := range iterations {
+				_, err := dbStats.DBReplicatorStats(fmt.Sprintf("replication%d", i))
+				assert.NoError(t, err)
+			}
+		})
+		// SgwStats.String marshals DbReplicatorStats holding only dbStatsMapMutex.
+		wg.Go(func() {
+			for range iterations {
+				_ = SyncGatewayStats.String()
+			}
+		})
+		WaitWithTimeout(t, &wg, time.Minute)
+	})
+
+	t.Run("stats teardown while creating", func(t *testing.T) {
+		const dbName = "statsRaceTeardownDb"
+		// One Clear per iteration: it deletes the map entry, so repeated calls on the same entry return
+		// early and never reach the unregister loop.  Replication IDs are unique per iteration so stats
+		// created after a Clear has walked the map cannot collide with the next iteration's registration.
+		for outer := range iterations {
+			dbStats, err := SyncGatewayStats.NewDBStats(dbName, false, false, false, false, []string{}, []string{})
+			require.NoError(t, err)
+
+			var wg sync.WaitGroup
+			wg.Go(func() {
+				for i := range 20 {
+					_, err := dbStats.DBReplicatorStats(fmt.Sprintf("replication%d-%d", outer, i))
+					assert.NoError(t, err)
+				}
+			})
+			// ClearDBStats iterates DbReplicatorStats to unregister, holding only dbStatsMapMutex.
+			wg.Go(func() {
+				SyncGatewayStats.ClearDBStats(dbName)
+			})
+			WaitWithTimeout(t, &wg, time.Minute)
+
+			SyncGatewayStats.ClearDBStats(dbName)
+		}
+	})
 }
