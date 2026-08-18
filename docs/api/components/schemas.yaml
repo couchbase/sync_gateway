@@ -321,15 +321,24 @@ User:
       readOnly: true
   title: User
 CollectionAccessConfig:
-  description: A set of access grants by scope and collection for a specific collection.
+  description: An object keyed by scope name, containing access grants per collection. Only one scope is supported.
   type: object
+  maxProperties: 1
+  example:
+    scopename:
+      collectionname1:
+        admin_channels:
+          - channel1
+          - channel2
+      collectionname2:
+        admin_channels:
+          - channel3
   additionalProperties:
-    maxProperties: 1
-    description: An object keyed by scope, containing a set of collections.
+    description: An object keyed by collection name, containing the access grants for each collection in this scope.
     type: object
     x-additionalPropertiesName: scopename
     additionalProperties:
-      description: An object keyed by collection name, defines access collections in this scope.
+      description: A set of access grants for a specific collection.
       type: object
       x-additionalPropertiesName: collectionname
       properties:
