@@ -761,6 +761,18 @@ func (m *sgReplicateManager) saveInitializationError(config *ReplicationCfg, ini
 	}
 }
 
+// isStopping returns true once Stop has begun.  Stop closes clusterSubscribeTerminator before acquiring
+// activeReplicatorsLock, so a check made while holding that lock cannot be stale.  A check made without it
+// can be: see TestRefreshReplicationCfgRacesStopTeardown.
+func (m *sgReplicateManager) isStopping() bool {
+	select {
+	case <-m.clusterSubscribeTerminator:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *sgReplicateManager) Stop() {
 
 	// Close subscribe terminator first to stop subscribing/responding to cluster config changes prior to
@@ -792,6 +804,11 @@ func (m *sgReplicateManager) Stop() {
 // have been added to or removed from this node
 func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 
+	if m.isStopping() {
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - skipping replication cfg refresh before cluster read")
+		return nil
+	}
+
 	base.InfofCtx(m.loggingCtx, base.KeyCluster, "Replication definitions changed - refreshing...")
 	configReplications, err := m.GetReplications()
 	if err != nil {
@@ -800,6 +817,11 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 
 	m.activeReplicatorsLock.Lock()
 	defer m.activeReplicatorsLock.Unlock()
+
+	if m.isStopping() {
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - skipping replication cfg refresh under activeReplicatorsLock")
+		return nil
+	}
 
 	// check for active replications that should be stopped
 	for replicationID, activeReplicator := range m.activeReplicators {

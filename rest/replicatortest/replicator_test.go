@@ -1788,6 +1788,114 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	})
 }
 
+// TestReplicationHeartbeatRemovalPushWithConfigReload is a push-replication variant of
+// TestReplicationHeartbeatRemoval that races the heartbeat-driven node removal/rebalance against a
+// concurrent db config reload (PUT /{db}/_config), which closes and reopens the DatabaseContext.
+//
+// It checks that the cluster settles after that combination: both nodes re-register, each ends up with one
+// replication, documents written afterwards reach the remote, and both replications still report running.
+func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only (replication rebalance)")
+	}
+
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		t.Cleanup(reduceTestCheckpointInterval(50 * time.Millisecond))
+		t.Cleanup(db.SuspendSequenceBatching())
+
+		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+
+		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
+		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
+		_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
+		_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
+		activeRT.WaitForPendingChanges()
+
+		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault, "")
+		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForAssignedReplications(2)
+		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+
+		changesResults := remoteRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
+		changesResults.RequireDocIDs(t, []string{docABC1, docDEF1})
+
+		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
+		defer activeRT2.Close()
+
+		activeRT.WaitForAssignedReplications(1)
+		activeRT2.WaitForAssignedReplications(1)
+
+		activeRTUUID := activeRT.GetDatabase().UUID
+		activeRT2UUID := activeRT2.GetDatabase().UUID
+		activeRTMgr := activeRT.GetDatabase().SGReplicateMgr
+		activeRT2Mgr := activeRT2.GetDatabase().SGReplicateMgr
+		dbName := activeRT.GetDatabase().Name
+		currentConfig := activeRT.ServerContext().GetDatabaseConfig(dbName).DatabaseConfig
+
+		// Race a db config reload against the heartbeat-driven rebalance on activeRT - this is the
+		// combination seen in production (PUT /db/_config landing while node membership was flapping).
+		// Reload the current config as-is (just to force a reload, bypassing REST-layer config validation
+		// quirks unrelated to the race) rather than mutating it.
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			// This cannot distinguish "removed" from "silently skipped": the reload may have stopped
+			// activeRTMgr, and updateCluster returns nil once clusterUpdateTerminator is closed.
+			assert.NoError(t, activeRTMgr.RemoveNode(activeRT2UUID))
+		})
+		wg.Go(func() {
+			err := activeRT.ServerContext().ReloadDatabaseWithConfig(base.NewNonCancelCtx(), currentConfig)
+			t.Logf("ReloadDatabaseWithConfig error: %v", err)
+		})
+		base.WaitWithTimeout(t, &wg, time.Minute)
+
+		// Each DatabaseContext registers under a fresh UUID, so the reload already removed activeRTUUID -
+		// removing it again would hit RemoveNode's not-present cancel and do nothing.  Re-reading it also
+		// confirms the reload happened, without requiring it to return no error.
+		reloadedUUID := activeRT.GetDatabase().UUID
+		require.NotEqual(t, activeRTUUID, reloadedUUID, "config reload did not replace the DatabaseContext")
+
+		// Wait for the reloaded context to register, or the removal races registration and no-ops again.
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			cluster, err := activeRT2Mgr.GetSGRCluster()
+			assert.NoError(c, err)
+			_, ok := cluster.Nodes[reloadedUUID]
+			assert.True(c, ok)
+		}, time.Second*20, time.Millisecond*100, "reloaded node never registered in the cluster cfg")
+
+		assert.NoError(t, activeRT2Mgr.RemoveNode(reloadedUUID))
+
+		// Wait for nodes to add themselves back to the cluster (re-fetch the manager from the active
+		// database in case the config reload replaced the DatabaseContext / SGReplicateMgr).
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			clusterDef, err := activeRT.GetDatabase().SGReplicateMgr.GetSGRCluster()
+			assert.NoError(c, err)
+			assert.Len(c, clusterDef.Nodes, 2)
+		}, time.Second*20, time.Millisecond*100, "Nodes did not re-register after removal")
+
+		activeRT.WaitForAssignedReplications(1)
+		activeRT2.WaitForAssignedReplications(1)
+
+		docABC2 := rest.SafeDocumentName(t, t.Name()+"ABC2")
+		_ = activeRT.PutDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
+		docDEF2 := rest.SafeDocumentName(t, t.Name()+"DEF2")
+		_ = activeRT.PutDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
+
+		// Documents written after the reload must still reach the remote, so the replications are being
+		// serviced by whichever node now owns them.
+		changesResults = remoteRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since="+changesResults.Last_Seq.String(), "", true)
+		changesResults.RequireDocIDs(t, []string{docABC2, docDEF2})
+
+		// Status is shared across nodes, so a replication running on either of them must report running.
+		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	})
+}
+
 // Repros CBG-2416
 func TestDBReplicationStatsTeardown(t *testing.T) {
 	base.LongRunningTest(t)

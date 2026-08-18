@@ -14,8 +14,11 @@ import (
 	"fmt"
 	"maps"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -797,4 +800,102 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	cfg, exists = replications["repl"]
 	require.True(t, exists, "Replicator not found")
 	assert.Equal(t, "nodeGroupB", cfg.AssignedNode)
+}
+
+// pausingCfg parks the first read of cfgKeySGRCluster made once armed, holding a RefreshReplicationCfg
+// between its cluster read and its acquisition of activeReplicatorsLock - the window Stop() runs in.
+type pausingCfg struct {
+	cbgt.Cfg
+	armed    atomic.Bool
+	readDone chan struct{}
+	release  chan struct{}
+}
+
+func (c *pausingCfg) Get(key string, cas uint64) ([]byte, uint64, error) {
+	b, gotCas, err := c.Cfg.Get(key, cas)
+	if key == cfgKeySGRCluster && c.armed.CompareAndSwap(true, false) {
+		c.readDone <- struct{}{}
+		<-c.release
+	}
+	return b, gotCas, err
+}
+
+// TestRefreshReplicationCfgRacesStopTeardown asserts that a RefreshReplicationCfg already in flight when
+// Stop() runs cannot restart a replication:
+//
+//  1. The subscriber services a cfg event; RefreshReplicationCfg reads the cluster cfg, seeing the local
+//     node registered and the replication assigned to it with target state running.
+//  2. An admin config PUT closes the DatabaseContext, so Stop() runs, holding activeReplicatorsLock
+//     across its teardown loop.
+//  3. The refresh blocks on that lock, then proceeds on its now-stale snapshot and restarts the
+//     replication - which nobody owns, since Stop() has been and gone.
+//
+// Only step 1 landing inside step 2 is chance; the lock makes the rest deterministic, and pausingCfg parks
+// the refresh there so the test is too.  Nothing re-registers the node - Stop() does not RemoveNode until
+// after the teardown loop, so the step 1 read is simply still valid.
+//
+// This is the only coverage for the isStopping() check under activeReplicatorsLock.
+func TestRefreshReplicationCfgRacesStopTeardown(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	baseCfg, err := base.NewCfgSG(ctx, testDB.MetadataStore, "", false)
+	require.NoError(t, err)
+	wrapped := &pausingCfg{Cfg: baseCfg, readDone: make(chan struct{}, 1), release: make(chan struct{})}
+
+	const (
+		localNodeUUID = "localNode"
+		replicationID = "rep1"
+	)
+
+	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, wrapped)
+	require.NoError(t, err)
+	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+	require.NoError(t, mgr.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:                 replicationID,
+			Direction:          ActiveReplicatorTypePush,
+			Remote:             "http://localhost:4984/remotedb",
+			Continuous:         true,
+			CollectionsEnabled: base.TestsUseNamedCollections(),
+		},
+		AssignedNode: localNodeUUID,
+		TargetState:  ReplicationStateStopped,
+	}))
+
+	// Register the replicator, target state stopped so nothing reaches the remote.
+	require.NoError(t, mgr.RefreshReplicationCfg(ctx))
+	repl := mgr.GetActiveReplicator(replicationID)
+	require.NotNil(t, repl, "replicator was not registered")
+	state, _ := repl.State(ctx)
+	require.Equal(t, ReplicationStateStopped, state, "replicator should not be running yet")
+	defer func() { _ = repl.Stop() }()
+
+	// Target state running is what the racing refresh reads, and what makes it restart the replicator.
+	require.NoError(t, mgr.UpdateReplicationState(replicationID, ReplicationStateRunning))
+
+	// Step 1: the refresh reads the cfg, then parks.
+	wrapped.armed.Store(true)
+	var (
+		wg         sync.WaitGroup
+		refreshErr error
+	)
+	wg.Go(func() {
+		refreshErr = mgr.RefreshReplicationCfg(ctx)
+	})
+	base.RequireChanRecv(t, wrapped.readDone)
+
+	// Steps 2 and 3: Stop() runs to completion while the refresh holds its stale snapshot.
+	mgr.Stop()
+
+	// Step 4: the refresh proceeds.
+	close(wrapped.release)
+	base.WaitWithTimeout(t, &wg, time.Minute)
+	require.NoError(t, refreshErr)
+
+	stateAfter, _ := repl.State(ctx)
+	assert.Equal(t, ReplicationStateStopped, stateAfter,
+		"RefreshReplicationCfg restarted a replication on a stopped manager - nothing will ever stop it")
 }
