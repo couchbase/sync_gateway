@@ -1443,8 +1443,8 @@ func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
 //     skipped with a norev - the loud case the customer sees in their logs.
 //   - versionVector (4.0+) client: no rev tree history is sent, so the document replicates and there is
 //     no norev - but the document is still corrupt, and detection on load is the only thing that says so.
-func TestInvalidRevTreePullReportsStat(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) //base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
+func TestInvalidRevTreePullRepairsAndRedelivers(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
@@ -1470,28 +1470,50 @@ func TestInvalidRevTreePullReportsStat(t *testing.T) {
 		btcRunner.StartPull(client.id)
 		defer btcRunner.UnsubPullChanges(client.id)
 
+		// either way the document is repaired on load, exactly once, and 2-def is renumbered to 3-def
+		base.RequireWaitForStat(t, invalidRevTreeCount.Value, 1)
+		repaired, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		require.Equal(t, "3-def", repaired.GetRevTreeID())
+
+		// the repair leaves cv untouched, so a 4.0+ client identifies the document by the same version
+		// it always did - only a pre-4.0 client sees the rev ID change
+		repairedVersion := DocVersion{RevTreeID: "3-def"}
 		if client.UseHLV() {
-			// no rev tree history goes on the wire, so nothing rejects the revision and no norev is
-			// sent - detection on load is the only thing that reports this document
-			base.RequireWaitForStat(t, invalidRevTreeCount.Value, 1)
+			repairedVersion = DocVersion{CV: *repaired.HLV.ExtractCurrentVersionFromHLV()}
+		}
+		btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+
+		if client.UseHLV() {
+			// no rev tree history goes on the wire and cv did not change, so there is nothing to skip
 			assert.Equal(t, int64(0), noRevSendCount.Value())
 		} else {
+			// the changes message named 2-def, which the repair renumbered out of existence, so that
+			// revision is skipped - and the repair's new sequence delivers 3-def straight after
 			btcRunner.WaitForPullNoRevMessage(client.id, docID, DocVersion{RevTreeID: "2-def"})
 			base.RequireWaitForStat(t, noRevSendCount.Value, 1)
-			// once when the revision was loaded from the bucket, once when sendRevision failed to
-			// encode its history
-			assert.Equal(t, int64(2), invalidRevTreeCount.Value())
+
+			// the repaired revision carries the tree's real ancestors, not the fabricated ones a
+			// pre-repair send would have produced
+			msg, ok := btcRunner.GetPullRevMessage(client.id, docID, repairedVersion)
+			require.True(t, ok)
+			assert.Equal(t, "2-abc,1-abc", msg.Properties[db.RevMessageHistory])
 		}
 	})
 }
 
-// TestDebugInvalidRevTreeWireHistory is an investigation test for what a pre-4.0 client is actually told
-// about a quietly-corrupt document - one whose leaf generation is high enough relative to its branch
-// length that encodeRevisions succeeds and no norev is sent. _revisions can only express
-// start, start-1, start-2 ... so the ancestors on the wire are derived from the leaf generation rather
-// than read from the tree, and for this tree they are revisions that have never existed.
-func TestDebugInvalidRevTreeWireHistory(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
+// TestInvalidRevTreeQuietCaseRepairedBeforeSend covers the quiet case: a corrupt document whose leaf
+// generation is high enough relative to its branch length that encodeRevisions succeeds, so pre-repair
+// Sync Gateway would have sent it with no norev and no complaint, under ancestor rev IDs that have never
+// existed. The repair on load means those ancestors are never sent.
+//
+// Tree 1-abc -> 10-abc -> 10-def. Pre-repair the wire history was "9-abc,8-abc" - both fabricated, true
+// ancestors 10-abc and 1-abc. After repair the parent is truthful. The grandparent is still wrong, and
+// deliberately so: the tree has a legitimate generation gap between 1-abc and 10-abc, and _revisions can
+// only express start, start-1, start-2 ... That lossiness is long-standing behaviour for any gapped tree,
+// corrupt or not - see the control case in TestNonIncreasingGenerationsHistoryEncoding.
+func TestInvalidRevTreeQuietCaseRepairedBeforeSend(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // pre-4.0 clients are the ones sent rev tree history
@@ -1503,7 +1525,8 @@ func TestDebugInvalidRevTreeWireHistory(t *testing.T) {
 		docID := SafeDocumentName(t, t.Name())
 		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-		// gen 10 leaf on a 3 revision branch: 10 >= 3, so splitRevisionList accepts the encoding
+		// gen 10 leaf on a 3 revision branch: 10 >= 3, so splitRevisionList accepts the encoding and
+		// nothing would have flagged this document before the generation invariant was checked directly
 		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
 			map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}, "10-def")
 		rt.GetDatabase().FlushRevisionCacheForTest()
@@ -1514,75 +1537,26 @@ func TestDebugInvalidRevTreeWireHistory(t *testing.T) {
 		btcRunner.StartPull(client.id)
 		defer btcRunner.UnsubPullChanges(client.id)
 
-		corruptVersion := DocVersion{RevTreeID: "10-def"}
-		btcRunner.WaitForVersion(client.id, docID, corruptVersion)
+		repairedVersion := DocVersion{RevTreeID: "11-def"}
+		btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value, 1)
 
-		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, corruptVersion)
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, repairedVersion)
 		require.True(t, ok)
 		wireHistory := msg.Properties[db.RevMessageHistory]
-		t.Logf("rev %q sent with history %q", msg.Properties[db.RevMessageRev], wireHistory)
 
-		// what the tree actually says, for comparison
 		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
-		for _, wireRev := range strings.Split(wireHistory, ",") {
-			_, inTree := doc.History[wireRev]
-			t.Logf("ancestor %q on the wire: present in Sync Gateway's rev tree = %v", wireRev, inTree)
-		}
-		assert.Equal(t, "9-abc,8-abc", wireHistory, "the true ancestors are 10-abc and 1-abc")
-		assert.Equal(t, int64(0), rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value(), "this is the quiet case - no norev")
-	})
-}
+		require.Equal(t, "11-def", doc.GetRevTreeID())
 
-// TestDebugRepairedRevTreeDeliveryToClient is an investigation test for the post-repair transition. A
-// client pulls a quietly-corrupt document, the document is then repaired server side under a new
-// sequence, and the question is whether the repaired revision reaches the client on the same feed and
-// what the client ends up holding. This models the remediation route where a repair heals a document
-// without the user doing anything.
-//
-// TODO(CBG-5718): this only shows what the blip test client does. The client's conflict handling here is
-// CV-based last-write-wins, not Couchbase Lite's rev tree conflict resolution, so the end state a real
-// CBL client reaches after its current revision changes generation still needs confirming against a real
-// client - tracked separately.
-func TestDebugRepairedRevTreeDeliveryToClient(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg, base.KeyCRUD)
+		// the parent is now a revision that really exists, which is the link a client splices onto
+		wireAncestors := strings.Split(wireHistory, ",")
+		require.NotEmpty(t, wireAncestors)
+		_, parentInTree := doc.History[wireAncestors[0]]
+		assert.True(t, parentInTree, "parent %q on the wire is not in the rev tree", wireAncestors[0])
+		assert.Equal(t, "10-abc", wireAncestors[0])
 
-	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // pre-4.0 clients are the ones affected
-
-	btcRunner.Run(func(t *testing.T) {
-		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
-		defer rt.Close()
-
-		docID := SafeDocumentName(t, t.Name())
-		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
-
-		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
-			map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}, "10-def")
-		rt.GetDatabase().FlushRevisionCacheForTest()
-		rt.WaitForPendingChanges()
-
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
-		defer client.Close()
-		btcRunner.StartPull(client.id)
-		defer btcRunner.UnsubPullChanges(client.id)
-
-		// the client picks up the corrupt document with its fabricated ancestry
-		btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: "10-def"})
-
-		// repair under a new sequence, as repair-on-write would
-		newCurrentRev, renamed := db.RepairRevTreeForTest(t, ctx, collection, docID)
-		t.Logf("repaired: current rev %q, renamed %v", newCurrentRev, renamed)
-		rt.GetDatabase().FlushRevisionCacheForTest()
-		rt.WaitForPendingChanges()
-
-		// does the repaired revision reach the client on the same continuous pull?
-		btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: newCurrentRev})
-
-		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, DocVersion{RevTreeID: newCurrentRev})
-		require.True(t, ok)
-		t.Logf("repaired rev %q sent with history %q", msg.Properties[db.RevMessageRev], msg.Properties[db.RevMessageHistory])
-		clientBody, found := btcRunner.GetVersion(client.id, docID, DocVersion{RevTreeID: newCurrentRev})
-		t.Logf("client body for %s (found %v): %s", newCurrentRev, found, clientBody)
+		// ...whereas pre-repair not even the parent existed
+		assert.Equal(t, "10-abc,9-abc", wireHistory, "9-abc is the pre-existing generation gap lossiness, not the CBG-5713 corruption")
 	})
 }
