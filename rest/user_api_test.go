@@ -1354,7 +1354,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	testBucket := base.GetTestBucket(t)
 
-	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: testBucket,
 		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
@@ -1366,7 +1365,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	scopeName := rt.GetDbCollections()[0].ScopeName
 	collection1Name := rt.GetDbCollections()[0].Name
 	collection2Name := rt.GetDbCollections()[1].Name
-	scopesConfig[scopeName].Collections[collection1Name] = &CollectionConfig{}
 
 	// assertCollectionAccess PUTs a collection_access update for collection1 at principalURL and asserts the
 	// resulting admin_channels on GET.
@@ -1487,39 +1485,37 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	for _, property := range readOnlyProperties {
 		rdOnlyValue := `["ABC"]`
 		if property == "jwt_last_updated" {
-			rdOnlyValue = "22:55:44"
+			rdOnlyValue = `"2026-01-01T22:55:44Z"`
 		}
-		readOnlyCollectionPayload := fmt.Sprintf(`,"%s": {
-					"%s":%s
-				}`, collection1Name, property, rdOnlyValue)
+		collectionAccessPayload := fmt.Sprintf(`"collection_access": {
+				"%s": {
+					"%s": {
+						"admin_channels":["ABC"],
+						"%s":%s
+					}
+				}
+			}`, scopeName, collection1Name, property, rdOnlyValue)
 
 		userPayload := fmt.Sprintf(`{
 			"email":"bob@couchbase.com",
 			"password":"letmein",
 			"admin_channels":["foo", "bar"],
-			"collection_access": {
-				"%s": {
-					"%s": {
-						"admin_channels":["ABC"]
-					}
-					%s
-				}
-			}
-		}`, scopeName, collection1Name, readOnlyCollectionPayload)
+			%s
+		}`, collectionAccessPayload)
 
 		rolePayload := fmt.Sprintf(`{
-			"collection_access": {
-				"%s": {
-					"%s": {
-						"admin_channels":["ABC"]
-					}
-					%s
-				}
-			}
-		}`, scopeName, collection1Name, readOnlyCollectionPayload)
+			%s
+		}`, collectionAccessPayload)
 
-		RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/bob2", userPayload), 400)
-		RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_role/role12", rolePayload), 400)
+		expectedError := fmt.Sprintf("collection_access.%s is read-only", property)
+
+		userResponse := rt.SendAdminRequest("PUT", "/db/_user/bob2", userPayload)
+		RequireStatus(t, userResponse, http.StatusBadRequest)
+		require.Contains(t, userResponse.Body.String(), expectedError)
+
+		roleResponse := rt.SendAdminRequest("PUT", "/db/_role/role12", rolePayload)
+		RequireStatus(t, roleResponse, http.StatusBadRequest)
+		require.Contains(t, roleResponse.Body.String(), expectedError)
 	}
 }
 
