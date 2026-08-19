@@ -1390,11 +1390,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
 				cacheOptions.MaxNumChannels = *config.CacheConfig.ChannelCacheConfig.MaxNumber
 			}
-			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
-				cacheOptions.CompactHighWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
+			if hwm := config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; hwm != nil && *hwm > 0 {
+				cacheOptions.CompactHighWatermarkPercent = *hwm
 			}
-			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
-				cacheOptions.CompactLowWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
+			if lwm := config.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; lwm != nil && *lwm > 0 {
+				cacheOptions.CompactLowWatermarkPercent = *lwm
 			}
 		}
 
