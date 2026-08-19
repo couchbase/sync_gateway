@@ -824,7 +824,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			base.WarnfCtx(ctx, "db:%s unable to determine whether _default._default exists while resolving metadata fallback: %v — keeping dual-read mode", base.MD(dbName), defaultErr)
 		case !defaultCollectionPresent:
 			metaStore.DisableFallbackReads()
-			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — marking per-DB MetadataStore wrapper migration-complete (no legacy fallback collection to read from)", base.MD(dbName))
+			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — disabling fallback reads on the per-DB MetadataStore wrapper (no legacy fallback collection to read from)", base.MD(dbName))
 		case !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID):
 			if sc.isPerDBMigrationInProgress(ctx, spec.BucketName, config.MetadataID) {
 				base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy _sync:seq in _default._default but per-DB migration is in_progress on another node — keeping dual-read mode until migration completes", base.MD(dbName))
@@ -835,9 +835,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				// that just finished migrating.
 				primarySeqKey := base.NewMetadataKeys(config.MetadataID).SyncSeqKey()
 				if primaryHasSeq, _ := primaryMetadataStore.Exists(ctx, primarySeqKey); primaryHasSeq {
-					base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — marking per-DB MetadataStore wrapper migration-complete", base.MD(dbName))
+					base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — disabling fallback reads on the per-DB MetadataStore wrapper", base.MD(dbName))
 				} else {
-					base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — marking per-DB MetadataStore wrapper migration-complete (new-database fast path)", base.MD(dbName))
+					base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — disabling fallback reads on the per-DB MetadataStore wrapper (new-database fast path)", base.MD(dbName))
 				}
 			}
 		}
