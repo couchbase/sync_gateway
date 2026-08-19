@@ -544,7 +544,7 @@ func (cc *CouchbaseCluster) bootstrapFallbackDisabled(bucketName string) bool {
 // gocbcore always-retries KV_COLLECTION_OUTDATED, so without this latch every later bootstrap read
 // burns a full KV deadline rediscovering the same thing - registry reads happen on the cluster-compat
 // poller, on migration arming, and on node deregistration during shutdown. Mirrors
-// MetadataStore.DisableFallbackReadsIfCollectionOutdatedError, which covers the per-database metadata store.
+// MetadataStore.DisableFallbackIfUnrecoverable, which covers the per-database metadata store.
 //
 // Only latches on _default._default: before a bucket opts in, metadataCollections wires the fallback
 // the other way round, and a dropped _system._mobile is not what this guards.
