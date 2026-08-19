@@ -31,7 +31,7 @@ func GetTestReleaseSequenceWait() (time.Duration, error) {
 	}
 	wait, err := time.ParseDuration(w)
 	if err != nil {
-		return 0, fmt.Errorf("setting %s=%s is not a valid time: %w", waitEnvVar, w, err)
+		return 0, fmt.Errorf("setting %s=%s is not a valid duration (for example 1500ms or 1s): %w", waitEnvVar, w, err)
 	}
 	if wait < 0 {
 		return 0, fmt.Errorf("setting %s=%s must not be negative", waitEnvVar, w)
