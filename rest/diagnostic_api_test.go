@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
@@ -173,6 +174,8 @@ func (g docGrant) request(rt *RestTester) {
 }
 
 func TestGetAllChannelsByUser(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	tests := []struct {
 		name          string
 		adminChannels []string
@@ -655,6 +658,8 @@ func TestGetAllChannelsByUser(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
@@ -726,6 +731,8 @@ func TestGetAllChannelsByUserWithSingleNamedCollection(t *testing.T) {
 
 func TestGetAllChannelsByUserWithMultiCollections(t *testing.T) {
 	base.TestRequiresCollections(t)
+
+	defer db.SuspendSequenceBatching()()
 
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true}, 2)
 	defer rt.Close()
@@ -828,6 +835,8 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		t.Skip("Only works with default collection until CBG-4003 is fixed")
 	}
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -860,6 +869,8 @@ func TestGetAllChannelsByUserDeletedRole(t *testing.T) {
 }
 
 func TestGetAllChannelsByUserNonexistentAndDeletedUser(t *testing.T) {
+
+	defer db.SuspendSequenceBatching()()
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()

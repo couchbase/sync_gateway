@@ -125,6 +125,27 @@ Read via `os.Getenv` by test code, so they work with plain `go test`. Defined in
 | `SG_TEST_TLS_SKIP_VERIFY` | Skip TLS certificate verification | `true` |
 | `SG_TEST_USE_AUTH_HANDLER` | Use an auth handler | unset |
 
+### Fault injection
+
+These require the `cb_sg_devmode` build tag; without it they are compiled out and ignored.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `SG_TEST_CACHING_FEED_DELAY` | Delay applied to each DCP event in the caching feed, to simulate a slow feed | unset |
+| `SG_TEST_RELEASE_SEQUENCE_WAIT` | How long the sequence allocator waits after reserving before releasing unused sequences | `1500ms` |
+
+Lowering `SG_TEST_RELEASE_SEQUENCE_WAIT` makes the allocator release the unused tail of every
+sequence batch immediately, so sequence numbering develops the gaps that otherwise only appear on a
+loaded machine:
+
+```sh
+SG_TEST_RELEASE_SEQUENCE_WAIT=1ns go test -tags cb_sg_devmode ./rest/... ./db/...
+```
+
+Any test that asserts exact sequence numbers then fails deterministically rather than
+intermittently in CI. The fix for such a test is `defer db.SuspendSequenceBatching()()`, which pins
+the allocation batch size to 1 so there is never an unused sequence to release.
+
 ### Diagnostics
 
 | Variable | Purpose | Default |

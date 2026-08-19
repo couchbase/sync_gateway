@@ -71,6 +71,8 @@ func TestStarAccess(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
+	defer db.SuspendSequenceBatching()()
+
 	var allDocsResult allDocsResponse
 
 	// Create some docs:
