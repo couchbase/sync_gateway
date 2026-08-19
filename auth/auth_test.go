@@ -16,6 +16,7 @@ import (
 	"maps"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2826,17 +2827,19 @@ func TestInvalidateRoles(t *testing.T) {
 	err = auth.Save(user)
 	assert.NoError(t, err)
 
-	enableRetry := false
+	userDocID := auth.DocIDForUser("user")
+	var enableRetry atomic.Bool
 	leakyDataStore.SetUpdateCallback(func(key string) {
-		if enableRetry {
-			enableRetry = false
-			err = auth.InvalidateRoles("user", 5)
-			assert.NoError(t, err)
+		if key != userDocID {
+			return
+		}
+		if enableRetry.CompareAndSwap(true, false) {
+			assert.NoError(t, auth.InvalidateRoles("user", 5))
 		}
 	})
 
 	// Invalidate roles at invalSeq but cause cas retry by setting to 5
-	enableRetry = true
+	enableRetry.Store(true)
 	err = auth.InvalidateRoles("user", 10)
 	assert.NoError(t, err)
 
