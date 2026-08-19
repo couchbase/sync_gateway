@@ -676,7 +676,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if err != nil {
 		return err
 	}
-	if bodyBytes == nil || len(bodyBytes) == 0 {
+	if len(bodyBytes) == 0 {
 		return base.ErrEmptyDocument
 	}
 
