@@ -107,8 +107,15 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	}
 
 	// Repair a rev tree whose generations don't increase before the document is used - see
-	// repairInvalidRevTree. Does nothing for the overwhelming majority of documents.
-	c.repairInvalidRevTree(ctx, doc, rawBucketDoc.Cas)
+	// RepairInvalidRevTreeForGet. Does nothing for the overwhelming majority of documents.
+	//
+	// Only from a load that populated the whole of SyncData: the repair re-persists _sync from the
+	// in-memory document, so a partial unmarshal would write back a document missing its channels,
+	// access grants and recent_sequences. DocUnmarshalHistory is the one to watch - it populates
+	// History, so detection would fire, but zeroes the rest of SyncData.
+	if unmarshalLevel == DocUnmarshalAll || unmarshalLevel == DocUnmarshalSync {
+		doc = c.RepairInvalidRevTreeForGet(ctx, doc, rawBucketDoc.Cas)
+	}
 
 	return doc, rawBucketDoc, nil
 }
@@ -1371,6 +1378,14 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 			}
 		}
 
+		// Repair an invalid rev tree before it is used for conflict detection - see
+		// repairInvalidRevTreeForWrite. Must follow the import above, never precede it.
+		if doc != nil {
+			if err := db.repairInvalidRevTreeForWrite(ctx, newDoc.ID, doc); err != nil {
+				return nil, nil, false, nil, err
+			}
+		}
+
 		var conflictErr error
 
 		// OCC check of matchCV against CV on the doc
@@ -1506,6 +1521,14 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 		if doc != nil && !isSgWrite {
 			err := db.OnDemandImportForWrite(ctx, opts.NewDoc.ID, doc, opts.NewDoc.Deleted)
 			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		}
+
+		// Repair an invalid rev tree before it is used for conflict detection - see
+		// repairInvalidRevTreeForWrite. Must follow the import above, never precede it.
+		if doc != nil {
+			if err := db.repairInvalidRevTreeForWrite(ctx, opts.NewDoc.ID, doc); err != nil {
 				return nil, nil, false, nil, err
 			}
 		}
@@ -1771,6 +1794,14 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		if doc != nil && !isSgWrite {
 			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, newDoc.Deleted)
 			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		}
+
+		// Repair an invalid rev tree before it is used for conflict detection - see
+		// repairInvalidRevTreeForWrite. Must follow the import above, never precede it.
+		if doc != nil {
+			if err := db.repairInvalidRevTreeForWrite(ctx, newDoc.ID, doc); err != nil {
 				return nil, nil, false, nil, err
 			}
 		}
@@ -3349,20 +3380,58 @@ func (db *DatabaseCollectionWithUser) restampVersionCAS(ctx context.Context, key
 	}, opts)
 }
 
-// repairInvalidRevTree detects a document whose revision tree contains a revision that does not exceed
-// its parent's generation - the CBG-5713 corruption - and repairs it in place. It is called from
-// GetDocumentWithRaw, so it runs once per load from the bucket rather than once per revision cache hit.
+// RepairInvalidRevTreeForGet repairs a document whose revision tree contains a revision that does not
+// exceed its parent's generation - the CBG-5713 corruption - and returns the document to use, mirroring
+// OnDemandImportForGet. It is called from GetDocumentWithRaw, so it runs once per load from the bucket
+// rather than once per revision cache hit.
 //
-// The repaired document is returned rather than an error. Callers that asked for no particular revision
-// see the repaired current revision and carry on; a caller that asked for a revision the repair renamed
-// finds it absent from the tree and gets ErrMissing out of getRevision, which sendRevision already turns
-// into a replacement rev or a norev. The client then receives the repaired revision on the next changes
-// message, because the repair write allocates a new (higher) sequence.
+// A caller that asked for no particular revision sees the repaired current revision and carries on. A
+// caller that asked for a revision the repair renamed finds it absent from the tree and gets ErrMissing
+// out of getRevision, which sendRevision already turns into a replacement rev or a norev. The client then
+// receives the repaired revision on the next changes message, because the repair allocates a new (higher)
+// sequence.
 //
-// A failed repair is not fatal: the document is served unrepaired, which is the pre-repair behaviour -
-// it replicates, just with ancestors that are mis-stated on the wire. That matters because a norev is a
-// permanent skip for the sequence the client was already told about, so failing the load without a
-// successful repair to redeliver would be permanent non-delivery.
+// Unlike OnDemandImportForGet this never fails the load. A failed repair returns the document unrepaired,
+// which is the pre-repair behaviour - it still replicates, just with ancestors that are mis-stated on the
+// wire. That matters because a norev is a permanent skip for the sequence the client was already told
+// about, so failing the load without a successful repair to redeliver would be permanent non-delivery.
+func (c *DatabaseCollection) RepairInvalidRevTreeForGet(ctx context.Context, doc *Document, cas uint64) *Document {
+	c.repairInvalidRevTree(ctx, doc, cas)
+	return doc
+}
+
+// repairInvalidRevTreeForWrite repairs an invalid rev tree from inside a write callback, mirroring
+// OnDemandImportForWrite - including its staleness guard, because the repair is a CAS-guarded write and
+// the document in hand may already have been superseded (most obviously by an on-demand import earlier in
+// the same callback).
+//
+// Like the import, the caller's document is left to the retry rather than being made current here: the
+// repair bumps the CAS, so the write this callback is building is guaranteed to fail with a CAS mismatch
+// and the callback re-runs against a freshly read, repaired document. The conflict check therefore always
+// reaches its final answer against the repaired tree.
+func (db *DatabaseCollectionWithUser) repairInvalidRevTreeForWrite(ctx context.Context, docid string, doc *Document) error {
+	// Gate on the in-memory check before going to the bucket for the CAS - this runs on every write, and
+	// the overwhelming majority of documents are ruled out here without any I/O.
+	if !doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()) {
+		return nil
+	}
+	_, cas, err := db.getRevSeqNo(ctx, docid)
+	if err != nil {
+		// Unlike an import, a repair is best-effort: the write is valid without it, so don't fail the
+		// caller's write because we couldn't check whether a repair was safe.
+		base.DebugfCtx(ctx, base.KeyCRUD, "Unable to read CAS for doc %s to repair its invalid rev tree, skipping the repair: %v", base.UD(docid), err)
+		return nil
+	}
+	if cas != doc.Cas {
+		return base.ErrCasFailureShouldRetry
+	}
+	db.repairInvalidRevTree(ctx, doc, doc.Cas)
+	return nil
+}
+
+// repairInvalidRevTree is the shared detect/report/repair used by both the read and write paths. The
+// document is repaired in place; whether the caller uses the repaired document or discards it in favour
+// of a re-read is the caller's business - see the two wrappers above.
 func (c *DatabaseCollection) repairInvalidRevTree(ctx context.Context, doc *Document, cas uint64) {
 	if !doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()) {
 		return
@@ -3370,13 +3439,18 @@ func (c *DatabaseCollection) repairInvalidRevTree(ctx context.Context, doc *Docu
 	c.dbStats().Database().InvalidRevTreeCount.Add(1)
 
 	previousRev := doc.GetRevTreeID()
-	newCurrentRev, renamed, casOut, err := c.repairRevTreeGenerations(ctx, doc, cas)
-	if err != nil {
+	if err := c.repairRevTreeGenerations(ctx, doc, cas); err != nil {
+		if base.IsCasMismatch(err) {
+			// Someone else wrote the document while we were repairing it, so the tree we repaired is
+			// already stale. Benign and self-correcting - the next read or write of the document tries
+			// again against the current tree - so this is not a warning.
+			base.DebugfCtx(ctx, base.KeyCRUD, "Repair of invalid rev tree for doc %s rev %s lost a CAS race with a concurrent write - a later read or write will repair it.", base.UD(doc.ID), base.MD(previousRev))
+			return
+		}
 		base.WarnfCtx(ctx, "Invalid rev tree for doc %s rev %s - a revision does not exceed the generation of its parent, and the repair failed, so its revision history cannot be replicated accurately to pre-4.0 clients: %v", base.UD(doc.ID), base.MD(previousRev), err)
 		return
 	}
-	doc.Cas = casOut
-	base.DebugfCtx(ctx, base.KeyCRUD, "Repaired invalid rev tree for doc %s - a revision did not exceed the generation of its parent. Current revision %s is now %s, %d revisions renumbered: %v", base.UD(doc.ID), base.MD(previousRev), base.MD(newCurrentRev), len(renamed), base.MD(renamed))
+	base.DebugfCtx(ctx, base.KeyCRUD, "Repaired invalid rev tree for doc %s - a revision did not exceed the generation of its parent. Current revision %s is now %s.", base.UD(doc.ID), base.MD(previousRev), base.MD(doc.GetRevTreeID()))
 }
 
 // repairRevTreeGenerations renumbers the document's rev tree so every revision exceeds its parent's
@@ -3390,15 +3464,15 @@ func (c *DatabaseCollection) repairInvalidRevTree(ctx context.Context, doc *Docu
 // macro-expanded to the new CAS, and _mou is stamped so the import feed does not re-import our own
 // write. The HLV is updated as an ExistingVersion, which leaves cv and pv exactly as they are and only
 // re-stamps cvCAS - the document's version has not changed, only the rev IDs its history is expressed in.
-func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *Document, cas uint64) (newCurrentRev string, renamed map[string]string, casOut uint64, err error) {
+func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *Document, cas uint64) error {
 	previousRev := doc.GetRevTreeID()
-	newCurrentRev, renamed, err = doc.History.repairGenerations(ctx, previousRev)
+	newCurrentRev, renamed, err := doc.History.repairGenerations(previousRev)
 	if err != nil {
-		return "", nil, 0, err
+		return err
 	}
 	if len(renamed) == 0 {
 		// hasNonIncreasingGenerations said otherwise, so the two disagree - fail rather than write nothing
-		return "", nil, 0, base.RedactErrorf("rev tree for doc %s was reported invalid but the repair renamed no revisions", base.UD(doc.ID))
+		return base.RedactErrorf("rev tree for doc %s was reported invalid but the repair renamed no revisions", base.UD(doc.ID))
 	}
 	doc.SetRevTreeID(newCurrentRev)
 
@@ -3406,16 +3480,16 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	// consults the user for an ExistingVersion update
 	collectionWithUser := &DatabaseCollectionWithUser{DatabaseCollection: c}
 	if _, err = collectionWithUser.assignSequence(ctx, 0, doc, nil); err != nil {
-		return "", nil, 0, err
+		return err
 	}
 	if doc, err = collectionWithUser.updateHLV(ctx, doc, ExistingVersion, false, 0); err != nil {
-		return "", nil, 0, err
+		return err
 	}
 	doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 
 	_, syncXattr, vvXattr, mouXattr, _, err := doc.MarshalWithXattrs()
 	if err != nil {
-		return "", nil, 0, err
+		return err
 	}
 
 	opts := &sgbucket.MutateInOptions{
@@ -3428,14 +3502,28 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	}
 	// CAS-guarded: a concurrent write means the tree we repaired is already stale, so fail rather than
 	// clobber it. The caller serves the document unrepaired and a later read will try again.
-	casOut, err = c.dataStore.UpdateXattrs(ctx, realDocID(doc.ID), 0, cas, map[string][]byte{
+	casOut, err := c.dataStore.UpdateXattrs(ctx, realDocID(doc.ID), 0, cas, map[string][]byte{
 		base.SyncXattrName: syncXattr,
 		base.VvXattrName:   vvXattr,
 		base.MouXattrName:  mouXattr,
 	}, opts)
 	if err != nil {
 		// the sequence we allocated will never be written - let skipped sequence handling reclaim it
-		return "", nil, 0, err
+		return err
+	}
+
+	// Bring the in-memory document into line with the values the server macro-expanded, as
+	// updateAndReturnDoc does after its own write. postWriteUpdateHLV is deliberately not reused: it also
+	// writes a delta-sync revision body backup, which is wrong for a metadata-only repair whose body and
+	// cv are both unchanged. Without this the document is handed back - and cached, revCacheLoaderForDocument
+	// stores doc.HLV by pointer - carrying macro placeholders instead of the committed CAS.
+	doc.Cas = casOut
+	doc.SyncData.Cas = base.CasToString(casOut)
+	if doc.HLV != nil && doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
+		doc.HLV.CurrentVersionCAS = casOut
+	}
+	if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
+		doc.MetadataOnlyUpdate.HexCAS = base.CasToString(casOut)
 	}
 
 	// The read that got us here failed to load, so it cached nothing. Only a prior write can have left a
@@ -3449,7 +3537,7 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 		}
 	}
 
-	return newCurrentRev, renamed, casOut, nil
+	return nil
 }
 
 // getAttachmentIDsForLeafRevisions returns a map of attachment docids with values of attachment names.

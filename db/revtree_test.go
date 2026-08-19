@@ -1543,7 +1543,7 @@ func TestRepairGenerations(t *testing.T) {
 			expectedRevTree: map[string]string{"1-abc": "", "9-abc": "1-abc", "10-def": "9-abc"},
 		},
 		{
-			// open question 3: a conflict branch hanging off the corruption must come with it?????
+			// a conflict branch hanging off the corruption must come with it
 			name: "branched tree, conflict branch re-pointed",
 			revs: map[string]string{
 				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "2-ghi": "2-def",
@@ -1589,7 +1589,7 @@ func TestRepairGenerations(t *testing.T) {
 		},
 		{
 			// renumbering 2-def to 3-def would collide with the existing sibling
-			// work out how to handle this!!!!!!!!
+			//
 			name:              "renumbering that would collide is refused",
 			revs:              map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "3-def": "2-abc"},
 			currentRev:        "2-def",
@@ -1599,7 +1599,7 @@ func TestRepairGenerations(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tree := buildRevTree(t, tc.revs)
-			newCurrentRev, renamed, err := tree.repairGenerations(ctx, tc.currentRev)
+			newCurrentRev, renamed, err := tree.repairGenerations(tc.currentRev)
 
 			if tc.expectedErrSubstr != "" {
 				require.ErrorContains(t, err, tc.expectedErrSubstr)
@@ -1627,7 +1627,6 @@ func TestRepairGenerations(t *testing.T) {
 // TestRepairGenerationsPreservesRevInfo asserts the repair only rewrites IDs and parent pointers - a
 // renamed revision keeps its body, tombstone flag, channels and attachment marker.
 func TestRepairGenerationsPreservesRevInfo(t *testing.T) {
-	ctx := base.TestCtx(t)
 	tree := RevTree{
 		"1-abc": &RevInfo{ID: "1-abc"},
 		"2-abc": &RevInfo{ID: "2-abc", Parent: "1-abc"},
@@ -1635,7 +1634,7 @@ func TestRepairGenerationsPreservesRevInfo(t *testing.T) {
 		"2-ghi": &RevInfo{ID: "2-ghi", Parent: "2-def", Deleted: true, Channels: base.SetOf("ABC"), BodyKey: "_sync:rb:key"},
 	}
 
-	newCurrentRev, renamed, err := tree.repairGenerations(ctx, "2-ghi")
+	newCurrentRev, renamed, err := tree.repairGenerations("2-ghi")
 	require.NoError(t, err)
 	require.Equal(t, "4-ghi", newCurrentRev)
 	require.Equal(t, map[string]string{"2-def": "3-def", "2-ghi": "4-ghi"}, renamed)
@@ -1662,7 +1661,7 @@ func TestRepairGenerationsSurvivesMarshalling(t *testing.T) {
 		"3-xxx": "2-def",
 	})
 
-	newCurrentRev, _, err := tree.repairGenerations(ctx, "2-ghi")
+	newCurrentRev, _, err := tree.repairGenerations("2-ghi")
 	require.NoError(t, err)
 
 	marshalled, err := tree.MarshalJSON()
@@ -1684,7 +1683,6 @@ func TestRepairGenerationsSurvivesMarshalling(t *testing.T) {
 // TestRepairGenerationsRefusesCycle asserts the repair bails on a tree containing a cycle rather than
 // renumbering a tree it cannot fully walk.
 func TestRepairGenerationsRefusesCycle(t *testing.T) {
-	ctx := base.TestCtx(t)
 	tree := RevTree{
 		"1-abc": &RevInfo{ID: "1-abc"},
 		"2-abc": &RevInfo{ID: "2-abc", Parent: "1-abc"},
@@ -1692,27 +1690,26 @@ func TestRepairGenerationsRefusesCycle(t *testing.T) {
 		"3-abc": &RevInfo{ID: "3-abc", Parent: "4-abc"},
 		"4-abc": &RevInfo{ID: "4-abc", Parent: "3-abc"},
 	}
-	_, _, err := tree.repairGenerations(ctx, "2-abc")
+	_, _, err := tree.repairGenerations("2-abc")
 	require.ErrorContains(t, err, "unreachable from any root")
 }
 
 // TestRepairGenerationsDanglingParent asserts a revision whose parent is absent is treated as a root,
 // matching how MarshalJSON serializes it, rather than being reported as a cycle.
 func TestRepairGenerationsDanglingParent(t *testing.T) {
-	ctx := base.TestCtx(t)
 	tree := RevTree{
 		"5-abc": &RevInfo{ID: "5-abc", Parent: "4-missing"},
 		"5-def": &RevInfo{ID: "5-def", Parent: "5-abc"},
 	}
-	newCurrentRev, renamed, err := tree.repairGenerations(ctx, "5-def")
+	newCurrentRev, renamed, err := tree.repairGenerations("5-def")
 	require.NoError(t, err)
 	assert.Equal(t, "6-def", newCurrentRev)
 	assert.Equal(t, map[string]string{"5-def": "6-def"}, renamed)
 	assert.Equal(t, "4-missing", tree["5-abc"].Parent, "dangling parent should be left as-is")
 }
 
-// BenchmarkRevTreeGenerations sizes the CBG-5713 generation checks against winningRevision, which
-// documentUpdateFunc already runs unconditionally on every write (db/crud.go:2736).
+// BenchmarkRevTreeGenerations sizes the generation checks against winningRevision, which
+// documentUpdateFunc already runs unconditionally on every write.
 // hasNonIncreasingGenerations is intended to run in the same place, so that ratio is the number that
 // matters - see the rationale on hasNonIncreasingGenerations for why the O(1) rule-out was dropped in
 // favour of always walking the branch.
@@ -1750,7 +1747,7 @@ func BenchmarkRevTreeGenerations(b *testing.B) {
 				tree, leaf := corruptRevTree(n, dupes)
 				b.StartTimer()
 
-				if _, _, err := tree.repairGenerations(ctx, leaf); err != nil {
+				if _, _, err := tree.repairGenerations(leaf); err != nil {
 					b.Fatalf("repairGenerations: %v", err)
 				}
 			}
@@ -1763,11 +1760,6 @@ func BenchmarkRevTreeGenerations(b *testing.B) {
 // getHistory -> encodeRevisions -> toHistory. It pins down which trees produce the loud failure (an
 // error, which sendRevision turns into a noRev) and which encode "successfully" but hand the client
 // ancestors under rev IDs that don't exist in the tree.
-//
-// The last case is the control: a clean tree with generation gaps mis-states its ancestors too, because
-// _revisions can only express start, start-1, start-2 ... That lossiness is long-standing accepted
-// behaviour, which is why the quiet case is a lower-severity
-// problem than the noRev, even though both warrant repair.
 func TestNonIncreasingGenerationsHistoryEncoding(t *testing.T) {
 	ctx := base.TestCtx(t)
 	testCases := []struct {
@@ -1925,8 +1917,7 @@ func TestInvalidRevTreeRepairedOnLoad(t *testing.T) {
 	assert.IsIncreasing(t, repaired.RecentSequences)
 
 	// _mou is stamped so the import feed does not re-import the repair - it is the _mou.cas == doc.cas
-	// match that marks the write as ours. GetDocument does not fetch _mou (syncGlobalSyncAndUserXattrKeys
-	// omits it), so read it straight from the datastore.
+	// match that marks the write as ours.
 	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, "corruptDoc", []string{base.MouXattrName})
 	require.NoError(t, err)
 	rawXattr, ok := xattrs[base.MouXattrName]
@@ -1944,106 +1935,175 @@ func TestInvalidRevTreeRepairedOnLoad(t *testing.T) {
 	assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "a repaired document should not be reported again")
 }
 
-// TestDebugFabricatedHistoryGraftsIntoRevTree is an investigation test for what happens when a client
-// pushes back the fabricated ancestry it was given for a quietly-corrupt document. A corrupt-but-
-// encodable tree is sent under ancestor rev IDs that do not exist (see
-// TestNonIncreasingGenerationsHistoryEncoding), and nothing on the write path checks that an incoming
-// rev tree history refers to revisions Sync Gateway actually has.
+// TestInvalidRevTreeGetReturnsRepairedDoc covers the read path's contract in detail: the load that
+// triggers the repair returns the *repaired* document, not the corrupt one it read from the bucket, and
+// the document it returns is internally consistent with what was committed.
 //
-// The first two subtests are the before and after of a repair, and they behave differently: whether the
-// fabricated revisions are grafted depends entirely on whether the push still has a branch point Sync
-// Gateway recognises. The third is a control. Note the fabricated revisions are strictly decreasing in
-// generation, so the addRevision generation check never rejects them.
+// The renamed-revision case is the reason the read path can return a document rather than an error - a
+// caller that asked for a revision the repair renumbered gets a 404 out of the existing code, which is
+// what sendRevision turns into a replacement rev or a norev.
+func TestInvalidRevTreeGetReturnsRepairedDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	// 2-def sits at the same generation as its parent, so the repair renumbers it to 3-def
+	const docID = "getPathwayDoc"
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	dbCtx.FlushRevisionCacheForTest()
+
+	// the load that triggers the repair must hand back the repaired document
+	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, "3-def", repaired.GetRevTreeID(), "GetDocument returned the pre-repair current revision")
+
+	// assert the whole tree, not just the current revision - a renumbering that dropped or re-parented
+	// anything else would still leave the current revision looking right
+	assert.Equal(t, map[string]string{"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc"}, revTreeParents(repaired.History))
+	assert.Equal(t, []string{"3-def"}, repaired.History.GetLeaves())
+	require.NoError(t, repaired.History.verifyIncreasingGenerations())
+
+	// the returned document must describe the state that was actually committed, not the macro
+	// placeholders the write was built from - revCacheLoaderForDocument stores doc.HLV by pointer, so a
+	// placeholder here is cached and served
+	require.NotNil(t, repaired.HLV)
+	assert.NotEqual(t, uint64(expandMacroCASValueUint64), repaired.HLV.CurrentVersionCAS, "cvCAS was left as the macro placeholder")
+	assert.Equal(t, repaired.Cas, repaired.HLV.CurrentVersionCAS)
+	assert.Equal(t, base.CasToString(repaired.Cas), repaired.SyncData.Cas)
+
+	// ...and re-reading it from the bucket must produce the same thing, which is what proves the
+	// in-memory fixups above match what was persisted rather than merely looking plausible
+	dbCtx.FlushRevisionCacheForTest()
+	reread, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, repaired.GetRevTreeID(), reread.GetRevTreeID())
+	assert.Equal(t, revTreeParents(repaired.History), revTreeParents(reread.History))
+	assert.Equal(t, repaired.Cas, reread.Cas, "the repair should not have been applied a second time")
+	assert.Equal(t, repaired.HLV.CurrentVersionCAS, reread.HLV.CurrentVersionCAS)
+	assert.Equal(t, repaired.SyncData.Cas, reread.SyncData.Cas)
+
+	t.Run("requested revision renamed by the repair returns 404", func(t *testing.T) {
+		dbCtx.FlushRevisionCacheForTest()
+		_, err := collection.GetRev(ctx, docID, "2-def", true, nil)
+		require.Error(t, err, "2-def no longer exists in the repaired tree")
+		assert.True(t, base.IsDocNotFoundError(err), "expected a 404-shaped error so sendRevision sends a replacement rev or a norev, got %v", err)
+	})
+
+	t.Run("repaired revision is retrievable with the repaired history", func(t *testing.T) {
+		dbCtx.FlushRevisionCacheForTest()
+		rev, err := collection.GetRev(ctx, docID, "3-def", true, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "3-def", rev.RevID)
+		// history is the encoded {start, ids} form - start must be the repaired generation, and the
+		// digests the repaired branch, so a pre-4.0 client is told a history that exists
+		require.NotNil(t, rev.History)
+		revisions, ok := rev.History[RevisionsStart].(int)
+		require.True(t, ok, "history start missing: %v", rev.History)
+		assert.Equal(t, 3, revisions)
+		assert.Equal(t, []string{"def", "abc", "abc"}, rev.History[RevisionsIds].([]string))
+	})
+
+	t.Run("current revision requested by empty revID returns the repaired revision", func(t *testing.T) {
+		dbCtx.FlushRevisionCacheForTest()
+		rev, err := collection.GetRev(ctx, docID, "", true, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "3-def", rev.RevID)
+	})
+}
+
+// TestInvalidRevTreePushWithFabricatedHistory covers a client pushing back the fabricated ancestry it
+// was given for a quietly-corrupt document. A corrupt-but-encodable tree is sent under ancestor rev IDs
+// that do not exist (see TestNonIncreasingGenerationsHistoryEncoding), and nothing on the write path
+// checks that an incoming rev tree history refers to revisions Sync Gateway actually has. Note the
+// fabricated revisions are strictly decreasing in generation, so the addRevision generation check would
+// not reject them either.
 //
-// The first subtest is still reachable in production despite repair-on-load: the write path unmarshals
-// inside its own WriteUpdateWithXattrs callback rather than going through GetDocumentWithRaw, and BLIP
-// handleRev only loads the document when the incoming revision has attachments. So a push can still
-// land on a corrupt tree that nothing has read.
-//
-// TODO(CBG-5718): this logs rather than asserts because the outcome it records is the one we intend to
-// change. Once a push can trigger a repair the way a read now does (repair-on-write), the first subtest
-// should assert that the push repairs the tree instead of extending it - today it grafts 11-ghi onto
-// 10-def and leaves the document just as corrupt as it found it, which is the behaviour to fix. Convert
-// all three subtests to assertions at that point; the second and third are already stable.
-func TestDebugFabricatedHistoryGraftsIntoRevTree(t *testing.T) {
+// This is reachable despite repair-on-load, which is why repair-on-write exists: the write path
+// unmarshals inside its own WriteUpdateWithXattrs callback rather than going through GetDocumentWithRaw.
+func TestInvalidRevTreePushWithFabricatedHistory(t *testing.T) {
 	// the corrupt tree: a gen 10 leaf on a 3 revision branch, so len(branch) <= gen and this encodes
 	// rather than erroring - the client is told the ancestors are 9-abc and 8-abc
 	corruptTree := map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}
 	// what the client replays on push: its own new revision, then the history it was given
 	fabricatedHistory := []string{"11-ghi", "10-def", "9-abc", "8-abc"}
+	// the same tree after the repair renumbers 10-def, which is what all three subtests end at
+	repairedTree := map[string]string{"1-abc": "", "10-abc": "1-abc", "11-def": "10-abc"}
 
-	t.Run("push while the corrupt tree is still in place", func(t *testing.T) {
+	t.Run("push against a corrupt tree repairs it and is then rejected", func(t *testing.T) {
 		dbCtx, ctx := setupTestDB(t)
 		defer dbCtx.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
 
 		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true}, corruptTree, "10-def")
-		logRevTree(t, ctx, collection, "doc1", "before push")
+		currentRev, tree := revTreeState(t, ctx, collection, "doc1")
+		require.Equal(t, "10-def", currentRev)
+		require.Equal(t, corruptTree, tree, "the push must start against the corrupt tree, unread by anything else")
+		require.Equal(t, int64(0), invalidRevTreeCount.Value())
 
-		// 10-def is still a branch point Sync Gateway recognises, so only 11-ghi is new
-		_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
-		t.Logf("PutExistingRevWithBody(%v) -> rev %q, err %v", fabricatedHistory, newRev, err)
+		// the push repairs the document, which renames the very revision its history branches from, so
+		// the push itself is then rejected
+		_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+		assertHTTPError(t, err, 409)
 
-		logRevTree(t, ctx, collection, "doc1", "after push")
+		// the repair is its own write, so it survives the 409 the push got. That is what stops this being
+		// a livelock: the document is fixed even though the write that triggered the fix failed.
+		assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "the push should have triggered a repair")
+		currentRev, tree = revTreeState(t, ctx, collection, "doc1")
+		assert.Equal(t, "11-def", currentRev)
+		assert.Equal(t, repairedTree, tree)
+
+		// the rejected push left nothing behind - neither its own revision nor the ancestors it invented
+		for _, absent := range []string{"11-ghi", "9-abc", "8-abc"} {
+			_, present := tree[absent]
+			assert.False(t, present, "the rejected push left %q in the tree", absent)
+		}
 	})
 
-	t.Run("push after the tree has been repaired", func(t *testing.T) {
+	t.Run("push after the tree has already been repaired is rejected and changes nothing", func(t *testing.T) {
 		dbCtx, ctx := setupTestDB(t)
 		defer dbCtx.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
 
 		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true}, corruptTree, "10-def")
 
-		// the repair renames 10-def, so the branch point the client's push refers to no longer exists.
-		// Triggered the way production triggers it - any load through GetDocumentWithRaw repairs.
+		// repair the way production repairs on read - any load through GetDocumentWithRaw
 		repaired, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 		require.NoError(t, err)
 		require.Equal(t, "11-def", repaired.GetRevTreeID())
 		require.NoError(t, repaired.History.verifyIncreasingGenerations())
-		logRevTree(t, ctx, collection, "doc1", "after repair")
+		require.Equal(t, int64(1), invalidRevTreeCount.Value())
 
-		_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
-		t.Logf("PutExistingRevWithBody(%v) -> rev %q, err %v", fabricatedHistory, newRev, err)
+		_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+		assertHTTPError(t, err, 409)
 
-		logRevTree(t, ctx, collection, "doc1", "after push")
+		// no second repair - the tree is already valid, so the write path detects nothing
+		assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "an already-repaired document should not be repaired again")
+		currentRev, tree := revTreeState(t, ctx, collection, "doc1")
+		assert.Equal(t, "11-def", currentRev)
+		assert.Equal(t, repairedTree, tree)
 	})
 
 	t.Run("control - push with no known ancestor and no repair involved", func(t *testing.T) {
 		dbCtx, ctx := setupTestDB(t)
 		defer dbCtx.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
 
-		// a clean document, pushed a history sharing no revision with it - isolates whether the
-		// previous subtest's outcome is about the repair or just about having no branch point
-		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true},
-			map[string]string{"1-abc": "", "2-abc": "1-abc"}, "2-abc")
-		logRevTree(t, ctx, collection, "doc1", "before push")
+		// a clean document, pushed a history sharing no revision with it - isolates the 409 above as the
+		// ordinary no-common-ancestor case rather than anything the repair introduces
+		cleanTree := map[string]string{"1-abc": "", "2-abc": "1-abc"}
+		PlantRevTreeForTest(t, ctx, collection, "doc1", Body{"planted": true}, cleanTree, "2-abc")
 
-		_, newRev, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
-		t.Logf("PutExistingRevWithBody(%v) -> rev %q, err %v", fabricatedHistory, newRev, err)
+		_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+		assertHTTPError(t, err, 409)
 
-		logRevTree(t, ctx, collection, "doc1", "after push")
+		assert.Equal(t, int64(0), invalidRevTreeCount.Value(), "a clean document should never be reported")
+		currentRev, tree := revTreeState(t, ctx, collection, "doc1")
+		assert.Equal(t, "2-abc", currentRev)
+		assert.Equal(t, cleanTree, tree)
 	})
-}
-
-// logRevTree logs a document's rev tree, current revision, leaves and generation validity, for
-// investigation tests where the question is what shape the tree ended up in.
-//
-// It reads through GetDocSyncData rather than GetDocument deliberately: GetDocument goes through
-// GetDocumentWithRaw, which repairs an invalid rev tree on load, so observing a corrupt document that
-// way would repair the very thing being observed. GetDocSyncData unmarshals the xattr directly.
-func logRevTree(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, when string) {
-	t.Helper()
-	syncData, err := collection.GetDocSyncData(ctx, docID)
-	require.NoError(t, err)
-
-	rendered := make([]string, 0, len(syncData.History))
-	for revID, info := range syncData.History {
-		rendered = append(rendered, fmt.Sprintf("%s->%q", revID, info.Parent))
-	}
-	sort.Strings(rendered)
-
-	t.Logf("%s: current %q, leaves %v, tree %v, non-increasing generations on winning branch: %v",
-		when, syncData.GetRevTreeID(), syncData.History.GetLeaves(), rendered,
-		syncData.History.hasNonIncreasingGenerations(ctx, syncData.GetRevTreeID()))
 }
