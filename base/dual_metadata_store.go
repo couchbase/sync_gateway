@@ -58,7 +58,7 @@ func (ms *MetadataStore) Fallback() DataStore {
 // Called whenever the fallback collection stops being worth reading, which happens for three
 // distinct reasons: metadata migration finished (on this node or a peer), _default._default was
 // absent at database open (rest.(*ServerContext)._getOrAddDatabaseFromConfig), or it was observed to
-// have been dropped while the database is online (disableFallbackIfUnrecoverable). In all three cases
+// have been dropped while the database is online (DisableFallbackIfUnrecoverable). In all three cases
 // anything still resident on the fallback is unreachable.
 func (ms *MetadataStore) DisableFallbackReads() {
 	ms.fallbackReadsDisabled.Store(true)
@@ -106,26 +106,19 @@ func (ms *MetadataStore) readFromFallback(ctx context.Context, err error) bool {
 	return false
 }
 
-// disableFallbackIfUnrecoverable permanently disables fallback reads when err proves the fallback
-// collection is gone for good. There is no path back: Couchbase Server rejects any user-created
-// collection whose name starts with "_", so a dropped _default._default cannot be recreated for the
-// life of the bucket. Only a fatal, unrecoverable error trips this - a transient failure must not,
-// or legitimate unmigrated metadata would be skipped for the rest of the process lifetime.
-//
-// Why it matters: gocbcore always-retries KV_COLLECTION_OUTDATED, so one read against a dropped
-// collection burns the whole KV deadline (30s). Left unhandled, every later primary miss pays that
-// again, and sequential readers stall indefinitely - DCP checkpoint loading is one read per vbucket
-// on cbgt's janitor goroutine, which is also the goroutine that services ClosePIndex, so
-// DatabaseContext.Close deadlocks behind it.
-func (ms *MetadataStore) disableFallbackIfUnrecoverable(ctx context.Context, err error) {
-	if err == nil || !IsCollectionOutdatedError(err) {
-		return
+// DisableFallbackIfUnrecoverable permanently disables fallback reads when fallbackErr proves
+// the fallback collection is gone for good, and reports whether it was an unrecoverable error.
+func (ms *MetadataStore) DisableFallbackIfUnrecoverable(ctx context.Context, fallbackErr error) bool {
+	// Collection Outdated on the fallback (`_default._default`) is non-recoverable - since nobody can create underscore-prefixed collections to restore it.
+	if IsCollectionOutdatedError(fallbackErr) {
+		if !ms.fallbackReadsDisabled.Swap(true) {
+			WarnfCtx(ctx, "Metadata fallback collection %s.%s is unavailable (%v) - disabling fallback reads. Any metadata not already migrated to %s.%s is unrecoverable.",
+				MD(ms.fallback.ScopeName()), MD(ms.fallback.CollectionName()), fallbackErr,
+				MD(ms.primary.ScopeName()), MD(ms.primary.CollectionName()))
+		}
+		return true
 	}
-	if !ms.fallbackReadsDisabled.Swap(true) {
-		WarnfCtx(ctx, "Metadata fallback collection %s.%s is unavailable (%v) - disabling fallback reads. Any metadata not already migrated to %s.%s is unrecoverable.",
-			MD(ms.fallback.ScopeName()), MD(ms.fallback.CollectionName()), err,
-			MD(ms.primary.ScopeName()), MD(ms.primary.CollectionName()))
-	}
+	return false
 }
 
 // ---- DataStoreName ----
@@ -162,7 +155,7 @@ func (ms *MetadataStore) Get(ctx context.Context, k string, rv any) (cas uint64,
 	cas, err = ms.primary.Get(ctx, k, rv)
 	if ms.readFromFallback(ctx, err) {
 		_, err = ms.fallback.Get(ctx, k, rv)
-		ms.disableFallbackIfUnrecoverable(ctx, err)
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 	}
 	return cas, err
 }
@@ -171,7 +164,7 @@ func (ms *MetadataStore) GetRaw(ctx context.Context, k string) (v []byte, cas ui
 	v, cas, err = ms.primary.GetRaw(ctx, k)
 	if ms.readFromFallback(ctx, err) {
 		v, _, err = ms.fallback.GetRaw(ctx, k)
-		ms.disableFallbackIfUnrecoverable(ctx, err)
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 	}
 	return v, cas, err
 }
@@ -180,7 +173,7 @@ func (ms *MetadataStore) GetExpiry(ctx context.Context, k string) (expiry uint32
 	expiry, err = ms.primary.GetExpiry(ctx, k)
 	if ms.readFromFallback(ctx, err) {
 		expiry, err = ms.fallback.GetExpiry(ctx, k)
-		ms.disableFallbackIfUnrecoverable(ctx, err)
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 	}
 	return expiry, err
 }
@@ -194,7 +187,7 @@ func (ms *MetadataStore) Exists(ctx context.Context, k string) (exists bool, err
 		return exists, err
 	}
 	exists, err = ms.fallback.Exists(ctx, k)
-	ms.disableFallbackIfUnrecoverable(ctx, err)
+	ms.DisableFallbackIfUnrecoverable(ctx, err)
 	return exists, err
 }
 
@@ -266,7 +259,7 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 			return false, updateErr, casOut
 		}
 		if err != nil {
-			ms.disableFallbackIfUnrecoverable(ctx, err)
+			ms.DisableFallbackIfUnrecoverable(ctx, err)
 			return false, err, 0
 		}
 
@@ -293,7 +286,7 @@ func (ms *MetadataStore) Update(ctx context.Context, k string, exp uint32, callb
 				//        but it could be two concurrent Deletes that we should at least have one more attempt for
 				return true, nil, 0
 			}
-			ms.disableFallbackIfUnrecoverable(ctx, removeErr)
+			ms.DisableFallbackIfUnrecoverable(ctx, removeErr)
 			return false, removeErr, 0
 		}
 
@@ -350,7 +343,7 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 		}
 		// any other errors bubble up
 		if !IsCounterNonNumeric(fbIncrErr) {
-			ms.disableFallbackIfUnrecoverable(ctx, fbIncrErr)
+			ms.DisableFallbackIfUnrecoverable(ctx, fbIncrErr)
 			return 0, fbIncrErr
 		}
 
@@ -367,7 +360,7 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 			continue
 		}
 		if fbErr != nil {
-			ms.disableFallbackIfUnrecoverable(ctx, fbErr)
+			ms.DisableFallbackIfUnrecoverable(ctx, fbErr)
 			return 0, fbErr
 		}
 		var pill SyncSeqMigrationPill
@@ -389,7 +382,7 @@ func (ms *MetadataStore) Incr(ctx context.Context, k string, amt, def uint64, ex
 		// 3. delete fallback pill
 		if delErr := ms.fallback.Delete(ctx, k); delErr != nil && !IsDocNotFoundError(delErr) {
 			WarnfCtx(ctx, "MetadataStore.Incr: failed to clear migrated fallback counter %s: %v", UD(k), delErr)
-			ms.disableFallbackIfUnrecoverable(ctx, delErr)
+			ms.DisableFallbackIfUnrecoverable(ctx, delErr)
 		}
 
 		// 4. retry the caller's Incr on the now migrated primary
@@ -404,7 +397,7 @@ func (ms *MetadataStore) GetXattrs(ctx context.Context, k string, xattrKeys []st
 	xattrs, cas, err = ms.primary.GetXattrs(ctx, k, xattrKeys)
 	if ms.readFromFallback(ctx, err) {
 		xattrs, _, err = ms.fallback.GetXattrs(ctx, k, xattrKeys)
-		ms.disableFallbackIfUnrecoverable(ctx, err)
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 	}
 	return xattrs, cas, err
 }
@@ -413,7 +406,7 @@ func (ms *MetadataStore) GetWithXattrs(ctx context.Context, k string, xattrKeys 
 	v, xv, cas, err = ms.primary.GetWithXattrs(ctx, k, xattrKeys)
 	if ms.readFromFallback(ctx, err) {
 		v, xv, _, err = ms.fallback.GetWithXattrs(ctx, k, xattrKeys)
-		ms.disableFallbackIfUnrecoverable(ctx, err)
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 	}
 	return v, xv, cas, err
 }
@@ -489,7 +482,7 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 		// A doc with no/partial xattrs is still a fallback hit — surface what we have to the
 		// callback rather than treat it as not-found.
 		if err != nil && !IsXattrNotFoundError(err) && !errors.Is(err, ErrXattrPartialFound) {
-			ms.disableFallbackIfUnrecoverable(ctx, err)
+			ms.DisableFallbackIfUnrecoverable(ctx, err)
 			return false, err, 0
 		}
 
@@ -520,7 +513,7 @@ func (ms *MetadataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xa
 				//        but it could be two concurrent Tombstones that we should at least have one more attempt for
 				return true, nil, 0
 			}
-			ms.disableFallbackIfUnrecoverable(ctx, tombstoneErr)
+			ms.DisableFallbackIfUnrecoverable(ctx, tombstoneErr)
 			return false, tombstoneErr, 0
 		}
 
@@ -556,7 +549,7 @@ func (ms *MetadataStore) GetSubDocRaw(ctx context.Context, k string, subdocKey s
 	value, casOut, err = ms.primary.GetSubDocRaw(ctx, k, subdocKey)
 	if ms.readFromFallback(ctx, err) {
 		value, _, err = ms.fallback.GetSubDocRaw(ctx, k, subdocKey)
-		ms.disableFallbackIfUnrecoverable(ctx, err)
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 	}
 	return value, casOut, err
 }
