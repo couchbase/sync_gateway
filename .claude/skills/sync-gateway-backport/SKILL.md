@@ -174,16 +174,16 @@ One bullet per deviation, naming the file and the reason. "Clean" means the cher
 - the title, as a `(test-only)` suffix — this is what makes a low-risk PR obvious in a list view
 - the body, on its own line between the cherry-pick line (and any deviation bullets) and the footer
 
-Include it only when the branch changes **no production Go file**. Check the real diff, do not judge from the commit subject:
+Include it only when **every file the branch touches is recognised test code**. Check the real diff, do not judge from the commit subject. List all changed paths — not just `*.go` — and strip the ones the table below classifies as test code:
 
 ```bash
-git diff --name-only origin/release/x.y.z...HEAD -- '*.go' \
+git diff --name-only origin/release/x.y.z...HEAD \
   | grep -vE '_test\.go$|_testing\.go$|(^|/)testing/|(^|/)(utilities_testing|main_test_|util_test_|api_test_helpers|jwt_test_utils|replicator_test_helper)'
 ```
 
-Empty output → add the line. Any output → leave it off, even for a one-line production change. Clean and unclean backports both get it; the two markers are independent — an unclean cherry-pick of a test-only change is still test-only.
+Empty output → add the line. Any surviving path → leave it off, even for a one-line production change. Do not narrow the command to `-- '*.go'`: a diff of only docs, scripts, CI config, or a Dockerfile would then print nothing and look test-only when it is not. Clean and unclean backports both get it; the two markers are independent — an unclean cherry-pick of a test-only change is still test-only.
 
-**Test-support code counts as test code**, even though it is not named `*_test.go` and does technically compile into the shipped binary. What matters to a reviewer is blast radius: nothing on a real request path calls it, so a change to it cannot affect a deployment. In this repo that means:
+**Test-support code counts as test code**, even though it is not named `*_test.go` and does technically compile into the shipped binary. What matters to a reviewer is blast radius: no request path calls it, so a change is very unlikely to reach a deployment. It is not a guarantee — such a file still compiles in, so an `init()` side effect or a new non-test caller would make it production code again. In this repo that means:
 
 | Pattern | Examples |
 |---|---|
@@ -198,11 +198,7 @@ One name-based exception, which the grep above deliberately does not filter: **`
 
 When in doubt about a file the grep does not classify, ask whether any non-test caller reaches it. If yes, it is production.
 
-**A `go.mod` / `go.sum` change always disqualifies `test-only`**, even when every Go file in the diff is test-support code. A dependency bump changes what ships whatever the Go diff looks like, and it is the part of a backport most worth a careful review — the marker would invite the opposite. The grep above is scoped to `*.go` and will not catch this, so check separately:
-
-```bash
-git diff --name-only origin/release/x.y.z...HEAD -- go.mod go.sum
-```
+**A `go.mod` / `go.sum` change always disqualifies `test-only`**, even when every Go file in the diff is test-support code. A dependency bump changes what ships whatever the Go diff looks like, and it is the part of a backport most worth a careful review — the marker would invite the opposite. The command above already prints these paths; never add them to the filter to get an empty result.
 
 The footer goes on every backport PR, including stacked ones, and survives every later `gh pr edit --body-file` — rewriting a body drops it unless you carry it over. Write bodies from a file so the footer is part of the text you author, not something appended by hand:
 
