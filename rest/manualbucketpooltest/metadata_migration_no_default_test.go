@@ -463,10 +463,15 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 //
 // CBS only: rosmar does not support dropping the default collection.
 func TestDropDefaultCollectionDuringMigration(t *testing.T) {
+
 	base.TestRequiresCollections(t)
 	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("CBS only: rosmar cannot drop _default._default")
 	}
+	// even passing this test takes a while to run since it's adversarial in nature
+	// dropping `_default` underneath an unmigrated database will result in at least one KV retry loop
+	// in metadatastore fallback, and on the boostrap to attempt database deregister
+	base.LongRunningTest(t)
 
 	ctx := base.TestCtx(t)
 	tb := base.GTestBucketPool.CreateTestBucket(t)
