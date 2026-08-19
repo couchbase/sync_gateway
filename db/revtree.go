@@ -353,7 +353,7 @@ func (tree RevTree) verifyIncreasingGenerations() error {
 // violation by the repair itself; renumbering breadth-first from the roots resolves that in one pass.
 // It also means every child of a renamed revision is re-pointed - a dangling parent would silently
 // detach the branch, since MarshalJSON writes a parent index of -1 for one (SG issue #2847).
-func (tree RevTree) repairGenerations(ctx context.Context, currentRev string) (newCurrentRev string, renamed map[string]string, err error) {
+func (tree RevTree) repairGenerations(currentRev string) (newCurrentRev string, renamed map[string]string, err error) {
 	// Index children so the tree can be walked root -> leaf.
 	children := make(map[string][]string, len(tree))
 	roots := make([]string, 0, 1)
@@ -443,7 +443,6 @@ func (tree RevTree) repairGenerations(ctx context.Context, currentRev string) (n
 	for revid, info := range repaired {
 		tree[revid] = info
 	}
-	base.DebugfCtx(ctx, base.KeyCRUD, "repaired rev tree generations, current rev %q -> %q, %d revisions renumbered", currentRev, newCurrentRev, len(renamed))
 	return newCurrentRev, renamed, nil
 }
 

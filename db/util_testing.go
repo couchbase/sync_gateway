@@ -1284,3 +1284,25 @@ func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.Metada
 func usingShardedResync(testing.TB) bool {
 	return base.IsEnterpriseEdition() && !sgtest.UnitTestUrlIsWalrus()
 }
+
+// revTreeState reads a document's current revision and rev tree as revID -> parent.
+//
+// It reads through GetDocSyncData rather than GetDocument deliberately: GetDocument goes through
+// GetDocumentWithRaw, which repairs an invalid rev tree on load, so observing a corrupt document that
+// way would repair the very thing being observed. GetDocSyncData unmarshals the xattr directly.
+func revTreeState(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (currentRev string, tree map[string]string) {
+	t.Helper()
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+	return syncData.GetRevTreeID(), revTreeParents(syncData.History)
+}
+
+// revTreeParents renders a rev tree as revID -> parent, for asserting a tree's whole shape in one
+// comparison rather than probing individual revisions.
+func revTreeParents(tree RevTree) map[string]string {
+	parents := make(map[string]string, len(tree))
+	for revID, info := range tree {
+		parents[revID] = info.Parent
+	}
+	return parents
+}
