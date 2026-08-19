@@ -917,7 +917,7 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 }
 
 // TestBulkGetEfficientBodyCompression makes sure that the multipart writer of the bulk get response is efficiently compressing the document bodies.
-// This is to catch a case where document bodies are marshalled with random property ordering, and reducing compression ratio between multiple doc body instances.
+// This is to catch a regression where document bodies were marshalled with random property ordering, greatly reducing compression ratio between multiple doc body instances sharing the same subset of data.
 func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -927,9 +927,10 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 		numDocs = 300
 		doc     = docSample20k
 
-		// Since all docs are identical, a very high rate of compression is expected
+		// Ratios are x:1, not percentages. Since all docs are identical a very high ratio is
+		// expected, but the bounds are loose because deflate output varies by Go toolchain.
 		minCompressionRatio = 85
-		maxCompressionRatio = 100
+		maxCompressionRatio = 150
 		minUncompressedSize = len(doc) * numDocs // ~6000 KB - actually larger due to _bulk_get overhead
 
 		docKeyPrefix = "doc-"
@@ -958,7 +959,8 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	resp := rt.SendAdminRequestWithHeaders(http.MethodPost, "/{{.keyspace}}/_bulk_get", bulkGetBody, bulkGetHeaders)
 	RequireStatus(t, resp, http.StatusOK)
 
-	uncompressedBodyLen := resp.Body.Len()
+	uncompressedBody := resp.BodyBytes()
+	uncompressedBodyLen := len(uncompressedBody)
 	assert.Truef(t, uncompressedBodyLen >= minUncompressedSize, "Expected uncompressed response to be larger than minUncompressedSize (%d bytes) - got %d bytes", minUncompressedSize, uncompressedBodyLen)
 
 	// try the request again, but accept gzip encoding
@@ -967,10 +969,20 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	compressedBodyLen := resp.Body.Len()
+
+	// both requests must have returned the same docs for the ratio below to mean anything
+	gzReader, err := gzip.NewReader(resp.Body)
+	require.NoError(t, err)
+	inflatedBody, err := io.ReadAll(gzReader)
+	require.NoError(t, err)
+	docMarker := []byte(`"` + db.BodyId + `":"` + docKeyPrefix)
+	assert.Equal(t, numDocs, bytes.Count(uncompressedBody, docMarker), "unexpected number of docs in uncompressed response")
+	assert.Equal(t, numDocs, bytes.Count(inflatedBody, docMarker), "unexpected number of docs in gzipped response")
+
 	compressionRatio := float64(uncompressedBodyLen) / float64(compressedBodyLen)
-	assert.Truef(t, compressedBodyLen <= minUncompressedSize, "Expected compressed responsebody to be smaller than minUncompressedSize (%d bytes) - got %d bytes", minUncompressedSize, compressedBodyLen)
-	assert.Truef(t, compressionRatio >= minCompressionRatio, "Expected compression ratio to be greater than minCompressionRatio (%d) - got %.2f", minCompressionRatio, compressionRatio)
-	assert.Truef(t, compressionRatio <= maxCompressionRatio, "Expected compression ratio to be less than maxCompressionRatio (%d) - got %.2f", maxCompressionRatio, compressionRatio)
+	assert.LessOrEqualf(t, compressedBodyLen, minUncompressedSize, "Expected compressed response body to be smaller than minUncompressedSize (%d bytes) - got %d bytes", minUncompressedSize, compressedBodyLen)
+	assert.GreaterOrEqualf(t, compressionRatio, float64(minCompressionRatio), "Expected compression ratio of at least %d:1 - got %.2f:1 (%d bytes compressed to %d)", minCompressionRatio, compressionRatio, uncompressedBodyLen, compressedBodyLen)
+	assert.LessOrEqualf(t, compressionRatio, float64(maxCompressionRatio), "Expected compression ratio of at most %d:1 - got %.2f:1 (%d bytes compressed to %d). Deflate output varies by Go toolchain - if this fails after an upgrade, raise the bound rather than treating it as a regression", maxCompressionRatio, compressionRatio, uncompressedBodyLen, compressedBodyLen)
 }
 
 func TestBulkGetEmptyDocs(t *testing.T) {
