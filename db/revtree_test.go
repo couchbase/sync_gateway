@@ -1527,6 +1527,26 @@ func TestRepairGenerations(t *testing.T) {
 			expectedRevTree: map[string]string{"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc", "4-ghi": "3-def"},
 		},
 		{
+			// One duplicate mid-chain, with a well-formed run below it: 1,2,2,3,4,5 -> 1,2,3,4,5,6.
+			// Every revision after the duplicate is individually fine against its original parent, so
+			// nothing below 2-def is corrupt on its own - but renaming 2-def to 3-def raises the
+			// generation its child must exceed, which cascades to the leaf.
+			name: "duplicate mid-tree cascades to every descendant",
+			revs: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "3-ghi": "2-def",
+				"4-jkl": "3-ghi", "5-mno": "4-jkl",
+			},
+			currentRev:      "5-mno",
+			expectedCurrent: "6-mno",
+			expectedRenames: map[string]string{
+				"2-def": "3-def", "3-ghi": "4-ghi", "4-jkl": "5-jkl", "5-mno": "6-mno",
+			},
+			expectedRevTree: map[string]string{
+				"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc", "4-ghi": "3-def",
+				"5-jkl": "4-ghi", "6-mno": "5-jkl",
+			},
+		},
+		{
 			name:            "parent generation higher than child",
 			revs:            map[string]string{"1-abc": "", "11-abc": "1-abc", "10-abc": "11-abc"},
 			currentRev:      "10-abc",
@@ -1585,6 +1605,51 @@ func TestRepairGenerations(t *testing.T) {
 			expectedRevTree: map[string]string{
 				"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc",
 				"2-xxx": "1-abc", "3-yyy": "2-xxx",
+			},
+		},
+		{
+			// A wide tree with two independent corruption points, exercising the breadth-first walk
+			// across forks rather than down a single chain:
+			//
+			//	1-aaa
+			//	├── 2-bbb                     clean
+			//	│   ├── 2-ccc  -> 3-ccc       dup at a fork: both children follow
+			//	│   │   ├── 3-ddd -> 4-ddd
+			//	│   │   └── 3-eee -> 4-eee
+			//	│   └── 3-fff                 clean, sibling of the corruption, must not move
+			//	│       └── 3-ggg -> 4-ggg    second, independent violation
+			//	└── 2-hhh                     clean
+			//	    ├── 3-iii                 clean
+			//	    └── 2-jjj -> 3-jjj
+			//	        └── 4-kkk             child of a renamed rev that still clears it: stays put
+			//
+			// 4-kkk is the case worth naming: its parent moves 2-jjj -> 3-jjj, but 4 already exceeds 3,
+			// so it must be re-pointed without being renumbered. Renaming it anyway would be a silent
+			// generation inflation on every write that follows.
+			name: "highly branched tree, multiple independent violations",
+			revs: map[string]string{
+				"1-aaa": "",
+				"2-bbb": "1-aaa", "2-hhh": "1-aaa",
+				"2-ccc": "2-bbb", "3-fff": "2-bbb",
+				"3-ddd": "2-ccc", "3-eee": "2-ccc",
+				"3-ggg": "3-fff",
+				"3-iii": "2-hhh", "2-jjj": "2-hhh",
+				"4-kkk": "2-jjj",
+			},
+			currentRev:      "3-eee",
+			expectedCurrent: "4-eee",
+			expectedRenames: map[string]string{
+				"2-ccc": "3-ccc", "2-jjj": "3-jjj",
+				"3-ddd": "4-ddd", "3-eee": "4-eee", "3-ggg": "4-ggg",
+			},
+			expectedRevTree: map[string]string{
+				"1-aaa": "",
+				"2-bbb": "1-aaa", "2-hhh": "1-aaa",
+				"3-ccc": "2-bbb", "3-fff": "2-bbb",
+				"4-ddd": "3-ccc", "4-eee": "3-ccc",
+				"4-ggg": "3-fff",
+				"3-iii": "2-hhh", "3-jjj": "2-hhh",
+				"4-kkk": "3-jjj",
 			},
 		},
 		{
@@ -1954,6 +2019,13 @@ func TestInvalidRevTreeGetReturnsRepairedDoc(t *testing.T) {
 		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
 	dbCtx.FlushRevisionCacheForTest()
 
+	// Capture the version before the repair, via a read that does not repair. The repair is a
+	// metadata-only update and must leave the document's version alone, so these are what the assertions
+	// below compare against.
+	_, preRepairHLV, err := collection.GetDocSyncDataNoImport(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.NotNil(t, preRepairHLV)
+
 	// the load that triggers the repair must hand back the repaired document
 	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
 	require.NoError(t, err)
@@ -1968,10 +2040,17 @@ func TestInvalidRevTreeGetReturnsRepairedDoc(t *testing.T) {
 	// the returned document must describe the state that was actually committed, not the macro
 	// placeholders the write was built from - revCacheLoaderForDocument stores doc.HLV by pointer, so a
 	// placeholder here is cached and served
+	assert.Equal(t, base.CasToString(repaired.Cas), repaired.SyncData.Cas)
+	require.NotNil(t, repaired.MetadataOnlyUpdate)
+	assert.Equal(t, repaired.Cas, repaired.MetadataOnlyUpdate.CAS(),
+		"_mou.cas must equal the committed CAS - it is what stops updateHLV treating the repair as an import")
+
+	// Only the rev IDs changed, so the version must be untouched: cv identical, and cvCAS deliberately
+	// left behind the new CAS rather than re-stamped to it.
 	require.NotNil(t, repaired.HLV)
 	assert.NotEqual(t, uint64(expandMacroCASValueUint64), repaired.HLV.CurrentVersionCAS, "cvCAS was left as the macro placeholder")
-	assert.Equal(t, repaired.Cas, repaired.HLV.CurrentVersionCAS)
-	assert.Equal(t, base.CasToString(repaired.Cas), repaired.SyncData.Cas)
+	assert.Equal(t, preRepairHLV.GetCurrentVersionString(), repaired.HLV.GetCurrentVersionString(), "the repair changed the document's version")
+	assert.Equal(t, preRepairHLV.CurrentVersionCAS, repaired.HLV.CurrentVersionCAS, "the repair re-stamped cvCAS")
 
 	// ...and re-reading it from the bucket must produce the same thing, which is what proves the
 	// in-memory fixups above match what was persisted rather than merely looking plausible

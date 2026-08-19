@@ -3460,10 +3460,7 @@ func (c *DatabaseCollection) repairInvalidRevTree(ctx context.Context, doc *Docu
 // A new sequence is allocated so the repaired revision is delivered on the changes feed - without one,
 // clients that were already told about the pre-repair revision would never hear about the repair.
 //
-// The write mirrors restampVersionCAS: _sync and _vv are re-persisted with _sync.cas and _vv.cvCas
-// macro-expanded to the new CAS, and _mou is stamped so the import feed does not re-import our own
-// write. The HLV is updated as an ExistingVersion, which leaves cv and pv exactly as they are and only
-// re-stamps cvCAS - the document's version has not changed, only the rev IDs its history is expressed in.
+// _sync is re-persisted with _sync.cas macro-expanded to the new CAS, and _mou is stamped.
 func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *Document, cas uint64) error {
 	previousRev := doc.GetRevTreeID()
 	newCurrentRev, renamed, err := doc.History.repairGenerations(previousRev)
@@ -3476,18 +3473,13 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	}
 	doc.SetRevTreeID(newCurrentRev)
 
-	// collectionWithUser is only needed to reach updateHLV and the sequence allocator, neither of which
-	// consults the user for an ExistingVersion update
 	collectionWithUser := &DatabaseCollectionWithUser{DatabaseCollection: c}
 	if _, err = collectionWithUser.assignSequence(ctx, 0, doc, nil); err != nil {
 		return err
 	}
-	if doc, err = collectionWithUser.updateHLV(ctx, doc, ExistingVersion, false, 0); err != nil {
-		return err
-	}
 	doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 
-	_, syncXattr, vvXattr, mouXattr, _, err := doc.MarshalWithXattrs()
+	_, syncXattr, _, mouXattr, _, err := doc.MarshalWithXattrs()
 	if err != nil {
 		return err
 	}
@@ -3495,7 +3487,6 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	opts := &sgbucket.MutateInOptions{
 		MacroExpansion: []sgbucket.MacroExpansionSpec{
 			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
-			sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas),
 			sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
 		},
 		PreserveExpiry: true,
@@ -3504,32 +3495,24 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	// clobber it. The caller serves the document unrepaired and a later read will try again.
 	casOut, err := c.dataStore.UpdateXattrs(ctx, realDocID(doc.ID), 0, cas, map[string][]byte{
 		base.SyncXattrName: syncXattr,
-		base.VvXattrName:   vvXattr,
 		base.MouXattrName:  mouXattr,
 	}, opts)
 	if err != nil {
-		// the sequence we allocated will never be written - let skipped sequence handling reclaim it
 		return err
 	}
 
 	// Bring the in-memory document into line with the values the server macro-expanded, as
-	// updateAndReturnDoc does after its own write. postWriteUpdateHLV is deliberately not reused: it also
-	// writes a delta-sync revision body backup, which is wrong for a metadata-only repair whose body and
-	// cv are both unchanged. Without this the document is handed back - and cached, revCacheLoaderForDocument
-	// stores doc.HLV by pointer - carrying macro placeholders instead of the committed CAS.
+	// updateAndReturnDoc does after its own write. Without this the document is handed back - and cached -
+	// carrying macro placeholders instead of the committed CAS.
 	doc.Cas = casOut
 	doc.SyncData.Cas = base.CasToString(casOut)
-	if doc.HLV != nil && doc.HLV.CurrentVersionCAS == expandMacroCASValueUint64 {
-		doc.HLV.CurrentVersionCAS = casOut
-	}
 	if doc.MetadataOnlyUpdate != nil && doc.MetadataOnlyUpdate.HexCAS == expandMacroCASValueString {
 		doc.MetadataOnlyUpdate.HexCAS = base.CasToString(casOut)
 	}
 
 	// The read that got us here failed to load, so it cached nothing. Only a prior write can have left a
 	// pre-repair entry behind, and only when the database is configured to insert on write - so that is
-	// the only case that needs invalidating. Both keys are stale: previousRev no longer exists in the
-	// tree at all, and the CV-keyed entry carries the pre-repair revID and history.
+	// the only case that needs invalidating.
 	if c.dbCtx.Options.RevisionCacheOptions != nil && c.dbCtx.Options.RevisionCacheOptions.InsertOnWrite {
 		c.revisionCache.Remove(ctx, doc.ID, previousRev)
 		if doc.HLV != nil {
