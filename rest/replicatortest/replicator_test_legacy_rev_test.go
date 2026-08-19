@@ -556,7 +556,9 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 
 		// assert no conflicts on either side
 		assert.Equal(t, int64(0), replicationStats.PushConflictCount.Value())
-		assert.Equal(t, int64(2), replicationStats.PulledCount.Value())
+		// PulledCount is incremented in a defer after the pulled rev is written, so WaitForVersion above (which
+		// polls the doc via a separate GET) can observe the write slightly before the stat updates. Poll here too.
+		base.RequireWaitForStat(t, replicationStats.PulledCount.Value, 2)
 	})
 }
 

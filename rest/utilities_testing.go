@@ -971,16 +971,6 @@ func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, m
 	return nil
 }
 
-func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRetry bool, err error, value any), maxNumAttempts, timeToSleepMs int) error {
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(rt.Context(), "Wait for condition options", conditionFunc, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
 	request := Request(method, rt.mustTemplateResource(resource), body)
 
@@ -1299,8 +1289,7 @@ func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Req.Method, response.Req.URL, response.Body)
 }
 
-func AssertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
-	t.Helper()
+func AssertStatus(t assert.TestingT, response *TestResponse, expectedStatus int) bool {
 	return assert.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
@@ -2820,6 +2809,31 @@ func AssertRevTreeAfterHLVConflictResolution(t *testing.T, doc *db.Document, exp
 	}
 	// should only have one active leaf
 	require.Equal(t, 1, activeLeafCount)
+}
+
+// RequireStrictlyIncreasingRevTreeGenerations walks every branch of a document's rev tree from leaf to
+// root and requires each revision to be at least one generation higher than its parent.
+func RequireStrictlyIncreasingRevTreeGenerations(t *testing.T, ctx context.Context, doc *db.Document) {
+	t.Helper()
+	for _, leafRevID := range doc.History.GetLeaves() {
+		var branch []string
+		for revID := leafRevID; revID != ""; {
+			revInfo, ok := doc.History[revID]
+			require.True(t, ok, "rev %q missing from rev tree for doc %q", revID, doc.ID)
+			branch = append(branch, revID)
+			revID = revInfo.Parent
+		}
+		// branch runs leaf -> root, so generations must strictly decrease as we walk it.
+		for i := 1; i < len(branch); i++ {
+			childGeneration, _ := db.ParseRevID(ctx, branch[i-1])
+			parentGeneration, _ := db.ParseRevID(ctx, branch[i])
+			require.Greater(t, childGeneration, 0)
+			require.Greater(t, parentGeneration, 0)
+			require.Greater(t, childGeneration, parentGeneration,
+				"doc %q: revision %q is not a higher generation than its parent %q (branch from leaf: %v)",
+				doc.ID, branch[i-1], branch[i], branch)
+		}
+	}
 }
 
 // ClearServerContextLoggingGlobals clears the global variables related to logging in ServerContext and allows testing initialization of a server context's logging parameters.

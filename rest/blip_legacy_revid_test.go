@@ -12,7 +12,9 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1371,4 +1373,64 @@ func removeHLV(rt *RestTester, docID string) {
 		base.SyncXattrName: base.MustJSONMarshal(rt.TB(), syncData),
 	}, db.DefaultMutateInOpts())
 	require.NoError(rt.TB(), err)
+}
+
+func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySGTest, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+
+		// SGW holds a pre-upgrade document - rev tree only, no HLV - and the client holds the same
+		// pre-upgrade revision.
+		legacyDoc := rt.CreateDocNoHLV(docID, db.Body{"v": 0})
+		legacyRev := legacyDoc.GetRevTreeID()
+		clientVersion := btcRunner.AddRevTreeRev(client.id, docID, legacyRev, EmptyDocVersion(), []byte(`{"v": 0}`))
+
+		btcRunner.StartPush(client.id)
+		defer btcRunner.StopPush(client.id)
+
+		// Four post-upgrade updates from the client.
+		for i := 1; i <= 4; i++ {
+			clientVersion = btcRunner.AddRev(client.id, docID, &clientVersion, fmt.Appendf(nil, `{"v": %d}`, i))
+			rt.WaitForVersion(docID, clientVersion)
+		}
+
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+		bucketDoc, _, err := collection.GetDocWithXattrs(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+
+		// Walk the rev tree from the current rev back to the root.
+		var chain []string
+		for revID := bucketDoc.GetRevTreeID(); revID != ""; {
+			revInfo, ok := bucketDoc.History[revID]
+			require.True(t, ok, "rev %q missing from rev tree", revID)
+			chain = append(chain, revID)
+			revID = revInfo.Parent
+		}
+		slices.Reverse(chain)
+
+		generations := make([]int, 0, len(chain))
+		for _, revID := range chain {
+			generation, _ := db.ParseRevID(ctx, revID)
+			require.Greater(t, generation, 0)
+			generations = append(generations, generation)
+		}
+		t.Logf("rev tree root -> leaf: %v (generations %v)", chain, generations)
+
+		// Every revision must be at least one generation higher than its parent.
+		for i := 1; i < len(chain); i++ {
+			require.Greater(t, generations[i], generations[i-1],
+				"revision %q is not a higher generation than its parent %q", chain[i], chain[i-1])
+		}
+	})
 }

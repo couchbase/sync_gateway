@@ -198,11 +198,6 @@ func (s SequenceID) IsNonZero() bool {
 	return s.Seq > 0
 }
 
-// Equality of sequences, based on seq, triggered by and low hash
-func (s SequenceID) Equals(s2 SequenceID) bool {
-	return s.SafeSequence() == s2.SafeSequence() && s.TriggeredBy == s2.TriggeredBy
-}
-
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
 // The tricky part is that "y" sorts after "y:z" for any nonzero z
 func (s SequenceID) Before(s2 SequenceID) bool {
