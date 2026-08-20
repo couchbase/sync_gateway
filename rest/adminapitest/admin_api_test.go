@@ -1101,7 +1101,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
 
 	// asser that the config is picked up as invalid config on server context
-	rt.WaitForInvalidDatabase("db1")
+	rt.WaitForInvalidDatabases("db1")
 
 	// assert that a request to the database fails with correct error message
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1202,7 +1202,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	defer rt3.Close()
 
 	// assert the invalid database is picked up with new rest tester
-	rt3.WaitForInvalidDatabase("db1")
+	rt3.WaitForInvalidDatabases("db1")
 
 	// assert that there are no valid db configs on the server context
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1270,7 +1270,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	defer rt3.Close()
 
 	// assert that the invalid config is picked up by the new rest tester
-	rt3.WaitForInvalidDatabase("db1")
+	rt3.WaitForInvalidDatabases("db1")
 
 	// assert that there is a valid database picked up as the invalid configs have this rest tester backing bucket
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1331,7 +1331,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	rt.InsertDbConfigToBucket(&persistedConfig, tb2.GetName())
 
 	// assert the config is picked as invalid db config
-	rt.WaitForInvalidDatabase("db1")
+	rt.WaitForInvalidDatabases("db1")
 }
 
 // TestConfigPollingRemoveDatabase:

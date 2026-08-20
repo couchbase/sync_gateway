@@ -1119,12 +1119,12 @@ func (rt *RestTester) WaitForDatabase(dbName string) *db.DatabaseContext {
 	return dbCtx
 }
 
-// WaitForInvalidDatabase waits for the server context to track dbName as an invalid database config. Fails the test harness if this does not happen within the timeout.
-func (rt *RestTester) WaitForInvalidDatabase(dbName string) {
+// WaitForInvalidDatabases waits for the set of database configs tracked as invalid on the server context to be exactly dbNames. Fails the test harness if this does not happen within the timeout.
+func (rt *RestTester) WaitForInvalidDatabases(dbNames ...string) {
 	rt.TB().Helper()
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(rt.TB())
-		assert.Contains(c, invalidDatabases, dbName)
+		assert.ElementsMatch(c, dbNames, invalidDatabases)
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
