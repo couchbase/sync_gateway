@@ -65,7 +65,9 @@ func (h *handler) handleCreateDB() error {
 
 		// No database exists yet, so there is nothing to compare against: a nil existing map marks
 		// every provider as new, leaving OIDC validation governed solely by disable_oidc_validation.
-		config.OIDCConfig.SetRevalidationFlags(nil)
+		if err := config.OIDCConfig.SetRevalidationFlags(nil); err != nil {
+			return base.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 
 		validateReplications := true
 		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
@@ -947,7 +949,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 	// an update that leaves a provider untouched does not re-run discovery against it. Compared
 	// against the configured providers rather than the running ones, so an unchanged provider is
 	// skipped identically whether the database is online or offline.
-	dbConfig.OIDCConfig.SetRevalidationFlags(h.db.ConfiguredOIDCProviders())
+	if err := dbConfig.OIDCConfig.SetRevalidationFlags(h.db.ConfiguredOIDCProviders()); err != nil {
+		return base.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
 
 	validateReplications := true
 	err = dbConfig.validate(h.ctx(), validateOIDC, validateReplications)
@@ -1004,7 +1008,9 @@ func (h *handler) handlePutDbConfig() (err error) {
 		// taken before ConfigMerge, so on a POST it aliases the merged provider map and every
 		// provider would compare as unchanged, silently disabling revalidation. h.db is captured at
 		// request start, so it stays stable across CAS retries of this closure.
-		bucketDbConfig.OIDCConfig.SetRevalidationFlags(h.db.ConfiguredOIDCProviders())
+		if err := bucketDbConfig.OIDCConfig.SetRevalidationFlags(h.db.ConfiguredOIDCProviders()); err != nil {
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 
 		if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())

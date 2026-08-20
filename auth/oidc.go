@@ -109,22 +109,30 @@ type OIDCOptions struct {
 // This decides only "new or changed". Whether validation runs at all is governed separately by the
 // disable_oidc_validation query parameter, which is ANDed with this flag during config validation.
 //
+// A provider with no definition at all - {"providers": {"myprovider": null}} - is rejected rather
+// than skipped, so a caller cannot submit one and have it silently dropped when the database loads.
 // A nil receiver is a no-op, so callers can invoke this unconditionally.
-func (opts *OIDCOptions) SetRevalidationFlags(existing OIDCProviderMap) {
+func (opts *OIDCOptions) SetRevalidationFlags(existing OIDCProviderMap) error {
 	if opts == nil {
 		// DbConfig.OIDCConfig is nil for any config with no "oidc" section - most databases, and
 		// every partial update whose body omits one - so this is a routine input, not an edge case.
-		return
+		return nil
 	}
+	var multiError *base.MultiError
 	for name, provider := range opts.Providers {
+		if provider == nil {
+			multiError = multiError.Append(fmt.Errorf("OpenID Connect provider %q has no definition", name))
+			continue
+		}
 		// Indexing a nil or incomplete existing map yields a nil, which counts as new.
 		provider.setRevalidationFlag(existing[name])
 	}
+	return multiError.ErrorOrNil()
 }
 
 // setRevalidationFlag marks this provider for OIDC discovery validation when it is new - signalled
 // by a nil existing - or when a field affecting discovery or issuer validation differs from the
-// currently-configured definition. A nil receiver is a no-op.
+// currently-configured definition.
 //
 // The assignment is unconditional so a flag left over from an earlier validation pass is cleared
 // rather than left standing: provider pointers can be shared with a running DatabaseContext and
@@ -134,10 +142,6 @@ func (opts *OIDCOptions) SetRevalidationFlags(existing OIDCProviderMap) {
 // database load from Options.UnsupportedOptions.OidcTlsSkipVerify and is never present in a request
 // body, so comparing it would report every provider as changed whenever that option is enabled.
 func (op *OIDCProvider) setRevalidationFlag(existing *OIDCProvider) {
-	if op == nil {
-		// {"providers": {"myprovider": null}} unmarshals to a nil provider - nothing to mark.
-		return
-	}
 	if existing == nil {
 		op.ForceRevalidation = true
 		return

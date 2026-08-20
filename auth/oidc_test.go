@@ -1372,27 +1372,38 @@ func TestSetRevalidationFlags(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			incoming := test.incoming()
 			opts := &OIDCOptions{Providers: OIDCProviderMap{"provider": incoming}}
-			opts.SetRevalidationFlags(test.existing)
+			require.NoError(t, opts.SetRevalidationFlags(test.existing))
 			assert.Equal(t, test.expected, incoming.ForceRevalidation)
 		})
 	}
 }
 
-// TestSetRevalidationFlagsNilSafety covers the nil inputs the config paths can genuinely produce:
-// a config with no "oidc" section at all, and a providers map containing an explicit null.
+// TestSetRevalidationFlagsNilSafety covers the nil inputs the config paths can genuinely produce.
+// A config with no "oidc" section at all is accepted as a no-op; a provider with no definition is
+// rejected rather than silently dropped.
 func TestSetRevalidationFlagsNilSafety(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		var opts *OIDCOptions
-		require.NotPanics(t, func() { opts.SetRevalidationFlags(nil) })
+		require.NoError(t, opts.SetRevalidationFlags(nil))
 	})
 
 	t.Run("nil providers map", func(t *testing.T) {
 		opts := &OIDCOptions{}
-		require.NotPanics(t, func() { opts.SetRevalidationFlags(nil) })
+		require.NoError(t, opts.SetRevalidationFlags(nil))
 	})
 
-	t.Run("nil provider value is skipped", func(t *testing.T) {
+	t.Run("nil provider value is rejected", func(t *testing.T) {
 		opts := &OIDCOptions{Providers: OIDCProviderMap{"provider": nil}}
-		require.NotPanics(t, func() { opts.SetRevalidationFlags(nil) })
+		err := opts.SetRevalidationFlags(nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "provider")
+	})
+
+	t.Run("nil provider alongside a valid one is rejected", func(t *testing.T) {
+		valid := &OIDCProvider{
+			JWTConfigCommon: JWTConfigCommon{Issuer: "https://issuer.example.com", ClientID: base.Ptr("client-id")},
+		}
+		opts := &OIDCOptions{Providers: OIDCProviderMap{"valid": valid, "broken": nil}}
+		require.Error(t, opts.SetRevalidationFlags(nil))
 	})
 }

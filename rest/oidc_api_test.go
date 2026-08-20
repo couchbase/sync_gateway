@@ -3371,9 +3371,27 @@ func TestOIDCNullProviderDefinition(t *testing.T) {
 			Providers: auth.OIDCProviderMap{"provider1": validProvider, "nullProvider": nil},
 		}
 
-		// One provider is still valid, so validation passes and the database loads with the null
-		// entry skipped rather than dereferenced.
+		// Rejected even though another provider is valid - a null would otherwise be accepted here
+		// and then silently dropped when the database loads.
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusBadRequest)
+	})
+
+	t.Run("null provider rejected on config update", func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+		defer rt.Close()
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{"provider1": validProvider},
+		}
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+		// Adding a null provider to an existing database is rejected the same way as at creation.
+		updatedConfig := rt.NewDbConfig()
+		updatedConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{"provider1": validProvider, "nullProvider": nil},
+		}
+		RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &updatedConfig))), http.StatusBadRequest)
 	})
 }
 
