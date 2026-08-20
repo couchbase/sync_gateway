@@ -134,7 +134,7 @@ func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOpt
 	channelCache.backgroundTasks = append(channelCache.backgroundTasks, bgt)
 
 	// Late-log pruning runs on its own task at LateLogAge, independent of the (potentially much larger)
-	// ChannelCacheAge, so that late_log_expiry_seconds is honored regardless of how expiry_seconds is set.
+	// ChannelCacheAge, so LateLogAge is honored regardless of how ChannelCacheAge is set.
 	lateLogAge := options.LateLogAge
 	if lateLogAge <= 0 {
 		lateLogAge = DefaultLateLogAge

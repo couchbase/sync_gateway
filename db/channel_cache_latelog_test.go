@@ -364,8 +364,8 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	// the variable number of live channel caches.
 	abcCache.options.LateLogAge = time.Millisecond
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		require.NoError(t, cc.cleanAgedLateLogs(ctx))
-		require.Equal(t, int64(1), abcCache.lateLogCount(),
+		assert.NoError(c, cc.cleanAgedLateLogs(ctx))
+		assert.Equal(c, int64(1), abcCache.lateLogCount(),
 			"age sweep must reclaim stalled feed2's pinned ABC late entries down to the tail once older than LateLogAge")
 	}, 10*time.Second, 10*time.Millisecond)
 

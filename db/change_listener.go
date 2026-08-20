@@ -258,8 +258,8 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 
 func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	ticker := time.NewTicker(listener.broadcastInterval(false))
-	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
-	// for a value it already has
+	// Tracks whether we're currently using the slow-mode (skipped sequences present) interval, so we only
+	// Reset the ticker when the mode changes.
 	broadcastSlowMode := false
 	go func(terminator chan bool, doneChan chan struct{}) {
 		defer func() {

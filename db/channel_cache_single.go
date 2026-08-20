@@ -869,10 +869,10 @@ func (c *singleChannelCacheImpl) _countedLateLogs() int64 {
 	return 0
 }
 
-// _dropLeadingLateLog removes the front entry of lateLogs and decrements NumEntriesInLateFeed.  The purge/prune
-// callers only drop from the front while len(c.lateLogs) > 1, so the always-retained placeholder is never
-// dropped and the entry removed here is always a counted late arrival - keeping the gauge equal to
-// len(lateLogs)-1.  Caller must hold lateLogLock and have already confirmed len(c.lateLogs) > 1.
+// _dropLeadingLateLog removes the front entry of lateLogs and decrements NumEntriesInLateFeed. Purge/prune callers
+// only drop while len(c.lateLogs) > 1, so at least one entry is always retained for listener tracking. The
+// decrement keeps the gauge aligned with len(lateLogs)-1 regardless of which entry is acting as the retained
+// placeholder. Caller must hold lateLogLock and have already confirmed len(c.lateLogs) > 1.
 func (c *singleChannelCacheImpl) _dropLeadingLateLog() {
 	c.cacheStats.NumEntriesInLateFeed.Add(-1)
 	c.lateLogs = c.lateLogs[1:]
