@@ -31,6 +31,7 @@ var (
 	DefaultChannelCacheMaxNumber       = 50000            // Default of 50k channel caches
 	DefaultCompactHighWatermarkPercent = 80               // Default compaction high watermark (percent of MaxNumber)
 	DefaultCompactLowWatermarkPercent  = 60               // Default compaction low watermark (percent of MaxNumber)
+	DefaultLateLogAge                  = 5 * time.Minute  // Force-prune late-arriving entries older than this, even if a feed is still parked on them
 )
 
 type ChannelCache interface {
@@ -131,6 +132,18 @@ func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOpt
 		return nil, err
 	}
 	channelCache.backgroundTasks = append(channelCache.backgroundTasks, bgt)
+
+	// Late-log pruning runs on its own task at LateLogAge, independent of the (potentially much larger)
+	// ChannelCacheAge, so LateLogAge is honored regardless of how ChannelCacheAge is set.
+	lateLogAge := options.LateLogAge
+	if lateLogAge <= 0 {
+		lateLogAge = DefaultLateLogAge
+	}
+	lateLogBGT, err := NewBackgroundTask(ctx, "CleanAgedLateLogs", channelCache.cleanAgedLateLogs, lateLogAge, channelCache.terminator)
+	if err != nil {
+		return nil, err
+	}
+	channelCache.backgroundTasks = append(channelCache.backgroundTasks, lateLogBGT)
 	base.DebugfCtx(ctx, base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil
@@ -139,6 +152,9 @@ func newChannelCache(ctx context.Context, dbName string, options ChannelCacheOpt
 func (c *channelCacheImpl) Clear() {
 	c.seqLock.Lock()
 	c.channelCaches.Init()
+	// All channel caches (and their lateLogs, including sentinels) have just been dropped, so reset the
+	// late-feed gauge rather than leaking it across change-cache reinitialization.
+	c.cacheStats.NumEntriesInLateFeed.Set(0)
 	c.seqLock.Unlock()
 }
 
@@ -315,6 +331,24 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 	return nil
 }
 
+// cleanAgedLateLogs prunes each channel's late-arriving sequence queue by LateLogAge.  It runs on its own
+// background task (separate from cleanAgedItems) so late_log_expiry_seconds is honored on its own cadence,
+// independent of the channel cache's expiry_seconds.  Error returned to fulfill BackgroundTaskFunc signature.
+func (c *channelCacheImpl) cleanAgedLateLogs(ctx context.Context) error {
+
+	callback := func(v any) bool {
+		channelCache := AsSingleChannelCache(ctx, v)
+		if channelCache == nil {
+			return false
+		}
+		channelCache.pruneLateLogAge(ctx)
+		return true
+	}
+	c.channelCaches.Range(callback)
+
+	return nil
+}
+
 func (c *channelCacheImpl) getChannelCache(ctx context.Context, channel channels.ID) (SingleChannelCache, error) {
 
 	cacheValue, found := c.channelCaches.Get(channel)
@@ -395,6 +429,11 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 		newChannelCacheWithOptions(ctx, queryHandler, channel, validFrom, c.options, c.cacheStats)
 	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channel, singleChannelCache)
 	c.validFromLock.Unlock()
+
+	// If another goroutine won the insert race our freshly-built cache is discarded, but it never contributed to
+	// NumEntriesInLateFeed: initializeLateLogs doesn't count the retained placeholder, and since the discarded
+	// instance was never in channelCaches no late arrival could have been added to it. So there's nothing to
+	// release here.
 
 	singleChannelCache = AsSingleChannelCache(ctx, cacheValue)
 
@@ -546,6 +585,18 @@ func (c *channelCacheImpl) compactChannelCache(ctx context.Context) {
 		}
 
 		cacheSize = c.channelCaches.RemoveElements(evictionElements)
+
+		// Evicted channel caches take their lateLogs entries (including the retained placeholder) with them, and
+		// those entries never go through the per-entry purge paths, so release each cache's contribution to the
+		// late-feed gauge here to stop NumEntriesInLateFeed from leaking upward as channels are evicted.
+		// releaseLateLogsForEviction reads-and-decrements atomically under the cache's lateLogLock (and runs
+		// after RemoveElements, so any add that landed just before removal is captured by the count read),
+		// rather than subtracting a pre-removal snapshot that could race concurrent adds/prunes.
+		for _, elem := range evictionElements {
+			if scc, ok := elem.Value.(*singleChannelCacheImpl); ok {
+				scc.releaseLateLogsForEviction()
+			}
+		}
 
 		// Update eviction stats
 		c.updateEvictionStats(inactiveEvictCount, len(evictionElements), compactIterationStart)

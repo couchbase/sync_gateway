@@ -257,9 +257,9 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 }
 
 func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
-	ticker := time.NewTicker(DefaultBroadcastChangesTime)
-	// boolean to indicate whether ticker is using the default value, this is needed so we don't call reset on ticker
-	// for a value it already has
+	ticker := time.NewTicker(listener.broadcastInterval(false))
+	// Tracks whether we're currently using the slow-mode (skipped sequences present) interval, so we only
+	// Reset the ticker when the mode changes.
 	broadcastSlowMode := false
 	go func(terminator chan bool, doneChan chan struct{}) {
 		defer func() {
@@ -285,7 +285,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				newBroadcastSlowMode := listener.dbCtx.BroadcastSlowMode.Load()
 				if broadcastSlowMode != newBroadcastSlowMode {
 					// broadcast changes interval has changed, reset ticker
-					duration := tickerValForBroadcastSpeed(newBroadcastSlowMode)
+					duration := listener.broadcastInterval(newBroadcastSlowMode)
 					base.DebugfCtx(ctx, base.KeyChanges, "Updating broadcast changes interval for %q to %v", base.MD(listener.bucketName), duration)
 					broadcastSlowMode = newBroadcastSlowMode
 					ticker.Reset(duration)
@@ -295,14 +295,20 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 	}(listener.terminator, listener.broadcastChangesDoneChan)
 }
 
-// tickerValForBroadcastSpeed will return the duration for the ticker to be reset to based on input boolean to indicate
-// if skipped sequences are present or not
-func tickerValForBroadcastSpeed(skippedSequencePresent bool) time.Duration {
-	// if the skipped sequence broadcast is enabled, return the slow ticker value
+// broadcastInterval returns the duration for the broadcast ticker based on whether skipped sequences are
+// present, honoring the optional per-DB CacheOptions override and falling back to the package defaults when
+// unset. The override is an internal tuning (primarily to keep tests fast); production uses the defaults.
+func (listener *changeListener) broadcastInterval(skippedSequencePresent bool) time.Duration {
+	opts := listener.dbCtx.Options.CacheOptions
 	if skippedSequencePresent {
+		if opts != nil && opts.SkippedSequenceBroadcastInterval > 0 {
+			return opts.SkippedSequenceBroadcastInterval
+		}
 		return SkippedSequenceBroadcastChangesTime
 	}
-	// otherwise return the default ticker value
+	if opts != nil && opts.BroadcastChangesInterval > 0 {
+		return opts.BroadcastChangesInterval
+	}
 	return DefaultBroadcastChangesTime
 }
 
