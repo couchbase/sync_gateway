@@ -10,11 +10,41 @@ package base
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"sync"
 )
 
 const (
 	AssertionFailedPrefix = "Assertion failed: "
 )
+
+// assertionFailures collects assertion failure messages in dev mode, so the test harness can report them in detail at the end of a run.
+var assertionFailures = struct {
+	lock sync.Mutex
+	msgs []string
+}{}
+
+// recordAssertionFailure stores an assertion failure message. Safe for concurrent use.
+func recordAssertionFailure(msg string) {
+	assertionFailures.lock.Lock()
+	defer assertionFailures.lock.Unlock()
+	assertionFailures.msgs = append(assertionFailures.msgs, msg)
+}
+
+// AssertionFailures returns a copy of the assertion failure messages recorded so far. Always empty unless compiled with the `cb_sg_devmode` build tag.
+func AssertionFailures() []string {
+	assertionFailures.lock.Lock()
+	defer assertionFailures.lock.Unlock()
+	return slices.Clone(assertionFailures.msgs)
+}
+
+// ClearAssertionFailures discards the recorded assertion failures, for tests that trigger assertions deliberately.
+func ClearAssertionFailures() {
+	assertionFailures.lock.Lock()
+	defer assertionFailures.lock.Unlock()
+	assertionFailures.msgs = nil
+}
 
 // IsDevMode returns true when compiled with the `cb_sg_devmode` build tag
 func IsDevMode() bool {
@@ -22,11 +52,14 @@ func IsDevMode() bool {
 }
 
 // AssertfCtx logs an error message and continues execution, or when compiled with the `cb_sg_devmode` build tag panics for better dev-time visibility.
-// The SG test harness will ensure AssertionFailCount is zero at the end of tests, even without devmode enabled.
+// In dev mode the message is also recorded, and the SG test harness fails the run if any assertion failures were recorded.
 // Note: Callers MUST ensure code is safe to continue executing after the Assert (e.g. by returning an error) and MUST NOT be used like a panic that will halt.
 func AssertfCtx(ctx context.Context, format string, args ...any) {
 
 	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
+	if IsDevMode() {
+		recordAssertionFailure(fmt.Sprintf(AssertionFailedPrefix+format, args...))
+	}
 	assertLogFn(ctx, AssertionFailedPrefix+format, args...)
 }
 
