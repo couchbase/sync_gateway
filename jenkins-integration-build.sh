@@ -147,7 +147,7 @@ else
 fi
 
 set +e -x # Output all executed shell commands
-gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- "${GO_TEST_FLAGS[@]}" -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- "${GO_TEST_FLAGS[@]}" -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: |Assertion failed: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
