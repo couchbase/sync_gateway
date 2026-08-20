@@ -402,8 +402,10 @@ type sgReplicateManager struct {
 	activeReplicators          map[string]*ActiveReplicator  // currently assigned replications
 	activeReplicatorsLock      sync.RWMutex                  // Mutex for activeReplications
 	clusterUpdateTerminator    chan struct{}                 // Terminator for cluster update retry
+	clusterUpdateGate          sync.RWMutex                  // Read-held for the duration of a cluster update, so Stop can drain them by taking the write side
+	clusterUpdateClosed        bool                          // Guarded by clusterUpdateGate - once set by Stop, no further cluster updates run
 	clusterSubscribeTerminator chan struct{}                 // Terminator for cluster change monitoring
-	closeWg                    sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
+	closeWg                    sync.WaitGroup                // Teardown waitgroup for goroutines this manager owns (startup, subscribe, heartbeat)
 	dbContext                  *DatabaseContext              // reference to the parent DatabaseContext
 	CheckpointInterval         time.Duration                 // The value to be used for time-based checkpoints
 	SupportedBLIPSubprotocols  []string                      // Optional specification to force the subprotocol of the active replicator.
@@ -835,6 +837,13 @@ func (m *sgReplicateManager) Stop() {
 	}
 	close(m.clusterUpdateTerminator)
 
+	// Drain in-flight cluster updates and refuse any starting later.  Must come after RemoveNode above,
+	// which is itself a cluster update - closing any earlier would silently skip it.  Taking the write side
+	// waits for in-flight updates, and blocks new ones from acquiring the read side while it waits.
+	m.clusterUpdateGate.Lock()
+	m.clusterUpdateClosed = true
+	m.clusterUpdateGate.Unlock()
+
 	m.closeWg.Wait()
 }
 
@@ -1000,8 +1009,15 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 
 // updateCluster manages CAS retry for SGRCluster updates.
 func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
-	m.closeWg.Add(1)
-	defer m.closeWg.Done()
+	// Read-held for the whole update so Stop's write-side acquisition drains it.  closeWg cannot be used
+	// here: updateCluster runs on the caller's goroutine, so its Add can race Stop's Wait, which is a
+	// WaitGroup misuse panic rather than a wait.
+	m.clusterUpdateGate.RLock()
+	defer m.clusterUpdateGate.RUnlock()
+	if m.clusterUpdateClosed {
+		base.DebugfCtx(m.loggingCtx, base.KeyReplicate, "manager stopped, not updating cluster config")
+		return nil
+	}
 	for i := 1; i <= maxSGRClusterCasRetries; i++ {
 		select {
 		case <-m.clusterUpdateTerminator:

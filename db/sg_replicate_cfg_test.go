@@ -1089,3 +1089,119 @@ func TestStartReplicationsRacesStopTeardownDuringStart(t *testing.T) {
 	// Close would otherwise stop it a second time, panicking on the already-closed terminators.
 	testDB.SGReplicateMgr = nil
 }
+
+// TestSGReplicateManagerStopDoesNotPanicOnConcurrentClusterUpdate asserts that a cluster config write racing
+// Stop() does not panic.  updateCluster used to register itself on closeWg, the same waitgroup Stop waits on -
+// but it runs on the caller's goroutine, so a call arriving once Stop was already inside closeWg.Wait with the
+// counter at zero was a WaitGroup misuse panic, not a wait.  In production that is any request that writes the
+// cluster config during a database close or config reload: PUT /{db}/_replication/{id},
+// PUT /{db}/_replicationStatus/{id}, DELETE /{db}/_replication/{id}.
+//
+// The window is small, so this loops.  Before the fix it panicked on the first attempt.
+func TestSGReplicateManagerStopDoesNotPanicOnConcurrentClusterUpdate(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelWarn, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	const attempts = 200
+	for i := range attempts {
+		// A distinct cfg prefix and node per attempt, so attempts do not interfere.
+		cfgSG, err := base.NewCfgSG(ctx, testDB.MetadataStore, fmt.Sprintf("p%d", i), false)
+		require.NoError(t, err)
+		mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, cfgSG)
+		require.NoError(t, err)
+		require.NoError(t, mgr.StartLocalNode(fmt.Sprintf("n%d", i), nil))
+		// Registers a goroutine on closeWg, so Stop's Wait blocks and there is a waiter to misuse.
+		require.NoError(t, mgr.SubscribeCfgChanges(ctx))
+
+		var recovered atomic.Value
+		catch := func(fn func()) {
+			defer func() {
+				if r := recover(); r != nil {
+					recovered.CompareAndSwap(nil, fmt.Sprint(r))
+				}
+			}()
+			fn()
+		}
+
+		var hammer sync.WaitGroup
+		stopHammer := make(chan struct{})
+		for range 4 {
+			hammer.Go(func() {
+				catch(func() {
+					for {
+						select {
+						case <-stopHammer:
+							return
+						default:
+						}
+						_ = mgr.updateCluster(func(*SGRCluster) (bool, error) { return true, nil })
+					}
+				})
+			})
+		}
+		catch(mgr.Stop)
+		close(stopHammer)
+		base.WaitWithTimeout(t, &hammer, time.Minute)
+
+		if r := recovered.Load(); r != nil {
+			t.Fatalf("attempt %d: cluster config write concurrent with Stop() panicked: %v", i, r)
+		}
+	}
+}
+
+// TestSGReplicateManagerStopDrainsClusterUpdates asserts the guarantee that makes the fix safe: no cluster
+// update runs past Stop.  Stop blocks until an in-flight update finishes, and an update starting afterwards is
+// refused rather than run against a torn-down manager.
+func TestSGReplicateManagerStopDrainsClusterUpdates(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	cfgSG, err := base.NewCfgSG(ctx, testDB.MetadataStore, "", false)
+	require.NoError(t, err)
+	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, cfgSG)
+	require.NoError(t, err)
+	require.NoError(t, mgr.StartLocalNode("localNode", nil))
+
+	// An update parks inside its callback, so it is in flight for as long as the test wants.
+	inUpdate := make(chan struct{})
+	release := make(chan struct{})
+	var updateWg sync.WaitGroup
+	updateWg.Go(func() {
+		assert.NoError(t, mgr.updateCluster(func(*SGRCluster) (bool, error) {
+			inUpdate <- struct{}{}
+			<-release
+			return true, nil // cancel, so there is no CAS write to retry
+		}))
+	})
+	base.RequireChanRecv(t, inUpdate)
+
+	stopDone := make(chan struct{})
+	var stopWg sync.WaitGroup
+	stopWg.Go(func() {
+		mgr.Stop()
+		close(stopDone)
+	})
+
+	// Stop must not complete while the update is still in flight.
+	select {
+	case <-stopDone:
+		require.Fail(t, "Stop returned while a cluster update was still in flight")
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	close(release)
+	base.WaitWithTimeout(t, &updateWg, time.Minute)
+	base.WaitWithTimeout(t, &stopWg, time.Minute)
+
+	// An update starting after Stop is refused outright, so it cannot touch a torn-down manager.
+	ran := false
+	require.NoError(t, mgr.updateCluster(func(*SGRCluster) (bool, error) {
+		ran = true
+		return true, nil
+	}))
+	require.False(t, ran, "cluster update ran after Stop returned")
+}
