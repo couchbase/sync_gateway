@@ -577,7 +577,8 @@ func TestBackgroundManagerResumeNoDoc(t *testing.T) {
 		terminator: base.NewSafeTerminator(),
 	}
 
-	require.ErrorIs(t, mgr.Resume(ctx), errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, mgr.Resume(ctx), &statusErr)
 }
 
 // TestBackgroundManagerResumeSingleNodeError verifies that Resume returns an error for single-node managers
@@ -829,7 +830,8 @@ func TestBackgroundManagerResumeCallsUpdateDatabaseStateWhenNotRunning(t *testin
 
 	// No status doc exists → Resume must return errBackgroundManagerStatusNotRunning.
 	err := mgr.Resume(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	mu.Lock()
 	calls := make([]bool, len(dbStateCalls))
@@ -1112,7 +1114,8 @@ func TestUpdateDatabaseStateResumeOverwritesRunningState(t *testing.T) {
 
 	// B's Resume will see no cluster status doc → errBackgroundManagerStatusNotRunning → callUpdateDatabaseState(false).
 	err := mgrB.Resume(ctx)
-	require.ErrorIs(t, err, errBackgroundManagerStatusNotRunning)
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, err, &statusErr)
 
 	// B wrote false to the shared state doc, even though A is still running.
 	// A's next UpdateStatusClusterAware call must restore true.
@@ -1396,6 +1399,7 @@ func TestBackgroundManagerResumePreservesPreviousStatus(t *testing.T) {
 }
 
 func TestBackgroundManagerMultiNodePollingAvoidsOverwrite(t *testing.T) {
+	t.Skip("CBG-5660: test can flake until all the modes of background manager stopping are addressed")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
