@@ -766,29 +766,19 @@ func TestLogFlush(t *testing.T) {
 
 			// Check that the expected number of log files are created
 			var files []string
-			worker := func() (shouldRetry bool, err error, value any) {
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				files = []string{}
-				err = filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
+				err := filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
 					if tempPath != path {
 						files = append(files, filepath.Base(path))
 					}
 					return nil
 				})
-
-				if err != nil {
-					return false, err, nil
+				if !assert.NoError(c, err) {
+					return
 				}
-
-				if testCase.ExpectedLogFileCount == len(files) {
-					return false, nil, files
-				}
-
-				return true, nil, files
-			}
-
-			sleeper := base.CreateSleeperFunc(200, 100)
-			err, _ = base.RetryLoop(ctx, "Wait for log files", worker, sleeper)
-			assert.NoError(t, err)
+				assert.Len(c, files, testCase.ExpectedLogFileCount)
+			}, 20*time.Second, 100*time.Millisecond)
 			if !assert.Len(t, files, testCase.ExpectedLogFileCount) {
 				// Try to figure who is writing to the files
 				for _, filename := range files {

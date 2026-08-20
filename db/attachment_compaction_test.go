@@ -824,31 +824,21 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		require.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
 	}()
 
-	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value any) {
-		if stat.Value() == 0 {
-			return true, nil, nil
-		}
-		return false, nil, nil
-	}
-
-	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value any) {
-		if atomic.LoadInt64(&count) == 0 {
-			return true, nil, nil
-		}
-		return false, nil, nil
-	}
-
 	const (
-		maxAttempts = 3_000
-		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
-		timeToSleepMs = 10
+		maxWaitTime = 30 * time.Second
+		// The tick here is low to ensure that this wait finishes after the phase starts, but before it has time to finish
+		tick = 10 * time.Millisecond
 	)
-	err, _ := base.RetryLoop(ctx, "wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	// wait for marking to start
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotZero(c, stat.Value())
+	}, maxWaitTime, tick)
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop(ctx, "wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	// wait for marking function to return
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotZero(c, atomic.LoadInt64(&count))
+	}, maxWaitTime, tick)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
@@ -867,13 +857,16 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		require.NotEmpty(t, checkpointPrefix)
 	}()
 
-	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
-	err, _ = base.RetryLoop(ctx, "wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	// wait for sweeping to start
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotZero(c, stat.Value())
+	}, maxWaitTime, tick)
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop(ctx, "wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	// wait for sweeping function to return
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotZero(c, atomic.LoadInt64(&count))
+	}, maxWaitTime, tick)
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 

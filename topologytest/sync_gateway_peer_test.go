@@ -10,10 +10,10 @@ package topologytest
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -103,27 +103,22 @@ func (p *SyncGatewayPeer) writeDocument(dsName sgbucket.DataStoreName, docID str
 
 	var doc *db.Document
 	// loop to write document in the case that there is a conflict while writing the document
-	err, _ := base.RetryLoop(ctx, "write document", func() (shouldRetry bool, err error, value any) {
+	require.EventuallyWithT(p.TB(), func(c *assert.CollectT) {
 		var bodyMap db.Body
-		err = base.JSONUnmarshal(body, &bodyMap)
-		require.NoError(p.TB(), err)
+		if !assert.NoError(c, base.JSONUnmarshal(body, &bodyMap)) {
+			return
+		}
 
 		// allow upsert rev
 		existingDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		if err == nil {
 			bodyMap[db.BodyRev] = existingDoc.GetRevTreeID()
 		}
-		_, doc, err = collection.Put(ctx, docID, bodyMap)
-		if err != nil {
-			var httpError *base.HTTPError
-			if errors.As(err, &httpError) && httpError.Status == http.StatusConflict {
-				return true, err, nil
-			}
-			require.NoError(p.TB(), err)
-		}
-		return false, nil, nil
-	}, base.CreateSleeperFunc(5, 100))
-	require.NoError(p.TB(), err)
+		var putErr error
+		_, doc, putErr = collection.Put(ctx, docID, bodyMap)
+		// a conflict here is expected and retried, any other error is not
+		assert.NoError(c, putErr, "expected only conflict errors while writing document %s", docID)
+	}, 500*time.Millisecond, 100*time.Millisecond)
 	return DocMetadataFromDocument(doc)
 }
 

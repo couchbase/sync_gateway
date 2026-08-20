@@ -13,6 +13,7 @@ package base
 import (
 	"log"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -65,20 +66,10 @@ func TestView(t *testing.T) {
 	assert.NotNil(t, ddocCheck)
 
 	// wait for view readiness
-	worker := func() (shouldRetry bool, err error, value any) {
-		viewParams := make(map[string]any)
-		_, viewErr := viewStore.View(ctx, ddocName, viewName, viewParams)
-		if viewErr == nil {
-			return false, nil, nil
-		}
-		log.Printf("Unexpected error querying view for readiness, retrying: %v", viewErr)
-		return true, viewErr, nil
-	}
-
-	description := "Wait for view readiness"
-	sleeper := CreateSleeperFunc(50, 100)
-	viewErr, _ := RetryLoop(ctx, description, worker, sleeper)
-	require.NoError(t, viewErr)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, viewErr := viewStore.View(ctx, ddocName, viewName, make(map[string]any))
+		assert.NoError(c, viewErr, "Unexpected error querying view for readiness, retrying")
+	}, 5*time.Second, 100*time.Millisecond)
 
 	// stale=false
 	viewParams := make(map[string]any)

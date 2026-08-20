@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -27,49 +28,44 @@ func MakeUser(t *testing.T, httpClient *http.Client, serverURL, username, passwo
 	form.Add("password", password)
 	form.Add("roles", strings.Join(roles, ","))
 
-	retryWorker := func() (shouldRetry bool, err error, value any) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
-		require.NoError(t, err)
+		if !assert.NoError(c, err) {
+			return
+		}
 
 		req.SetBasicAuth(TestClusterUsername(), TestClusterPassword())
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 		resp, err := httpClient.Do(req)
-		if err != nil {
-			return true, err, nil
+		if !assert.NoError(c, err) {
+			return
 		}
-		defer func() { assert.NoError(t, resp.Body.Close()) }()
+		defer func() { assert.NoError(c, resp.Body.Close()) }()
 		var bodyResp []byte
 		if resp.StatusCode != http.StatusOK {
 			bodyResp, err = io.ReadAll(resp.Body)
-			require.NoError(t, err, "Failed to create user: %s", bodyResp)
+			assert.NoError(c, err)
 		}
-		require.Equalf(t, http.StatusOK, resp.StatusCode, "Failed to create user: %s", bodyResp)
-		return false, err, nil
-	}
-
-	err, _ := RetryLoop(TestCtx(t), "MakeUser", retryWorker, CreateSleeperFunc(10, 100))
-	require.NoError(t, err)
+		assert.Equalf(c, http.StatusOK, resp.StatusCode, "Failed to create user: %s", bodyResp)
+	}, time.Second, 100*time.Millisecond)
 }
 
 // DeleteUser removes a Couchbase Server RBAC user via the management REST API.
 func DeleteUser(t *testing.T, httpClient *http.Client, serverURL, username string) {
-	retryWorker := func() (shouldRetry bool, err error, value *http.Response) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
-		require.NoError(t, err)
+		if !assert.NoError(c, err) {
+			return
+		}
 
 		req.SetBasicAuth(TestClusterUsername(), TestClusterPassword())
 
 		resp, err := httpClient.Do(req)
-		if err != nil {
-			return true, err, resp
+		if !assert.NoError(c, err) {
+			return
 		}
-		assert.NoError(t, resp.Body.Close())
-		return false, err, resp
-	}
-
-	err, resp := RetryLoop(TestCtx(t), "DeleteUser", retryWorker, CreateSleeperFunc(10, 100))
-	require.NoError(t, err)
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.NoError(c, resp.Body.Close())
+		assert.Equal(c, http.StatusOK, resp.StatusCode)
+	}, time.Second, 100*time.Millisecond)
 }

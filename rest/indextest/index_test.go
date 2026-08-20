@@ -810,16 +810,11 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	// Need a wait loop here to wait for config polling to pick up the change
-	err = rest.WaitForConditionWithOptions(ctx, func() bool {
-		resp = rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
-		if resp.StatusCode() == http.StatusOK && resp.Body == "" {
-			return true
-		} else {
-			log.Printf("Waiting for OK and empty filter, current status: %v, filter: %q", resp.StatusCode(), resp.Body)
-		}
-		return (resp.StatusCode() == http.StatusOK) && resp.Body == ""
-	}, 200, 100)
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		filterResp := rest.BootstrapAdminRequest(t, sc, http.MethodGet, "/"+keyspace+"/_config/import_filter", "")
+		assert.Equal(c, http.StatusOK, filterResp.StatusCode(), "Waiting for OK and empty filter, current filter: %q", filterResp.Body)
+		assert.Empty(c, filterResp.Body, "Waiting for empty filter")
+	}, 20*time.Second, 100*time.Millisecond)
 
 	// Unblock initialization, verify status goes to Online
 	close(unblockInit)
