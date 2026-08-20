@@ -254,7 +254,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigr
 			// Completion gates on per-doc move/delete errors and a truncated scan. A failed in-scope move
 			// increments stats.Errors and leaves the doc on the fallback, which the wrapper
 			// would then permanently ignore — so those must clear before we
-			// SetMigrationComplete(). Errors are typically transient (CAS races), so a non-clean
+			// DisableFallbackReads(). Errors are typically transient (CAS races), so a non-clean
 			// pass simply forces a retry; only a persistent failure reaches the maxPasses give-up
 			// below, which never completes.
 			//
@@ -285,7 +285,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigr
 			}
 		}
 
-		ms.SetMigrationComplete()
+		ms.DisableFallbackReads()
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Metadata migration complete after %d pass(es): %d migrated, %d failed, %d out of scope",
 			metadataMigrationLoggingID, m.passes.Load(), m.docsProcessed.Load(), m.docsFailed.Load(), m.docsOutOfScope.Load())
 	} else {

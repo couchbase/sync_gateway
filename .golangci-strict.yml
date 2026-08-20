@@ -77,16 +77,13 @@ linters:
         - -QF1010 # Convert slice of bytes to string when printing it.
         - -QF1011 # Omit redundant type from variable declaration.
         - -QF1012 # Use 'fmt.Fprintf(x, ...)' instead of 'x.Write(fmt.Sprintf(...))'.
-        - -S1000 # Use plain channel send or receive instead of single-case select.
         - -S1002 # Omit comparison with boolean constant.
         - -S1005 # unnecssary assignment to the blank identifier
         - -S1008 # Simplify returning boolean expression.
-        - -S1009 # Omit redundant nil check on slices, maps, and channels.
         - -S1011 # Use a single 'append' to concatenate two slices.
         - -S1021 # Merge variable declaration and assignment.
         - -S1025 # Don't use 'fmt.Sprintf("%s", x)' unnecessarily.
         - -S1024 # Replace 'x.Sub(time.Now())' with 'time.Until(x)'.
-        - -S1031 # unnecessary nil check around range
         - -ST1003 # Poorly chosen identifier.
         - -ST1005 # errors strings should not end with punctuation or newlines
         - -ST1006 # Poorly chosen receiver name.
@@ -110,9 +107,11 @@ linters:
         path: rest/debug.go
       # The logging implementation itself, the standalone CLIs under tools/, and tests (which print
       # diagnostics and generate data) write to stdout by design.
+      # tools/ is matched unanchored: reported paths can gain a prefix when golangci-lint
+      # replays cached results from another checkout of this module.
       - linters:
           - forbidigo
-        path: (base/logging\.go|base/redactor\.go|^tools/|_test.*\.go)
+        path: (base/logging\.go|base/redactor\.go|(^|/)tools/|_test.*\.go)
       - text: "ST1000:" # at least one file in a package should have a package comment
         linters:
           - staticcheck

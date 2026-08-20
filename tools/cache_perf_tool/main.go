@@ -222,17 +222,8 @@ func main() {
 	defer printEndofTestStatsFile(ctx, dbContext)
 
 	// duration of test logic
-	ticker := time.NewTicker(*timeToRun)
-	defer ticker.Stop()
-
-outerloop:
-	for {
-		select {
-		case <-ticker.C:
-			cancelFunc(errors.New("test duration complete"))
-			break outerloop
-		}
-	}
+	time.Sleep(*timeToRun)
+	cancelFunc(errors.New("test duration complete"))
 
 	workerFunc := func() (shouldRetry bool, err error, val any) {
 		return numGoroutines.Load() != int32(0), nil, val

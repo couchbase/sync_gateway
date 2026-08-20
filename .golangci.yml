@@ -63,9 +63,11 @@ linters:
         text: fieldalignment # detect Go structs that would take less memory if their fields were sorted
       # The logging implementation itself, the standalone CLIs under tools/, and tests (which print
       # diagnostics and generate data) write to stdout by design.
+      # tools/ is matched unanchored: reported paths can gain a prefix when golangci-lint
+      # replays cached results from another checkout of this module.
       - linters:
           - forbidigo
-        path: (base/logging\.go|base/redactor\.go|^tools/|_test.*\.go)
+        path: (base/logging\.go|base/redactor\.go|(^|/)tools/|_test.*\.go)
       - text:  "missing cases in switch"
         linters:
           - exhaustive

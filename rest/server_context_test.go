@@ -110,8 +110,8 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 			assert.Equal(t, want, got)
 		}
 
-		assert.False(t, nodeBStore.MigrationComplete(),
-			"wrapper must NOT be marked migration-complete while another node is mid-migration")
+		assert.True(t, nodeBStore.FallbackReadsEnabled(),
+			"wrapper must keep reading the fallback while another node is mid-migration")
 	})
 
 	// --- Subtest: per-DB entry is complete → safe to mark complete ---
@@ -905,7 +905,8 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 
 	// ensure doc1 is imported now we're online
 	rt.WaitForChanges(3, "/{{.keyspace}}/_changes", "", true)
-	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	// the import stat is incremented by the import feed goroutine after the write that makes doc1 visible in _changes, so wait for it
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 }
 
 func TestCompactIntervalFromConfig(t *testing.T) {

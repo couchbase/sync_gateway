@@ -97,7 +97,7 @@ func cachingFeedCollections(metadataStore base.DataStore, scopes map[string]Scop
 	collectionNames := base.NewCollectionNameSet()
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
 		collectionNames.Add(ms.Primary())
-		if !ms.MigrationComplete() {
+		if ms.FallbackReadsEnabled() {
 			collectionNames.Add(ms.Fallback())
 		}
 	} else {

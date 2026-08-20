@@ -699,3 +699,80 @@ func TestBootstrapDeleteMetadataDocumentFallback(t *testing.T) {
 		require.True(t, IsDocNotFoundError(err), "expected not-found after delete, got %T: %v", err, err)
 	})
 }
+
+// TestBootstrapFallbackDisabledOnDroppedDefaultCollection verifies bootstrap reads stop consulting
+// _default._default once it is seen to have been dropped. Otherwise every registry read pays a full
+// KV deadline - on the cluster-compat poller, on migration arming, and on node deregistration during
+// shutdown.
+//
+// The negative cases matter most: reacting to a merely transient error would permanently skip
+// legitimate unmigrated bootstrap metadata.
+func TestBootstrapFallbackDisabledOnDroppedDefaultCollection(t *testing.T) {
+	testCases := []struct {
+		name        string
+		scope       string
+		collection  string
+		err         error
+		wantDisable bool
+	}{
+		{
+			name:        "collection not found disables fallback",
+			scope:       DefaultScope,
+			collection:  DefaultCollection,
+			err:         gocb.ErrCollectionNotFound,
+			wantDisable: true,
+		},
+		{
+			name:       "timeout from collection outdated only disables fallback",
+			scope:      DefaultScope,
+			collection: DefaultCollection,
+			err: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVCollectionOutdatedRetryReason}},
+			wantDisable: true,
+		},
+		{
+			name:       "timeout with a transient reason alongside must not disable fallback",
+			scope:      DefaultScope,
+			collection: DefaultCollection,
+			err: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVCollectionOutdatedRetryReason, gocb.KVNotMyVBucketRetryReason}},
+			wantDisable: false,
+		},
+		{
+			name:        "doc not found must not disable fallback",
+			scope:       DefaultScope,
+			collection:  DefaultCollection,
+			err:         ErrNotFound,
+			wantDisable: false,
+		},
+		{
+			name:        "no error must not disable fallback",
+			scope:       DefaultScope,
+			collection:  DefaultCollection,
+			err:         nil,
+			wantDisable: false,
+		},
+		{
+			// Before a bucket opts in the fallback is wired the other way round, and a dropped
+			// _system._mobile is not what this guards.
+			name:        "dropped system collection must not disable the default fallback",
+			scope:       SystemScope,
+			collection:  SystemCollectionMobile,
+			err:         gocb.ErrCollectionNotFound,
+			wantDisable: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			cc := &CouchbaseCluster{}
+			const bucketName = "bucket1"
+			require.False(t, cc.bootstrapFallbackDisabled(bucketName), "fallback must start in play")
+
+			cc.disableBootstrapFallbackForCollection(ctx, bucketName, testCase.scope, testCase.collection, testCase.err)
+
+			require.Equal(t, testCase.wantDisable, cc.bootstrapFallbackDisabled(bucketName))
+			require.False(t, cc.bootstrapFallbackDisabled("other-bucket"), "latch must be per-bucket")
+		})
+	}
+}

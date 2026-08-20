@@ -539,6 +539,11 @@ func (btr *BlipTesterReplicator) handleProveAttachment(ctx context.Context, btc 
 
 		btcc := btc.getCollectionClientFromMessage(msg)
 
+		// ignore messages arriving after close
+		if btcc.isClosed() {
+			return
+		}
+
 		attData := btcc.getAttachment(digest)
 
 		proof := db.ProveAttachment(ctx, attData, nonce)
@@ -555,6 +560,11 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 	revsLimit := base.ValDefault(btc.revsLimit, defaultBlipTesterClientRevsLimit)
 	return func(msg *blip.Message) {
 		btcc := btc.getCollectionClientFromMessage(msg)
+
+		// ignore messages arriving after close
+		if btcc.isClosed() {
+			return
+		}
 
 		// Exit early when there's nothing to do
 		if msg.NoReply() {
@@ -660,6 +670,11 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 		defer btc.pullReplication.storeMessage(msg)
 
 		btcc := btc.getCollectionClientFromMessage(msg)
+
+		// ignore messages arriving after close
+		if btcc.isClosed() {
+			return
+		}
 
 		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
@@ -875,6 +890,11 @@ func (btr *BlipTesterReplicator) handleGetAttachment(btc *BlipTesterClient) func
 
 		btcc := btc.getCollectionClientFromMessage(msg)
 
+		// ignore messages arriving after close
+		if btcc.isClosed() {
+			return
+		}
+
 		attachment := btcc.getAttachment(digest)
 
 		response := msg.Response()
@@ -888,6 +908,11 @@ func (btr *BlipTesterReplicator) handleGetAttachment(btc *BlipTesterClient) func
 func (btr *BlipTesterReplicator) handleNoRev(ctx context.Context, btc *BlipTesterClient) func(msg *blip.Message) {
 	return func(msg *blip.Message) {
 		btcc := btc.getCollectionClientFromMessage(msg)
+
+		// ignore messages arriving after close
+		if btcc.isClosed() {
+			return
+		}
 
 		docID := msg.Properties[db.NorevMessageId]
 		revID := msg.Properties[db.NorevMessageRev]
@@ -950,6 +975,12 @@ func (btcc *BlipTesterCollectionClient) saveAttachment(base64data string) (dataL
 	}
 
 	return len(data), digest
+}
+
+// isClosed returns true once the client has been closed - its doc and attachment stores are emptied
+// and its senders may have stopped, so late messages must be ignored.
+func (btcc *BlipTesterCollectionClient) isClosed() bool {
+	return btcc.ctx.Err() != nil
 }
 
 // getAttachment returns the attachment data for the given digest. The test will fail if the attachment is not found.
