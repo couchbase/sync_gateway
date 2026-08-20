@@ -121,7 +121,11 @@ gh stack view --json          # never bare `gh stack view` - it opens a TUI
 gh stack submit --auto --open # pushes, creates non-draft PRs, links the stack
 ```
 
+**Both flags are mandatory, and `--open` does not mean what it looks like.** It marks the PRs *ready for review* — it does not open a browser. With `--auto` alone, every new PR is silently created as a **draft**, which no reviewer will pick up. There is no warning in the output; the PRs just sit there. If it happens anyway, recover with `gh pr ready <N>` per PR — the drafts are otherwise fine and need no re-push.
+
 `gh stack submit` sets each PR's base to the branch below it. Fix the titles and bodies afterwards (`gh pr edit N --title ... --body-file ...`) — `--auto` derives both from the commit message, so every PR in the stack still needs the real body with its attribution footer, and any `(test-only)` title suffix has to be added back.
+
+To extend a stack that is already submitted, do **not** re-run `gh stack init` — it fails with `branch "…" already exists in a stack`. Check out the current top branch, run `gh stack add CBG-<new>` to create and register the new branch, then cherry-pick onto it and `gh stack submit --auto --open` again. Existing PRs are reported as up to date and only the new one is created.
 
 When a branch name is already taken (usually the upstream PR used the same ticket key), suffix the release: `CBG-5414-4.1.2`.
 
@@ -170,15 +174,31 @@ One bullet per deviation, naming the file and the reason. "Clean" means the cher
 - the title, as a `(test-only)` suffix — this is what makes a low-risk PR obvious in a list view
 - the body, on its own line between the cherry-pick line (and any deviation bullets) and the footer
 
-Include it only when the branch changes **no non-test Go file**. Check the real diff, do not judge from the commit subject:
+Include it only when **every file the branch touches is recognised test code**. Check the real diff, do not judge from the commit subject. List all changed paths — not just `*.go` — and strip the ones the table below classifies as test code:
 
 ```bash
-git diff --name-only origin/release/x.y.z...HEAD -- '*.go' | grep -v '_test\.go$'
+git diff --name-only origin/release/x.y.z...HEAD \
+  | grep -vE '_test\.go$|_testing\.go$|(^|/)testing/|(^|/)(utilities_testing|main_test_|util_test_|api_test_helpers|jwt_test_utils|replicator_test_helper)'
 ```
 
-Empty output → add the line. Any output → leave it off, even for a one-line production change. Clean and unclean backports both get it; the two markers are independent — an unclean cherry-pick of a test-only change is still test-only.
+Empty output → add the line. Any surviving path → leave it off, even for a one-line production change. Do not narrow the command to `-- '*.go'`: a diff of only docs, scripts, CI config, or a Dockerfile would then print nothing and look test-only when it is not. Clean and unclean backports both get it; the two markers are independent — an unclean cherry-pick of a test-only change is still test-only.
 
-Go files that are not named `*_test.go` count as production files whatever they contain — test helpers such as `base/util_testing.go` and the `testing/` packages compile into the shipped binary, so a PR touching them is not test-only.
+**Test-support code counts as test code**, even though it is not named `*_test.go` and does technically compile into the shipped binary. What matters to a reviewer is blast radius: no request path calls it, so a change is very unlikely to reach a deployment. It is not a guarantee — such a file still compiles in, so an `init()` side effect or a new non-test caller would make it production code again. In this repo that means:
+
+| Pattern | Examples |
+|---|---|
+| `*_test.go` | the ordinary case |
+| `*_testing.go` | `base/util_testing.go`, `db/utilities_hlv_testing.go`, `channels/util_testing.go` |
+| anything under a `testing/` directory | `testing/assert/`, `testing/require/`, `testing/sgtest/` |
+| `utilities_testing*` | the whole `rest/utilities_testing_*.go` family, `base/utilities_testing_rbac.go` |
+| `main_test_*`, `util_test_*` | `base/main_test_bucket_pool.go`, `base/util_test_race.go` |
+| `*_test_helper*.go`, `*_test_utils.go` | `rest/api_test_helpers.go`, `auth/jwt_test_utils.go`, `rest/replicatortest/replicator_test_helper.go` |
+
+One name-based exception, which the grep above deliberately does not filter: **`rest/oidc_test_provider.go` is production code.** It backs the registered `/_oidc_testing` route, so it is reachable in a running deployment. A PR touching it is not test-only whatever its name suggests.
+
+When in doubt about a file the grep does not classify, ask whether any non-test caller reaches it. If yes, it is production.
+
+**A `go.mod` / `go.sum` change always disqualifies `test-only`**, even when every Go file in the diff is test-support code. A dependency bump changes what ships whatever the Go diff looks like, and it is the part of a backport most worth a careful review — the marker would invite the opposite. The command above already prints these paths; never add them to the filter to get an empty result.
 
 The footer goes on every backport PR, including stacked ones, and survives every later `gh pr edit --body-file` — rewriting a body drops it unless you carry it over. Write bodies from a file so the footer is part of the text you author, not something appended by hand:
 
@@ -192,6 +212,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - Hand-merging a conflict without checking for a missing prerequisite first
 - Cherry-picking with rerere on, then trusting a resolution you never looked at
 - `gh stack init` against a stale local `release/x.y.z` ref — the stack records the wrong base
+- `gh stack submit --auto` without `--open` — the whole stack lands as drafts and nobody reviews it
 - Reporting a backport done without `go build`/`go vet`, or implying integration tests ran when they didn't
 - Calling lint clean after a `golangci-lint` run that used the default config instead of `.golangci-strict.yml`, or a format check that can't fail
 - Leaving the auto-generated PR body or the repo PR template in place
@@ -209,6 +230,10 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | Dropping an upstream test file that has no counterpart on the branch | Apply its changes to wherever that test lives on the release branch |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
-| `test-only` on a PR that also touches a test helper or `testing/` package | Only `*_test.go` files are test files; everything else Go is production |
+| `test-only` withheld because the PR touches a test helper or the `testing/` package | Test-support code counts as test code — see the pattern table. Only a real production file blocks the marker |
+| `test-only` on a PR touching `rest/oidc_test_provider.go` | Despite the name it backs the live `/_oidc_testing` route, so it is production |
+| `test-only` on a test-support-only diff that also bumps `go.mod` | A dependency bump ships. Check `go.mod`/`go.sum` separately — the `*.go` grep misses it |
 | Title says `(test-only)` but the body line is missing, or the reverse | Both come from the same check — set both or neither |
 | `(test-only)` suffix dropped by an auto-generated stacked PR title | Re-apply it with `gh pr edit N --title` after `gh stack submit` |
+| `--open` dropped from `gh stack submit` because it reads like "open a browser" | It means *ready for review*. Without it `--auto` creates drafts; fix with `gh pr ready <N>` |
+| `gh stack init` re-run to add a layer to a live stack | Use `gh stack add <branch>` from the current top branch instead |

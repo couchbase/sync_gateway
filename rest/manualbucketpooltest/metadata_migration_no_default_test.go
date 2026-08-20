@@ -13,6 +13,7 @@ package manualbucketpooltest
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -326,10 +327,9 @@ func TestFreshDeploymentWithDroppedDefaultCollectionTwoDatabases(t *testing.T) {
 func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	// TODO MB-73113: Couchbase Server 8.0.0+ never finishes a deferred index build on a collection once _default._default
-	// has been dropped, so db2 below never comes online. The 8.x minimums here are placeholders no build will reach, which
-	// skips all of 8.0.x and 8.1.x. Replace them with the real fixed versions once MB-73113 ships in an 8.x build.
-	base.RequireServerVersionForTest(t, "7.6.0", "8.0.99", "8.1.99")
+	// MB-73113: a deferred index build never finishes on any collection once _default._default has been dropped.
+	// Fixed in 8.1.0@2674. There is no 8.0.x backport yet, so the 8.0 minimum stays at a build no release will reach.
+	base.RequireServerVersionForTest(t, "7.6.0", "8.0.99", "8.1.0@2674")
 
 	ctx := base.TestCtx(t)
 
@@ -463,10 +463,15 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 //
 // CBS only: rosmar does not support dropping the default collection.
 func TestDropDefaultCollectionDuringMigration(t *testing.T) {
+
 	base.TestRequiresCollections(t)
 	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("CBS only: rosmar cannot drop _default._default")
 	}
+	// even passing this test takes a while to run since it's adversarial in nature
+	// dropping `_default` underneath an unmigrated database will result in at least one KV retry loop
+	// in metadatastore fallback, and on the bootstrap to attempt database deregister
+	base.LongRunningTest(t)
 
 	ctx := base.TestCtx(t)
 	tb := base.GTestBucketPool.CreateTestBucket(t)
@@ -482,7 +487,12 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 	})
-	defer rt.Close()
+	// Ensure rt.Close() completes within a couple of mins to avoid test hang
+	defer func() {
+		var wg sync.WaitGroup
+		wg.Go(rt.Close)
+		base.WaitWithTimeout(t, &wg, 2*time.Minute)
+	}()
 
 	// 1. Create in legacy mode so all metadata lands in _default._default.
 	dbConfig := rt.NewDbConfig()

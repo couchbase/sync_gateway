@@ -749,10 +749,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 				rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 			}
 
-			err := rt.WaitForCondition(func() bool {
-				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
-			})
-			assert.NoError(t, err)
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value, int64(testCase.docsCreated))
 			rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")

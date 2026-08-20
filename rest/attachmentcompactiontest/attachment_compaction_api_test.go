@@ -28,6 +28,9 @@ import (
 func TestAttachmentCompactionAPI(t *testing.T) {
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
 		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
@@ -125,9 +128,15 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 
 	// Attachment Compaction only runs on _default._default
 	rt1 := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
 		CustomTestBucket: noCloseTB,
 	})
 	rt2 := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
 		CustomTestBucket: tb.LeakyBucketClone(base.LeakyBucketConfig{}),
 	})
 	defer rt2.Close()
@@ -261,6 +270,9 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 func TestAttachmentCompactionReset(t *testing.T) {
 	// Attachment Compaction only runs on _default._default
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
 		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
@@ -312,7 +324,11 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
-	rt := rest.NewRestTesterDefaultCollection(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
+	})
 	defer rt.Close()
 
 	// Avoid racing the automatic startup migration against the mark phase below.
@@ -396,6 +412,9 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 func TestAttachmentCompactionAbort(t *testing.T) {
 	// Attachment Compaction only runs on _default._default
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport: false, // CreateLegacyAttachmentDoc docs would be imported, marking their attachments twice
+		}},
 		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()

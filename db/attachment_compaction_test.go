@@ -568,23 +568,10 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	require.Equal(t, "_sync:dcp_ck::sg:att_compaction:TestAttachmentDifferentVBUUIDsBetweenPhases_sweep", dcpClient.GetMetadataKeyPrefix())
 }
 
-func WaitForConditionWithOptions(t testing.TB, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	waitForSuccess := func() (shouldRetry bool, err error, value any) {
-		if successFunc() {
-			return false, nil, nil
-		}
-		return true, nil, nil
-	}
-
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(base.TestCtx(t), "Wait for condition options", waitForSuccess, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
+// CreateLegacyAttachmentDoc writes a doc with pre-4.0 attachment metadata in its _sync xattr, plus
+// the v1 attachment body doc it references, and returns the attachment doc ID.
+//
+// This helper performs a db.Put followed by a direct _sync xattr update, producing multiple KV mutations.
 func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
 
 	attDigest := Sha1DigestKey(attBody)

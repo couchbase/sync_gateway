@@ -138,7 +138,12 @@ type CouchbaseCluster struct {
 	// database that opted in only at the per-DB level still disables its fallback after migration,
 	// and completing one bucket's migration never disables another bucket's fallback.
 	bucketsBootstrapMigrationComplete SyncMap[string, bool]
-	useGOCBFastFailRetry              bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
+	// bucketsBootstrapFallbackUnavailable records, per bucket, that _default._default was observed
+	// dropped, so bootstrap reads stop consulting it. Distinct from
+	// bucketsBootstrapMigrationComplete - the migration may never have finished, but a dropped
+	// collection is unreadable either way.
+	bucketsBootstrapFallbackUnavailable SyncMap[string, bool]
+	useGOCBFastFailRetry                bool // When true, readiness checks fail fast instead of using the best-effort retry strategy
 }
 
 // bucketBootstrapTarget records where bootstrap docs (registry, dbconfig, cbgt cfg) live for a
@@ -415,7 +420,7 @@ func (cc *CouchbaseCluster) metadataCollections(b *gocb.Bucket) (primary, fallba
 		return b.DefaultCollection(), nil
 	}
 	primary = b.Scope(SystemScope).Collection(SystemCollectionMobile)
-	if cc.bucketBootstrapMigrationComplete(b.Name()) {
+	if cc.bootstrapFallbackDisabled(b.Name()) {
 		return primary, nil
 	}
 	return primary, b.DefaultCollection()
@@ -449,7 +454,7 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 		return err
 	}
 	defer teardown()
-	target, found, err := cc.probeRegistryLocation(b)
+	target, found, err := cc.probeRegistryLocation(ctx, b)
 	if err != nil {
 		return err
 	}
@@ -496,29 +501,78 @@ func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
 // (target, found): when found, target identifies the collection; when not found, target is
 // undefined and the caller picks based on its own policy (cluster flag or per-DB hint).
 // A "collection not found" probe error on _system._mobile is treated as "not present".
-func (cc *CouchbaseCluster) probeRegistryLocation(b *gocb.Bucket) (target bucketBootstrapTarget, found bool, err error) {
+func (cc *CouchbaseCluster) probeRegistryLocation(ctx context.Context, b *gocb.Bucket) (target bucketBootstrapTarget, found bool, err error) {
 	systemCol := b.Scope(SystemScope).Collection(SystemCollectionMobile)
 	existsInSystem, sysErr := cc.configPersistence.keyExists(systemCol, SGRegistryKey)
 	if sysErr == nil && existsInSystem {
 		return bucketTargetSystemMobile, true, nil
 	}
-	// A bucket marked migration-complete has no legacy registry in _default._default to find — and
-	// _default may have been dropped (system-collection-only deployment / post-migration cleanup).
-	// Skip the _default probe so we never issue a KV op against a missing collection, which would
-	// retry KV_COLLECTION_OUTDATED to the op timeout. ensureBucketBootstrapTargetCached sets this
-	// flag (via the _default-existence check) before any caller reaches this point.
-	if cc.bucketBootstrapMigrationComplete(b.Name()) {
+	// A bucket with the fallback disabled has no legacy registry in _default._default to find — the
+	// migration finished, or the collection was dropped (system-collection-only deployment /
+	// post-migration cleanup). Skip the _default probe so we never issue a KV op against a missing
+	// collection, which would retry KV_COLLECTION_OUTDATED to the op timeout.
+	if cc.bootstrapFallbackDisabled(b.Name()) {
 		return 0, false, nil
 	}
 	defaultCol := b.DefaultCollection()
 	existsInDefault, defErr := cc.configPersistence.keyExists(defaultCol, SGRegistryKey)
 	if defErr != nil {
+		// A dropped _default is latched and treated as "not present", mirroring the _system._mobile
+		// handling above, so later probes skip it instead of paying the KV deadline again.
+		cc.disableBootstrapFallbackIfUnrecoverable(ctx, b.Name(), defaultCol, defErr)
+		if IsCollectionOutdatedError(defErr) {
+			return 0, false, nil
+		}
 		return 0, false, defErr
 	}
 	if existsInDefault {
 		return bucketTargetDefault, true, nil
 	}
 	return 0, false, nil
+}
+
+// bootstrapFallbackDisabled reports whether this bucket's bootstrap reads should skip
+// _default._default, for either reason: the bootstrap migration finished, or the collection was
+// dropped.
+func (cc *CouchbaseCluster) bootstrapFallbackDisabled(bucketName string) bool {
+	if cc.bucketBootstrapMigrationComplete(bucketName) {
+		return true
+	}
+	unavailable, _ := cc.bucketsBootstrapFallbackUnavailable.Load(bucketName)
+	return unavailable
+}
+
+// disableBootstrapFallbackIfUnrecoverable stops this bucket's bootstrap reads consulting
+// _default._default once err proves that collection is gone - Couchbase Server rejects any
+// user-created collection whose name starts with "_", so it can never be recreated.
+//
+// gocbcore always-retries KV_COLLECTION_OUTDATED, so without this latch every later bootstrap read
+// burns a full KV deadline rediscovering the same thing - registry reads happen on the cluster-compat
+// poller, on migration arming, and on node deregistration during shutdown. Mirrors
+// MetadataStore.DisableFallbackIfUnrecoverable, which covers the per-database metadata store.
+//
+// Only latches on _default._default: before a bucket opts in, metadataCollections wires the fallback
+// the other way round, and a dropped _system._mobile is not what this guards.
+func (cc *CouchbaseCluster) disableBootstrapFallbackIfUnrecoverable(ctx context.Context, bucketName string, fallback *gocb.Collection, err error) {
+	if fallback == nil {
+		return
+	}
+	cc.disableBootstrapFallbackForCollection(ctx, bucketName, fallback.ScopeName(), fallback.Name(), err)
+}
+
+// disableBootstrapFallbackForCollection is the *gocb.Collection-free half of
+// disableBootstrapFallbackIfUnrecoverable, so the decision can be unit tested without a cluster.
+func (cc *CouchbaseCluster) disableBootstrapFallbackForCollection(ctx context.Context, bucketName, scopeName, collectionName string, err error) {
+	if err == nil || !IsCollectionOutdatedError(err) {
+		return
+	}
+	if scopeName != DefaultScope || collectionName != DefaultCollection {
+		return
+	}
+	if _, loaded := cc.bucketsBootstrapFallbackUnavailable.LoadOrStore(bucketName, true); !loaded {
+		WarnfCtx(ctx, "Bootstrap metadata fallback collection %s.%s on bucket %s is unavailable (%v) - no longer falling back to it. Any bootstrap metadata not already migrated to %s.%s is unrecoverable.",
+			MD(DefaultScope), MD(DefaultCollection), MD(bucketName), err, MD(SystemScope), MD(SystemCollectionMobile))
+	}
 }
 
 // shouldFallback returns true if a primary read returned a not-found-style error and the cluster
@@ -580,6 +634,7 @@ func (cc *CouchbaseCluster) loadConfigWithFallback(ctx context.Context, bucketNa
 			cc.noteBucketFallbackHit(bucketName)
 			return fallback, value, cas, nil
 		}
+		cc.disableBootstrapFallbackIfUnrecoverable(ctx, bucketName, fallback, err)
 	}
 	return primary, value, cas, err
 }
@@ -604,6 +659,7 @@ func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, d
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
+		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
 	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	return cas, err
@@ -628,6 +684,7 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 	if fallback != nil {
 		exists, existsErr := cc.configPersistence.keyExists(fallback, key)
 		if existsErr != nil {
+			cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, existsErr)
 			return 0, existsErr
 		}
 		if exists {
@@ -671,6 +728,7 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location,
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
+		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
 	return uint64(casOut), err
 }
@@ -694,6 +752,7 @@ func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location,
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
+		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
 	return uint64(casOut), err
 
@@ -717,6 +776,7 @@ func (cc *CouchbaseCluster) DeleteMetadataDocument(ctx context.Context, location
 		if removeErr == nil {
 			cc.noteBucketFallbackHit(location)
 		}
+		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, removeErr)
 	}
 	return removeErr
 }
@@ -807,6 +867,7 @@ func (cc *CouchbaseCluster) KeyExists(ctx context.Context, location, docID strin
 	if err == nil && exists {
 		cc.noteBucketFallbackHit(location)
 	}
+	cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	return exists, err
 }
 
@@ -1003,6 +1064,7 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 			if IsDocNotFoundError(err) {
 				continue
 			}
+			cc.disableBootstrapFallbackIfUnrecoverable(ctx, bucket, fallback, err)
 			return fmt.Errorf("read fallback %q during bootstrap migration: %w", docID, err)
 		}
 		fallbackCas := gocb.Cas(cas)
@@ -1020,6 +1082,7 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 			if IsDocNotFoundError(err) {
 				continue
 			}
+			cc.disableBootstrapFallbackIfUnrecoverable(ctx, bucket, fallback, err)
 			return fmt.Errorf("delete fallback %q during bootstrap migration: %w", docID, err)
 		}
 	}
@@ -1051,7 +1114,7 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 		if err != nil {
 			return nil, nil, err
 		}
-		cc.ensureBucketBootstrapTargetCached(b)
+		cc.ensureBucketBootstrapTargetCached(ctx, b)
 		return b, teardownFn, nil
 	}
 
@@ -1062,7 +1125,7 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 	defer cc.cachedBucketConnections.lock.Unlock()
 	bucket := cc.cachedBucketConnections._get(bucketName)
 	if bucket != nil {
-		cc.ensureBucketBootstrapTargetCached(bucket.bucket)
+		cc.ensureBucketBootstrapTargetCached(ctx, bucket.bucket)
 		return bucket.bucket, teardownFn, nil
 	}
 
@@ -1076,7 +1139,7 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 		bucketCloseFn: bucketCloseFn,
 		refcount:      1,
 	})
-	cc.ensureBucketBootstrapTargetCached(newBucket)
+	cc.ensureBucketBootstrapTargetCached(ctx, newBucket)
 	return newBucket, teardownFn, nil
 }
 
@@ -1094,7 +1157,7 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 // missing collection (which would retry KV_COLLECTION_OUTDATED to the op timeout). Marking complete
 // also makes probeRegistryLocation skip its own _default keyExists for callers that invoke it
 // directly (SetBucketBootstrapTargetHint).
-func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
+func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(ctx context.Context, b *gocb.Bucket) {
 	if _, cached := cc.bucketBootstrapTargets.Load(b.Name()); cached {
 		return
 	}
@@ -1105,7 +1168,7 @@ func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(b *gocb.Bucket) {
 		cc.SetMigrationComplete(b.Name())
 		return
 	}
-	target, found, err := cc.probeRegistryLocation(b)
+	target, found, err := cc.probeRegistryLocation(ctx, b)
 	if err != nil || !found {
 		return
 	}

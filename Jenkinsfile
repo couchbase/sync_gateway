@@ -34,15 +34,33 @@ pipeline {
                 stage('Go Modules') {
                     steps {
                         script {
-                            // go fetches the toolchain named in go.mod on demand
-                            env.GOTOOLS = sh(
+                            // bootstrap a go version from go.mod. This requires a new enough version of go to run golang.org/dl/go$ver
+                            env.GO_VERSION = 'go' + sh(
                               returnStdout: true,
-                              script: 'go env GOPATH'
+                              script: '''
+                                go list -m -f '{{.GoVersion}}'
+                              '''
                             ).trim()
                             sh '''
                               set -eux
 
+                              echo "Sync Gateway go.mod version is $GO_VERSION"
+                              go install "golang.org/dl/$GO_VERSION@latest"
+                              ~/go/bin/$GO_VERSION download
+                            '''
+                            env.GOROOT = sh(
+                              returnStdout: true,
+                              script: '~/go/bin/$GO_VERSION env GOROOT'
+                            ).trim()
+                            env.GOTOOLS = sh(
+                              returnStdout: true,
+                              script: '~/go/bin/$GO_VERSION env GOPATH'
+                            ).trim()
+                            env.PATH = "${env.GOROOT}/bin:${env.PATH}"
+                            sh '''
+                              which go
                               go version
+                              go env
                             '''
                             sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                                 sh '''
@@ -191,13 +209,11 @@ pipeline {
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
                                 build job: 'MainIntegration', quietPeriod: 3600, wait: false
 
-                                echo 'Queueing E2E test runs (rosmar/cbs x dev_e2e/QE) for branch "main" ...'
+                                echo 'Queueing E2E test runs (rosmar/cbs) for branch "main" ...'
                                 script {
                                     def e2eModes = [
-                                        [backingStore: 'rosmar', testDirectory: 'tests/dev_e2e'],
-                                        [backingStore: 'rosmar', testDirectory: 'tests/QE'],
-                                        [backingStore: 'cbs', testDirectory: 'tests/dev_e2e'],
-                                        [backingStore: 'cbs', testDirectory: 'tests/QE'],
+                                        [backingStore: 'rosmar'],
+                                        [backingStore: 'cbs'],
                                     ]
                                     def couchbaseLiteVersion = env.DEFAULT_COUCHBASE_LITE_VERSION
                                     def couchbaseServerVersion = env.DEFAULT_COUCHBASE_SERVER_VERSION
@@ -205,7 +221,6 @@ pipeline {
                                         build job: 'Couchbase Lite E2E', wait: false, parameters: [
                                             string(name: 'SG_COMMIT', value: env.SG_COMMIT),
                                             string(name: 'BACKING_STORE', value: mode.backingStore),
-                                            string(name: 'TEST_DIRECTORY', value: mode.testDirectory),
                                             string(name: 'COUCHBASE_LITE_VERSION', value: couchbaseLiteVersion),
                                             string(name: 'COUCHBASE_SERVER_VERSION', value: couchbaseServerVersion),
                                         ]
@@ -240,7 +255,7 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
             }
         }
         failure {
@@ -248,14 +263,14 @@ pipeline {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL)
+                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
                 def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL)
+                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
             }
         }
         cleanup {

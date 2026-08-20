@@ -602,7 +602,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	// cannot run a query.
 	metadataStore := context.MetadataStore
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
-		if !ms.MigrationComplete() {
+		if ms.FallbackReadsEnabled() {
 			queryStatement, params := context.BuildPrincipalsQuery(startKey, 0)
 			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
 		}
@@ -644,7 +644,7 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 	// N1QL Query. See QueryPrincipals for the dual-collection wrapper handling.
 	metadataStore := context.MetadataStore
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
-		if !ms.MigrationComplete() {
+		if ms.FallbackReadsEnabled() {
 			queryStatement, params := context.BuildUsersQuery(startKey, 0)
 			return dualMetadataN1QLQuery[QueryUsersRow](ctx, ms, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
 		}
@@ -694,7 +694,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 	// N1QL Query. See QueryPrincipals for the dual-collection wrapper handling.
 	metadataStore := context.MetadataStore
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
-		if !ms.MigrationComplete() {
+		if ms.FallbackReadsEnabled() {
 			queryStatement, params := context.BuildRolesQuery(startKey, 0)
 			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
 		}
@@ -749,7 +749,7 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	// N1QL Query. See QueryPrincipals for the dual-collection wrapper handling.
 	metadataStore := context.MetadataStore
 	if ms, ok := metadataStore.(*base.MetadataStore); ok {
-		if !ms.MigrationComplete() {
+		if ms.FallbackReadsEnabled() {
 			return dualMetadataN1QLQuery[PrincipalRow](ctx, ms, queryName, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold, limit)
 		}
 		metadataStore = ms.Primary()

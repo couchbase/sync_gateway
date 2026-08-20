@@ -51,7 +51,7 @@ func TestCachingFeedCollectionsDualMetadataStoreMigrationComplete(t *testing.T) 
 	primary := bucket.GetMobileSystemDataStore() // skips if backing store does not support system collections
 	fallback := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primary, fallback)
-	ms.SetMigrationComplete()
+	ms.DisableFallbackReads()
 
 	got := cachingFeedCollections(ms, nil)
 

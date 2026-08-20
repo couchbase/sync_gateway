@@ -46,6 +46,21 @@ def slackMessage(String title, String status, String link, Map details = [:]) {
     return lines.join('\n')
 }
 
+// Returns a Slack-formatted link to the currently checked-out commit on GitHub, followed by its
+// subject line, e.g. "<https://github.com/couchbase/sync_gateway/commit/abc123...|abc1234> Fix the thing".
+def gitCommitLink() {
+    def sha = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+    def message = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+    def safeMessage = message.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return "<https://github.com/couchbase/sync_gateway/commit/${sha}|${sha.take(7)}> ${safeMessage}"
+}
+
+// Returns a Slack-formatted link to an arbitrary Sync Gateway ref (branch, tag, or commit SHA)
+// on GitHub, e.g. "<https://github.com/couchbase/sync_gateway/commit/main|main>".
+def refLink(String ref) {
+    return "<https://github.com/couchbase/sync_gateway/commit/${ref}|${ref}>"
+}
+
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
 // .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,
@@ -70,15 +85,24 @@ def slackUserIdForBuild() {
     return slackUserId
 }
 
-// Sends a failure-style Slack notification: always to #syncgatewaybot; additionally either DMs
-// the user who manually triggered the build (if known) or posts to #syncgatewaybot-alerts (if
-// triggered by a pipeline rather than a person).
+// Returns true if this build is for a pull request, which Jenkins signals by setting CHANGE_ID.
+def isPRBuild() {
+    return env.CHANGE_ID as boolean
+}
+
+// Sends a failure-style Slack notification to #syncgatewaybot, always, as the record of every
+// failure, plus at most one of:
+//  1. a DM to whoever manually triggered the build, so the person waiting on it hears first - only if
+//     slackUserIdForBuild() can identify them, or
+//  2. #syncgatewaybot-alerts, to escalate failures from automated builds that aren't against a PR -
+//     main-branch and downstream job runs nobody is watching. A PR build never lands here, since its
+//     failures are already reported on the PR itself.
 def slackSendFailure(String title, String status, String link, Map details = [:]) {
     def message = slackMessage(title, status, link, details)
     def dmTarget = slackUserIdForBuild()
     if (dmTarget) {
         slackSend(channel: dmTarget, color: 'danger', message: message)
-    } else {
+    } else if (!isPRBuild()) {
         slackSend(channel: 'syncgatewaybot-alerts', color: 'danger', message: message)
     }
     slackSend(channel: 'syncgatewaybot', color: 'danger', message: message)
