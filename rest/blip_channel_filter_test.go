@@ -23,6 +23,8 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache, base.KeyCRUD, base.KeyHTTP)
+	defer db.SuspendSequenceBatching()()
+
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
 		for _, sendDocWithChannelRemoval := range []bool{true, false} {

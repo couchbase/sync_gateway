@@ -77,9 +77,19 @@ func newSequenceAllocator(ctx context.Context, datastore base.DataStore, dbStats
 	s.sequenceBatchSize = idleBatchSize
 	s.releaseSequenceWait = defaultReleaseSequenceWait
 
+	// Allow the release wait to be shortened under cb_sg_devmode, to make sequence gaps deterministic for testing.
+	testReleaseSequenceWait, err := GetTestReleaseSequenceWait()
+	if err != nil {
+		return nil, err
+	}
+	if testReleaseSequenceWait > 0 {
+		base.InfofCtx(ctx, base.KeyCRUD, "Using test override for release sequence wait: %v", testReleaseSequenceWait)
+		s.releaseSequenceWait = testReleaseSequenceWait
+	}
+
 	// The reserveNotify channel manages communication between the releaseSequenceMonitor goroutine and _reserveSequenceRange invocations.
 	s.reserveNotify = make(chan struct{}, 1)
-	_, err := s.lastSequence(ctx) // just reads latest sequence from bucket
+	_, err = s.lastSequence(ctx) // just reads latest sequence from bucket
 	if err != nil {
 		return nil, err
 	}

@@ -1527,6 +1527,8 @@ func TestAssignSequenceReleaseLoop(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
 
+	defer SuspendSequenceBatching()()
+
 	// import disabled
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
 	defer db.Close(ctx)
