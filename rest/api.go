@@ -465,6 +465,7 @@ func (h *handler) handlePostResync() error {
 				Reset:               reset,
 			})
 			if err != nil {
+				atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
 				return err
 			}
 
@@ -504,6 +505,7 @@ func (h *handler) handlePostResync() error {
 		if err != nil {
 			return err
 		}
+
 		h.writeRawJSON(status)
 
 		base.Audit(h.ctx(), base.AuditIDDatabaseResyncStop, nil)

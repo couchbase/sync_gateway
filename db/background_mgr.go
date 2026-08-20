@@ -264,8 +264,15 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.setStartTime(previousStatus.StartTime)
 	}
 
+	// Capture the terminator markStart just created rather than reading the mutable b.terminator field later on -
+	// a subsequent Start() call can reassign b.terminator once this one returns, and this goroutine tree must keep
+	//operating on the instance created for THIS run, not whatever b.terminator happens to be by the time it runs.
+	//terminator := b.terminator
+
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
+		b.SetError(err)
+		b.updateTerminalStatus(ctx)
 		return err
 	}
 
@@ -313,16 +320,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
-		if b.mode() != backgroundManagerModeLocal {
-			err := b.UpdateStatusClusterAware(ctx)
-			if err != nil {
-				base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
-			}
-
-			// Delete the heartbeat doc to allow another process to run
-			// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
-			_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
-		}
+		b.updateTerminalStatus(ctx)
 	}()
 
 	if b.mode() != backgroundManagerModeLocal {
@@ -338,6 +336,10 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		}
 		if err != nil {
 			base.ErrorfCtx(ctx, "Failed to update background manager status: %v", err)
+			// Process.Run's goroutine is already launched by this point, so without this the caller would
+			// get an error back while the process keeps running in the background unbeknownst to them.
+			// SetError both marks the state as Error and terminates the already-running process.
+			b.SetError(err)
 			return err
 		}
 	}
@@ -411,6 +413,20 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 	b.setRunState(BackgroundProcessStateRunning)
 	return nil
+}
+
+// updateTerminalStatus persists the current (terminal) status and removes the heartbeat doc to allow a subsequent run.
+func (b *BackgroundManager[O]) updateTerminalStatus(ctx context.Context) {
+	if b.mode() != backgroundManagerModeLocal {
+		err := b.UpdateStatusClusterAware(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "Failed to update background manager status: %v", err)
+		}
+
+		// Delete the heartbeat doc to allow another process to run
+		// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
+		_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
+	}
 }
 
 // getClusterStatusState gets the current background process state of the cluster.

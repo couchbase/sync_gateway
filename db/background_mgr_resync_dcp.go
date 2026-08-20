@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -145,7 +146,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 		var err error
 		collections, err = r.db.collections(options.Collections)
 		if err != nil {
-			return backgroundManagerInitReset, err
+			return backgroundManagerInitReset, base.HTTPErrorf(http.StatusBadRequest, "%w", err)
 		}
 	} else {
 		collections = slices.Collect(maps.Values(r.db.CollectionByID))
