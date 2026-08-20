@@ -26,7 +26,7 @@ post:
     If `Origin` header is passed to this endpoint, the `Origin` header must match both the `cors.login_origin` and `cors.origin` configuration options.
   parameters:
     - name: one_time
-      description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes if not used.
+      description: Sets the session to only be valid for a single authentication. This session will expire in 5 minutes if not used. When set, the server does not return a `Set-Cookie` header; the one-time session ID is returned in the JSON body as `one_time_session_id`.
       in: query
       schema:
         type: boolean
