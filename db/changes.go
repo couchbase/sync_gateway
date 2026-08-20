@@ -16,6 +16,7 @@ import (
 	"math"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -1477,6 +1478,21 @@ func (options ChangesOptions) String() string {
 		options.RequestPlusSeq,
 		options.VersionType,
 	)
+}
+
+// LogChangesRequest logs the parameters of an incoming changes request at debug level, in a single format
+// shared by the REST and BLIP entry points so that one search finds every changes request regardless of
+// protocol.
+func LogChangesRequest(ctx context.Context, logKey base.LogKey, protocol string, fields []base.KVPair) {
+	if !base.LogDebugEnabled(ctx, logKey) {
+		return
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Changes request: protocol=%s", protocol)
+	for _, field := range fields {
+		fmt.Fprintf(&b, " %s=%v", field.Key, field.Val)
+	}
+	base.DebugfCtx(ctx, logKey, "%s", b.String())
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes. Returns an error in the case that the feed does not start up, or there is a fatal error in the feed. The caller is responsible for closing the connection, no more changes will be generated. forceClose will be true if connection was terminated underneath the changes feed.

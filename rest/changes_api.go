@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,6 +164,28 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	return channelsArray, docIdsArray, nil
 }
 
+// restChangesLogFields describes a REST changes request for db.LogChangesRequest.  raw_since reconstructs
+// what the client sent; since is the normalized value that's actually used, which can omit part of raw_since.
+func restChangesLogFields(feed string, options db.ChangesOptions, filter string, channels, docIDs []string) []base.KVPair {
+	return []base.KVPair{
+		{Key: "feed", Val: feed},
+		{Key: "raw_since", Val: strconv.Quote(options.Since.RawString())},
+		{Key: "since", Val: options.Since},
+		{Key: "limit", Val: options.Limit},
+		{Key: "conflicts", Val: options.Conflicts},
+		{Key: "include_docs", Val: options.IncludeDocs},
+		{Key: "active_only", Val: options.ActiveOnly},
+		{Key: "revocations", Val: options.Revocations},
+		{Key: "version_type", Val: options.VersionType},
+		{Key: "request_plus_seq", Val: options.RequestPlusSeq},
+		{Key: "heartbeat_ms", Val: options.HeartbeatMs},
+		{Key: "timeout_ms", Val: options.TimeoutMs},
+		{Key: "filter", Val: strconv.Quote(filter)},
+		{Key: "channels", Val: base.UD(channels)},
+		{Key: "doc_ids", Val: base.UD(docIDs)},
+	}
+}
+
 // Top-level handler for _changes feed requests. Accepts GET or POST requests.
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
@@ -255,20 +278,17 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
-
-		to := ""
-		if h.user != nil && h.user.Name() != "" {
-			to = fmt.Sprintf("  (to %s)", h.user.Name())
-		}
-
-		base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
-			h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
-
 	}
 
 	// Default to feed type normal
 	if feed == "" {
 		feed = "normal"
+	}
+
+	// the websocket feed replaces these options from its first websocket message, so it logs its own
+	if feed != feedTypeWebsocket {
+		db.LogChangesRequest(h.ctx(), base.KeyChanges, "REST",
+			restChangesLogFields(feed, options, filter, channelsArray, docIdsArray))
 	}
 
 	needRelease, concurrentReplicationsErr := h.server.incrementConcurrentReplications(h.rqCtx)
@@ -529,11 +549,24 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			var channelNames []string
 			var err error
 			if _, wsoptions, _, channelNames, _, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
+				base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes websocket request rejected, invalid options %s: %v",
+					base.UD(string(msg)), err)
 				return
 			}
 			if channelNames != nil {
 				inChannels, _ = ch.SetFromArray(channelNames, ch.ExpandStar)
 			}
+		}
+
+		// A websocket feed's options come entirely from the message above; the options passed in from the
+		// query string are discarded apart from ChangesCtx, so this is the first point at which the feed's
+		// real parameters are known.  feed is hard-coded rather than read from wsoptions.Continuous, which
+		// generateContinuousChanges does not set until later.
+		db.LogChangesRequest(h.ctx(), base.KeyChanges, "REST",
+			restChangesLogFields(feedTypeWebsocket, wsoptions, "", inChannels.ToArray(), nil))
+		if options.Since != wsoptions.Since {
+			base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes websocket request: query string since %s ignored, using %s from websocket message",
+				options.Since.RawString(), wsoptions.Since.RawString())
 		}
 
 		// Copy options.ChangesCtx to new WebSocket options

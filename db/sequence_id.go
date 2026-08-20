@@ -52,6 +52,23 @@ func (s SequenceID) String() string {
 	return s.intSeqToString()
 }
 
+// RawString returns the same wire syntax as String(), but always includes LowSeq and TriggeredBy when
+// they're non-zero, instead of dropping them per the omission rules documented on intSeqToString.  Those
+// rules make a malformed client sequence indistinguishable from a well-formed one in the logs; RawString
+// reconstructs what the client actually sent.
+func (s SequenceID) RawString() string {
+	if s.LowSeq > 0 {
+		if s.TriggeredBy > 0 {
+			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
+		}
+		return fmt.Sprintf("%d::%d", s.LowSeq, s.Seq)
+	}
+	if s.TriggeredBy > 0 {
+		return fmt.Sprintf("%d:%d", s.TriggeredBy, s.Seq)
+	}
+	return strconv.FormatUint(s.Seq, 10)
+}
+
 // intSeqToString implements the formatting rules documented on String() above. A non-zero LowSeq
 // or TriggeredBy is silently omitted from the result in three cases:
 //   - omit LowSeq when it's higher than the current sequence (non-backfill)

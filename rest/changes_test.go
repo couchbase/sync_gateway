@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/websocket"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -84,6 +86,251 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(60000), options.HeartbeatMs)
+}
+
+// TestChangesSinceLogging drives a range of since values through every changes entry point SGW exposes -
+// GET, POST, longpoll, continuous, admin, websocket and BLIP subChanges - and asserts the debug log shows
+// both the raw sequence the client sent and the normalized one SGW actually uses.
+//
+// The cases cover the four sequence wire forms, and for each, variants where SequenceID.String() silently
+// drops a component (see the omission rules on db/sequence_id.go intSeqToString).  Every case where
+// loggedRaw and loggedSince differ is one that, before raw_since existed, was indistinguishable in the
+// logs from a well-formed sequence.
+func TestChangesSinceLogging(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeySyncMsg)
+
+	const (
+		username = "alice"
+		numDocs  = 5
+	)
+
+	cases := []struct {
+		rawSince    string // since value sent by the client
+		loggedRaw   string // expected raw_since (RawString)
+		loggedSince string // expected since (String)
+	}{
+		// {Seq} - raw and normalized can never diverge
+		{"0", "0", "0"},
+		{"2", "2", "2"},
+		{"999", "999", "999"}, // past the end of the feed
+
+		// {TriggeredBy, Seq}
+		{"10:5", "10:5", "10:5"}, // valid backfill, Seq < TriggeredBy
+		{"5:10", "5:10", "10"},   // TriggeredBy < Seq, TriggeredBy dropped
+		{"5:5", "5:5", "5"},      // TriggeredBy == Seq, TriggeredBy dropped
+
+		// {LowSeq, Seq}
+		{"2::5", "2::5", "2::5"}, // valid, LowSeq < Seq
+		{"3::2", "3::2", "2"},    // LowSeq > Seq, LowSeq dropped
+		{"5::5", "5::5", "5"},    // LowSeq == Seq, LowSeq dropped
+
+		// {LowSeq, TriggeredBy, Seq}
+		{"2:10:5", "2:10:5", "2:10:5"}, // valid, LowSeq < TriggeredBy and Seq < TriggeredBy
+		{"12:10:5", "12:10:5", "10:5"}, // backfill active but LowSeq >= TriggeredBy, LowSeq dropped
+		{"2:5:10", "2:5:10", "2::10"},  // no backfill (Seq >= TriggeredBy), TriggeredBy dropped
+		{"12:5:10", "12:5:10", "10"},   // no backfill and LowSeq >= Seq, both dropped
+		{"5:5:5", "5:5:5", "5"},        // all equal, both dropped
+	}
+
+	// The trailing "limit=" / "continuous=" anchors the end of the since value.  AssertLogContains is a
+	// substring match, so without it an expectation of `since=2` would also match an actual `since=2::5`.
+	// %q matches the strconv.Quote applied by restChangesLogFields.
+	wantREST := func(feed, loggedRaw, loggedSince string) string {
+		return fmt.Sprintf("Changes request: protocol=REST feed=%s raw_since=%q since=%s limit=",
+			feed, loggedRaw, loggedSince)
+	}
+	wantBLIP := func(loggedRaw, loggedSince string) string {
+		return fmt.Sprintf("Changes request: protocol=BLIP feed=normal raw_since=%q since=%s continuous=",
+			loggedRaw, loggedSince)
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channels)}`,
+	})
+	defer rt.Close()
+	rt.CreateUser(username, []string{"alpha"})
+	for i := range numDocs {
+		rt.PutDoc(fmt.Sprintf("doc%d", i), `{"channels":["alpha"]}`)
+	}
+	rt.WaitForPendingChanges()
+
+	// One server for every websocket case - the mock handler can't be hijacked for the upgrade.
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+	wsURL := strings.Replace(srv.URL, "http://", "ws://", 1) +
+		"/" + rt.GetSingleKeyspace() + "/_changes?feed=websocket"
+
+	// sendWebSocketChanges opens a websocket changes feed, sends options as the first message, and reads
+	// the first response.  Errors are returned rather than asserted so the caller can assert outside the
+	// AssertLogContains closure - see the note on the REST cases below.
+	sendWebSocketChanges := func(url, options string) (received []byte, err error) {
+		conn, err := websocket.Dial(url, "", srv.URL)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = conn.Close() }()
+		if err := websocket.Message.Send(conn, options); err != nil {
+			return nil, err
+		}
+		err = websocket.Message.Receive(conn, &received)
+		return received, err
+	}
+
+	// wsOptions builds the first websocket message.  timeout bounds the server-side feed: without it the
+	// options default to kDefaultTimeoutMS (5 minutes), so each case would leave a feed running long
+	// after the client hangs up.
+	wsOptions := func(since string) string {
+		return fmt.Sprintf(`{"since":%q,"timeout":100}`, since)
+	}
+
+	for _, tc := range cases {
+		// Named by rawSince, not loggedSince - the raw values are all distinct, but "5" is the
+		// expectation for three different cases, and duplicate t.Run names get silently suffixed.
+		t.Run("since="+tc.rawSince, func(t *testing.T) {
+			// Requests go inside the AssertLogContains closure, assertions outside it.  The helper
+			// restores the console logger without a defer, so a require failure inside the closure
+			// leaves the global logger writing into an orphaned buffer and corrupts later captures.
+			// That's also why these use SendUserRequest rather than rt.GetChanges/PostChanges, which
+			// assert status internally.
+			t.Run("GET normal", func(t *testing.T) {
+				var resp *TestResponse
+				base.AssertLogContains(t, wantREST("normal", tc.loggedRaw, tc.loggedSince), func() {
+					resp = rt.SendUserRequest(http.MethodGet,
+						"/{{.keyspace}}/_changes?since="+tc.rawSince, "", username)
+				})
+				RequireStatus(t, resp, http.StatusOK)
+			})
+
+			t.Run("POST normal", func(t *testing.T) {
+				var resp *TestResponse
+				body := fmt.Sprintf(`{"since":%q}`, tc.rawSince)
+				base.AssertLogContains(t, wantREST("normal", tc.loggedRaw, tc.loggedSince), func() {
+					resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", body, username)
+				})
+				RequireStatus(t, resp, http.StatusOK)
+			})
+
+			t.Run("GET longpoll", func(t *testing.T) {
+				var resp *TestResponse
+				uri := fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=longpoll&timeout=100", tc.rawSince)
+				base.AssertLogContains(t, wantREST("longpoll", tc.loggedRaw, tc.loggedSince), func() {
+					resp = rt.SendUserRequest(http.MethodGet, uri, "", username)
+				})
+				RequireStatus(t, resp, http.StatusOK)
+			})
+
+			t.Run("POST longpoll", func(t *testing.T) {
+				var resp *TestResponse
+				body := fmt.Sprintf(`{"since":%q,"feed":"longpoll","timeout":100}`, tc.rawSince)
+				base.AssertLogContains(t, wantREST("longpoll", tc.loggedRaw, tc.loggedSince), func() {
+					resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", body, username)
+				})
+				RequireStatus(t, resp, http.StatusOK)
+			})
+
+			t.Run("GET continuous", func(t *testing.T) {
+				var resp *TestResponse
+				uri := fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=continuous&timeout=100", tc.rawSince)
+				base.AssertLogContains(t, wantREST("continuous", tc.loggedRaw, tc.loggedSince), func() {
+					resp = rt.SendUserRequest(http.MethodGet, uri, "", username)
+				})
+				RequireStatus(t, resp, http.StatusOK)
+			})
+
+			t.Run("GET admin", func(t *testing.T) {
+				var resp *TestResponse
+				base.AssertLogContains(t, wantREST("normal", tc.loggedRaw, tc.loggedSince), func() {
+					resp = rt.SendAdminRequest(http.MethodGet,
+						"/{{.keyspace}}/_changes?since="+tc.rawSince, "")
+				})
+				RequireStatus(t, resp, http.StatusOK)
+			})
+
+			// The websocket feed reads its options - including since - from the first websocket message,
+			// after the HTTP upgrade request has already been handled.
+			t.Run("websocket", func(t *testing.T) {
+				var received []byte
+				var err error
+				base.AssertLogContains(t, wantREST("websocket", tc.loggedRaw, tc.loggedSince), func() {
+					received, err = sendWebSocketChanges(wsURL, wsOptions(tc.rawSince))
+				})
+				require.NoError(t, err)
+				require.NotEmpty(t, received)
+			})
+		})
+	}
+
+	// The query string's since must never reach the log for a websocket feed: handleChanges skips its own
+	// log call, and the websocket handler logs the message-derived options plus a note that the query
+	// string value was ignored.  Uses since values absent from the cases above so no case can bleed into
+	// this capture window.
+	t.Run("websocket query string since ignored", func(t *testing.T) {
+		var received []byte
+		var err error
+		ignoredURL := wsURL + "&since=41"
+		base.AssertLogContains(t, "query string since 41 ignored, using 3::2 from websocket message", func() {
+			received, err = sendWebSocketChanges(ignoredURL, wsOptions("3::2"))
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, received)
+	})
+
+	// Regression guard for double-logging: handleChanges must not log the query-derived options for
+	// feed=websocket.  The upgrade request carries no since, so a regression in the feed !=
+	// feedTypeWebsocket guard would surface as a second line reporting since 0.
+	t.Run("websocket regression: query-derived options not logged", func(t *testing.T) {
+		var received []byte
+		var err error
+		base.AssertLogNotContains(t, wantREST("websocket", "0", "0"), func() {
+			received, err = sendWebSocketChanges(wsURL, wsOptions("7::4"))
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, received)
+	})
+
+	// BLIP runs in its own block rather than wrapping the cases above: btcRunner.Run executes its closure
+	// once per subprotocol, and the REST logging path has no subprotocol dependency, so nesting would
+	// double every REST case for no coverage.  It's also structurally required - Run fails if already
+	// inside one, and NewBlipTesterClientOptsWithRT fails if not inside one.
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		// A separate RestTester from the REST phase above, which also keeps NumPullReplTotalOneShot free
+		// of REST traffic for the barrier below.
+		blipRT := NewRestTester(t, &RestTesterConfig{
+			SyncFn:       `function(doc) {channel(doc.channels)}`,
+			GuestEnabled: true, // for the blip client
+		})
+		defer blipRT.Close()
+		for i := range numDocs {
+			blipRT.PutDoc(fmt.Sprintf("doc%d", i), `{"channels":["alpha"]}`)
+		}
+		blipRT.WaitForPendingChanges()
+
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(blipRT, nil)
+		defer btc.Close()
+
+		pullStats := blipRT.GetDatabase().DbStats.CBLReplicationPull()
+		baseTotal := pullStats.NumPullReplTotalOneShot.Value()
+
+		for i, tc := range cases {
+			t.Run("since="+tc.rawSince, func(t *testing.T) {
+				// StartPullSince blocks on the subChanges response, which go-blip sends only once
+				// handleSubChanges has returned - so the log line is already emitted.  Deliberately no
+				// WaitForDoc: cases like 999 deliver nothing, and it would spin for its full timeout.
+				base.AssertLogContains(t, wantBLIP(tc.loggedRaw, tc.loggedSince), func() {
+					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: tc.rawSince})
+				})
+				// Only one subChanges may be outstanding per collection (activeSubChanges in
+				// db/blip_handler.go), and the flag is cleared asynchronously by the changes goroutine.
+				// Wait on the total first: the active count is also 0 before that goroutine starts, so
+				// waiting on it alone can return immediately while the flag is still set.  Once the total
+				// has advanced, the active count reaching 0 does imply the flag is clear - its defer is
+				// registered before the flag-clearing one, so it unwinds after it.
+				base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, baseTotal+int64(i)+1)
+				base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+			})
+		}
+	})
 }
 
 // Test for wrong _changes entries for user joining a populated channel
