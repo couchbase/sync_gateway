@@ -13,6 +13,7 @@ package topologytest
 import (
 	"context"
 	"os"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -22,6 +23,11 @@ import (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background() // start of test process
+	// These tests trigger Go runtime crashes on the Windows CI runners that can't be reproduced locally.
+	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
+		base.SkipTestMain(m, "Tests are disabled on Windows in CI")
+		return
+	}
 	runTests, _ := strconv.ParseBool(os.Getenv(base.TbpEnvTopologyTests))
 	if !base.UnitTestUrlIsWalrus() && !runTests {
 		base.SkipTestMain(m, "Tests are disabled for Couchbase Server by default, to enable set %s=true environment variable", base.TbpEnvTopologyTests)
