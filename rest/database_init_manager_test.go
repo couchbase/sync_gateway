@@ -688,8 +688,9 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
-	// Wait for first collection to be initialized
-	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
+	// Wait for first collection to be initialized.  Waits gated on index creation use TestIndexInitTimeout, since
+	// the index service serializes CREATE/BUILD INDEX work across every database sharing the cluster.
+	WaitForChannelWithTimeout(t, firstCollectionInitChannel, "first collection init", TestIndexInitTimeout, nil)
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -699,8 +700,8 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	WaitForChannel(t, doneChan1, "modified init done chan")
-	WaitForChannel(t, doneChan2, "modified init done chan")
+	WaitForChannelWithTimeout(t, doneChan1, "db1 init done chan", TestIndexInitTimeout, nil)
+	WaitForChannelWithTimeout(t, doneChan2, "db2 init done chan", TestIndexInitTimeout, nil)
 
 	// Wait for db completion notifications for both databases
 	WaitForChannel(t, databaseCompleteChannel, "database 1 init complete")

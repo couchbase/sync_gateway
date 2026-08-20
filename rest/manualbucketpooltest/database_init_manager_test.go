@@ -44,15 +44,17 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig, base.KeyQuery)
 
-	sc, closeFn := rest.StartBootstrapServer(t)
-	defer closeFn()
 	ctx := base.TestCtx(t)
 
 	// Create a dedicated bucket for this test and its three collections, so we're not contending with other tests
-	// on the shared bucket pool's index service.
+	// on the shared bucket pool's index service.  Created before the server so that it is dropped after closeFn has
+	// stopped the init workers - otherwise they keep retrying index creation against a bucket that no longer exists.
 	tb := base.GTestBucketPool.CreateTestBucket(t)
 	defer base.GTestBucketPool.RemoveBucket(tb)
 	base.GTestBucketPool.CreateCollections(ctx, tb.Bucket, 3)
+
+	sc, closeFn := rest.StartBootstrapServer(t)
+	defer closeFn()
 
 	// Set up collection names and ScopesConfig for testing
 	scopesConfig := rest.GetCollectionsConfig(t, tb, 3)
@@ -105,7 +107,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	rest.WaitForChannel(t, firstCollectionInitChannel, "first collection init")
+	rest.WaitForChannelWithTimeout(t, firstCollectionInitChannel, "first collection init", rest.TestIndexInitTimeout, progress.snapshot)
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -114,19 +116,11 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	// Unblock the first InitializeDatabase, should cancel
 	close(testSignalChannel)
 
-	// Wait for notification on both done channels.
-	//
-	// Known flake: db1 and db2 share this bucket and both set UseSystemMobileMetadataCollection, so both init
-	// workers initialize the shared _default and _mobile collections. Once db1 is unblocked while db2 is still
-	// running, the two workers can issue BUILD INDEX on the same keyspace (e.g. _default._default's principal
-	// indexes) concurrently. The index service rejects the second concurrent build with a transient
-	// "Build Already In Progress" error; buildIndexes() swallows that error and relies on the index service to
-	// retry the build in the background (see base.buildIndexes / IsIndexerRetryBuildError). That background retry
-	// plus the subsequent wait-for-online can take longer than TestChannelTimeout, so the done channel never fires
-	// in time and this wait fails. On timeout, progress.snapshot() reports the latest status recorded for each
-	// collection.
-	rest.WaitForChannelWithDiagnostic(t, doneChan1, "db1 InitializeDatabase done chan", progress.snapshot)
-	rest.WaitForChannelWithDiagnostic(t, doneChan2, "db2 InitializeDatabase done chan", progress.snapshot)
+	// Wait for notification on both done channels.  Each one covers all the remaining collections for that database,
+	// so these waits use TestIndexInitTimeout.  On timeout, progress.snapshot() reports the latest status recorded
+	// for each collection.
+	rest.WaitForChannelWithTimeout(t, doneChan1, "db1 InitializeDatabase done chan", rest.TestIndexInitTimeout, progress.snapshot)
+	rest.WaitForChannelWithTimeout(t, doneChan2, "db2 InitializeDatabase done chan", rest.TestIndexInitTimeout, progress.snapshot)
 
 	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
 	// The distinct collections are _mobile, _default, collection1, collection2, and

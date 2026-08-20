@@ -20,15 +20,20 @@ import (
 // TestChannelTimeout can be increased to support step-through debugging
 const TestChannelTimeout = 30 * time.Second
 
+// TestIndexInitTimeout is for waits gated on real index creation against Couchbase Server.  The index service
+// serializes CREATE/BUILD INDEX work across every database sharing the cluster, so a single collection can take tens
+// of seconds when the cluster is busy - far longer than the in-process handshakes TestChannelTimeout is sized for.
+const TestIndexInitTimeout = 3 * time.Minute
+
 func WaitForChannel(t *testing.T, ch <-chan error, message string) {
-	WaitForChannelWithDiagnostic(t, ch, message, nil)
+	WaitForChannelWithTimeout(t, ch, message, TestChannelTimeout, nil)
 }
 
-// WaitForChannelWithDiagnostic behaves like WaitForChannel, but if the wait times out it calls onTimeout (when non-nil)
-// and appends the returned string to the failure message. onTimeout is only evaluated on timeout, so it can render live
-// state captured while the wait was in progress (for example a progress snapshot describing what the awaited operation
-// was still doing) rather than a static, guessed-at explanation supplied up front.
-func WaitForChannelWithDiagnostic(t *testing.T, ch <-chan error, message string, onTimeout func() string) {
+// WaitForChannelWithTimeout behaves like WaitForChannel, but waits for the supplied timeout. On timeout it calls
+// onTimeout (when non-nil) and appends the returned string to the failure message. onTimeout is only evaluated on
+// timeout, so it can render live state captured while the wait was in progress (for example a progress snapshot
+// describing what the awaited operation was still doing) rather than a static, guessed-at explanation supplied up front.
+func WaitForChannelWithTimeout(t *testing.T, ch <-chan error, message string, timeout time.Duration, onTimeout func() string) {
 	if message != "" {
 		log.Printf("[%s] starting wait", message)
 		defer func() {
@@ -41,8 +46,8 @@ func WaitForChannelWithDiagnostic(t *testing.T, ch <-chan error, message string,
 			require.Fail(t, fmt.Sprintf("[%s] channel returned error: %v", message, err))
 		}
 		return
-	case <-time.After(TestChannelTimeout):
-		failureMessage := fmt.Sprintf("[%s] expected channel message did not arrive in %v", message, TestChannelTimeout)
+	case <-time.After(timeout):
+		failureMessage := fmt.Sprintf("[%s] expected channel message did not arrive in %v", message, timeout)
 		if onTimeout != nil {
 			failureMessage += "\n" + onTimeout()
 		}
