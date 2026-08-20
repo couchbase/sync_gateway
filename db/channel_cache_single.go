@@ -898,7 +898,7 @@ func (c *singleChannelCacheImpl) releaseLateLogsForEviction() {
 func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
 	// Drop leading entries that no active feed still references. But also if late feed length is above maximum.
 	// If a stalled or slow feed's listener is pinning the front of the queue
-	// and it has grown past ChannelCacheMaxAge, force-drop leading entries even though a listener still
+	// and it has grown past ChannelCacheMaxLength, force-drop leading entries even though a listener still
 	// references them. Any feed whose lastSequence is dropped will fail its next GetLateSequencesSince
 	// lookup and be reset to its low sequence (see the "Missing previous sequence" path there) - this is
 	// the lateLogs analogue of the channel cache raising validFrom and forcing a query backfill. Always
