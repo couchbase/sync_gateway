@@ -16,7 +16,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -72,9 +71,14 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	testSignalChannel := make(chan error)
 	firstCollectionInitChannel := make(chan error)
 
-	// Track the latest status reported for every collection so that a done-channel timeout below can report which
-	// collection on which database was still in progress (see initProgressTracker).
+	// Track the latest status reported for every collection so that a failed wait below can report which collection
+	// on which database was still in progress (see initProgressTracker).
 	progress := newInitProgressTracker()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Log(progress.snapshot())
+		}
+	})
 
 	// Create collection callback that blocks and waits for test notification the first time a collection is initialized, does not block afterward.
 	collectionCount := int64(0)
@@ -85,8 +89,8 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		if atomic.CompareAndSwapInt64(&collectionCount, 0, 1) {
-			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
-			rest.WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))       // wait for the test to unblock before proceeding to the next collection
+			base.RequireChanSend(t, firstCollectionInitChannel, nil)       // notify the test that indexes have been created for this collection
+			require.NoError(t, base.RequireChanRecv(t, testSignalChannel)) // wait for the test to unblock before proceeding to the next collection
 			return
 		}
 		atomic.AddInt64(&collectionCount, 1)
@@ -107,7 +111,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	rest.WaitForChannelWithTimeout(t, firstCollectionInitChannel, "first collection init", rest.TestIndexInitTimeout, progress.snapshot)
+	require.NoError(t, base.RequireChanRecvWithTimeout(t, firstCollectionInitChannel, base.TestIndexInitTimeout))
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -117,28 +121,25 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels.  Each one covers all the remaining collections for that database,
-	// so these waits use TestIndexInitTimeout.  On timeout, progress.snapshot() reports the latest status recorded
-	// for each collection.
-	rest.WaitForChannelWithTimeout(t, doneChan1, "db1 InitializeDatabase done chan", rest.TestIndexInitTimeout, progress.snapshot)
-	rest.WaitForChannelWithTimeout(t, doneChan2, "db2 InitializeDatabase done chan", rest.TestIndexInitTimeout, progress.snapshot)
+	// so these waits are gated on real index creation and use TestIndexInitTimeout.
+	require.NoError(t, base.RequireChanRecvWithTimeout(t, doneChan1, base.TestIndexInitTimeout))
+	require.NoError(t, base.RequireChanRecvWithTimeout(t, doneChan2, base.TestIndexInitTimeout))
 
 	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
 	// The distinct collections are _mobile, _default, collection1, collection2, and
 	// collection3, but _default and _mobile are checked for both databases.
-	// On mismatch, snapshot() lists the latest status for every collection, so any
-	// collection not showing Ready (or missing entirely) names the culprit.
 	totalCount := atomic.LoadInt64(&collectionCount)
 	require.Equalf(t, int64(7), totalCount,
-		"expected 7 collection initializations (db1: _default, _mobile, %s, %s; db2: _default, _mobile, %s) but got %d. %s",
-		collection1Name, collection2Name, collection3Name, totalCount, progress.snapshot())
+		"expected 7 collection initializations (db1: _default, _mobile, %s, %s; db2: _default, _mobile, %s) but got %d",
+		collection1Name, collection2Name, collection3Name, totalCount)
 
 }
 
 // initProgressTracker records the most recent CollectionIndexStatus reported for each (database, collection) pair via
 // the DatabaseInitManager test callback. Init workers for different databases invoke the callback from separate
-// goroutines, so access is guarded by a mutex. On a wait timeout, snapshot() renders the recorded state so the failure
-// names which collection on which database was still in progress - for example a collection stuck "in progress" on a
-// concurrent BUILD INDEX of a shared keyspace - rather than a static guess at the cause.
+// goroutines, so access is guarded by a mutex. When the test fails, snapshot() renders the recorded state so the
+// failure names which collection on which database was still in progress - for example a collection stuck "in
+// progress" on a concurrent BUILD INDEX of a shared keyspace - rather than a static guess at the cause.
 type initProgressTracker struct {
 	mu       sync.Mutex
 	statuses map[string]map[base.ScopeAndCollectionName]db.CollectionIndexStatus // dbName -> collection -> latest status
@@ -221,20 +222,4 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig rest.ScopesConf
 		dbConfig.Name = dbName
 	}
 	return dbConfig
-}
-
-// notifyChannel sends a nil (success) notification on ch, failing the test if it can't be sent within the timeout.
-func notifyChannel(t *testing.T, ch chan<- error, message string) {
-	if message != "" {
-		log.Printf("[%s] starting notify", message)
-		defer func() {
-			log.Printf("[%s] completed notify", message)
-		}()
-	}
-	select {
-	case ch <- nil:
-		return
-	case <-time.After(rest.TestChannelTimeout):
-		require.Fail(t, fmt.Sprintf("[%s] unable to send channel notification within %v", message, rest.TestChannelTimeout))
-	}
 }

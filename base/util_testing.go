@@ -1071,6 +1071,12 @@ func TestRequiresDeltaSync(t testing.TB) {
 
 const (
 	TestChanTimeout = 30 * time.Second
+
+	// TestIndexInitTimeout is for channel waits gated on real index creation against Couchbase Server. The index
+	// service serializes CREATE/BUILD INDEX work across every database sharing the cluster, so a single collection
+	// can take tens of seconds when the cluster is busy - far longer than the in-process handshakes TestChanTimeout
+	// is sized for.
+	TestIndexInitTimeout = 3 * time.Minute
 )
 
 // RequireChanSend performs a blocking send on a channel with a TestChanTimeout timeout. Fails the test if the send cannot complete in time.
