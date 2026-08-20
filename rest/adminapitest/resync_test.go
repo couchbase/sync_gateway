@@ -606,3 +606,40 @@ function sync(doc, oldDoc){
 	log.Printf("rt2 stats - resync num processed: %v", rt2.GetDatabase().DbStats.Database().ResyncNumProcessed.Value())
 
 }
+
+// TestResyncInvalidCollections verifies behavior when _resync is started with collection names not present in the
+// database config: the start fails with 400, GET /_resync is not left reporting a running state, and a subsequent
+// valid start succeeds and completes.
+func TestResyncInvalidCollections(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	rt.TakeDbOffline()
+
+	invalidBody := `{"scopes": {"_default": ["nonexistent_collection"]}}`
+
+	// First start with invalid collection: Init() fails synchronously, returns 400
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", invalidBody)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.BodyString(), "nonexistent_collection")
+
+	// Status should not be left reporting a running state after Init() fails synchronously.
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_resync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var status db.ResyncManagerResponseDCP
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
+	require.Equal(t, db.BackgroundProcessStateError, status.State)
+
+	// Second start with invalid collection: still fails request validation and returns 400.
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", invalidBody)
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+
+	// Starting with valid collections should succeed after the failed start resets the db/background-manager state.
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_resync", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
+	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
+}
