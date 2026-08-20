@@ -178,7 +178,7 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 
 func TestConfigValidationCache(t *testing.T) {
 	ctx := base.TestCtx(t)
-	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
+	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25, "max_num_pending": 5, "max_wait_pending": 100, "max_wait_skipped": 200, "max_length": 300, "min_length": 10, "expiry_seconds": 30}}}}}`
 	buf := bytes.NewBufferString(jsonConfig)
 	config, err := readLegacyServerConfig(ctx, buf)
 	assert.NoError(t, err)
@@ -221,6 +221,31 @@ func TestConfigValidationCache(t *testing.T) {
 	} else {
 		// CE disallowed - should be nil
 		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
+	}
+
+	// check the validated config is wired through to the cache options the database is built with
+	sc := NewServerContext(ctx, &StartupConfig{}, false)
+	defer sc.Close(ctx)
+
+	opts, err := dbcOptionsFromConfig(ctx, sc, config.Databases["db"], "db")
+	require.NoError(t, err)
+
+	assert.Equal(t, 5, opts.CacheOptions.CachePendingSeqMaxNum)
+	assert.Equal(t, 100*time.Millisecond, opts.CacheOptions.CachePendingSeqMaxWait)
+	assert.Equal(t, 200*time.Millisecond, opts.CacheOptions.CacheSkippedSeqMaxWait)
+	assert.Equal(t, 300, opts.CacheOptions.ChannelCacheMaxLength)
+	assert.Equal(t, 10, opts.CacheOptions.ChannelCacheMinLength)
+	assert.Equal(t, 30*time.Second, opts.CacheOptions.ChannelCacheAge)
+
+	if base.IsEnterpriseEdition() {
+		assert.Equal(t, 100, opts.CacheOptions.MaxNumChannels)
+		assert.Equal(t, 95, opts.CacheOptions.CompactHighWatermarkPercent)
+		assert.Equal(t, 25, opts.CacheOptions.CompactLowWatermarkPercent)
+	} else {
+		// CE disallowed - should fall back to defaults
+		assert.Equal(t, db.DefaultChannelCacheMaxNumber, opts.CacheOptions.MaxNumChannels)
+		assert.Equal(t, db.DefaultCompactHighWatermarkPercent, opts.CacheOptions.CompactHighWatermarkPercent)
+		assert.Equal(t, db.DefaultCompactLowWatermarkPercent, opts.CacheOptions.CompactLowWatermarkPercent)
 	}
 }
 
