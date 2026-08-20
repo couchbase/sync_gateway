@@ -1483,16 +1483,23 @@ func (options ChangesOptions) String() string {
 // LogChangesRequest logs the parameters of an incoming changes request at debug level, in a single format
 // shared by the REST and BLIP entry points so that one search finds every changes request regardless of
 // protocol.
+// Builds a format string and passes the values through as args rather than pre-formatting them: redaction
+// is applied to DebugfCtx's args, so a value wrapped in base.UD would be logged in cleartext if it were
+// already stringified by the time it got here.  Keys are passed as args too so that a % in a key can't be
+// read as a verb.
 func LogChangesRequest(ctx context.Context, logKey base.LogKey, protocol string, fields []base.KVPair) {
 	if !base.LogDebugEnabled(ctx, logKey) {
 		return
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "Changes request: protocol=%s", protocol)
+	var format strings.Builder
+	format.WriteString("Changes request: protocol=%s")
+	args := make([]any, 0, 2*len(fields)+1)
+	args = append(args, protocol)
 	for _, field := range fields {
-		fmt.Fprintf(&b, " %s=%v", field.Key, field.Val)
+		format.WriteString(" %s=%v")
+		args = append(args, field.Key, field.Val)
 	}
-	base.DebugfCtx(ctx, logKey, "%s", b.String())
+	base.DebugfCtx(ctx, logKey, format.String(), args...)
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes. Returns an error in the case that the feed does not start up, or there is a fatal error in the feed. The caller is responsible for closing the connection, no more changes will be generated. forceClose will be true if connection was terminated underneath the changes feed.
