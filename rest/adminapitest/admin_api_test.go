@@ -1051,14 +1051,8 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 
 	// assert that the config is back in memory even after another interval update pass and asser the persisted config
 	// bucket name matches rest tester bucket name
-	var dbCtx *db.DatabaseContext
 	// wait for db to be active on the server context
-	err = rt.WaitForConditionWithOptions(func() bool {
-		var err error
-		dbCtx, err = rt.ServerContext().GetActiveDatabase("db1")
-		return err == nil
-	}, 200, 1000)
-	require.NoError(t, err)
+	dbCtx := rt.WaitForDatabase("db1")
 	assert.NotNil(t, dbCtx)
 	assert.Equal(t, rt.CustomTestBucket.GetName(), dbCtx.Bucket.GetName())
 	rt.ServerContext().RequireInvalidDatabaseConfigNames(t, []string{})
@@ -1104,11 +1098,7 @@ func TestBadConfigInsertionToBucket(t *testing.T) {
 	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
 
 	// asser that the config is picked up as invalid config on server context
-	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	rt.WaitForInvalidDatabases("db1")
 
 	// assert that a request to the database fails with correct error message
 	resp := rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1209,18 +1199,13 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	defer rt3.Close()
 
 	// assert the invalid database is picked up with new rest tester
-	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	rt3.WaitForInvalidDatabases("db1")
 
 	// assert that there are no valid db configs on the server context
-	err = rt3.WaitForConditionWithOptions(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		databaseNames := rt3.ServerContext().AllDatabaseNames()
-		return len(databaseNames) == 0
-	}, 200, 1000)
-	require.NoError(t, err)
+		assert.Empty(c, databaseNames)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// assert a request to the db fails with correct error message
 	resp := rt3.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1282,18 +1267,13 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	defer rt3.Close()
 
 	// assert that the invalid config is picked up by the new rest tester
-	err := rt3.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt3.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+	rt3.WaitForInvalidDatabases("db1")
 
 	// assert that there is a valid database picked up as the invalid configs have this rest tester backing bucket
-	err = rt3.WaitForConditionWithOptions(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		validDatabase := rt3.ServerContext().AllDatabases()
-		return len(validDatabase) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
+		assert.Len(c, validDatabase, 1)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 // TestMultipleBucketWithBadDbConfigScenario3:
@@ -1348,12 +1328,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	rt.InsertDbConfigToBucket(&persistedConfig, tb2.GetName())
 
 	// assert the config is picked as invalid db config
-	err = rt.WaitForConditionWithOptions(func() bool {
-		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(t)
-		return len(invalidDatabases) == 1
-	}, 200, 1000)
-	require.NoError(t, err)
-
+	rt.WaitForInvalidDatabases("db1")
 }
 
 // TestConfigPollingRemoveDatabase:
@@ -1388,7 +1363,6 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 			})
 			defer rt.Close()
 
-			ctx := base.TestCtx(t)
 			// create a new db
 			dbName := "db1"
 			dbConfig := rt.NewDbConfig()
@@ -1398,8 +1372,7 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			// Validate that db is loaded
-			_, err := rt.ServerContext().GetDatabase(ctx, dbName)
-			require.NoError(t, err)
+			rt.WaitForDatabase(dbName)
 
 			// Force timeouts - dev-time only test enhancement to validate CBG-3947, requires manual "leaky bootstrap" handling
 			// To enable:
@@ -1413,12 +1386,10 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 				base.ForceTimeouts = true
 
 				// Wait to ensure database doesn't disappear
-				err = rt.WaitForConditionWithOptions(func() bool {
+				assert.Never(t, func() bool {
 					_, err := rt.ServerContext().GetActiveDatabase(dbName)
 					return errors.Is(err, base.ErrNotFound)
-
-				}, 200, 50)
-				require.Error(t, err)
+				}, 10*time.Second, 100*time.Millisecond)
 
 				base.ForceTimeouts = false
 			*/
@@ -1427,12 +1398,10 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 			rt.RemoveDbConfigFromBucket("db1", rt.CustomTestBucket.GetName())
 
 			// assert that the database is unloaded
-			err = rt.WaitForConditionWithOptions(func() bool {
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				_, err := rt.ServerContext().GetActiveDatabase(dbName)
-				return errors.Is(err, base.ErrNotFound)
-
-			}, 200, 1000)
-			require.NoError(t, err)
+				assert.ErrorIs(c, err, base.ErrNotFound)
+			}, 10*time.Second, 100*time.Millisecond)
 
 			// assert that a request to the database fails with correct error message
 			resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")
