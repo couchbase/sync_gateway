@@ -110,8 +110,8 @@ func TestIsPerDBMigrationInProgress(t *testing.T) {
 			assert.Equal(t, want, got)
 		}
 
-		assert.False(t, nodeBStore.MigrationComplete(),
-			"wrapper must NOT be marked migration-complete while another node is mid-migration")
+		assert.True(t, nodeBStore.FallbackReadsEnabled(),
+			"wrapper must keep reading the fallback while another node is mid-migration")
 	})
 
 	// --- Subtest: per-DB entry is complete → safe to mark complete ---

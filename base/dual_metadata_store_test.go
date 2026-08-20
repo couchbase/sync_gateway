@@ -9,10 +9,14 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
@@ -167,7 +171,7 @@ func TestMetadataStoreIncrAfterMigrationCompleteBypassesFallback(t *testing.T) {
 	_, err := ms.Fallback().Incr(ctx, key, 99, 99, 0)
 	require.NoError(t, err)
 
-	ms.SetMigrationComplete()
+	ms.DisableFallbackReads()
 
 	// Wrapper should not consult fallback now; primary doc gets created at the supplied
 	// default value (1) and incremented by amt (0), returning the default value.
@@ -230,4 +234,104 @@ func TestIsCounterNonNumeric(t *testing.T) {
 
 	// Sanity: an unrelated error should NOT be classified as non-numeric.
 	assert.False(t, IsCounterNonNumeric(errors.New("unrelated")))
+}
+
+// getRawErrorDataStore returns a fixed error from every GetRaw and counts how many times it was
+// asked, so tests can prove the wrapper stopped consulting the fallback.
+type getRawErrorDataStore struct {
+	DataStore
+	err   error
+	calls atomic.Int32
+}
+
+func (ds *getRawErrorDataStore) GetRaw(_ context.Context, _ string) ([]byte, uint64, error) {
+	ds.calls.Add(1)
+	return nil, 0, ds.err
+}
+
+// TestMetadataStoreDroppedFallbackDisablesFallbackReads verifies the wrapper stops reading from the
+// fallback once that collection is seen to have been dropped. Otherwise every primary miss pays a
+// full KV timeout, which is what stalls the cbgt janitor goroutine and deadlocks database close.
+//
+// The negative cases matter most: reacting to a merely transient error would permanently skip
+// legitimate unmigrated metadata.
+func TestMetadataStoreDroppedFallbackDisablesFallbackReads(t *testing.T) {
+	testCases := []struct {
+		name        string
+		fallbackErr error
+		wantDisable bool
+	}{
+		{
+			name:        "collection not found disables fallback",
+			fallbackErr: gocb.ErrCollectionNotFound,
+			wantDisable: true,
+		},
+		{
+			name: "timeout from collection outdated only disables fallback",
+			fallbackErr: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVCollectionOutdatedRetryReason}},
+			wantDisable: true,
+		},
+		{
+			name: "timeout with a transient reason alongside must not disable fallback",
+			fallbackErr: &gocb.TimeoutError{InnerError: gocb.ErrTimeout,
+				RetryReasons: []gocb.RetryReason{gocb.KVCollectionOutdatedRetryReason, gocb.KVNotMyVBucketRetryReason}},
+			wantDisable: false,
+		},
+		{
+			name:        "doc not found must not disable fallback",
+			fallbackErr: ErrNotFound,
+			wantDisable: false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			primary, err := bucket.GetNamedDataStore(0)
+			require.NoError(t, err)
+			fallback := &getRawErrorDataStore{DataStore: bucket.DefaultDataStore(ctx), err: testCase.fallbackErr}
+			ms := NewMetadataStore(primary, fallback)
+
+			require.True(t, ms.FallbackReadsEnabled(), "fallback must start in play")
+			require.Equal(t, MetadataStoreModeFallbackActive, GetMetadataStoreMode(ms))
+
+			// Primary has no such key, so this read falls through to the erroring fallback.
+			const key = "_sync:m_droppedDB:seq"
+			_, _, err = ms.GetRaw(ctx, key)
+			require.Error(t, err)
+			require.Equal(t, int32(1), fallback.calls.Load(), "first read must consult the fallback")
+
+			if !testCase.wantDisable {
+				assert.True(t, ms.FallbackReadsEnabled(), "a transient fallback error must not disable fallback reads")
+				assert.Equal(t, MetadataStoreModeFallbackActive, GetMetadataStoreMode(ms))
+				_, _, err = ms.GetRaw(ctx, key)
+				require.Error(t, err)
+				assert.Equal(t, int32(2), fallback.calls.Load(), "fallback must still be consulted")
+				return
+			}
+
+			assert.ErrorIs(t, err, testCase.fallbackErr, "the fallback error must still reach the caller")
+			assert.False(t, ms.FallbackReadsEnabled(), "a dropped fallback collection must disable fallback reads")
+			assert.Equal(t, MetadataStoreModeFallbackInactive, GetMetadataStoreMode(ms))
+
+			// Later reads must short-circuit on primary's not-found rather than pay the fallback
+			// again. Distinct keys here on purpose: this mirrors the DCP checkpoint path, which
+			// reads one key per vbucket. A per-key rather than per-store decision would still stall
+			// the cbgt janitor for every remaining vbucket.
+			for vbNo := range 16 {
+				_, _, err = ms.GetRaw(ctx, fmt.Sprintf("_sync:dcp_ck:droppedDB:%d", vbNo))
+				assert.True(t, IsDocNotFoundError(err), "expected primary not-found, got %v", err)
+			}
+			assert.Equal(t, int32(1), fallback.calls.Load(), "fallback must not be consulted once disabled")
+
+			// Exists shares the same gate.
+			exists, err := ms.Exists(ctx, key)
+			assert.NoError(t, err)
+			assert.False(t, exists)
+			assert.Equal(t, int32(1), fallback.calls.Load())
+		})
+	}
 }

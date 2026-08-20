@@ -3151,7 +3151,7 @@ func TestMetadataStoreUpdateAfterMigrationComplete(t *testing.T) {
 	defer bucket.Close(ctx)
 
 	metaStore := NewMetadataStore(bucket.GetMobileSystemDataStore(), bucket.DefaultDataStore(ctx))
-	metaStore.SetMigrationComplete()
+	metaStore.DisableFallbackReads()
 
 	docID := t.Name()
 	ok, err := metaStore.Fallback().Add(ctx, docID, 0, []byte(`{"counter":99}`))
@@ -3592,7 +3592,7 @@ func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
 	primaryStore := bucket.GetMobileSystemDataStore()
 
 	metaStore := NewMetadataStore(primaryStore, fallbackStore)
-	metaStore.SetMigrationComplete()
+	metaStore.DisableFallbackReads()
 
 	docID := t.Name()
 	ok, err := metaStore.Fallback().Add(ctx, docID, 0, []byte(`{"some": "data"}`))

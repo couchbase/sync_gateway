@@ -119,11 +119,15 @@ func TestMigrateMetadataScanError(t *testing.T) {
 			_, err := MigrateMetadata(ctx, msWithScanErr, metadataID, nil, nil, stats)
 			if testCase.wantFatal {
 				require.ErrorIs(t, err, testCase.scanErr, "a dropped collection must fail the migration")
+				require.False(t, msWithScanErr.FallbackReadsEnabled(),
+					"a dropped fallback must stop further fallback reads, so later readers don't each pay a KV deadline")
 				return
 			}
 			require.NoError(t, err, "a transient scan error must not fail the migration outright")
 			require.True(t, stats.ScanAborted.Load(), "a truncated scan must not look like a clean pass")
 			require.Zero(t, stats.DocsMigrated.Load())
+			require.True(t, msWithScanErr.FallbackReadsEnabled(),
+				"a transient error must leave the fallback in play, or unmigrated metadata is skipped for good")
 		})
 	}
 }
@@ -170,6 +174,7 @@ func TestMigrateMetadataCollectionDroppedDuringMoveFailsPass(t *testing.T) {
 	stats := &MigrationStats{}
 	_, err := MigrateMetadata(ctx, msWithFetchErr, metadataID, nil, nil, stats)
 	require.ErrorIs(t, err, gocb.ErrCollectionNotFound, "a dropped fallback collection during a per-doc move must fail the pass")
+	require.False(t, msWithFetchErr.FallbackReadsEnabled(), "a dropped fallback must stop further fallback reads")
 }
 
 // primaryAddErrorDataStore wraps a DataStore so every Add fails with addErr, standing in for the
@@ -203,6 +208,8 @@ func TestMigrateMetadataPrimaryCollectionDroppedFailsPass(t *testing.T) {
 	stats := &MigrationStats{}
 	_, err := MigrateMetadata(ctx, msWithAddErr, metadataID, nil, nil, stats)
 	require.ErrorIs(t, err, gocb.ErrCollectionNotFound, "a dropped primary collection must fail the pass")
+	require.True(t, msWithAddErr.FallbackReadsEnabled(),
+		"a dropped PRIMARY says nothing about the fallback - disabling it here would strand the unmigrated doc below")
 
 	// The doc must be left on the fallback — nothing was written to primary.
 	exists, existsErr := ms.Fallback().Exists(ctx, keys.UserKey("alice"))
