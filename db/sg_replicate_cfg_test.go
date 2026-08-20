@@ -13,6 +13,8 @@ package db
 import (
 	"fmt"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -841,9 +843,7 @@ func TestRefreshReplicationCfgRacesStopTeardown(t *testing.T) {
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
 
-	baseCfg, err := base.NewCfgSG(ctx, testDB.MetadataStore, "", false)
-	require.NoError(t, err)
-	wrapped := &pausingCfg{Cfg: baseCfg, readDone: make(chan struct{}, 1), release: make(chan struct{})}
+	wrapped := &pausingCfg{Cfg: testDB.CfgSG, readDone: make(chan struct{}, 1), release: make(chan struct{})}
 
 	const (
 		localNodeUUID = "localNode"
@@ -898,4 +898,194 @@ func TestRefreshReplicationCfgRacesStopTeardown(t *testing.T) {
 	stateAfter, _ := repl.State(ctx)
 	assert.Equal(t, ReplicationStateStopped, stateAfter,
 		"RefreshReplicationCfg restarted a replication on a stopped manager - nothing will ever stop it")
+}
+
+// TestStartReplicationsRacesStopTeardown asserts that a startReplications already in flight when Stop() runs
+// cannot start a replication:
+//
+//  1. The database context spawns startReplications, which reads the cluster cfg, seeing the replication
+//     assigned to the local node with target state running.
+//  2. The database is closed, so Stop() runs its teardown loop over an activeReplicators the startup has not
+//     registered into yet, then blocks in closeWg.Wait().
+//  3. startReplications proceeds on its now-stale snapshot and starts the replication - which nobody owns,
+//     since Stop()'s teardown loop has been and gone, and closeWg.Wait() only waits for it to finish
+//     starting the replication, not for anything to stop it.
+//
+// This is the startup-path counterpart to TestRefreshReplicationCfgRacesStopTeardown, and the only coverage
+// for the isStopping() check in startAssignedReplications.
+func TestStartReplicationsRacesStopTeardown(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	wrapped := &pausingCfg{Cfg: testDB.CfgSG, readDone: make(chan struct{}, 1), release: make(chan struct{})}
+
+	const (
+		localNodeUUID = "localNode"
+		replicationID = "rep1"
+	)
+
+	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, wrapped)
+	require.NoError(t, err)
+	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+	require.NoError(t, mgr.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:                 replicationID,
+			Direction:          ActiveReplicatorTypePush,
+			Remote:             "http://localhost:4984/remotedb",
+			Continuous:         true,
+			CollectionsEnabled: base.TestsUseNamedCollections(),
+		},
+		AssignedNode: localNodeUUID,
+		TargetState:  ReplicationStateRunning,
+	}))
+
+	// Step 1: startReplications reads the cfg, then parks, as production does inside a closeWg-tracked
+	// goroutine.
+	wrapped.armed.Store(true)
+	var startWg sync.WaitGroup
+	mgr.closeWg.Add(1)
+	startWg.Go(func() {
+		defer mgr.closeWg.Done()
+		assert.NoError(t, mgr.startReplications(ctx))
+	})
+	base.RequireChanRecv(t, wrapped.readDone)
+
+	// Step 2: Stop() runs its teardown loop over an empty map, then blocks in closeWg.Wait().
+	var stopWg sync.WaitGroup
+	stopWg.Go(mgr.Stop)
+	// Stop() closes clusterSubscribeTerminator before taking activeReplicatorsLock, so waiting on it here
+	// guarantees the parked startup sees a stopping manager once released.
+	<-mgr.clusterSubscribeTerminator
+
+	// Step 3: the startup proceeds.
+	close(wrapped.release)
+	base.WaitWithTimeout(t, &startWg, time.Minute)
+	base.WaitWithTimeout(t, &stopWg, time.Minute)
+
+	repl := mgr.GetActiveReplicator(replicationID)
+	if repl != nil {
+		defer func() { _ = repl.Stop() }()
+		state, _ := repl.State(ctx)
+		assert.Equal(t, ReplicationStateStopped, state,
+			"startReplications started a replication on a stopped manager - nothing will ever stop it")
+	}
+	assert.Equal(t, 0, mgr.GetNumberActiveReplicators(),
+		"stopped manager still holds active replicators registered by startReplications")
+}
+
+// TestStopInterruptsReplicationStartupWait asserts that Stop() does not have to wait out the startup timer in
+// DatabaseContext.startReplications.  That goroutine is tracked by closeWg, so with no signal from the
+// manager it blocks Stop() in closeWg.Wait() for the full timer duration whenever Stop is called without the
+// database context being closed - Close closes dbc.terminator first, so it does not pay this cost.
+func TestStopInterruptsReplicationStartupWait(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	// ServerContextHasStarted is never signalled here, so the startup goroutine has only the timer to wait on.
+	require.Nil(t, testDB.ServerContextHasStarted)
+	testDB.Options.SGReplicateOptions.Enabled = true
+	testDB.startReplications(ctx)
+
+	mgr := testDB.SGReplicateMgr
+	start := time.Now()
+	mgr.Stop()
+	// Comfortably under the timer - interrupting it takes well under a millisecond.
+	require.Less(t, time.Since(start), sgReplicateStartupWait/2,
+		"Stop() waited out the ISGR startup timer instead of interrupting it")
+
+	// Clear the manager only after Stop, whose closeWg.Wait orders this write after the startup goroutine's
+	// last read of the field.  Close would otherwise stop the manager a second time, panicking on the
+	// already-closed terminators.
+	testDB.SGReplicateMgr = nil
+}
+
+// TestStartReplicationsRacesStopTeardownDuringStart asserts that a replication whose Start is still in
+// flight when Stop() runs its teardown loop is left stopped:
+//
+//  1. startReplications registers the replication, then blocks inside Start - the remote accepts the
+//     connection and never answers, which has no timeout.
+//  2. Stop()'s teardown loop calls Stop on that replication, which blocks on the replicator's own lock,
+//     held by Start.
+//  3. Start completes and falls into its reconnect loop, then releases the lock and the pending Stop runs,
+//     cancelling it.
+//
+// So this interleaving needs no handling in startAssignedReplication beyond registering under
+// activeReplicatorsLock - which is why it does not recheck after Start.  This test pins that reasoning: it
+// fails if Stop's teardown stops being ordered behind an in-flight Start.
+//
+// Note that Stop leaves entries in activeReplicators, so this asserts replication state rather than map
+// membership.
+func TestStartReplicationsRacesStopTeardownDuringStart(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
+
+	testDB, ctx := setupTestDB(t)
+	defer testDB.Close(ctx)
+
+	// The remote accepts the request and holds it, parking Start inside its reachability check.
+	connectStarted := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var remoteHit atomic.Bool
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if remoteHit.CompareAndSwap(false, true) {
+			connectStarted <- struct{}{}
+			<-release
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer remote.Close()
+
+	const (
+		localNodeUUID = "localNode"
+		replicationID = "rep1"
+	)
+
+	// The database's own manager and cfg, so the test exercises whichever cbgt.Cfg this edition uses.
+	mgr := testDB.SGReplicateMgr
+	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+	require.NoError(t, mgr.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:                 replicationID,
+			Direction:          ActiveReplicatorTypePush,
+			Remote:             remote.URL + "/remotedb",
+			Continuous:         true,
+			CollectionsEnabled: base.TestsUseNamedCollections(),
+		},
+		AssignedNode: localNodeUUID,
+		TargetState:  ReplicationStateRunning,
+	}))
+
+	// Step 1: the startup registers the replication, then parks inside Start.
+	var startWg sync.WaitGroup
+	mgr.closeWg.Add(1)
+	startWg.Go(func() {
+		defer mgr.closeWg.Done()
+		assert.NoError(t, mgr.startReplications(ctx))
+	})
+	base.RequireChanRecv(t, connectStarted)
+	repl := mgr.GetActiveReplicator(replicationID)
+	require.NotNil(t, repl, "replication should be registered before Start")
+
+	// Step 2: Stop()'s teardown loop stops a replication whose Start has not returned yet.
+	var stopWg sync.WaitGroup
+	stopWg.Go(mgr.Stop)
+	<-mgr.clusterSubscribeTerminator
+
+	// Step 3: Start completes, releasing the replicator lock the pending Stop is waiting on.
+	close(release)
+	base.WaitWithTimeout(t, &startWg, time.Minute)
+	base.WaitWithTimeout(t, &stopWg, time.Minute)
+
+	state, _ := repl.State(ctx)
+	assert.Equal(t, ReplicationStateStopped, state,
+		"replication started during manager stop was left running - nothing will ever stop it")
+	assert.False(t, repl.Push.reconnectActive.IsTrue(),
+		"replication started during manager stop was left reconnecting")
+
+	// Clear the manager only after Stop, whose closeWg.Wait orders this write after the startup goroutine.
+	// Close would otherwise stop it a second time, panicking on the already-closed terminators.
+	testDB.SGReplicateMgr = nil
 }

@@ -33,6 +33,10 @@ const (
 	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
 	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
 	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
+
+	// sgReplicateStartupWait is how long the replication startup goroutine waits for the server context to
+	// start before starting replications anyway.
+	sgReplicateStartupWait = 10 * time.Second
 )
 
 var DefaultCheckpointInterval = time.Second * 5 // default value used for time-based checkpointing
@@ -462,7 +466,7 @@ func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 			defer dbc.SGReplicateMgr.closeWg.Done()
 
 			// Wait for the server context to be started
-			t := time.NewTimer(time.Second * 10)
+			t := time.NewTimer(sgReplicateStartupWait)
 			defer t.Stop()
 			select {
 			case <-dbc.ServerContextHasStarted:
@@ -471,6 +475,9 @@ func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 				base.InfofCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Timed out waiting for server context startup... starting ISGR replications for %q anyway", dbc.Name)
 			case <-dbc.terminator:
 				base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Database context for %q closed before starting ISGR replications - aborting...", dbc.Name)
+				return
+			case <-dbc.SGReplicateMgr.clusterSubscribeTerminator:
+				base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Replication manager for %q stopped before starting ISGR replications - aborting...", dbc.Name)
 				return
 			}
 
@@ -530,6 +537,11 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 // assigned to this node, and starts the process to monitor future changes to the cluster config.
 func (m *sgReplicateManager) startReplications(ctx context.Context) error {
 
+	if m.isStopping() {
+		base.DebugfCtx(ctx, base.KeyCluster, "Manager is stopping - skipping replication startup before cluster read")
+		return nil
+	}
+
 	replications, err := m.GetReplications()
 	if err != nil {
 		return err
@@ -537,24 +549,50 @@ func (m *sgReplicateManager) startReplications(ctx context.Context) error {
 	m.validateReplications(ctx, replications)
 	for replicationID, replicationCfg := range replications {
 		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Replication %s is assigned to node %s (local node is %s) on start up", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
-		if replicationCfg.AssignedNode == m.localNodeUUID {
-			activeReplicator, err := m.InitializeReplication(replicationCfg)
-			if err != nil {
-				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
-				m.saveInitializationError(replicationCfg, err)
-				continue
-			}
-			m.activeReplicatorsLock.Lock()
-			m.activeReplicators[replicationID] = activeReplicator
-			m.activeReplicatorsLock.Unlock()
-			if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
-				if startErr := activeReplicator.Start(ctx); startErr != nil {
-					base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
-				}
-			}
+		if replicationCfg.AssignedNode != m.localNodeUUID {
+			continue
+		}
+		if stopping := m.startAssignedReplication(ctx, replicationID, replicationCfg); stopping {
+			return nil
 		}
 	}
 	return m.SubscribeCfgChanges(ctx)
+}
+
+// startAssignedReplication initializes and starts a single replication assigned to the local node, and
+// returns true if the manager began stopping, in which case nothing was started and no further replications
+// should be either.
+//
+// Stop closes clusterSubscribeTerminator before acquiring activeReplicatorsLock, so if isStopping() is false
+// while the lock is held here, Stop's teardown loop is guaranteed to run afterwards and see the entry.  The
+// lock is deliberately not held across Start - unlike RefreshReplicationCfg, which does - because the
+// reachability request Start makes has no overall timeout, so an unresponsive remote would block every
+// reader of activeReplicators, including the replication status endpoints.  A teardown loop that runs while
+// Start is in flight still stops the replication, since repl.Stop blocks on the replicator's own lock until
+// Start releases it.
+func (m *sgReplicateManager) startAssignedReplication(ctx context.Context, replicationID string, replicationCfg *ReplicationCfg) (stopping bool) {
+	activeReplicator, err := m.InitializeReplication(replicationCfg)
+	if err != nil {
+		base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
+		m.saveInitializationError(replicationCfg, err)
+		return false
+	}
+
+	m.activeReplicatorsLock.Lock()
+	if m.isStopping() {
+		m.activeReplicatorsLock.Unlock()
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - not starting replication %s", replicationID)
+		return true
+	}
+	m.activeReplicators[replicationID] = activeReplicator
+	m.activeReplicatorsLock.Unlock()
+
+	if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
+		if startErr := activeReplicator.Start(ctx); startErr != nil {
+			base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
+		}
+	}
+	return false
 }
 
 // NewActiveReplicatorConfig converts an incoming ReplicationCfg to an ActiveReplicatorConfig
