@@ -289,7 +289,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			base.DebugfCtx(ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 			// body[BodyRev] = newRev
 			newDoc.RevID = newRev
-			err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+			err := doc.History.addRevision(ctx, newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
 			}

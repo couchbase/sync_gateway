@@ -208,7 +208,7 @@ func TestMetadataMigrationManagerMovesUsersAndRoles(t *testing.T) {
 		_, _, getErr = ms.Fallback().GetRaw(ctx, k)
 		assert.True(t, base.IsDocNotFoundError(getErr), "fallback should no longer hold %s", k)
 	}
-	assert.True(t, ms.MigrationComplete(), "clean run must flip MigrationComplete so future reads skip the fallback")
+	assert.False(t, ms.FallbackReadsEnabled(), "clean run must disable fallback reads")
 }
 
 // TestMetadataMigrationCompletesWithCollectionScopedDataInFallback is a regression test for a
@@ -281,7 +281,7 @@ func TestMetadataMigrationCompletesWithCollectionScopedDataInFallback(t *testing
 	// the job it exhausts maxPasses and lands in Error instead.
 	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
 
-	assert.True(t, ms.MigrationComplete(), "clean run must flip MigrationComplete so future reads skip the fallback")
+	assert.False(t, ms.FallbackReadsEnabled(), "clean run must disable fallback reads")
 
 	rawStatus, err := dbCtx.MetadataMigrationManager.GetStatus(ctx)
 	require.NoError(t, err)
@@ -350,7 +350,7 @@ func TestMetadataMigrationManagerCompletesWithUnknownPrefixLeftInPlace(t *testin
 	// Unknown-prefix docs no longer block completion — the manager reaches the Completed state.
 	RequireBackgroundManagerState(t, dbCtx.MetadataMigrationManager, BackgroundProcessStateCompleted)
 
-	assert.True(t, ms.MigrationComplete(), "MigrationComplete should be flipped — unknown-prefix docs do not block completion")
+	assert.False(t, ms.FallbackReadsEnabled(), "fallback reads should be disabled — unknown-prefix docs do not block completion")
 
 	_, _, err = ms.Fallback().GetRaw(ctx, unknownKey)
 	assert.NoError(t, err, "unrecognised doc should be left in place on the fallback (non-destructive)")
@@ -420,7 +420,7 @@ func TestMetadataMigrationManagerDCPCheckpointGroupIDCollisionCompletesEndToEnd(
 	assert.Zero(t, resp.DocsFailed, "no per-doc errors: the collision is a classification outcome, not a move failure")
 	assert.Equal(t, int64(1), resp.DocsOutOfScope, "own checkpoint is (mis)classified out-of-scope, not unknown-prefix")
 
-	assert.True(t, ms.MigrationComplete(), "out-of-scope docs do not block completion - the run still flips MigrationComplete")
+	assert.False(t, ms.FallbackReadsEnabled(), "out-of-scope docs do not block completion - the run still disables fallback reads")
 
 	_, _, getErr := ms.Fallback().GetRaw(ctx, ownCheckpoint)
 	assert.NoError(t, getErr, "own checkpoint is stranded on the fallback under the known limitation")

@@ -791,7 +791,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	//     and per-DB level (legacy behaviour; simplest RBAC, _default cannot be dropped by customers for this case)
 	//   - _system._mobile (with read-fallback to _default._default) when enabled at either level,
 	//     via base.MetadataStore. For a brand-new database with no legacy metadata in
-	//     _default._default the wrapper is immediately marked MigrationComplete so reads go
+	//     _default._default the wrapper immediately disables fallback reads so they go
 	//     straight to the primary collection — no per-DB migration arming.
 	// defaultCollectionPresent tracks whether _default._default physically exists in the bucket. It
 	// drives two decisions: whether the per-DB MetadataStore wrapper needs _default as a read-fallback,
@@ -816,28 +816,28 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		fallbackStore := bucket.DefaultDataStore(ctx)
 		metaStore := base.NewMetadataStore(primaryMetadataStore, fallbackStore)
 		// It's possible that the legacy _default._default collection has been dropped by a customer,
-		// in which case we can mark the per-DB MetadataStore wrapper as MigrationComplete and skip
+		// in which case we can disable fallback reads on the per-DB MetadataStore wrapper and skip
 		// dual-read mode. If it exists, probe for legacy _sync:seq to determine whether we need to keep
 		// dual-read mode active.
 		switch {
 		case defaultErr != nil:
 			base.WarnfCtx(ctx, "db:%s unable to determine whether _default._default exists while resolving metadata fallback: %v — keeping dual-read mode", base.MD(dbName), defaultErr)
 		case !defaultCollectionPresent:
-			metaStore.SetMigrationComplete()
-			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — marking per-DB MetadataStore wrapper migration-complete (no legacy fallback collection to read from)", base.MD(dbName))
+			metaStore.DisableFallbackReads()
+			base.InfofCtx(ctx, base.KeyConfig, "db:%s _default._default does not exist — disabling fallback reads on the per-DB MetadataStore wrapper (no legacy fallback collection to read from)", base.MD(dbName))
 		case !probeLegacyPerDBMetadata(ctx, fallbackStore, config.MetadataID):
 			if sc.isPerDBMigrationInProgress(ctx, spec.BucketName, config.MetadataID) {
 				base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy _sync:seq in _default._default but per-DB migration is in_progress on another node — keeping dual-read mode until migration completes", base.MD(dbName))
 			} else {
-				metaStore.SetMigrationComplete()
-				// Same SetMigrationComplete action covers two distinct cases — log them
+				metaStore.DisableFallbackReads()
+				// Same DisableFallbackReads action covers two distinct cases — log them
 				// separately so operators don't see "new-database fast path" against a DB
 				// that just finished migrating.
 				primarySeqKey := base.NewMetadataKeys(config.MetadataID).SyncSeqKey()
 				if primaryHasSeq, _ := primaryMetadataStore.Exists(ctx, primarySeqKey); primaryHasSeq {
-					base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — marking per-DB MetadataStore wrapper migration-complete", base.MD(dbName))
+					base.InfofCtx(ctx, base.KeyConfig, "db:%s primary metadata present and no legacy data in _default._default — disabling fallback reads on the per-DB MetadataStore wrapper", base.MD(dbName))
 				} else {
-					base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — marking per-DB MetadataStore wrapper migration-complete (new-database fast path)", base.MD(dbName))
+					base.InfofCtx(ctx, base.KeyConfig, "db:%s no legacy metadata in _default._default — disabling fallback reads on the per-DB MetadataStore wrapper (new-database fast path)", base.MD(dbName))
 				}
 			}
 		}
@@ -958,7 +958,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			// migration is still in flight. Once complete, primary is authoritative; the fallback
 			// (_default._default) may even have been dropped, in which case querying it is wasteful
 			// and noisy (ShouldUseLegacySyncDocsIndex tolerates the error but still fires the query).
-			if !dual.MigrationComplete() {
+			if dual.FallbackReadsEnabled() {
 				fallbackIndexStore = dual.Fallback()
 			} else {
 				migrationComplete = true
@@ -1390,11 +1390,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
 				cacheOptions.MaxNumChannels = *config.CacheConfig.ChannelCacheConfig.MaxNumber
 			}
-			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
-				cacheOptions.CompactHighWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
+			if hwm := config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; hwm != nil && *hwm > 0 {
+				cacheOptions.CompactHighWatermarkPercent = *hwm
 			}
-			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
-				cacheOptions.CompactLowWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
+			if lwm := config.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; lwm != nil && *lwm > 0 {
+				cacheOptions.CompactLowWatermarkPercent = *lwm
 			}
 		}
 
@@ -2361,7 +2361,7 @@ func resolveUseSystemMetadataCollection(startup *StartupConfig, db *DbConfig) bo
 
 // probeLegacyPerDBMetadata reports whether this database has metadata in _default._default that
 // the per-DB MetadataStore wrapper would need to read. Used to short-circuit a brand-new database
-// (or one originally created in dual mode) into MigrationComplete state so the wrapper bypasses
+// (or one originally created in dual mode) into fallback-reads-disabled state so the wrapper bypasses
 // fallback from its first read.
 //
 // Probes _sync:seq (or _sync:m_<id>:seq for metadataID-prefixed DBs): the sequence allocator
@@ -2403,7 +2403,7 @@ func defaultCollectionExists(ctx context.Context, bucket base.Bucket) (bool, err
 // race where another node's migration has already moved the _sync:seq counter to primary
 // (causing probeLegacyPerDBMetadata to return false) but has not yet finished migrating all
 // per-DB metadata (users, roles, sessions). Without this check the joining node would
-// incorrectly call SetMigrationComplete, causing reads to skip the fallback and miss
+// incorrectly disable fallback reads, causing reads to skip the fallback and miss
 // not-yet-migrated docs.
 //
 // Returns false (safe to mark complete) when the status doc is absent, the per-DB entry does

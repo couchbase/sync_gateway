@@ -68,6 +68,8 @@ func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID str
 	}
 	iter, err := rss.Scan(ctx, sgbucket.NewRangeScanForPrefix(base.SyncDocPrefix), sgbucket.ScanOptions{IDsOnly: true})
 	if err != nil {
+		// Result unused: a scan that can't even be opened fails the pass either way.
+		ms.DisableFallbackIfUnrecoverable(ctx, err)
 		return 0, fmt.Errorf("metadata migration scan: %w", err)
 	}
 	defer func() {
@@ -90,10 +92,10 @@ func MigrateMetadata(ctx context.Context, ms *base.MetadataStore, metadataID str
 
 	// Next returns nil for both a clean end-of-stream and a mid-stream abort, so consult Err to tell
 	// them apart. A truncated scan must never look clean, or the orchestrator would
-	// SetMigrationComplete with in-scope docs still on the fallback.
+	// disable fallback reads with in-scope docs still on the fallback.
 	if scanErr := iter.Err(); scanErr != nil {
 		// A dropped fallback collection can never be scanned again - fail the whole migration.
-		if base.IsCollectionOutdatedError(scanErr) {
+		if ms.DisableFallbackIfUnrecoverable(ctx, scanErr) {
 			return int(stats.DocsUnknownPrefix.Load()), fmt.Errorf("metadata migration scan aborted: %w", scanErr)
 		}
 		// Anything else (a partition stream lost to rebalance, a temporary failure) may well
@@ -129,7 +131,7 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 		if err != nil {
 			// A dropped/recreated fallback collection is terminal - retrying here would
 			// spin on full KV timeouts forever.
-			return !base.IsCollectionOutdatedError(err), err, 0
+			return !ms.DisableFallbackIfUnrecoverable(ctx, err), err, 0
 		}
 		var existing base.SyncSeqMigrationPill
 		if jsonErr := base.JSONUnmarshal(raw, &existing); jsonErr != nil || !existing.SGMetadataMigrationPill {
@@ -147,7 +149,7 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 				return false, mErr, 0
 			}
 			if _, wErr := ms.Fallback().WriteCas(ctx, seqKey, 0, cas, payload, 0); wErr != nil {
-				return !base.IsCollectionOutdatedError(wErr), wErr, 0
+				return !ms.DisableFallbackIfUnrecoverable(ctx, wErr), wErr, 0
 			}
 			stats.SeqPoisonPillApplied.Add(1)
 		}
@@ -410,7 +412,7 @@ func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, bi
 		// A dropped/outdated collection is terminal for the whole migration — every remaining key
 		// would incur the same full KV timeout. Abort the pass rather than count this as a
 		// transient per-doc error and grind on.
-		if base.IsCollectionOutdatedError(err) {
+		if ms.DisableFallbackIfUnrecoverable(ctx, err) {
 			return fmt.Errorf("metadata migration: fallback collection unavailable fetching %s: %w", base.UD(key), err)
 		}
 		base.WarnfCtx(ctx, "metadata migration: fallback fetch failed for %s: %v", base.UD(key), err)
@@ -437,7 +439,7 @@ func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, bi
 		return nil
 	}
 	if delErr := ms.Fallback().Delete(ctx, key); delErr != nil && !base.IsDocNotFoundError(delErr) {
-		if base.IsCollectionOutdatedError(delErr) {
+		if ms.DisableFallbackIfUnrecoverable(ctx, delErr) {
 			return fmt.Errorf("metadata migration: fallback collection unavailable deleting %s: %w", base.UD(key), delErr)
 		}
 		base.WarnfCtx(ctx, "metadata migration: fallback delete failed for %s: %v", base.UD(key), delErr)
@@ -452,7 +454,7 @@ func moveFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, bi
 // This is used in cases like transient heartbeat documents where it does not make sense to move.
 func deleteFallbackDoc(ctx context.Context, ms *base.MetadataStore, key string, stats *MigrationStats) error {
 	if delErr := ms.Fallback().Delete(ctx, key); delErr != nil && !base.IsDocNotFoundError(delErr) {
-		if base.IsCollectionOutdatedError(delErr) {
+		if ms.DisableFallbackIfUnrecoverable(ctx, delErr) {
 			return fmt.Errorf("metadata migration: fallback collection unavailable deleting %s: %w", base.UD(key), delErr)
 		}
 		base.WarnfCtx(ctx, "metadata migration: fallback delete failed for %s: %v", base.UD(key), delErr)

@@ -668,12 +668,17 @@ func (context *DatabaseContext) shouldRunMetadataMigration(ctx context.Context) 
 // already-migrated database at construction. When that flag is not set it consults the authoritative,
 // cluster-wide status doc via PerDBMetadataMigrationCompleteFunc — catching the case where a *peer*
 // node completed the migration and this node's local flag is a stale false. When the durable status
-// shows complete, the local flag is converged (SetMigrationComplete) so subsequent callers use the
+// shows complete, the local flag is converged (DisableFallbackReads) so subsequent callers use the
 // fast path and this node's fallback reads stop too. It only converges on a complete status — an
 // in-progress migration returns false, so fallback reads are never disabled mid-migration.
+//
+// Note the fast path is broader than the name: fallback reads are also disabled when
+// _default._default was never there or has been dropped, in which case there is likewise nothing
+// left to migrate. Every caller uses this to decide whether migrating is still worth attempting, so
+// that conflation is intentional.
 func (context *DatabaseContext) MetadataMigrationComplete(ctx context.Context) bool {
 	ms, isDual := context.MetadataStore.(*base.MetadataStore)
-	if isDual && ms.MigrationComplete() {
+	if isDual && !ms.FallbackReadsEnabled() {
 		return true
 	}
 	if context.PerDBMetadataMigrationCompleteFunc == nil {
@@ -681,7 +686,7 @@ func (context *DatabaseContext) MetadataMigrationComplete(ctx context.Context) b
 	}
 	if context.PerDBMetadataMigrationCompleteFunc(ctx) {
 		if isDual {
-			ms.SetMigrationComplete()
+			ms.DisableFallbackReads()
 		}
 		return true
 	}

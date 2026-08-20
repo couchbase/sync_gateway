@@ -177,6 +177,8 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 					rest.AssertRevTreeAfterHLVConflictResolution(t, rt1Doc, localWinsVersion.RevTreeID, rt1Version.RevTreeID)
 				}
 
+				// Conflict resolution must not leave a revision at or below its parent's generation.
+				rest.RequireStrictlyIncreasingRevTreeGenerations(t, rt1ctx, rt1Doc)
 			})
 		}
 	})

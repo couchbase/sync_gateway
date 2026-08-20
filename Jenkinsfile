@@ -34,15 +34,33 @@ pipeline {
                 stage('Go Modules') {
                     steps {
                         script {
-                            // go fetches the toolchain named in go.mod on demand
-                            env.GOTOOLS = sh(
+                            // bootstrap a go version from go.mod. This requires a new enough version of go to run golang.org/dl/go$ver
+                            env.GO_VERSION = 'go' + sh(
                               returnStdout: true,
-                              script: 'go env GOPATH'
+                              script: '''
+                                go list -m -f '{{.GoVersion}}'
+                              '''
                             ).trim()
                             sh '''
                               set -eux
 
+                              echo "Sync Gateway go.mod version is $GO_VERSION"
+                              go install "golang.org/dl/$GO_VERSION@latest"
+                              ~/go/bin/$GO_VERSION download
+                            '''
+                            env.GOROOT = sh(
+                              returnStdout: true,
+                              script: '~/go/bin/$GO_VERSION env GOROOT'
+                            ).trim()
+                            env.GOTOOLS = sh(
+                              returnStdout: true,
+                              script: '~/go/bin/$GO_VERSION env GOPATH'
+                            ).trim()
+                            env.PATH = "${env.GOROOT}/bin:${env.PATH}"
+                            sh '''
+                              which go
                               go version
+                              go env
                             '''
                             sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                                 sh '''
