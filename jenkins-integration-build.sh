@@ -61,9 +61,6 @@ go install "golang.org/dl/${GO_VERSION}@latest"
 GOROOT=$(~/go/bin/"${GO_VERSION}" env GOROOT)
 PATH=${GOROOT}/bin:$PATH
 
-echo "Downloading tool dependencies..."
-go install gotest.tools/gotestsum@latest
-
 if [ "${SG_TEST_X509:-}" == "true" ] && [ "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
     echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
     exit 1
@@ -73,7 +70,6 @@ fi
 GO_TEST_FLAGS=(-v -p 1 "-count=${RUN_COUNT:-1}")
 INT_LOG_FILE_NAME="verbose_int"
 
-export PATH=$PATH:~/go/bin
 echo "PATH: $PATH"
 
 if [ "${TEST_DEBUG:-}" == "true" ]; then
@@ -111,10 +107,10 @@ fi
 if [ "${RUN_WALRUS}" == "true" ]; then
     set +e -x
     # EE
-    gotestsum --junitfile=rosmar-ee.xml --junitfile-project-name rosmar-EE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ee.out 2>&1
+    go tool gotestsum --junitfile=rosmar-ee.xml --junitfile-project-name rosmar-EE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ee.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode,cb_sg_enterprise "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ee.out 2>&1
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-EE-", .)' rosmar-ee.xml > verbose_unit_ee.xml
     # CE
-    gotestsum --junitfile=rosmar-ce.xml --junitfile-project-name rosmar-CE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ce.out 2>&1
+    go tool gotestsum --junitfile=rosmar-ce.xml --junitfile-project-name rosmar-CE --junitfile-testcase-classname relative --format standard-verbose -- -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... -tags cb_sg_devmode "${GO_TEST_FLAGS[@]}" "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" > verbose_unit_ce.out 2>&1
     xmlstarlet ed -u '//testcase/@classname' -x 'concat("rosmar-CE-", .)' rosmar-ce.xml > verbose_unit_ce.xml
     set -e +x
 fi
@@ -147,7 +143,7 @@ else
 fi
 
 set +e -x # Output all executed shell commands
-gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- "${GO_TEST_FLAGS[@]}" -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+go tool gotestsum --junitfile=integration.xml --junitfile-project-name integration --junitfile-testcase-classname relative --format standard-verbose -- "${GO_TEST_FLAGS[@]}" -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... "github.com/couchbase/sync_gateway/${TARGET_PACKAGE}" 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
@@ -157,7 +153,9 @@ set +x # Stop outputting all executed shell commands
 
 # Collect CBS logs if server error occurred
 if [ "${SG_CBCOLLECT_ALWAYS:-}" == "true" ] || grep -a -q "server logs for details\|Timed out after 1m0s waiting for a bucket to become available" "${INT_LOG_FILE_NAME}.out"; then
-    go run github.com/couchbaselabs/cbdinocluster@latest collect-logs "${CBS_CLUSTER_ID}" cbcollect.zip
+    # $(pwd) is evaluated before 'go -C' takes effect, so the zip lands in the workspace root
+    # rather than beside the tools module.
+    go -C integration-test/tools tool cbdinocluster collect-logs "${CBS_CLUSTER_ID}" "$(pwd)/cbcollect.zip"
 fi
 
 # If rosmar tests were run, then prepend classname with integration to tell them apart

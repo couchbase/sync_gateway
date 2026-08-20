@@ -53,7 +53,7 @@ Useful flags: `--env-file` (default `./cbs.env`), `--version` (default 8.0.1), `
 The allocated cluster ID is recorded in `.cbdinocluster-sg-cluster-id` in the working directory
 (gitignored), so re-running the script reuses the running cluster when the version/node
 count/services still match. Tear down with
-`go run github.com/couchbaselabs/cbdinocluster@latest remove "$CBS_CLUSTER_ID"` (or `list` /
+`go -C integration-test/tools tool cbdinocluster remove "$CBS_CLUSTER_ID"` (or `list` /
 `remove-all`); clusters expire on their own but hold Docker memory until then.
 
 Capturing output

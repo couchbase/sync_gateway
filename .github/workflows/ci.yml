@@ -43,7 +43,6 @@ env:
   ACTIONS_GOVULNCHECK_VERSION: &actions_govulncheck_version golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
   ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
   GO_MOD_FILE: &go_mod_file go.mod
-  GOTESTSUM_VERSION: 1.13.0
 
 jobs:
   build:
@@ -64,8 +63,7 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: *go_mod_file
-      - run: go install github.com/google/addlicense@latest
-      - run: addlicense -check -f licenses/addlicense.tmpl .
+      - run: go tool addlicense -check -f licenses/addlicense.tmpl .
 
   golangci:
     name: lint
@@ -102,12 +100,10 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: *go_mod_file
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -121,7 +117,7 @@ jobs:
       - name: Render test log
         if: failure()
         shell: bash
-        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: *actions_upload_artifact_version
@@ -140,10 +136,8 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: *go_mod_file
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -157,7 +151,7 @@ jobs:
       - name: Render test log
         if: failure()
         shell: bash
-        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: *actions_upload_artifact_version
@@ -177,10 +171,8 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: *go_mod_file
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -194,7 +186,7 @@ jobs:
       - name: Render test log
         if: failure()
         shell: bash
-        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: *actions_upload_artifact_version
@@ -212,10 +204,8 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: *go_mod_file
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -229,7 +219,7 @@ jobs:
       - name: Render test log
         if: failure()
         shell: bash
-        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: *actions_upload_artifact_version
@@ -250,10 +240,8 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: *go_mod_file
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
       - name: Test Summary
         if: always()
@@ -267,7 +255,7 @@ jobs:
       - name: Render test log
         if: failure()
         shell: bash
-        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: *actions_upload_artifact_version
@@ -318,10 +306,8 @@ jobs:
           go-version-file: *go_mod_file
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v${{ env.GOTESTSUM_VERSION }}
       - name: Run Tests
-        run: gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -shuffle=on -timeout=5m -count=1 "./tools/stats-definition-exporter"
         shell: bash
       - name: Test Summary
         if: always()
@@ -335,7 +321,7 @@ jobs:
       - name: Render test log
         if: failure()
         shell: bash
-        run: gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
         uses: *actions_upload_artifact_version
