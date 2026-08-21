@@ -48,7 +48,7 @@ get:
       headers:
         Content-Length:
           schema:
-            type: number
+            type: integer
           description: Length of the attachment in bytes
         Etag:
           schema:
@@ -122,7 +122,7 @@ head:
         Content-Length:
           schema:
             description: Length of the attachment in bytes
-            type: number
+            type: integer
         Etag:
           schema:
             type: string
