@@ -275,7 +275,14 @@ func (s *SubChangesParams) channelsExpandedSet() (resultChannels base.Set, err e
 func (s *SubChangesParams) String() string {
 
 	buffer := bytes.NewBufferString("")
-	buffer.WriteString(fmt.Sprintf("Since:%v ", s.Since()))
+	// Append the client's unparsed since when it differs from the parsed value.  SequenceID.String()
+	// drops LowSeq or TriggeredBy when they are not below the sequence they qualify, so without the raw
+	// value a malformed client sequence is indistinguishable from a well-formed one.
+	if rawSince := s.rq.Properties[SubChangesSince]; rawSince != "" && rawSince != s.Since().String() {
+		buffer.WriteString(fmt.Sprintf("Since:%v (raw: %s) ", s.Since(), rawSince))
+	} else {
+		buffer.WriteString(fmt.Sprintf("Since:%v ", s.Since()))
+	}
 
 	if coll, ok := getBlipMessageCollection(s.rq); ok {
 		buffer.WriteString(fmt.Sprintf("Collection:%v ", coll))

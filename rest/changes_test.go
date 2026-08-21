@@ -89,13 +89,12 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 }
 
 // TestChangesSinceLogging drives a range of since values through every changes entry point SGW exposes -
-// GET, POST, longpoll, continuous, admin, websocket and BLIP subChanges - and asserts the debug log shows
-// both the raw sequence the client sent and the normalized one SGW actually uses.
+// GET, POST, longpoll, continuous, admin, websocket and BLIP subChanges - and asserts the existing changes
+// logging reports the client's unparsed since whenever it differs from the parsed value.
 //
-// The cases cover the four sequence wire forms, and for each, variants where SequenceID.String() silently
-// drops a component (see the omission rules on db/sequence_id.go intSeqToString).  Every case where
-// loggedRaw and loggedSince differ is one that, before raw_since existed, was indistinguishable in the
-// logs from a well-formed sequence.
+// The cases cover the four sequence wire forms, and for each, variants that SequenceID.String() normalizes
+// by dropping a component (see the omission rules on db/sequence_id.go intSeqToString).  Without the raw
+// value appended, each of those was indistinguishable in the logs from a well-formed sequence.
 func TestChangesSinceLogging(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeySyncMsg)
 
@@ -105,43 +104,46 @@ func TestChangesSinceLogging(t *testing.T) {
 	)
 
 	cases := []struct {
-		rawSince    string // since value sent by the client
-		loggedRaw   string // expected raw_since (RawString)
-		loggedSince string // expected since (String)
+		rawSince  string // since value sent by the client
+		wantSince string // how it should render in the log: normalized, plus "(raw: X)" when they differ
 	}{
-		// {Seq} - raw and normalized can never diverge
-		{"0", "0", "0"},
-		{"2", "2", "2"},
-		{"999", "999", "999"}, // past the end of the feed
+		// {Seq} - the raw and normalized forms can never diverge, so no raw is appended
+		{"0", "0"},
+		{"2", "2"},
+		{"999", "999"}, // past the end of the feed
 
 		// {TriggeredBy, Seq}
-		{"10:5", "10:5", "10:5"}, // valid backfill, Seq < TriggeredBy
-		{"5:10", "5:10", "10"},   // TriggeredBy < Seq, TriggeredBy dropped
-		{"5:5", "5:5", "5"},      // TriggeredBy == Seq, TriggeredBy dropped
+		{"10:5", "10:5"},           // valid backfill, Seq < TriggeredBy
+		{"5:10", "10 (raw: 5:10)"}, // TriggeredBy < Seq, TriggeredBy dropped
+		{"5:5", "5 (raw: 5:5)"},    // TriggeredBy == Seq, TriggeredBy dropped
 
 		// {LowSeq, Seq}
-		{"2::5", "2::5", "2::5"}, // valid, LowSeq < Seq
-		{"3::2", "3::2", "2"},    // LowSeq > Seq, LowSeq dropped
-		{"5::5", "5::5", "5"},    // LowSeq == Seq, LowSeq dropped
+		{"2::5", "2::5"},          // valid, LowSeq < Seq
+		{"3::2", "2 (raw: 3::2)"}, // LowSeq > Seq, LowSeq dropped
+		{"5::5", "5 (raw: 5::5)"}, // LowSeq == Seq, LowSeq dropped
 
 		// {LowSeq, TriggeredBy, Seq}
-		{"2:10:5", "2:10:5", "2:10:5"}, // valid, LowSeq < TriggeredBy and Seq < TriggeredBy
-		{"12:10:5", "12:10:5", "10:5"}, // backfill active but LowSeq >= TriggeredBy, LowSeq dropped
-		{"2:5:10", "2:5:10", "2::10"},  // no backfill (Seq >= TriggeredBy), TriggeredBy dropped
-		{"12:5:10", "12:5:10", "10"},   // no backfill and LowSeq >= Seq, both dropped
-		{"5:5:5", "5:5:5", "5"},        // all equal, both dropped
+		{"2:10:5", "2:10:5"},               // valid, LowSeq < TriggeredBy and Seq < TriggeredBy
+		{"12:10:5", "10:5 (raw: 12:10:5)"}, // backfill active but LowSeq >= TriggeredBy, LowSeq dropped
+		{"2:5:10", "2::10 (raw: 2:5:10)"},  // no backfill (Seq >= TriggeredBy), TriggeredBy dropped
+		{"12:5:10", "10 (raw: 12:5:10)"},   // no backfill and LowSeq >= Seq, both dropped
+		{"5:5:5", "5 (raw: 5:5:5)"},        // all equal, both dropped
+
+		// A leading zero component parses away entirely, so the raw value is preserved and reported even
+		// though the parsed sequence is indistinguishable from a plain "5".
+		{"0:5", "5 (raw: 0:5)"},
+		{"0::5", "5 (raw: 0::5)"},
 	}
 
-	// The trailing "limit=" / "continuous=" anchors the end of the since value.  AssertLogContains is a
-	// substring match, so without it an expectation of `since=2` would also match an actual `since=2::5`.
-	// %q matches the strconv.Quote applied by restChangesLogFields.
-	wantREST := func(feed, loggedRaw, loggedSince string) string {
-		return fmt.Sprintf("Changes request: protocol=REST feed=%s raw_since=%q since=%s limit=",
-			feed, loggedRaw, loggedSince)
+	// Every REST shape converges on MultiChangesFeed, which logs the options via ChangesOptions.String().
+	// The trailing comma anchors the end of the value: AssertLogContains is a substring match, so
+	// `{Since: 2,` must not be allowed to match an actual `{Since: 2::5,`.
+	wantREST := func(wantSince string) string {
+		return fmt.Sprintf("options: {Since: %s,", wantSince)
 	}
-	wantBLIP := func(loggedRaw, loggedSince string) string {
-		return fmt.Sprintf("Changes request: protocol=BLIP feed=normal raw_since=%q since=%s continuous=",
-			loggedRaw, loggedSince)
+	// BLIP logs via logEndpointEntry -> SubChangesParams.String(), anchored by the trailing space.
+	wantBLIP := func(wantSince string) string {
+		return fmt.Sprintf("Type:subChanges Since:%s ", wantSince)
 	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -184,8 +186,8 @@ func TestChangesSinceLogging(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		// Named by rawSince, not loggedSince - the raw values are all distinct, but "5" is the
-		// expectation for three different cases, and duplicate t.Run names get silently suffixed.
+		// Named by rawSince, not wantSince - the raw values are all distinct, but several cases share a
+		// normalized value, and duplicate t.Run names get silently suffixed.
 		t.Run("since="+tc.rawSince, func(t *testing.T) {
 			// Requests go inside the AssertLogContains closure, assertions outside it.  The helper
 			// restores the console logger without a defer, so a require failure inside the closure
@@ -194,7 +196,7 @@ func TestChangesSinceLogging(t *testing.T) {
 			// assert status internally.
 			t.Run("GET normal", func(t *testing.T) {
 				var resp *TestResponse
-				base.AssertLogContains(t, wantREST("normal", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodGet,
 						"/{{.keyspace}}/_changes?since="+tc.rawSince, "", username)
 				})
@@ -204,7 +206,7 @@ func TestChangesSinceLogging(t *testing.T) {
 			t.Run("POST normal", func(t *testing.T) {
 				var resp *TestResponse
 				body := fmt.Sprintf(`{"since":%q}`, tc.rawSince)
-				base.AssertLogContains(t, wantREST("normal", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", body, username)
 				})
 				RequireStatus(t, resp, http.StatusOK)
@@ -213,7 +215,7 @@ func TestChangesSinceLogging(t *testing.T) {
 			t.Run("GET longpoll", func(t *testing.T) {
 				var resp *TestResponse
 				uri := fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=longpoll&timeout=100", tc.rawSince)
-				base.AssertLogContains(t, wantREST("longpoll", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodGet, uri, "", username)
 				})
 				RequireStatus(t, resp, http.StatusOK)
@@ -222,7 +224,7 @@ func TestChangesSinceLogging(t *testing.T) {
 			t.Run("POST longpoll", func(t *testing.T) {
 				var resp *TestResponse
 				body := fmt.Sprintf(`{"since":%q,"feed":"longpoll","timeout":100}`, tc.rawSince)
-				base.AssertLogContains(t, wantREST("longpoll", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", body, username)
 				})
 				RequireStatus(t, resp, http.StatusOK)
@@ -231,7 +233,7 @@ func TestChangesSinceLogging(t *testing.T) {
 			t.Run("GET continuous", func(t *testing.T) {
 				var resp *TestResponse
 				uri := fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=continuous&timeout=100", tc.rawSince)
-				base.AssertLogContains(t, wantREST("continuous", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodGet, uri, "", username)
 				})
 				RequireStatus(t, resp, http.StatusOK)
@@ -239,7 +241,7 @@ func TestChangesSinceLogging(t *testing.T) {
 
 			t.Run("GET admin", func(t *testing.T) {
 				var resp *TestResponse
-				base.AssertLogContains(t, wantREST("normal", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendAdminRequest(http.MethodGet,
 						"/{{.keyspace}}/_changes?since="+tc.rawSince, "")
 				})
@@ -251,7 +253,7 @@ func TestChangesSinceLogging(t *testing.T) {
 			t.Run("websocket", func(t *testing.T) {
 				var received []byte
 				var err error
-				base.AssertLogContains(t, wantREST("websocket", tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					received, err = sendWebSocketChanges(wsURL, wsOptions(tc.rawSince))
 				})
 				require.NoError(t, err)
@@ -260,29 +262,14 @@ func TestChangesSinceLogging(t *testing.T) {
 		})
 	}
 
-	// The query string's since must never reach the log for a websocket feed: handleChanges skips its own
-	// log call, and the websocket handler logs the message-derived options plus a note that the query
-	// string value was ignored.  Uses since values absent from the cases above so no case can bleed into
-	// this capture window.
-	t.Run("websocket query string since ignored", func(t *testing.T) {
+	// A websocket feed's options come entirely from its first message - the query string's since is
+	// discarded - so the logged value must be the message's, not the query string's.  Uses since values
+	// absent from the cases above so none of them can bleed into this capture window.
+	t.Run("websocket uses the message since, not the query string", func(t *testing.T) {
 		var received []byte
 		var err error
-		ignoredURL := wsURL + "&since=41"
-		base.AssertLogContains(t, "query string since 41 ignored, using 3::2 from websocket message", func() {
-			received, err = sendWebSocketChanges(ignoredURL, wsOptions("3::2"))
-		})
-		require.NoError(t, err)
-		require.NotEmpty(t, received)
-	})
-
-	// Regression guard for double-logging: handleChanges must not log the query-derived options for
-	// feed=websocket.  The upgrade request carries no since, so a regression in the feed !=
-	// feedTypeWebsocket guard would surface as a second line reporting since 0.
-	t.Run("websocket regression: query-derived options not logged", func(t *testing.T) {
-		var received []byte
-		var err error
-		base.AssertLogNotContains(t, wantREST("websocket", "0", "0"), func() {
-			received, err = sendWebSocketChanges(wsURL, wsOptions("7::4"))
+		base.AssertLogContains(t, wantREST("4 (raw: 7::4)"), func() {
+			received, err = sendWebSocketChanges(wsURL+"&since=41", wsOptions("7::4"))
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, received)
@@ -317,7 +304,7 @@ func TestChangesSinceLogging(t *testing.T) {
 				// StartPullSince blocks on the subChanges response, which go-blip sends only once
 				// handleSubChanges has returned - so the log line is already emitted.  Deliberately no
 				// WaitForDoc: cases like 999 deliver nothing, and it would spin for its full timeout.
-				base.AssertLogContains(t, wantBLIP(tc.loggedRaw, tc.loggedSince), func() {
+				base.AssertLogContains(t, wantBLIP(tc.wantSince), func() {
 					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: tc.rawSince})
 				})
 				// Only one subChanges may be outstanding per collection (activeSubChanges in

@@ -319,26 +319,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	continuous := subChangesParams.continuous()
 
-	feedType := "normal"
-	if continuous {
-		feedType = "continuous"
-	}
-	channelsStr, _ := subChangesParams.channels()
-	LogChangesRequest(bh.loggingCtx, base.KeySyncMsg, "BLIP", []base.KVPair{
-		{Key: "feed", Val: feedType},
-		{Key: "raw_since", Val: strconv.Quote(subChangesParams.Since().RawString())},
-		{Key: "since", Val: subChangesParams.Since()},
-		{Key: "continuous", Val: continuous},
-		{Key: "active_only", Val: subChangesParams.activeOnly()},
-		{Key: "revocations", Val: subChangesParams.revocations()},
-		{Key: "batch_size", Val: subChangesParams.batchSize()},
-		{Key: "request_plus", Val: subChangesParams.requestPlus()},
-		{Key: "future", Val: rq.Properties[SubChangesFuture] == trueProperty},
-		{Key: "filter", Val: strconv.Quote(subChangesParams.filter())},
-		{Key: "channels", Val: base.UD(channelsStr)},
-		{Key: "doc_ids", Val: base.UD(subChangesParams.docIDs())},
-	})
-
 	requestPlusSeq := uint64(0)
 	// If non-continuous, check whether requestPlus handling is set for request or via database config
 	if continuous == false {

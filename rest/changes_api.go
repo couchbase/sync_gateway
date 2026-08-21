@@ -12,11 +12,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -164,28 +164,6 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	return channelsArray, docIdsArray, nil
 }
 
-// restChangesLogFields describes a REST changes request for db.LogChangesRequest.  raw_since reconstructs
-// what the client sent; since is the normalized value that's actually used, which can omit part of raw_since.
-func restChangesLogFields(feed string, options db.ChangesOptions, filter string, channels, docIDs []string) []base.KVPair {
-	return []base.KVPair{
-		{Key: "feed", Val: feed},
-		{Key: "raw_since", Val: strconv.Quote(options.Since.RawString())},
-		{Key: "since", Val: options.Since},
-		{Key: "limit", Val: options.Limit},
-		{Key: "conflicts", Val: options.Conflicts},
-		{Key: "include_docs", Val: options.IncludeDocs},
-		{Key: "active_only", Val: options.ActiveOnly},
-		{Key: "revocations", Val: options.Revocations},
-		{Key: "version_type", Val: options.VersionType},
-		{Key: "request_plus_seq", Val: options.RequestPlusSeq},
-		{Key: "heartbeat_ms", Val: options.HeartbeatMs},
-		{Key: "timeout_ms", Val: options.TimeoutMs},
-		{Key: "filter", Val: strconv.Quote(filter)},
-		{Key: "channels", Val: base.UD(channels)},
-		{Key: "doc_ids", Val: base.UD(docIDs)},
-	}
-}
-
 // Top-level handler for _changes feed requests. Accepts GET or POST requests.
 func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
@@ -201,7 +179,8 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = db.ParsePlainSequenceID(h.getJSONStringQuery("since")); err != nil {
+		options.SinceRaw = h.getJSONStringQuery("since")
+		if options.Since, err = db.ParsePlainSequenceID(options.SinceRaw); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -278,17 +257,19 @@ func (h *handler) handleChanges() error {
 		if err != nil {
 			return err
 		}
+
+		to := ""
+		if h.user != nil && h.user.Name() != "" {
+			to = fmt.Sprintf("  (to %s)", h.user.Name())
+		}
+
+		base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
+			h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
 	}
 
 	// Default to feed type normal
 	if feed == "" {
 		feed = "normal"
-	}
-
-	// the websocket feed replaces these options from its first websocket message, so it logs its own
-	if feed != feedTypeWebsocket {
-		db.LogChangesRequest(h.ctx(), base.KeyChanges, "REST",
-			restChangesLogFields(feed, options, filter, channelsArray, docIdsArray))
 	}
 
 	needRelease, concurrentReplicationsErr := h.server.incrementConcurrentReplications(h.rqCtx)
@@ -558,17 +539,6 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			}
 		}
 
-		// A websocket feed's options come entirely from the message above; the options passed in from the
-		// query string are discarded apart from ChangesCtx, so this is the first point at which the feed's
-		// real parameters are known.  feed is hard-coded rather than read from wsoptions.Continuous, which
-		// generateContinuousChanges does not set until later.
-		db.LogChangesRequest(h.ctx(), base.KeyChanges, "REST",
-			restChangesLogFields(feedTypeWebsocket, wsoptions, "", inChannels.ToArray(), nil))
-		if options.Since != wsoptions.Since {
-			base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes websocket request: query string since %s ignored, using %s from websocket message",
-				options.Since.RawString(), wsoptions.Since.RawString())
-		}
-
 		// Copy options.ChangesCtx to new WebSocket options
 		// options.ChangesCtx will be cancelled automatically when
 		// changes feed completes
@@ -627,32 +597,36 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 
 func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, docIdsArray []string, compress bool, err error) {
 	var input struct {
-		Feed           string        `json:"feed"`
-		Since          db.SequenceID `json:"since"`
-		Limit          int           `json:"limit"`
-		Style          string        `json:"style"`
-		IncludeDocs    bool          `json:"include_docs"`
-		Filter         string        `json:"filter"`
-		Channels       string        `json:"channels"` // a filter query param, so it has to be a string
-		DocIds         []string      `json:"doc_ids"`
-		HeartbeatMs    *uint64       `json:"heartbeat"`
-		TimeoutMs      *uint64       `json:"timeout"`
-		AcceptEncoding string        `json:"accept_encoding"`
-		ActiveOnly     bool          `json:"active_only"`  // Return active revisions only
-		RequestPlus    *bool         `json:"request_plus"` // Wait for sequence buffering to catch up to database seq value at time request was issued
-		VersionType    string        `json:"version_type"` // Version type to use for changes feed
-	}
-
-	// Initialize since clock and hasher ahead of unmarshalling sequence
-	if h.db != nil {
-		input.Since = db.CreateZeroSinceValue()
+		Feed           string          `json:"feed"`
+		Since          json.RawMessage `json:"since"`
+		Limit          int             `json:"limit"`
+		Style          string          `json:"style"`
+		IncludeDocs    bool            `json:"include_docs"`
+		Filter         string          `json:"filter"`
+		Channels       string          `json:"channels"` // a filter query param, so it has to be a string
+		DocIds         []string        `json:"doc_ids"`
+		HeartbeatMs    *uint64         `json:"heartbeat"`
+		TimeoutMs      *uint64         `json:"timeout"`
+		AcceptEncoding string          `json:"accept_encoding"`
+		ActiveOnly     bool            `json:"active_only"`  // Return active revisions only
+		RequestPlus    *bool           `json:"request_plus"` // Wait for sequence buffering to catch up to database seq value at time request was issued
+		VersionType    string          `json:"version_type"` // Version type to use for changes feed
 	}
 
 	if err = base.JSONUnmarshal(jsonData, &input); err != nil {
 		return
 	}
 	feed = input.Feed
-	options.Since = input.Since
+	// Since is captured as raw JSON so the client's unparsed value survives for logging - see
+	// ChangesOptions.sinceString.  Accepts both a quoted string ("3::2") and a bare number (3).
+	if len(input.Since) > 0 {
+		options.SinceRaw = base.ConvertJSONString(string(input.Since))
+		if options.Since, err = db.ParsePlainSequenceID(options.SinceRaw); err != nil {
+			return
+		}
+	} else {
+		options.Since = db.CreateZeroSinceValue()
+	}
 	options.Limit = input.Limit
 
 	options.Conflicts = input.Style == "all_docs"

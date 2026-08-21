@@ -16,7 +16,6 @@ import (
 	"math"
 	"runtime/debug"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -28,6 +27,7 @@ import (
 // changes processing currently assumes a deep copy when doing chanOpts := changesOptions.
 type ChangesOptions struct {
 	Since          SequenceID         // sequence # to start _after_
+	SinceRaw       string             // the unparsed since value as the client sent it, for logging only - see String()
 	Limit          int                // Max number of changes to return, if nonzero
 	Conflicts      bool               // Show all conflicting revision IDs, not just winning one?
 	IncludeDocs    bool               // Include doc body of each change?
@@ -1462,10 +1462,21 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	return row, nil
 }
 
+// sinceString renders Since for logging, appending the client's unparsed value when it differs.
+// SequenceID.String() drops LowSeq or TriggeredBy when they are not below the sequence they qualify, so
+// without the raw value a malformed client sequence is indistinguishable from a well-formed one.
+func (options ChangesOptions) sinceString() string {
+	since := options.Since.String()
+	if options.SinceRaw != "" && options.SinceRaw != since {
+		return since + " (raw: " + options.SinceRaw + ")"
+	}
+	return since
+}
+
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
 		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d, VersionType: %q}`,
-		options.Since,
+		options.sinceString(),
 		options.Limit,
 		options.Conflicts,
 		options.IncludeDocs,
@@ -1478,28 +1489,6 @@ func (options ChangesOptions) String() string {
 		options.RequestPlusSeq,
 		options.VersionType,
 	)
-}
-
-// LogChangesRequest logs the parameters of an incoming changes request at debug level, in a single format
-// shared by the REST and BLIP entry points so that one search finds every changes request regardless of
-// protocol.
-// Builds a format string and passes the values through as args rather than pre-formatting them: redaction
-// is applied to DebugfCtx's args, so a value wrapped in base.UD would be logged in cleartext if it were
-// already stringified by the time it got here.  Keys are passed as args too so that a % in a key can't be
-// read as a verb.
-func LogChangesRequest(ctx context.Context, logKey base.LogKey, protocol string, fields []base.KVPair) {
-	if !base.LogDebugEnabled(ctx, logKey) {
-		return
-	}
-	var format strings.Builder
-	format.WriteString("Changes request: protocol=%s")
-	args := make([]any, 0, 2*len(fields)+1)
-	args = append(args, protocol)
-	for _, field := range fields {
-		format.WriteString(" %s=%v")
-		args = append(args, field.Key, field.Val)
-	}
-	base.DebugfCtx(ctx, logKey, format.String(), args...)
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes. Returns an error in the case that the feed does not start up, or there is a fatal error in the feed. The caller is responsible for closing the connection, no more changes will be generated. forceClose will be true if connection was terminated underneath the changes feed.
