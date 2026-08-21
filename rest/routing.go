@@ -449,6 +449,13 @@ func createDiagnosticRouter(sc *ServerContext) *mux.Router {
 // for URLs that don't match a route.
 func wrapRouter(sc *ServerContext, privs handlerPrivs, serverType serverType, router *mux.Router) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
+		// Reject requests once shutdown has started. Shutdown only happens in tests
+		if sc.serverCtx.Err() != nil {
+			response.Header().Set("Content-Type", "application/json")
+			response.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = response.Write([]byte(`{"error":"Service Unavailable","reason":"Sync Gateway is shutting down"}`))
+			return
+		}
 		FixQuotedSlashes(rq)
 		var match mux.RouteMatch
 		if router.Match(rq, &match) {
