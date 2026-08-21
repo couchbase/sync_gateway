@@ -473,7 +473,8 @@ OIDC-token:
     refresh_token:
       type: string
     expires_in:
-      type: string
+      type: integer
+      minimum: 0
     id_token:
       type: string
   title: OIDC-token
@@ -1272,7 +1273,7 @@ Database:
                       default: false
         max_processes:
           description: The maximum amount of concurrent event handling independent functions that can be running at the same time.
-          type: string
+          type: integer
         wait_for_process:
           description: The maximum amount of time (in milliseconds) to wait when the even queue is full.
           type: string
@@ -2170,19 +2171,19 @@ Compact-status:
         **Applicable to tombstone compaction only**
 
         This is the amount of documents that have been purged so far.
-      type: string
+      type: integer
     marked_attachments:
       description: |-
         **Applicable to attachment compaction only**
 
         This is the number of references there are to legacy attachments.
-      type: string
+      type: integer
     purged_attachments:
       description: |-
         **Applicable to attachment compaction only**
 
         This is the amount of attachments that have been purged so far.
-      type: string
+      type: integer
     compact_id:
       description: |-
         **Applicable to attachment compaction only**
