@@ -1750,6 +1750,8 @@ func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string)
 func TestChangesIncludeDocs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
+	defer db.SuspendSequenceBatching()()
+
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := rest.NewRestTester(t, &rtConfig)
 	testDB := rt.GetDatabase()
@@ -2059,6 +2061,8 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
+	defer db.SuspendSequenceBatching()()
+
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2120,6 +2124,8 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 func TestChangesViewBackfillNoOverlap(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
+
+	defer db.SuspendSequenceBatching()()
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := rest.NewRestTester(t, &rtConfig)
@@ -2245,6 +2251,8 @@ func TestChangesViewBackfill(t *testing.T) {
 func TestChangesViewBackfillStarChannel(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
+
+	defer db.SuspendSequenceBatching()()
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	rt := rest.NewRestTester(t, &rtConfig)

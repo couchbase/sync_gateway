@@ -27,6 +27,8 @@ import (
 )
 
 func TestGetAlldocChannels(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
@@ -65,6 +67,8 @@ func TestGetAlldocChannels(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpan(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	tests := []struct {
 		name          string
 		adminChannels []string
@@ -511,6 +515,8 @@ func TestGetUserDocAccessSpan(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	ctx := base.TestCtx(t)
 	base.TestRequiresCollections(t)
 
@@ -565,6 +571,8 @@ func TestGetUserDocAccessSpanWithSingleNamedCollection(t *testing.T) {
 func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 	base.TestRequiresCollections(t)
 
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{PersistentConfig: true, SyncFn: `function(doc) {channel(doc.channel);}`}, 2)
 	defer rt.Close()
 
@@ -606,6 +614,8 @@ func TestGetUserDocAccessSpanWithMultiCollections(t *testing.T) {
 }
 
 func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel); role(doc.user, doc.role);}`,
 	})
@@ -646,6 +656,8 @@ func TestGetUserDocAccessSpanDeletedRole(t *testing.T) {
 
 // put doc in multiple channels, remove from some channels, assert response gets right sequences for each channels
 func TestGetUserDocAccessMultiChannel(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 	userGrant := userGrant{
@@ -680,6 +692,8 @@ func TestGetUserDocAccessMultiChannel(t *testing.T) {
 
 // give user access to chanA through admin API and role, remove admin API assignment, and assert access span is admin assignment to 0
 func TestGetUserDocAccessContinuousRoleAdminAPI(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
@@ -717,6 +731,8 @@ func TestGetUserDocAccessContinuousRoleAdminAPI(t *testing.T) {
 
 // give user access to chanA through admin API and sync fn, remove admin API assignment, and assert access span is admin assignment to 0
 func TestGetUserDocAccessContinuousSyncFnAdminAPI(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.channel);}`})
 	defer rt.Close()
 
@@ -771,6 +787,8 @@ func TestGetUserDocAccessDynamicGrantOnChanRemoval(t *testing.T) {
 
 // give role access to chanA through sync fn, remove doc from channel and keep role assignment
 func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
 	defer rt.Close()
 
@@ -800,6 +818,8 @@ func TestGetUserDocAccessDynamicRoleChanRemoval(t *testing.T) {
 
 // give role access to chanA through sync fn, remove channel from role and keep doc in chan
 func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.user, doc.dynamicChan);}`})
 	defer rt.Close()
 
@@ -831,6 +851,8 @@ func TestGetUserDocAccessDynamicRoleChanRemoval2(t *testing.T) {
 
 // multiple doc ids
 func TestGetUserDocAccessMultiDoc(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
 	defer rt.Close()
 
@@ -902,6 +924,8 @@ func TestGetUserDocAccessNoDocID(t *testing.T) {
 
 // duplicate doc ids
 func TestGetUserDocAccessDuplicates(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.dynamicChan, doc.user);}`})
 	defer rt.Close()
 

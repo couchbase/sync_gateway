@@ -549,10 +549,7 @@ func TestDistributedResync(t *testing.T) {
 
 	// Wait for database polling on rt2 to detect the database created by rt1
 	//  (can't use rt2.WaitForDBState as it includes a require for database existence)
-	err := rt2.WaitForCondition(func() bool {
-		return len(rt2.ServerContext().AllDatabases()) > 0
-	})
-	require.NoError(t, err)
+	rt2.WaitForDatabase("db")
 
 	rt2.WaitForDBState(db.RunStateString[db.DBOnline])
 

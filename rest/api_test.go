@@ -3874,6 +3874,8 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 }
 
 func TestDocumentChannelHistoryCompact(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 

@@ -167,11 +167,13 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 
 			for _, sgcollectable := range []bool{true, false} {
 				t.Run(fmt.Sprintf("sgcollectable=%t", sgcollectable), func(t *testing.T) {
-					// make sure assertion counts are correct
-					require.Equal(t, int64(0), base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().AssertionFailCount.Value())
-					defer func() {
-						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().AssertionFailCount.Set(0)
-					}()
+					// subtest triggers assertions on purpose, so make sure we're starting clean and don't leave them for the test harness afterwards either
+					if len(base.AssertionFailures()) > 0 {
+						t.Skip("Skipping test - we have other assertion failures present and we can't reliably run this test this without losing those")
+					}
+					require.Empty(t, base.AssertionFailures())
+					defer base.ClearAssertionFailures()
+
 					adminHandler := newHandler(sc, adminPrivs, adminServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: sgcollectable})
 					metricsHandler := newHandler(sc, metricsPrivs, metricsServer, httptest.NewRecorder(), &http.Request{}, handlerOptions{sgcollect: sgcollectable})
 					if requireInterfaceAuth {

@@ -1795,6 +1795,8 @@ func TestAllDocsOnly(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
+	defer SuspendSequenceBatching()()
+
 	// Lower the log max length so no more than 50 items will be kept.
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
@@ -1906,6 +1908,8 @@ func TestAllDocsOnly(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
+
+	defer SuspendSequenceBatching()()
 
 	// use default collection based on use of GetPrincipalForTest
 	db, ctx := setupTestDBDefaultCollection(t)
@@ -2072,6 +2076,8 @@ func TestRepeatedConflict(t *testing.T) {
 }
 
 func TestConflicts(t *testing.T) {
+
+	defer SuspendSequenceBatching()()
 
 	db, ctx := setupTestDBAllowConflicts(t)
 	defer db.Close(ctx)
@@ -2838,6 +2844,8 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 }
 
 func TestRecentSequenceHistory(t *testing.T) {
+
+	defer SuspendSequenceBatching()()
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

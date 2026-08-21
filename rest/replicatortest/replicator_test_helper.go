@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // Helper functions for SGR testing
@@ -28,6 +29,36 @@ func reduceTestCheckpointInterval(interval time.Duration) func() {
 		db.DefaultCheckpointInterval = previousInterval
 	}
 
+}
+
+// requirePersistedReplicationProgress waits for the status document and the checkpoint of a
+// replication to reflect expectedDocs documents processed. A node picking up a reassigned replication
+// inherits its stats from the status document and resumes from the checkpoint, and the two are written
+// on independent tickers - so waiting for both before a rebalance makes the stats reported after it
+// deterministic. A checkpoint is only written once a sequence has been processed, so its presence also
+// means an already-replicated document won't be processed again.
+func requirePersistedReplicationProgress(rt *rest.RestTester, replicationID string, direction db.ActiveReplicatorDirection, expectedDocs int64) {
+	rt.TB().Helper()
+	var checkpointID, statName string
+	var persistedDocs func(*db.ReplicationStatus) int64
+	switch direction {
+	case db.ActiveReplicatorTypePush:
+		checkpointID, statName = db.PushCheckpointID(replicationID), "DocsCheckedPush"
+		persistedDocs = func(status *db.ReplicationStatus) int64 { return status.DocsCheckedPush }
+	case db.ActiveReplicatorTypePull:
+		checkpointID, statName = db.PullCheckpointID(replicationID), "DocsRead"
+		persistedDocs = func(status *db.ReplicationStatus) int64 { return status.DocsRead }
+	default:
+		require.FailNow(rt.TB(), "unsupported replication direction "+string(direction))
+	}
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		status, err := db.LoadReplicationStatus(rt.Context(), rt.GetDatabase(), replicationID)
+		if !assert.NoError(c, err) {
+			return
+		}
+		assert.Equal(c, expectedDocs, persistedDocs(status), "%s: %s in persisted replication status document", replicationID, statName)
+	}, 20*time.Second, 10*time.Millisecond)
+	rt.WaitForCheckpointLastSequence(db.RealSpecialDocID(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID))
 }
 
 // AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
