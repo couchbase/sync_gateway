@@ -170,7 +170,7 @@ include_doc:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include the body associated with the document.
 include_docs:
   name: include_docs
@@ -242,7 +242,7 @@ offline:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: 'If true, the OpenID Connect provider is requested to confirm with the user the permissions requested and refresh the OIDC token. To do this, access_type=offline and prompt=consent is set on the redirection link.'
 oidc-code:
   name: code
