@@ -146,7 +146,7 @@ type DatabaseContext struct {
 	cancelContextFunc            context.CancelCauseFunc                           // Cancel function for cancelContext
 	backgroundTasks              []BackgroundTask                                  // List of background tasks that are initiated.
 	activeChannels               *channels.ActiveChannels                          // Tracks active replications by channel
-	CfgSG                        cbgt.Cfg                                          // Sync Gateway cluster shared config
+	CfgSG                        *base.CfgSG                                       // Sync Gateway cluster shared config
 	SGReplicateMgr               *sgReplicateManager                               // Manages interactions with sg-replicate replications
 	Heartbeater                  base.Heartbeater                                  // Node heartbeater for SG cluster awareness
 	ServeInsecureAttachmentTypes bool                                              // Attachment content type will bypass the content-disposition handling, default false
@@ -543,7 +543,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 		dbContext.CfgSG = sgCfg
 	} else {
-		sgCfg, err := base.NewCbgtCfgMem()
+		sgCfg, err := base.NewCbgtCfgMem(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -805,6 +805,9 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	if db.SGReplicateMgr != nil {
 		db.SGReplicateMgr.Stop()
 		db.SGReplicateMgr = nil
+	}
+	if db.CfgSG != nil {
+		db.CfgSG.Stop()
 	}
 }
 
@@ -2401,11 +2404,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 
 	if base.IsEnterpriseEdition() {
-		cfgSG, ok := db.CfgSG.(*base.CfgSG)
-		if !ok {
-			return fmt.Errorf("Could not cast %V to CfgSG", db.CfgSG)
-		}
-		db.changeCache.cfgEventCallback = cfgSG.FireEvent
+		db.changeCache.cfgEventCallback = db.CfgSG.FireEvent
 	}
 
 	sgReplicateEnabled := db.Options.SGReplicateOptions.Enabled
