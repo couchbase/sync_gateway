@@ -27,9 +27,9 @@ get:
   parameters:
     - name: since
       in: query
-      description: Starts the results from the change immediately after the given sequence ID. Sequence IDs should be considered opaque; they come from the last_seq property of a prior response.
+      description: Starts the results from the change immediately after the given sequence number.
       schema:
-        type: string
+        type: integer
   responses:
     '200':
       description: Successfully got all documents in the channel
