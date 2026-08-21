@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -548,16 +549,16 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 
 func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 	testCases := []struct {
-		Name      string
-		RunBefore bool
+		Name             string
+		triggerOnUserDoc bool
 	}{
 		{
-			"Delete On GetUser",
-			true,
+			Name:             "Delete On GetUser",
+			triggerOnUserDoc: true,
 		},
 		{
-			"Delete On inheritedChannels",
-			false,
+			Name:             "Delete On inheritedChannels",
+			triggerOnUserDoc: false,
 		},
 	}
 
@@ -601,26 +602,25 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			leakyDataStore, ok := base.AsLeakyDataStore(tbDatastore)
 			require.True(t, ok)
 
-			triggerCallback := false
+			triggerDocID := rt.GetDatabase().MetadataKeys.RoleKey("role")
+			if testCase.triggerOnUserDoc {
+				triggerDocID = rt.GetDatabase().MetadataKeys.UserKey("user")
+			}
+			var triggerCallback atomic.Bool
 			leakyDataStore.SetUpdateCallback(func(key string) {
-				if triggerCallback {
-					triggerCallback = false
-					resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
-					RequireStatus(t, resp, http.StatusOK)
+				if key != triggerDocID {
+					return
+				}
+				if triggerCallback.CompareAndSwap(true, false) {
+					deleteResp := rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
+					RequireStatus(t, deleteResp, http.StatusOK)
 				}
 			})
-
-			if testCase.RunBefore {
-				triggerCallback = true
-			}
+			triggerCallback.Store(true)
 
 			authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
 			user, err := authenticator.GetUser("user")
 			assert.NoError(t, err)
-
-			if !testCase.RunBefore {
-				triggerCallback = true
-			}
 
 			chs, err := user.InheritedCollectionChannels(s, c)
 			assert.NoError(t, err)
@@ -628,7 +628,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			assert.Equal(t, []string{"!"}, chs.AllKeys())
 
 			// Ensure callback ran
-			assert.False(t, triggerCallback)
+			assert.False(t, triggerCallback.Load())
 		})
 
 	}
