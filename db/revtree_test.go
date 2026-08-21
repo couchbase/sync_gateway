@@ -16,6 +16,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1354,7 +1355,7 @@ func linearRevTree(n int) (RevTree, string) {
 }
 
 // corruptRevTree returns a chain of n revisions where the last dupes of them all share the top
-// generation - the CBG-5713 customer document shape - and the leaf rev ID.
+// generation.
 func corruptRevTree(n, dupes int) (RevTree, string) {
 	tree, leaf := linearRevTree(n - dupes)
 	parent := leaf
@@ -1991,6 +1992,15 @@ func TestInvalidRevTreeRepairedOnLoad(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(rawXattr, &mou))
 	assert.Equal(t, cas, mou.CAS(), "_mou.cas should match the document CAS, otherwise the import feed re-imports the repair")
 
+	// _mou.pRev is the document's revSeqNo before the repair's own mutation. The repair is the last write
+	// to the document, so that is one less than its current revSeqNo - and never zero, which is what it
+	// would be if the repair stamped _mou without reading the revSeqNo virtual xattr.
+	revSeqNo, _, err := collection.getRevSeqNo(ctx, "corruptDoc")
+	require.NoError(t, err)
+	require.NotZero(t, revSeqNo)
+	assert.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo,
+		"_mou.pRev should be the revSeqNo immediately before the repair (current revSeqNo %d)", revSeqNo)
+
 	// the repaired current revision loads normally, and nothing is reported a second time
 	_, err = collection.GetRev(ctx, "corruptDoc", "3-def", true, nil)
 	require.NoError(t, err)
@@ -2048,7 +2058,6 @@ func TestInvalidRevTreeGetReturnsRepairedDoc(t *testing.T) {
 	// Only the rev IDs changed, so the version must be untouched: cv identical, and cvCAS deliberately
 	// left behind the new CAS rather than re-stamped to it.
 	require.NotNil(t, repaired.HLV)
-	assert.NotEqual(t, uint64(expandMacroCASValueUint64), repaired.HLV.CurrentVersionCAS, "cvCAS was left as the macro placeholder")
 	assert.Equal(t, preRepairHLV.GetCurrentVersionString(), repaired.HLV.GetCurrentVersionString(), "the repair changed the document's version")
 	assert.Equal(t, preRepairHLV.CurrentVersionCAS, repaired.HLV.CurrentVersionCAS, "the repair re-stamped cvCAS")
 
@@ -2185,4 +2194,80 @@ func TestInvalidRevTreePushWithFabricatedHistory(t *testing.T) {
 		assert.Equal(t, "2-abc", currentRev)
 		assert.Equal(t, cleanTree, tree)
 	})
+}
+
+// TestRepairFailureDoesNotReturnPhantomRev asserts that when a repair fails, the document handed back to
+// the caller matches what is in the bucket - it must not carry the renumbered tree, current revision or
+// sequence that the repair produced in memory and then failed to commit.
+//
+// The failure is a genuine lost CAS race, injected with a leaky bucket: a concurrent write bumps the
+// document's CAS out from under the repair's CAS-guarded write. That is what two Sync Gateway nodes
+// reading the same corrupt document produce, and it is the only repair failure the read path can reach
+// now that it repairs against doc.Cas.
+func TestRepairFailureDoesNotReturnPhantomRev(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+
+	const docID = "corruptRacedRepair"
+	plantedTree := map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}
+
+	tb := base.GetTestBucket(t)
+	var raceOnce sync.Once
+	lb := base.NewLeakyBucket(tb, base.LeakyBucketConfig{
+		// fires before the real UpdateXattrs, so the repair's CAS is stale by the time it lands. Written
+		// through the underlying bucket to avoid re-entering this callback.
+		UpdateXattrsCallback: func(key string) {
+			if key != docID {
+				return
+			}
+			raceOnce.Do(func() {
+				ctx := base.TestCtx(t)
+				var body []byte
+				_, err := tb.GetSingleDataStore().Get(ctx, key, &body)
+				require.NoError(t, err)
+				require.NoError(t, tb.GetSingleDataStore().Set(ctx, key, 0, nil, body))
+				t.Logf("concurrent write bumped the CAS of %q out from under the repair", key)
+			})
+		},
+		IgnoreClose: true,
+	})
+
+	defer tb.Close(base.TestCtx(t)) // IgnoreClose means dbCtx.Close leaves the underlying bucket open
+	dbCtx, ctx := setupTestDBForBucket(t, lb)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true}, plantedTree, "2-def")
+	dbCtx.FlushRevisionCacheForTest()
+
+	invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
+
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// what the bucket actually holds, read without going through the repairing path
+	currentRev, tree := revTreeState(t, ctx, collection, docID)
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(1), invalidRevTreeCount.Value(), "precondition: the repair should have been attempted")
+
+	// nothing reached the bucket, so it still holds exactly what was planted
+	assert.Equal(t, "2-def", currentRev, "the failed repair should not have changed the committed revision")
+	assert.Equal(t, plantedTree, tree, "the failed repair should not have changed the committed rev tree")
+
+	// the returned document agrees with the bucket on every revision, not just the current one - a
+	// document renumbered in memory but never written would diverge here
+	assert.Equal(t, currentRev, doc.GetRevTreeID(),
+		"GetDocument returned a revision that is not in the bucket")
+	assert.Equal(t, tree, revTreeParents(doc.History),
+		"GetDocument returned a rev tree that was never committed")
+	assert.Equal(t, syncData.Sequence, doc.Sequence,
+		"GetDocument returned a sequence that was never committed")
+	_, currentInTree := tree[currentRev]
+	assert.True(t, currentInTree, "current revision %q is not in the rev tree", currentRev)
+
+	// the rollback restored the corruption rather than leaving a half-repaired tree behind, so a later
+	// read still detects it and can try again
+	assert.True(t, doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()),
+		"the returned document should still be detected as invalid, so a later read retries the repair")
 }

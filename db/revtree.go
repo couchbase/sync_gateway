@@ -344,9 +344,7 @@ func (tree RevTree) verifyIncreasingGenerations() error {
 //	1-abc, 2-abc, 2-def, 2-ghi  ->  1-abc, 2-abc, 3-def, 4-ghi
 //
 // It returns the current revision's ID after repair and a map of old ID -> new ID for every revision that
-// moved. Callers holding rev IDs of their own (an incoming rev tree history, a REST ?rev= value) must
-// translate them through that map. When the tree needs no repair it returns currentRev and a nil map,
-// leaving the tree untouched.
+// moved.
 //
 // The whole tree is renumbered, not just the winning branch. Renaming a revision raises the generation
 // its children must exceed, so a conflict branch hanging off a renamed revision can be pushed into

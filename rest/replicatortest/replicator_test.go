@@ -8226,9 +8226,6 @@ func TestISGRInvalidRevTreeRepairedBeforeSend(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
-		remoteURL, err := url.Parse(passiveDBURL)
-		require.NoError(t, err)
-		activeCtx := activeRT.Context()
 		docID := rest.SafeDocumentName(t, t.Name())
 
 		activeCollection, activeCollectionCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()
@@ -8245,22 +8242,8 @@ func TestISGRInvalidRevTreeRepairedBeforeSend(t *testing.T) {
 		require.Equal(t, quietCaseTree, tree)
 		require.Equal(t, int64(0), invalidRevTreeCount.Value())
 
-		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
-			Direction:   db.ActiveReplicatorTypePush,
-			RemoteDBURL: remoteURL,
-			ActiveDB: &db.Database{
-				DatabaseContext: activeRT.GetDatabase(),
-			},
-			ChangesBatchSize:       200,
-			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
-			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
-			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
-		})
-		require.NoError(t, err)
-		defer func() { assert.NoError(t, ar.Stop()) }()
-		require.NoError(t, ar.Start(activeCtx))
+		activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
 
 		// passive get repaired version of doc
 		passiveCollection, passiveCollectionCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()

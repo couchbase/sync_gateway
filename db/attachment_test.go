@@ -1669,3 +1669,121 @@ func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
 		})
 	}
 }
+
+// TestRepairDoesNotDropPre4dot0Attachments covers a rev tree repair on a document carrying pre-4.0 style
+// attachment metadata, i.e. in _sync.attachments rather than _globalSync.attachments_meta.
+//
+// The repair re-persists _sync from the in-memory document, and unmarshal has by then moved the metadata
+// out of SyncData.AttachmentsPre4dot0 and into _globalSync - so the repair has to write _globalSync as
+// well, or the attachment metadata exists in neither xattr afterwards.
+func TestRepairDoesNotDropPre4dot0Attachments(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	const docID = "corruptWithPre4dot0Attachment"
+	const attName = "hello.txt"
+	expectedAttachment := DocAttachment{
+		Data:   []byte("hello world"),
+		Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+		Length: 11,
+		Revpos: 1,
+	}
+
+	// write a real attachment, so its body is stored and its metadata is persisted to _globalSync, then
+	// replace the rev tree with one whose generations do not increase
+	var body Body
+	require.NoError(t, base.JSONUnmarshal([]byte(`{"planted":true,"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`), &body))
+	PlantRevTreeForTest(t, ctx, collection, docID, body,
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+
+	// turn it into a pre-4.0 document: move the metadata from _globalSync.attachments_meta into
+	// _sync.attachments and drop _globalSync. Macro-expanded so _sync.cas still matches the document CAS
+	// and this does not read as an SDK write needing an import.
+	value, _, err := collection.dataStore.GetRaw(ctx, docID)
+	require.NoError(t, err)
+	MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, docID, value, true)
+	dbCtx.FlushRevisionCacheForTest()
+
+	// precondition: the metadata really is in _sync and _globalSync really is gone
+	rawBefore, _, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+	require.Contains(t, string(rawBefore[base.SyncXattrName]), `"attachments"`, "the attachment metadata should be in _sync")
+	require.Empty(t, rawBefore[base.GlobalXattrName], "_globalSync should be gone, as it is on a pre-4.0 document")
+
+	// precondition: the attachment is readable before the repair
+	gotBody, err := collection.Get1xRevBody(ctx, docID, "", false, []string{})
+	require.NoError(t, err)
+	require.Equal(t, AttachmentMap{attName: expectedAttachment}, GetAttachmentsFrom1xBody(t, gotBody))
+
+	// this load repairs the rev tree, and the repair re-persists _sync
+	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, "3-def", repaired.GetRevTreeID(), "precondition: the repair should have run")
+
+	rawAfter, _, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName, base.GlobalXattrName})
+	require.NoError(t, err)
+
+	// the repair migrates the metadata to 4.0 style as a side effect: out of _sync, into _globalSync
+	assert.NotContains(t, string(rawAfter[base.SyncXattrName]), `"attachments"`)
+	assert.Contains(t, string(rawAfter[base.GlobalXattrName]), expectedAttachment.Digest,
+		"the repair dropped the document's attachment metadata")
+
+	dbCtx.FlushRevisionCacheForTest()
+	after, _, err := collection.GetDocWithXattrs(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	_, okAfter := after.Attachments()[attName]
+	assert.True(t, okAfter, "the repair dropped the document's attachment metadata")
+
+	// and the attachment is still usable, body and all
+	dbCtx.FlushRevisionCacheForTest()
+	gotBody, err = collection.Get1xRevBody(ctx, docID, "", false, []string{})
+	require.NoError(t, err)
+	assert.Equal(t, AttachmentMap{attName: expectedAttachment}, GetAttachmentsFrom1xBody(t, gotBody),
+		"the attachment is not readable after the repair")
+}
+
+func TestRepairPreservesPost4Dot0Attachment(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	const docID = "corruptWithRealAttachment"
+	var body Body
+	require.NoError(t, base.JSONUnmarshal([]byte(`{"planted":true,"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`), &body))
+
+	// PlantRevTreeForTest does the initial Put, so the attachment is stored and its metadata lands in
+	// _globalSync exactly as a 4.0-native document's would, then the rev tree is replaced.
+	PlantRevTreeForTest(t, ctx, collection, docID, body,
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	dbCtx.FlushRevisionCacheForTest()
+
+	globalBefore, _, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	require.NoError(t, err)
+	require.NotEmpty(t, globalBefore[base.GlobalXattrName], "precondition: attachment metadata is in _globalSync")
+
+	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, "3-def", repaired.GetRevTreeID(), "precondition: the repair should have run")
+
+	globalAfter, _, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	require.NoError(t, err)
+	assert.JSONEq(t, string(globalBefore[base.GlobalXattrName]), string(globalAfter[base.GlobalXattrName]),
+		"the repair changed _globalSync")
+
+	// the attachment is still readable, body and all
+	dbCtx.FlushRevisionCacheForTest()
+	gotBody, err := collection.Get1xRevBody(ctx, docID, "", false, []string{})
+	require.NoError(t, err)
+	atts := GetAttachmentsFrom1xBody(t, gotBody)
+	assert.Equal(t, AttachmentMap{
+		"hello.txt": DocAttachment{
+			Data:   []byte("hello world"),
+			Digest: "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+			Length: 11,
+			Revpos: 1,
+		},
+	}, atts, "the attachment is not readable after the repair")
+}

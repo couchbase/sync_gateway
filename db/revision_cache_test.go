@@ -3526,10 +3526,9 @@ func TestRevisionCacheInvalidRevisionError(t *testing.T) {
 //     only path that populates the cache ahead of a read.
 //   - a corrupt revision must never be cached. The load that would have cached it repairs the document
 //     first, so the revision asked for no longer exists and the load fails - and a failed load is
-//     discarded (removeValueForFailedLoad) rather than memoised.
+//     discarded (removeValueForFailedLoad).
 //   - loading the active revision must cache the repaired one. GetActive keys on the rev tree ID of the
-//     document it just loaded, which is post-repair, so this is the case that would silently cache the
-//     corrupt revision under its old key if the repair were not applied before the value was built.
+//     document it just loaded, which is post-repair. So must ensure post repair hsitory is cached.
 func TestInvalidRevTreeRevisionCacheHandling(t *testing.T) {
 	if base.TestDisableRevCache() {
 		t.Skip("Test asserts on revision cache contents")
@@ -3628,8 +3627,8 @@ func TestInvalidRevTreeRevisionCacheHandling(t *testing.T) {
 	// The subtests above all run against a document something has already repaired. This one is the case
 	// that actually matters for caching: the active-revision load is itself the thing that triggers the
 	// repair, so the repair has to happen before the cache value is built. GetActive keys on the rev tree
-	// ID of the document it loaded (db/revision_cache_lru.go), so a repair applied any later would cache
-	// the corrupt revision, with its corrupt history, under the pre-repair key.
+	// ID of the document it loaded, so a repair applied any later would cache the corrupt revision, with its corrupt
+	// history, under the pre-repair key.
 	t.Run("an active revision load repairs and caches the repaired revision in one step", func(t *testing.T) {
 		const unrepairedDocID = "revCacheUnrepairedDoc"
 		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
