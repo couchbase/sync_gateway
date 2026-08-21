@@ -2198,14 +2198,18 @@ Compact-status:
 
         For failed processes, this indicates the phase at which a compact_id restart will commence (where relevant).
       type: string
-    dry_run:
-      description: |
-        **Applicable to attachment compaction only**
-      type: string
       enum:
         - mark
         - sweep
         - cleanup
+      x-enumDescriptions:
+        mark: Scanning documents to find attachments still in use.
+        sweep: Deleting attachments that are no longer used.
+        cleanup: Finishing up and clearing temporary compaction data.
+    dry_run:
+      description: |
+        **Applicable to attachment compaction only**
+      type: boolean
   required:
     - status
     - start_time
