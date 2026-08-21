@@ -960,7 +960,7 @@ Replication-status:
     doc_write_failures:
       description: The number of documents that have failed to be wrote (pushed) to the target database. There will be no attempt to try to push these docs again.
       type: integer
-    doc_write_conflicts:
+    doc_write_conflict:
       description: The number of documents that had a conflict.
       type: integer
     rejected_by_remote:
