@@ -50,11 +50,11 @@ get:
                 type: boolean
               purge_seq:
                 description: Unused field.
-                type: number
+                type: integer
                 default: 0
               disk_format_version:
                 description: Unused field.
-                type: number
+                type: integer
                 default: 0
               state:
                 allOf: # use allOf to prevent DatabaseState from showing as the type in the display
