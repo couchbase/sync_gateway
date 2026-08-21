@@ -60,11 +60,16 @@ get:
         type: string
     - name: doc_ids
       in: query
-      description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma separated list of document IDs instead.'
+      description: 'A JSON array of document IDs, serialized to a string, to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma-separated list of document IDs instead.'
       schema:
-        type: array
-        items:
-          type: string
+        type: string
+      examples:
+        jsonArray:
+          summary: Serialized JSON array
+          value: '["doc1","doc2"]'
+        commaSeparated:
+          summary: Comma-separated list
+          value: 'doc1,doc2'
     - name: heartbeat
       in: query
       description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration. If heartbeat is non zero, it must be at least 25000 milliseconds.
