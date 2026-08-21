@@ -493,6 +493,7 @@ stale:
     enum:
       - ok
       - update_after
+      - "false"
 key:
   name: key
   in: query
