@@ -870,12 +870,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 				assert.Equal(c, int64(2), activeRT2.GetReplicationStatus(replicationID).DocsRead, "%s: DocsRead on activeRT2 after rebalance", replicationID)
 			}
 		}, 20*time.Second, 100*time.Millisecond)
-
-		// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
-		activeRT.GetDatabase().SGReplicateMgr.Stop()
-		activeRT.GetDatabase().SGReplicateMgr = nil
-		activeRT2.GetDatabase().SGReplicateMgr.Stop()
-		activeRT2.GetDatabase().SGReplicateMgr = nil
 	})
 }
 
@@ -967,12 +961,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 				assert.Equal(c, int64(2), activeRT2.GetReplicationStatus(replicationID).DocsCheckedPush, "%s: DocsCheckedPush on activeRT2 after rebalance", replicationID)
 			}
 		}, 20*time.Second, 100*time.Millisecond)
-
-		// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
-		activeRT.GetDatabase().SGReplicateMgr.Stop()
-		activeRT.GetDatabase().SGReplicateMgr = nil
-		activeRT2.GetDatabase().SGReplicateMgr.Stop()
-		activeRT2.GetDatabase().SGReplicateMgr = nil
 	})
 }
 
@@ -1763,12 +1751,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 
 		changesResults = activeRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since="+changesResults.Last_Seq.String(), "", true)
 		changesResults.RequireDocIDs(t, []string{docABC3, docDEF3})
-
-		// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
-		activeRT.GetDatabase().SGReplicateMgr.Stop()
-		activeRT.GetDatabase().SGReplicateMgr = nil
-		activeRT2.GetDatabase().SGReplicateMgr.Stop()
-		activeRT2.GetDatabase().SGReplicateMgr = nil
 	})
 }
 
