@@ -223,7 +223,9 @@ func newHandler(server *ServerContext, privs handlerPrivs, serverType serverType
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
 		serverAddr, err := h.getServerAddr()
-		if err != nil {
+		// the http server can be removed while a request is in flight if the server context is
+		// closing, so only assert if the server context is still running
+		if err != nil && h.server.serverCtx.Err() == nil {
 			base.AssertfCtx(h.rq.Context(), "Error getting server address: %v", err)
 		}
 		ctx := base.RequestLogCtx(h.rq.Context(), base.RequestData{
