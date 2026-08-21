@@ -892,7 +892,7 @@ Replication:
 
         When the replication ID is specified in the URL, this must be set to the same replication ID if specifying it at all.
       type: string
-      maximum: 160
+      maxLength: 160
     run_as:
       description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
       type: string
@@ -1777,7 +1777,7 @@ Database:
 
         This is an Enterprise Edition feature only.
       type: string
-      maximum: 15
+      maxLength: 15
     username:
       description: The username for authenticating to the server.
       type: string
