@@ -2477,9 +2477,15 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		db.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range db.Options.OIDCOptions.Providers {
+			if provider == nil {
+				// An explicit null in the providers map unmarshals to a nil provider. DbConfig.validate
+				// skips these too, but a config pairing one with a valid provider still passes validation.
+				base.WarnfCtx(ctx, "No provider definition for %q - skipping provider", base.UD(name))
+				continue
+			}
 			if provider.Issuer == "" || base.ValDefault(provider.ClientID, "") == "" {
 				// TODO: this duplicates a check in DbConfig.validate to avoid a backwards compatibility issue
-				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping", base.UD(name))
+				base.WarnfCtx(ctx, "Issuer and Client ID not defined for provider %q - skipping provider", base.UD(name))
 				continue
 			}
 			provider.Name = name

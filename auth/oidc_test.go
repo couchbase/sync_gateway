@@ -1257,3 +1257,153 @@ func TestJWTRolesChannels(t *testing.T) {
 		})
 	}
 }
+
+// TestSetRevalidationFlags covers the per-provider "new or changed" decision that gates OIDC
+// discovery during config validation. The nil-existing case is database creation, where every
+// provider is new by definition.
+func TestSetRevalidationFlags(t *testing.T) {
+	// newProvider builds a provider with the discovery-relevant fields populated, so each test case
+	// can vary exactly one of them.
+	newProvider := func() *OIDCProvider {
+		return &OIDCProvider{
+			JWTConfigCommon: JWTConfigCommon{
+				Issuer:   "https://issuer.example.com",
+				ClientID: base.Ptr("client-id"),
+			},
+			DiscoveryURI:            "https://issuer.example.com/.well-known/openid-configuration",
+			DisableConfigValidation: false,
+		}
+	}
+
+	tests := []struct {
+		name     string
+		existing OIDCProviderMap
+		incoming func() *OIDCProvider
+		expected bool
+	}{
+		{
+			name:     "nil existing map treats every provider as new",
+			existing: nil,
+			incoming: newProvider,
+			expected: true,
+		},
+		{
+			name:     "empty existing map treats every provider as new",
+			existing: OIDCProviderMap{},
+			incoming: newProvider,
+			expected: true,
+		},
+		{
+			name:     "provider absent by name is new",
+			existing: OIDCProviderMap{"other": newProvider()},
+			incoming: newProvider,
+			expected: true,
+		},
+		{
+			name:     "unchanged provider is not revalidated",
+			existing: OIDCProviderMap{"provider": newProvider()},
+			incoming: newProvider,
+			expected: false,
+		},
+		{
+			name:     "changed issuer forces revalidation",
+			existing: OIDCProviderMap{"provider": newProvider()},
+			incoming: func() *OIDCProvider {
+				p := newProvider()
+				p.Issuer = "https://other.example.com"
+				return p
+			},
+			expected: true,
+		},
+		{
+			name:     "changed discovery URI forces revalidation",
+			existing: OIDCProviderMap{"provider": newProvider()},
+			incoming: func() *OIDCProvider {
+				p := newProvider()
+				p.DiscoveryURI = "https://other.example.com/.well-known/openid-configuration"
+				return p
+			},
+			expected: true,
+		},
+		{
+			name:     "changed client ID forces revalidation",
+			existing: OIDCProviderMap{"provider": newProvider()},
+			incoming: func() *OIDCProvider {
+				p := newProvider()
+				p.ClientID = base.Ptr("other-client-id")
+				return p
+			},
+			expected: true,
+		},
+		{
+			name:     "changed disable_cfg_validation forces revalidation",
+			existing: OIDCProviderMap{"provider": newProvider()},
+			incoming: func() *OIDCProvider {
+				p := newProvider()
+				p.DisableConfigValidation = true
+				return p
+			},
+			expected: true,
+		},
+		{
+			name: "InsecureSkipVerify is excluded from the comparison",
+			existing: OIDCProviderMap{"provider": func() *OIDCProvider {
+				// Populated server-side at database load, never present on an incoming provider.
+				p := newProvider()
+				p.InsecureSkipVerify = true
+				return p
+			}()},
+			incoming: newProvider,
+			expected: false,
+		},
+		{
+			name:     "stale true is cleared for an unchanged provider",
+			existing: OIDCProviderMap{"provider": newProvider()},
+			incoming: func() *OIDCProvider {
+				p := newProvider()
+				p.ForceRevalidation = true // left over from an earlier validation pass
+				return p
+			},
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			incoming := test.incoming()
+			opts := &OIDCOptions{Providers: OIDCProviderMap{"provider": incoming}}
+			require.NoError(t, opts.SetRevalidationFlags(test.existing))
+			assert.Equal(t, test.expected, incoming.ForceRevalidation)
+		})
+	}
+}
+
+// TestSetRevalidationFlagsNilSafety covers the nil inputs the config paths can genuinely produce.
+// A config with no "oidc" section at all is accepted as a no-op; a provider with no definition is
+// rejected rather than silently dropped.
+func TestSetRevalidationFlagsNilSafety(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var opts *OIDCOptions
+		require.NoError(t, opts.SetRevalidationFlags(nil))
+	})
+
+	t.Run("nil providers map", func(t *testing.T) {
+		opts := &OIDCOptions{}
+		require.NoError(t, opts.SetRevalidationFlags(nil))
+	})
+
+	t.Run("nil provider value is rejected", func(t *testing.T) {
+		opts := &OIDCOptions{Providers: OIDCProviderMap{"provider": nil}}
+		err := opts.SetRevalidationFlags(nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "provider")
+	})
+
+	t.Run("nil provider alongside a valid one is rejected", func(t *testing.T) {
+		valid := &OIDCProvider{
+			JWTConfigCommon: JWTConfigCommon{Issuer: "https://issuer.example.com", ClientID: base.Ptr("client-id")},
+		}
+		opts := &OIDCOptions{Providers: OIDCProviderMap{"valid": valid, "broken": nil}}
+		require.Error(t, opts.SetRevalidationFlags(nil))
+	})
+}

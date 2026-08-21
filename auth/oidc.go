@@ -98,6 +98,60 @@ type OIDCOptions struct {
 	DefaultProvider *string         `json:"default_provider,omitempty"` // Issuer used when not specified by client
 }
 
+// SetRevalidationFlags marks which of the configured providers need their OIDC discovery document
+// fetched during the next config validation pass.
+//
+// A provider is marked when it is absent from existing, or when a discovery-relevant field differs
+// from the currently-configured definition - so a config update that leaves a provider untouched
+// does not re-run discovery against a provider that was already accepted. Pass a nil existing map
+// on database creation, where there is no prior config and every provider is therefore new.
+//
+// This decides only "new or changed". Whether validation runs at all is governed separately by the
+// disable_oidc_validation query parameter, which is ANDed with this flag during config validation.
+//
+// A provider with no definition at all - {"providers": {"myprovider": null}} - is rejected rather
+// than skipped, so a caller cannot submit one and have it silently dropped when the database loads.
+// A nil receiver is a no-op, so callers can invoke this unconditionally.
+func (opts *OIDCOptions) SetRevalidationFlags(existing OIDCProviderMap) error {
+	if opts == nil {
+		// DbConfig.OIDCConfig is nil for any config with no "oidc" section - most databases, and
+		// every partial update whose body omits one - so this is a routine input, not an edge case.
+		return nil
+	}
+	var multiError *base.MultiError
+	for name, provider := range opts.Providers {
+		if provider == nil {
+			multiError = multiError.Append(fmt.Errorf("OpenID Connect provider %q has no definition", name))
+			continue
+		}
+		// Indexing a nil or incomplete existing map yields a nil, which counts as new.
+		provider.setRevalidationFlag(existing[name])
+	}
+	return multiError.ErrorOrNil()
+}
+
+// setRevalidationFlag marks this provider for OIDC discovery validation when it is new - signalled
+// by a nil existing - or when a field affecting discovery or issuer validation differs from the
+// currently-configured definition.
+//
+// The assignment is unconditional so a flag left over from an earlier validation pass is cleared
+// rather than left standing: provider pointers can be shared with a running DatabaseContext and
+// merged in place by base.ConfigMerge.
+//
+// InsecureSkipVerify is deliberately excluded from the comparison: it is stamped server-side at
+// database load from Options.UnsupportedOptions.OidcTlsSkipVerify and is never present in a request
+// body, so comparing it would report every provider as changed whenever that option is enabled.
+func (op *OIDCProvider) setRevalidationFlag(existing *OIDCProvider) {
+	if existing == nil {
+		op.ForceRevalidation = true
+		return
+	}
+	op.ForceRevalidation = existing.Issuer != op.Issuer ||
+		existing.DiscoveryURI != op.DiscoveryURI ||
+		existing.DisableConfigValidation != op.DisableConfigValidation ||
+		base.ValDefault(existing.ClientID, "") != base.ValDefault(op.ClientID, "")
+}
+
 // OIDCClient represents client configurations to authenticate end-users
 // with an OpenID Connect provider.
 type OIDCClient struct {
@@ -187,6 +241,17 @@ type OIDCProvider struct {
 	// should be disabled for this provider. TLS certificate verification is
 	// enabled by default.
 	InsecureSkipVerify bool
+
+	// ForceRevalidation records whether this provider's OIDC discovery document must be re-fetched
+	// during the next config validation pass. It is set by OIDCOptions.SetRevalidationFlags
+	// immediately before validation runs, and is true only for providers that are new or whose
+	// discovery-relevant fields changed - so an unrelated config update does not re-run discovery
+	// against providers that were already accepted.
+	//
+	// Defaults to false, so any config-validation path that does not call SetRevalidationFlags
+	// performs no network discovery. json:"-" keeps it out of persisted configs and off the admin
+	// API surface; it must never be user-settable.
+	ForceRevalidation bool `json:"-"`
 }
 
 type OIDCProviderMap map[string]*OIDCProvider

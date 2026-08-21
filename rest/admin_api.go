@@ -63,6 +63,12 @@ func (h *handler) handleCreateDB() error {
 			return base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
+		// No database exists yet, so there is nothing to compare against: a nil existing map marks
+		// every provider as new, leaving OIDC validation governed solely by disable_oidc_validation.
+		if err := config.OIDCConfig.SetRevalidationFlags(nil); err != nil {
+			return base.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+
 		validateReplications := true
 		if err := config.validate(h.ctx(), validateOIDC, validateReplications); err != nil {
 			return base.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -965,6 +971,21 @@ func (h *handler) handlePutDbConfig() (err error) {
 		previousCollectionMap := bucketDbConfig.Scopes.CollectionMap()
 		previousAuditEnabled, _ = oldBucketDbConfig.IsAuditLoggingEnabled()
 
+		// Snapshot the persisted providers before the merge below, to compare against when deciding
+		// which providers need revalidating. This has to be a deep copy: oldBucketDbConfig is a
+		// shallow copy, so on a POST its provider map is the same one ConfigMerge mutates in place,
+		// and every provider would then compare as unchanged.
+		//
+		// The persisted config is the right basis rather than this node's loaded one - another node
+		// may have updated the config in the bucket and this node not polled it yet, which would
+		// otherwise mean comparing against a stale view.
+		var persistedOIDCProviders auth.OIDCProviderMap
+		if oldBucketDbConfig.OIDCConfig != nil {
+			if err := base.DeepCopyInefficient(&persistedOIDCProviders, oldBucketDbConfig.OIDCConfig.Providers); err != nil {
+				return nil, err
+			}
+		}
+
 		if h.rq.Method == http.MethodPost {
 			base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
 			if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
@@ -984,6 +1005,13 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := dbConfig.validatePersistentDbConfig(); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
+		// Mark only the providers that are new or changed relative to the persisted config, so an
+		// update that leaves a provider untouched does not re-run discovery against it. Done on the
+		// merged config, so on a POST it also covers providers carried over from the bucket.
+		if err := bucketDbConfig.OIDCConfig.SetRevalidationFlags(persistedOIDCProviders); err != nil {
+			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+
 		if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
 			return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
 		}

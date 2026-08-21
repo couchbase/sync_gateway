@@ -2881,3 +2881,651 @@ func TestPutDBConfigOIDC(t *testing.T) {
 	resp = BootstrapAdminRequest(t, sc, http.MethodPut, "/db/_config", validOIDCConfig)
 	resp.RequireStatus(http.StatusCreated)
 }
+
+// providerSpec declaratively describes one OIDC provider for TestNoOIDCValidationOnRemoval: which
+// mock server it should be wired to, and whether that server should truthfully report this
+// provider's issuer from its discovery endpoint. A spec with truthful=false remains mismatched
+// against whatever its server is currently truthfully answering as - this is how "invalid"
+// providers are expressed, with no separate validity flag needed.
+type providerSpec struct {
+	name      string
+	server    string
+	options   []mockProviderOption
+	truthful  bool
+	isDefault bool
+}
+
+// buildProviders constructs an OIDCProviderMap from specs, wiring each provider's Issuer/DiscoveryURI
+// to the named mock server, and returns the name of the spec marked isDefault (if any).
+func buildProviders(specs []providerSpec, servers map[string]*mockAuthServer) (auth.OIDCProviderMap, string) {
+	providers := make(auth.OIDCProviderMap, len(specs))
+	var defaultProvider string
+	for _, spec := range specs {
+		provider := mockProviderWith(spec.name, spec.options...)
+		server := servers[spec.server]
+		provider.Issuer = server.URL + "/" + spec.name
+		provider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider.Issuer)
+		if spec.truthful {
+			server.options.issuer = provider.Issuer
+		}
+		if spec.isDefault {
+			defaultProvider = spec.name
+		}
+		providers[spec.name] = provider
+	}
+	return providers, defaultProvider
+}
+
+// newMockAuthServers starts one mock OAuth2 server per name, keyed by name, and registers cleanup.
+func newMockAuthServers(t *testing.T, names ...string) map[string]*mockAuthServer {
+	servers := make(map[string]*mockAuthServer, len(names))
+	for _, name := range names {
+		s, err := newMockAuthServer()
+		require.NoError(t, err, "Error creating mock oauth2 server")
+		s.Start()
+		t.Cleanup(s.Shutdown)
+		servers[name] = s
+	}
+	return servers
+}
+
+// startProviderServer starts a mock OAuth2 server whose discovery document reports its issuer as
+// <url>/issuerName, and registers cleanup. A provider built with a different name against the same
+// server is therefore permanently invalid, since its issuer will never match what the server
+// answers as - see providerOn.
+func startProviderServer(t *testing.T, issuerName string) *mockAuthServer {
+	server, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	server.Start()
+	t.Cleanup(server.Shutdown)
+	server.options.issuer = server.URL + "/" + issuerName
+	return server
+}
+
+// providerOn builds a provider named name whose issuer and discovery endpoint point at server.
+// Whether it validates depends on whether server was started with the same name.
+func providerOn(server *mockAuthServer, name string) *auth.OIDCProvider {
+	provider := mockProviderWith(name, mockProviderRegister{})
+	provider.Issuer = server.URL + "/" + name
+	provider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider.Issuer)
+	return provider
+}
+
+// updatePersistedConfig mutates the database config stored in the bucket without going through the
+// admin API, simulating a change made by another Sync Gateway node. The node under test keeps its
+// existing in-memory config, since nothing here triggers a reload.
+func updatePersistedConfig(t *testing.T, rt *RestTester, dbName string, mutator func(*DatabaseConfig)) {
+	sc := rt.ServerContext()
+	ctx := rt.Context()
+	_, err := sc.BootstrapContext.UpdateConfig(ctx, rt.Bucket().GetName(), sc.Config.Bootstrap.ConfigGroupID, dbName,
+		func(bucketDbConfig *DatabaseConfig) (*DatabaseConfig, error) {
+			mutator(bucketDbConfig)
+			version, err := GenerateDatabaseConfigVersionID(ctx, bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+			bucketDbConfig.Version = version
+			return bucketDbConfig, nil
+		})
+	require.NoError(t, err)
+}
+
+// makeProviderToken mints a JWT claiming to be issued by spec's own provider, signed by spec's own
+// mock server. Whether it actually authenticates depends on spec.truthful: a genuine mismatch
+// (truthful=false) makes real-time discovery fail regardless of any config-save-time validation skip.
+func makeProviderToken(t *testing.T, servers map[string]*mockAuthServer, spec providerSpec, extraClaims map[string]any) string {
+	server := servers[spec.server]
+	claims := claimsAuthenticWithExtraClaims(extraClaims)
+	claims.primaryClaims.Issuer = server.URL + "/" + spec.name
+	token, err := server.makeToken(claims)
+	require.NoError(t, err)
+	return token
+}
+
+// verifyProviderAuth checks each spec authenticates as expected (per spec.truthful). It reuses a
+// token from a prior call for the same provider name if one exists in tokens, and mints (and
+// records) a new one otherwise - so a token minted before a config change gets re-checked as-is
+// after the change, rather than re-derived.
+func verifyProviderAuth(t *testing.T, rt *RestTester, servers map[string]*mockAuthServer, specs []providerSpec, extraClaims map[string]any, tokens map[string]string) {
+	for _, spec := range specs {
+		token, ok := tokens[spec.name]
+		if !ok {
+			token = makeProviderToken(t, servers, spec, extraClaims)
+			tokens[spec.name] = token
+		}
+		expected := http.StatusUnauthorized
+		if spec.truthful {
+			expected = http.StatusOK
+		}
+		RequireStatus(t, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + token}), expected)
+	}
+}
+
+func TestNoOIDCValidationOnRemoval(t *testing.T) {
+
+	const (
+		provider1       = "provider1"
+		provider2       = "provider2"
+		invalidProvider = "invalidProvider"
+		subject         = "noah"
+		usernameClaim   = "username"
+		channelsClaim   = "channels"
+		testChannelName = "test_channel"
+	)
+
+	validOpts := []mockProviderOption{mockProviderRegister{}, mockProviderUserPrefix{""}, mockProviderUsernameClaim{usernameClaim}, mockProviderChannelsClaim{channelsClaim}}
+
+	servers := newMockAuthServers(t, "primary", "secondary")
+
+	tests := []struct {
+		name             string
+		providers        []providerSpec
+		updatedProviders []providerSpec
+	}{
+		{
+			name: "remove a valid provider and default one remains",
+			providers: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true, isDefault: true},
+				{name: provider2, server: "secondary", options: validOpts, truthful: true},
+			},
+			updatedProviders: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true},
+			},
+		},
+		{
+			name: "remove default provider and another valid one remains",
+			providers: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true, isDefault: true},
+				{name: provider2, server: "secondary", options: validOpts, truthful: true},
+			},
+			updatedProviders: []providerSpec{
+				{name: provider2, server: "secondary", options: validOpts, truthful: true, isDefault: true},
+			},
+		},
+		{
+			name: "remove valid provider and the invalid one remains",
+			providers: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true, isDefault: true},
+				{name: invalidProvider, server: "primary"},
+			},
+			updatedProviders: []providerSpec{
+				{name: invalidProvider, server: "primary"},
+			},
+		},
+		{
+			name: "remove invalid provider and the default one remains",
+			providers: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true, isDefault: true},
+				{name: invalidProvider, server: "primary"},
+			},
+			updatedProviders: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true},
+			},
+		},
+		{
+			name: "remove valid provider and add new valid provider, while invalid remains",
+			providers: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true, isDefault: true},
+				{name: invalidProvider, server: "primary"},
+			},
+			updatedProviders: []providerSpec{
+				{name: invalidProvider, server: "primary"},
+				{name: provider2, server: "secondary", options: validOpts, truthful: true},
+			},
+		},
+		{
+			name: "remove default provider and promote another valid provider to default, invalid remains",
+			providers: []providerSpec{
+				{name: provider1, server: "primary", options: validOpts, truthful: true, isDefault: true},
+				{name: invalidProvider, server: "primary"},
+				{name: provider2, server: "secondary", options: validOpts, truthful: true},
+			},
+			updatedProviders: []providerSpec{
+				{name: invalidProvider, server: "primary"},
+				{name: provider2, server: "secondary", options: validOpts, truthful: true, isDefault: true},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+
+			rt := NewRestTester(tt, &RestTesterConfig{PersistentConfig: true})
+			defer rt.Close()
+
+			extraClaims := map[string]any{
+				usernameClaim: subject,
+				channelsClaim: []string{testChannelName},
+			}
+			tokens := make(map[string]string)
+
+			providers, defaultProvider := buildProviders(test.providers, servers)
+
+			dbConfig := rt.NewDbConfig()
+			dbConfig.OIDCConfig = &auth.OIDCOptions{
+				Providers:       providers,
+				DefaultProvider: base.Ptr(defaultProvider),
+			}
+
+			// The invalid provider's issuer doesn't match its own discovery document (its mock server
+			// truthfully answers as a different provider), so validation must be disabled to allow
+			// database creation to succeed with both providers configured.
+			RequireStatus(tt, rt.SendAdminRequest(http.MethodPut, "/db/?disable_oidc_validation=true", string(base.MustJSONMarshal(tt, &dbConfig))), http.StatusCreated)
+
+			// Sanity check every provider in the initial config: valid ones authenticate, mismatched
+			// ones don't. Tokens minted here get reused after the update below.
+			verifyProviderAuth(tt, rt, servers, test.providers, extraClaims, tokens)
+
+			updatedProviders, newDefaultProvider := buildProviders(test.updatedProviders, servers)
+			dbConfig.OIDCConfig = &auth.OIDCOptions{
+				Providers:       updatedProviders,
+				DefaultProvider: base.Ptr(newDefaultProvider),
+			}
+
+			RequireStatus(tt, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(tt, &dbConfig))), http.StatusCreated)
+
+			// Re-check every provider in the final config using the SAME tokens minted before the
+			// update where possible (only a genuinely new provider gets a freshly minted one here) -
+			// valid ones should still authenticate, mismatched ones still shouldn't.
+			verifyProviderAuth(tt, rt, servers, test.updatedProviders, extraClaims, tokens)
+
+			// Confirm the pre-update token for any provider that got removed entirely no longer
+			// authenticates - reusing the exact token from before the removal.
+			for _, spec := range test.providers {
+				if _, stillPresent := updatedProviders[spec.name]; stillPresent {
+					continue
+				}
+				RequireStatus(tt, rt.SendRequestWithHeaders(http.MethodPost, "/{{.db}}/_session", "{}", map[string]string{"Authorization": BearerToken + " " + tokens[spec.name]}), http.StatusUnauthorized)
+			}
+		})
+	}
+
+}
+
+// TestCreateDBWithInvalidOIDCProvider verifies that creating a brand new database with an OIDC
+// provider whose issuer doesn't match its own discovery document fails validation by default.
+// There's no existing database to compare against on creation, so every provider is inherently
+// new and must still be validated unless disable_oidc_validation is explicitly passed.
+func TestCreateDBWithInvalidOIDCProvider(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/actual-issuer"
+
+	invalidProvider := mockProvider("invalidProvider")
+	invalidProvider.Issuer = mockAuthServer.URL + "/invalidProvider" // doesn't match mockAuthServer.options.issuer
+	invalidProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(invalidProvider.Issuer)
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"invalidProvider": invalidProvider},
+	}
+
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusBadRequest)
+}
+
+// TestOIDCRevalidationOnInPlaceProviderChange verifies that changing an existing provider in place -
+// same name, but a discovery-relevant field altered - is re-validated rather than treated as
+// already-known. SetRevalidationFlags (auth/oidc.go) compares provider content, not just names, so a
+// changed Issuer must still be checked against its discovery document even though the provider name
+// was already present in the running config.
+func TestOIDCRevalidationOnInPlaceProviderChange(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/provider1"
+
+	provider := mockProviderWith("provider1", mockProviderRegister{})
+	provider.Issuer = mockAuthServer.URL + "/provider1"
+	provider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider.Issuer)
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"provider1": provider},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// Update "provider1" in-place: same name, but the issuer now points somewhere that no longer
+	// matches what mockAuthServer actually answers as. The provider's content genuinely changed, so
+	// it must be re-validated and the update rejected.
+	changedProvider := mockProviderWith("provider1", mockProviderRegister{})
+	changedProvider.Issuer = mockAuthServer.URL + "/some-other-issuer"
+	changedProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(changedProvider.Issuer)
+
+	updatedDbConfig := rt.NewDbConfig()
+	updatedDbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"provider1": changedProvider},
+	}
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &updatedDbConfig))), http.StatusBadRequest)
+}
+
+// TestOIDCRevalidationSkippedWithTlsSkipVerify checks that resubmitting an OIDC provider's config
+// completely unchanged still succeeds, both with and without oidc_tls_skip_verify enabled.
+// This is why the comparison in auth/oidc.go deliberately excludes
+// InsecureSkipVerify: it is populated server-side from db.Options.UnsupportedOptions.OidcTlsSkipVerify
+// on the running provider, but is never populated on a provider parsed straight from a request body,
+// so comparing it would report every provider as changed whenever that option is enabled.
+func TestOIDCRevalidationSkippedWithTlsSkipVerify(t *testing.T) {
+	for _, oidcSkipTlsVerify := range []bool{true, false} {
+		t.Run(fmt.Sprintf("oidcSkipTlsVerify=%t", oidcSkipTlsVerify), func(t *testing.T) {
+			// A fresh server per subtest, since it gets shut down mid-test below.
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/provider1"
+
+			providers := auth.OIDCProviderMap{
+				"provider1": mockProviderWith("provider1", mockProviderRegister{}),
+			}
+			refreshProviderConfig(providers, mockAuthServer.URL)
+			rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+			defer rt.Close()
+
+			dbConfig := rt.NewDbConfig()
+			dbConfig.OIDCConfig = &auth.OIDCOptions{
+				Providers: providers,
+			}
+			dbConfig.Unsupported = &db.UnsupportedOptions{OidcTlsSkipVerify: oidcSkipTlsVerify}
+
+			RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+			// Make the discovery URL unreachable, so a wrongly-forced revalidation would fail.
+			mockAuthServer.Shutdown()
+
+			// Resubmit "provider1" completely unchanged (same Issuer/DiscoveryURI/ClientID as at
+			// creation). The update should succeed regardless of oidcSkipTlsVerify, since nothing
+			// about the provider actually changed - even though its discovery URL is now unreachable.
+			updatedProviders := auth.OIDCProviderMap{
+				"provider1": mockProviderWith("provider1", mockProviderRegister{}),
+			}
+			refreshProviderConfig(updatedProviders, mockAuthServer.URL)
+
+			updatedDbConfig := rt.NewDbConfig()
+			updatedDbConfig.OIDCConfig = &auth.OIDCOptions{
+				Providers: updatedProviders,
+			}
+			updatedDbConfig.Unsupported = &db.UnsupportedOptions{OidcTlsSkipVerify: oidcSkipTlsVerify}
+
+			RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &updatedDbConfig))), http.StatusCreated)
+		})
+	}
+}
+
+// TestOIDCValidationSkippedOnUnrelatedConfigUpsert checks that a database config update with
+// nothing to do with OIDC doesn't force revalidation of an existing, untouched provider.
+// A POST (upsert/merge) that doesn't mention "oidc" at all parses to a nil OIDCConfig, so
+// SetRevalidationFlags (auth/oidc.go) has nothing to mark on the incoming body. The existing
+// provider still gets merged back in from the persisted config, but it compares unchanged against
+// the running provider, so it is not re-validated as a side effect of an unrelated update.
+func TestOIDCValidationSkippedOnUnrelatedConfigUpsert(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/actual-issuer"
+
+	invalidProvider := mockProvider("invalidProvider")
+	invalidProvider.Issuer = mockAuthServer.URL + "/invalidProvider" // doesn't match mockAuthServer.options.issuer
+	invalidProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(invalidProvider.Issuer)
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"invalidProvider": invalidProvider},
+	}
+
+	// disable_oidc_validation is required here purely to get the intentionally-invalid provider
+	// accepted in the first place - it's not used again below.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/db/?disable_oidc_validation=true", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
+
+	// POST an update that's entirely unrelated to OIDC - the body has no "oidc" key at all, so
+	// SetRevalidationFlags has nothing to mark. The already-configured "invalidProvider" is
+	// merged back in unchanged and must not be re-validated as a side effect of this update.
+	unrelatedUpdate := DbConfig{
+		RevsLimit: base.Ptr(uint32(1000)),
+	}
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &unrelatedUpdate))), http.StatusCreated)
+}
+
+// TestOIDCValidationSkippedOnSubResourceConfigUpdates checks that the sub-resource config endpoints -
+// sync function, import filter, and audit config - never re-run OIDC discovery. None of them can
+// change OIDC config, so none of them call SetRevalidationFlags, and ForceRevalidation therefore
+// stays at its default of false for every provider merged in from the persisted config. A database
+// carrying a provider whose discovery would fail must still accept all of these updates.
+func TestOIDCValidationSkippedOnSubResourceConfigUpdates(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/actual-issuer"
+
+	invalidProvider := mockProvider("invalidProvider")
+	invalidProvider.Issuer = mockAuthServer.URL + "/invalidProvider" // doesn't match mockAuthServer.options.issuer
+	invalidProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(invalidProvider.Issuer)
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"invalidProvider": invalidProvider},
+	}
+
+	// disable_oidc_validation is required only to get the intentionally-invalid provider accepted at
+	// creation - it is deliberately not passed on any of the updates below.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/db/?disable_oidc_validation=true", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
+
+	// Make the discovery URL unreachable too, so any revalidation would fail loudly rather than
+	// merely mismatching.
+	mockAuthServer.Shutdown()
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/sync", `function(doc){channel(doc.channels);}`), http.StatusOK)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/_config/import_filter", `function(doc){return true;}`), http.StatusOK)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config/audit", `{"enabled":true}`), http.StatusOK)
+}
+
+// TestOIDCRevalidationSkippedOnIdenticalConfigResubmit checks the headline behaviour directly:
+// resubmitting a multi-provider config completely unchanged re-runs no discovery at all. The mock
+// servers are shut down before the update, so any provider that got revalidated would fail.
+func TestOIDCRevalidationSkippedOnIdenticalConfigResubmit(t *testing.T) {
+	servers := newMockAuthServers(t, "primary", "secondary")
+	servers["primary"].options.issuer = servers["primary"].URL + "/provider1"
+	servers["secondary"].options.issuer = servers["secondary"].URL + "/provider2"
+
+	buildConfig := func(rt *RestTester) *DbConfig {
+		provider1 := mockProviderWith("provider1", mockProviderRegister{})
+		provider1.Issuer = servers["primary"].URL + "/provider1"
+		provider1.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider1.Issuer)
+
+		provider2 := mockProviderWith("provider2", mockProviderRegister{})
+		provider2.Issuer = servers["secondary"].URL + "/provider2"
+		provider2.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider2.Issuer)
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers:       auth.OIDCProviderMap{"provider1": provider1, "provider2": provider2},
+			DefaultProvider: base.Ptr("provider1"),
+		}
+		return &dbConfig
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	// Both providers are valid, so creation validates them for real and succeeds.
+	RequireStatus(t, rt.CreateDatabase("db", *buildConfig(rt)), http.StatusCreated)
+
+	// Now make both discovery endpoints unreachable and resubmit the identical config. Nothing
+	// changed, so nothing should be revalidated.
+	servers["primary"].Shutdown()
+	servers["secondary"].Shutdown()
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, buildConfig(rt)))), http.StatusCreated)
+}
+
+// TestOIDCNullProviderDefinition checks that an explicit null in the providers map is rejected or
+// skipped gracefully rather than panicking into a 500. A null unmarshals to a nil *OIDCProvider,
+// which both DbConfig.validate and the provider load in StartOnlineProcesses must tolerate - the
+// latter matters because a null paired with a valid provider still passes validation.
+func TestOIDCNullProviderDefinition(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/provider1"
+
+	validProvider := mockProviderWith("provider1", mockProviderRegister{})
+	validProvider.Issuer = mockAuthServer.URL + "/provider1"
+	validProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(validProvider.Issuer)
+
+	t.Run("null provider only", func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+		defer rt.Close()
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{"nullProvider": nil},
+		}
+
+		// The only provider is unusable, so validation reports no valid providers - a 400, not a 500.
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusBadRequest)
+	})
+
+	t.Run("null provider alongside a valid one", func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+		defer rt.Close()
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{"provider1": validProvider, "nullProvider": nil},
+		}
+
+		// Rejected even though another provider is valid - a null would otherwise be accepted here
+		// and then silently dropped when the database loads.
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusBadRequest)
+	})
+
+	t.Run("null provider rejected on config update", func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+		defer rt.Close()
+
+		dbConfig := rt.NewDbConfig()
+		dbConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{"provider1": validProvider},
+		}
+		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+		// Adding a null provider to an existing database is rejected the same way as at creation.
+		updatedConfig := rt.NewDbConfig()
+		updatedConfig.OIDCConfig = &auth.OIDCOptions{
+			Providers: auth.OIDCProviderMap{"provider1": validProvider, "nullProvider": nil},
+		}
+		RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &updatedConfig))), http.StatusBadRequest)
+	})
+}
+
+// TestOIDCRevalidationConsistentWhenOffline checks that an offline database skips revalidation for
+// an unchanged provider exactly as an online one does. SetRevalidationFlags compares against
+// DatabaseContext.ConfiguredOIDCProviders rather than OIDCProviders - the latter is populated only
+// by StartOnlineProcesses, so keying on it would make every offline config update revalidate every
+// provider, purely because of when the database happened to be updated.
+func TestOIDCRevalidationConsistentWhenOffline(t *testing.T) {
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/provider1"
+
+	provider := mockProviderWith("provider1", mockProviderRegister{})
+	provider.Issuer = mockAuthServer.URL + "/provider1"
+	provider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider.Issuer)
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"provider1": provider},
+	}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// Make discovery unreachable, so anything that does get revalidated fails loudly.
+	mockAuthServer.Shutdown()
+
+	// Resubmitting the identical config against an offline database skips revalidation, exactly as
+	// it would if the database were online.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusCreated)
+
+	// A genuine in-place change is still revalidated while offline, and fails because discovery is
+	// unreachable - so the skip above is change detection, not a blanket offline exemption.
+	changedProvider := mockProviderWith("provider1", mockProviderRegister{})
+	changedProvider.Issuer = mockAuthServer.URL + "/some-other-issuer"
+	changedProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(changedProvider.Issuer)
+
+	changedConfig := rt.NewDbConfig()
+	changedConfig.StartOffline = base.Ptr(true)
+	changedConfig.OIDCConfig = &auth.OIDCOptions{
+		Providers: auth.OIDCProviderMap{"provider1": changedProvider},
+	}
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &changedConfig))), http.StatusBadRequest)
+}
+
+// TestOIDCNoRevalidationForPeerAddedProvider asserts that a provider another node added to the
+// persisted config, which this node has not loaded yet, does not make an unrelated config update
+// re-run OIDC discovery.
+func TestOIDCNoRevalidationForPeerAddedProvider(t *testing.T) {
+	srv := startProviderServer(t, "other") // never answers as "peer"
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	// This node loads a database with no OIDC config at all.
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	// A peer node adds a provider whose discovery document contradicts its issuer.
+	updatePersistedConfig(t, rt, "db", func(cfg *DatabaseConfig) {
+		cfg.OIDCConfig = &auth.OIDCOptions{Providers: auth.OIDCProviderMap{"peer": providerOn(srv, "peer")}}
+	})
+	require.Nil(t, rt.GetDatabase().Options.OIDCOptions, "this node must still be unaware of the peer's provider")
+
+	// An update with nothing to do with OIDC must not be blocked by that provider.
+	unrelated := DbConfig{RevsLimit: base.Ptr(uint32(1234))}
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &unrelated))), http.StatusCreated)
+}
+
+// TestOIDCRevalidationForProviderAbsentFromPersistedConfig asserts the other direction: a provider
+// that is new relative to the persisted config is validated, even when it happens to match a copy
+// this node still holds in memory.
+func TestOIDCRevalidationForProviderAbsentFromPersistedConfig(t *testing.T) {
+	srv := startProviderServer(t, "provider1")
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{Providers: auth.OIDCProviderMap{"provider1": providerOn(srv, "provider1")}}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// A peer node removed the provider. This node has not polled for that yet, so it still holds it.
+	updatePersistedConfig(t, rt, "db", func(cfg *DatabaseConfig) { cfg.OIDCConfig = nil })
+	require.NotNil(t, rt.GetDatabase().Options.OIDCOptions, "this node must still hold the provider the peer removed")
+
+	// Discovery is now permanently broken for that provider.
+	srv.Shutdown()
+
+	// Re-adding it is an addition relative to the persisted config, so it must be validated - and fail.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusBadRequest)
+}
