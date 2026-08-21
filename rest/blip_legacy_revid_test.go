@@ -1435,13 +1435,6 @@ func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
 	})
 }
 
-// TestInvalidRevTreePullReportsStat. A document whose rev tree contains a revision that does not exceed its parent's
-// generation is reported on the  invalid_rev_tree_count stat, and the two subtests show the two things that can happen to it:
-//
-//   - revTree (pre-4.0) client: the rev tree history cannot be encoded for the wire, so the revision is
-//     skipped with a norev - the loud case the customer sees in their logs.
-//   - versionVector (4.0+) client: no rev tree history is sent, so the document replicates and there is
-//     no norev - but the document is still corrupt, and detection on load is the only thing that says so.
 func TestInvalidRevTreePullRepairsAndRedelivers(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
 

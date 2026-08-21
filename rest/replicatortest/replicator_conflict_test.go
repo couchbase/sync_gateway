@@ -2438,25 +2438,8 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 			require.True(t, strings.HasPrefix(passiveUpdateRev, "11-"), "got %q", passiveUpdateRev)
 			passiveRT.WaitForPendingChanges()
 
-			resolver, err := db.NewCustomConflictResolver(activeRT.Context(),
-				`function(conflict) { return defaultPolicy(conflict); }`, activeRT.GetDatabase().Options.JavascriptTimeout)
-			require.NoError(t, err)
-
-			pushAndPull, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-				ID:                     rest.SafeDocumentName(t, t.Name()+"pushpull"),
-				Direction:              db.ActiveReplicatorTypePushAndPull,
-				RemoteDBURL:            remoteURL,
-				ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
-				ChangesBatchSize:       200,
-				Continuous:             true,
-				ConflictResolverFunc:   resolver,
-				ReplicationStatsMap:    dbReplicatorStats(t),
-				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
-				SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
-			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, pushAndPull.Stop()) }()
-			require.NoError(t, pushAndPull.Start(activeCtx))
+			activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+			activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
 
 			// passive version wins
 			requireRepairConvergedOnPeerBranch(t, activeRT, passiveRT, docID, passiveUpdateRev)
@@ -2470,9 +2453,6 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 		sgrRunner := rest.NewSGRTestRunner(t)
 		sgrRunner.RunSubprotocolV3(func(t *testing.T) {
 			activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
-			remoteURL, err := url.Parse(passiveDBURL)
-			require.NoError(t, err)
-			activeCtx := activeRT.Context()
 			docID := rest.SafeDocumentName(t, t.Name())
 
 			plantUpgradeScenario(t, activeRT, passiveRT, docID)
@@ -2487,25 +2467,8 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 			passiveRT.WaitForPendingChanges()
 			require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
 
-			resolver, err := db.NewCustomConflictResolver(activeRT.Context(),
-				`function(conflict) { return defaultPolicy(conflict); }`, activeRT.GetDatabase().Options.JavascriptTimeout)
-			require.NoError(t, err)
-
-			pushAndPull, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-				ID:                     rest.SafeDocumentName(t, t.Name()),
-				Direction:              db.ActiveReplicatorTypePushAndPull,
-				RemoteDBURL:            remoteURL,
-				ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
-				ChangesBatchSize:       200,
-				Continuous:             true,
-				ConflictResolverFunc:   resolver,
-				ReplicationStatsMap:    dbReplicatorStats(t),
-				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
-				SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
-			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, pushAndPull.Stop()) }()
-			require.NoError(t, pushAndPull.Start(activeCtx))
+			activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+			activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
 
 			// passive version wins
 			requireRepairConvergedOnPeerBranch(t, activeRT, passiveRT, docID, passiveUpdateRev)
