@@ -2929,6 +2929,47 @@ func newMockAuthServers(t *testing.T, names ...string) map[string]*mockAuthServe
 	return servers
 }
 
+// startProviderServer starts a mock OAuth2 server whose discovery document reports its issuer as
+// <url>/issuerName, and registers cleanup. A provider built with a different name against the same
+// server is therefore permanently invalid, since its issuer will never match what the server
+// answers as - see providerOn.
+func startProviderServer(t *testing.T, issuerName string) *mockAuthServer {
+	server, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	server.Start()
+	t.Cleanup(server.Shutdown)
+	server.options.issuer = server.URL + "/" + issuerName
+	return server
+}
+
+// providerOn builds a provider named name whose issuer and discovery endpoint point at server.
+// Whether it validates depends on whether server was started with the same name.
+func providerOn(server *mockAuthServer, name string) *auth.OIDCProvider {
+	provider := mockProviderWith(name, mockProviderRegister{})
+	provider.Issuer = server.URL + "/" + name
+	provider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider.Issuer)
+	return provider
+}
+
+// updatePersistedConfig mutates the database config stored in the bucket without going through the
+// admin API, simulating a change made by another Sync Gateway node. The node under test keeps its
+// existing in-memory config, since nothing here triggers a reload.
+func updatePersistedConfig(t *testing.T, rt *RestTester, dbName string, mutator func(*DatabaseConfig)) {
+	sc := rt.ServerContext()
+	ctx := rt.Context()
+	_, err := sc.BootstrapContext.UpdateConfig(ctx, rt.Bucket().GetName(), sc.Config.Bootstrap.ConfigGroupID, dbName,
+		func(bucketDbConfig *DatabaseConfig) (*DatabaseConfig, error) {
+			mutator(bucketDbConfig)
+			version, err := GenerateDatabaseConfigVersionID(ctx, bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+			bucketDbConfig.Version = version
+			return bucketDbConfig, nil
+		})
+	require.NoError(t, err)
+}
+
 // makeProviderToken mints a JWT claiming to be issued by spec's own provider, signed by spec's own
 // mock server. Whether it actually authenticates depends on spec.truthful: a genuine mismatch
 // (truthful=false) makes real-time discovery fail regardless of any config-save-time validation skip.
@@ -3440,4 +3481,51 @@ func TestOIDCRevalidationConsistentWhenOffline(t *testing.T) {
 		Providers: auth.OIDCProviderMap{"provider1": changedProvider},
 	}
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &changedConfig))), http.StatusBadRequest)
+}
+
+// TestOIDCNoRevalidationForPeerAddedProvider asserts that a provider another node added to the
+// persisted config, which this node has not loaded yet, does not make an unrelated config update
+// re-run OIDC discovery.
+func TestOIDCNoRevalidationForPeerAddedProvider(t *testing.T) {
+	srv := startProviderServer(t, "other") // never answers as "peer"
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	// This node loads a database with no OIDC config at all.
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	// A peer node adds a provider whose discovery document contradicts its issuer.
+	updatePersistedConfig(t, rt, "db", func(cfg *DatabaseConfig) {
+		cfg.OIDCConfig = &auth.OIDCOptions{Providers: auth.OIDCProviderMap{"peer": providerOn(srv, "peer")}}
+	})
+	require.Nil(t, rt.GetDatabase().Options.OIDCOptions, "this node must still be unaware of the peer's provider")
+
+	// An update with nothing to do with OIDC must not be blocked by that provider.
+	unrelated := DbConfig{RevsLimit: base.Ptr(uint32(1234))}
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &unrelated))), http.StatusCreated)
+}
+
+// TestOIDCRevalidationForProviderAbsentFromPersistedConfig asserts the other direction: a provider
+// that is new relative to the persisted config is validated, even when it happens to match a copy
+// this node still holds in memory.
+func TestOIDCRevalidationForProviderAbsentFromPersistedConfig(t *testing.T) {
+	srv := startProviderServer(t, "provider1")
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.OIDCConfig = &auth.OIDCOptions{Providers: auth.OIDCProviderMap{"provider1": providerOn(srv, "provider1")}}
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+
+	// A peer node removed the provider. This node has not polled for that yet, so it still holds it.
+	updatePersistedConfig(t, rt, "db", func(cfg *DatabaseConfig) { cfg.OIDCConfig = nil })
+	require.NotNil(t, rt.GetDatabase().Options.OIDCOptions, "this node must still hold the provider the peer removed")
+
+	// Discovery is now permanently broken for that provider.
+	srv.Shutdown()
+
+	// Re-adding it is an addition relative to the persisted config, so it must be validated - and fail.
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &dbConfig))), http.StatusBadRequest)
 }
