@@ -19,31 +19,52 @@ const (
 	AssertionFailedPrefix = "Assertion failed: "
 )
 
-// assertionFailures collects assertion failure messages in dev mode, so the test harness can report them in detail at the end of a run.
-var assertionFailures = struct {
-	lock sync.Mutex
-	msgs []string
-}{}
-
-// recordAssertionFailure stores an assertion failure message. Safe for concurrent use.
-func recordAssertionFailure(msg string) {
-	assertionFailures.lock.Lock()
-	defer assertionFailures.lock.Unlock()
-	assertionFailures.msgs = append(assertionFailures.msgs, msg)
+// assertionFailure is a single recorded assertion failure, and the name of the test that was running when it happened, when known.
+type assertionFailure struct {
+	testName string
+	msg      string
 }
 
-// AssertionFailures returns a copy of the assertion failure messages recorded so far. Always empty unless compiled with the `cb_sg_devmode` build tag.
-func AssertionFailures() []string {
+// assertionFailures collects assertion failures in dev mode, so the test harness can report them in detail at the end of a run.
+var assertionFailures = struct {
+	lock     sync.Mutex
+	failures []assertionFailure
+}{}
+
+// recordAssertionFailure stores an assertion failure message, along with the name of the test in ctx, if there is one. Safe for concurrent use.
+func recordAssertionFailure(ctx context.Context, msg string) {
+	failure := assertionFailure{testName: getLogCtx(ctx).TestName, msg: msg}
 	assertionFailures.lock.Lock()
 	defer assertionFailures.lock.Unlock()
-	return slices.Clone(assertionFailures.msgs)
+	assertionFailures.failures = append(assertionFailures.failures, failure)
+}
+
+// getAssertionFailures returns a copy of the assertion failures recorded so far.
+func getAssertionFailures() []assertionFailure {
+	assertionFailures.lock.Lock()
+	defer assertionFailures.lock.Unlock()
+	return slices.Clone(assertionFailures.failures)
+}
+
+// AssertionFailures returns the assertion failure messages recorded so far, prefixed with the test that recorded them where known. Always empty unless compiled with the `cb_sg_devmode` build tag.
+func AssertionFailures() []string {
+	failures := getAssertionFailures()
+	msgs := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		if failure.testName == "" {
+			msgs = append(msgs, failure.msg)
+			continue
+		}
+		msgs = append(msgs, failure.testName+": "+failure.msg)
+	}
+	return msgs
 }
 
 // ClearAssertionFailures discards the recorded assertion failures, for tests that trigger assertions deliberately.
 func ClearAssertionFailures() {
 	assertionFailures.lock.Lock()
 	defer assertionFailures.lock.Unlock()
-	assertionFailures.msgs = nil
+	assertionFailures.failures = nil
 }
 
 // IsDevMode returns true when compiled with the `cb_sg_devmode` build tag
@@ -58,7 +79,7 @@ func AssertfCtx(ctx context.Context, format string, args ...any) {
 
 	SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount.Add(1)
 	if IsDevMode() {
-		recordAssertionFailure(fmt.Sprintf(AssertionFailedPrefix+format, args...))
+		recordAssertionFailure(ctx, fmt.Sprintf(AssertionFailedPrefix+format, args...))
 	}
 	assertLogFn(ctx, AssertionFailedPrefix+format, args...)
 }

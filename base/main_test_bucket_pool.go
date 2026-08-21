@@ -12,10 +12,13 @@ package base
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -944,10 +947,9 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 	GTestBucketPool = NewTestBucketPoolWithOptions(ctx, bucketReadierFunc, bucketInitFunc, options)
 	teardownFuncs = append(teardownFuncs, func() { GTestBucketPool.Close(ctx) })
 
+	hadAssertionFailures := false
 	teardownFuncs = append(teardownFuncs, func() {
-		if failures := AssertionFailures(); len(failures) > 0 {
-			panic(fmt.Sprintf("Test harness failed due to %d assertion failures:\n%s", len(failures), strings.Join(failures, "\n")))
-		}
+		hadAssertionFailures = reportAssertionFailures()
 	})
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
 	if dumpGoroutines {
@@ -964,7 +966,76 @@ func TestBucketPoolMain(ctx context.Context, m *testing.M, bucketReadierFunc TBP
 		fn()
 	}
 
+	if hadAssertionFailures && status == 0 {
+		status = 1
+	}
+
 	os.Exit(status)
+}
+
+// reportAssertionFailures writes any assertion failures recorded during the test run to stdout, and returns true if there were any.
+//
+// Each test that recorded a failure is reported as a synthetic failing test, rather than as plain output from TestMain, so that
+// the messages are attributed to a named test in `go test -json` output. Without this, gotestsum output formats that only print
+// output for failing tests (as CI uses) show that the package failed without ever showing why.
+func reportAssertionFailures() bool {
+	failures := getAssertionFailures()
+	if len(failures) == 0 {
+		return false
+	}
+
+	// Group by the reported (sanitized) name rather than the raw test name, so that test names that sanitize to the same
+	// thing are reported as a single synthetic test instead of two blocks sharing a name.
+	msgsByTest := make(map[string][]string, len(failures))
+	for _, failure := range failures {
+		name := assertionFailureTestName(failure.testName)
+		msgsByTest[name] = append(msgsByTest[name], failure.msg)
+	}
+	for _, testName := range slices.Sorted(maps.Keys(msgsByTest)) {
+		emitSyntheticTestFailure(testName, msgsByTest[testName])
+	}
+	return true
+}
+
+// assertionFailureTestName returns the name to report assertion failures from the given test under. The test that recorded the
+// failure has already finished (and may well have passed), so the failures are reported under a distinct synthetic name.
+func assertionFailureTestName(testName string) string {
+	name := "TestAssertionFailures"
+	if testName == "" {
+		return name
+	}
+	// test2json treats a `/` as a subtest separator, and gotestsum can't handle a subtest of a test it never saw run.
+	return name + "_" + strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, testName)
+}
+
+// emitSyntheticTestFailure writes `go test` framing for a failing test that was never actually run, to attach msgs to a named
+// test in the test output. When the test binary is being run by `go test -json`, framing lines have to be prefixed with a
+// marker byte to distinguish them from ordinary test output (see cmd/internal/test2json).
+func emitSyntheticTestFailure(testName string, msgs []string) {
+	marker := ""
+	if runningUnderTest2JSON() {
+		marker = "\x16"
+	}
+	// Build the whole block up front and write it once: leaked goroutines may still be logging to stdout during teardown,
+	// and a partial write landing mid-line would leave a marker off the start of a line, losing the test attribution.
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "%s=== RUN   %s\n", marker, testName)
+	for _, msg := range msgs {
+		fmt.Fprintf(&buf, "    %s\n", msg)
+	}
+	fmt.Fprintf(&buf, "%s--- FAIL: %s (0.00s)\n", marker, testName)
+	_, _ = os.Stdout.WriteString(buf.String())
+}
+
+// runningUnderTest2JSON returns true if this test binary's output is being converted into JSON events by `go test -json`.
+func runningUnderTest2JSON() bool {
+	f := flag.Lookup("test.v")
+	return f != nil && f.Value.String() == "test2json"
 }
 
 // TestBucketPoolNoIndexes runs a TestMain for packages that do not require creation of indexes
