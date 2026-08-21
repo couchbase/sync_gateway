@@ -1325,7 +1325,7 @@ Database:
     javascript_timeout_secs:
       description: The maximum number of seconds the sync, import filter, and custom conflict resolver JavaScript functions are allowed to run for before timing out. Set to 0 to allow the JS functions to run uncapped.
       type: integer
-      default: 60
+      default: 0
     keypath:
       description: The key path (private key) for X.509 bucket auth
       type: string
@@ -1611,9 +1611,11 @@ Database:
     revs_limit:
       description: |-
         The maximum depth a document's revision tree can grow to.
+
+        Defaults to 100 when `allow_conflicts` is enabled, and must be at least 20 in that case.
       type: integer
       default: 50
-      minimum: 0
+      minimum: 1
     roles:
       additionalProperties:
         x-additionalPropertiesName: rolename
@@ -2800,7 +2802,7 @@ Logging-config:
               default: ""
             max_age:
               description: The maximum number of days to retain old log files.
-              default: 6
+              default: 90
               type: integer
         collation_buffer_size:
           description: The size of the log collation buffer
