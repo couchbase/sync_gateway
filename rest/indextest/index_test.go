@@ -109,6 +109,11 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
 
@@ -127,14 +132,9 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+		require.NoError(t, base.RequireChanRecv(t, unblockInit))
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
-
-	ctx := base.TestCtx(t)
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -156,7 +156,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db
-	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	require.NoError(t, base.RequireChanRecv(t, initStarted))
 	log.Printf("initialization started")
 
 	// Get config values before taking db offline
@@ -211,13 +211,13 @@ func TestAsyncInitWithResync(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
-	sc, closeFn := rest.StartBootstrapServer(t)
-	defer closeFn()
-
 	ctx := base.TestCtx(t)
 	// Seed the bucket with some documents
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := rest.StartBootstrapServer(t)
+	defer closeFn()
 
 	syncFunc := "function(doc){ channel(doc.channel1); }"
 	dbConfig := makeDbConfig(t, tb, syncFunc, "")
@@ -263,7 +263,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+		require.NoError(t, base.RequireChanRecv(t, unblockInit))
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 	// Recreate the database with offline=true and a modified sync function
@@ -278,7 +278,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before calling resync
-	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	require.NoError(t, base.RequireChanRecv(t, initStarted))
 	log.Printf("initialization started")
 
 	// Start resync
@@ -327,6 +327,11 @@ func TestAsyncOnlineOffline(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
 
@@ -345,14 +350,9 @@ func TestAsyncOnlineOffline(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+		require.NoError(t, base.RequireChanRecv(t, unblockInit))
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
-
-	ctx := base.TestCtx(t)
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -376,7 +376,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	require.NoError(t, base.RequireChanRecv(t, initStarted))
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 	verifyInitializationActive(t, sc, dbName, true)
@@ -448,6 +448,11 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
 
@@ -466,7 +471,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+		require.NoError(t, base.RequireChanRecv(t, unblockInit))
 	}
 	firstDatabaseComplete := make(chan error)
 	databaseCompleteCount := int64(0)
@@ -478,11 +483,6 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 		}
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, databaseCompleteCallback)
-
-	ctx := base.TestCtx(t)
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -510,7 +510,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	require.NoError(t, base.RequireChanRecv(t, initStarted))
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 
 	// Take the database online while async init is still in progress, verify state goes to Starting
@@ -528,7 +528,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 
 	close(unblockInit)
 
-	rest.WaitForChannel(t, firstDatabaseComplete, "waiting for database complete callback")
+	require.NoError(t, base.RequireChanRecv(t, firstDatabaseComplete))
 
 	// Verify only one collection was initialized asynchronously (in-progress when database was deleted)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -558,13 +558,13 @@ func TestSyncOnline(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
-	sc, closeFn := rest.StartBootstrapServer(t)
-	defer closeFn()
-
 	ctx := base.TestCtx(t)
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := rest.StartBootstrapServer(t)
+	defer closeFn()
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -598,6 +598,11 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP)
 
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
 
@@ -616,14 +621,9 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+		require.NoError(t, base.RequireChanRecv(t, unblockInit))
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
-
-	ctx := base.TestCtx(t)
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -645,7 +645,7 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	require.NoError(t, base.RequireChanRecv(t, initStarted))
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 
@@ -715,6 +715,11 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	// enable config polling to allow testing of cross-node updates
 	bootstrapConfig := rest.BootstrapStartupConfigForTest(t)
 	bootstrapConfig.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(1 * time.Second)
+	ctx := base.TestCtx(t)
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	sc, closeFn := rest.StartServerWithConfig(t, &bootstrapConfig)
 	defer closeFn()
 
@@ -733,14 +738,9 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		rest.WaitForChannel(t, unblockInit, "waiting for test to unblock initialization")
+		require.NoError(t, base.RequireChanRecv(t, unblockInit))
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
-
-	ctx := base.TestCtx(t)
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 
 	importFilter := "function(doc) { return true }"
 	syncFunc := "function(doc){ channel(doc.channels); }"
@@ -774,7 +774,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	rest.WaitForChannel(t, initStarted, "waiting for initialization to start")
+	require.NoError(t, base.RequireChanRecv(t, initStarted))
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 

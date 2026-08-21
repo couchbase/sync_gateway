@@ -3026,9 +3026,12 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	ctx := base.TestCtx(t)
-	// Get a test bucket, to use to create the database.
+	// Get test buckets, to use to create the databases.  Acquired before the server starts so that they're released
+	// after closeFn has shut it down.
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close(ctx)
 
 	// Start SG with no databases
 	config := rest.BootstrapStartupConfigForTest(t)
@@ -3078,9 +3081,6 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.Equal(t, db.DefaultCompactInterval, time.Duration(*runtimeServerConfigDatabase.CompactIntervalDays)*24*time.Hour)
 
 	// Test unsupported options
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close(ctx)
-
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/", fmt.Sprintf(
 		`{"bucket": "%s", "index": {"num_replicas": 0}, "use_views": %t, "unsupported": {"disable_clean_skipped_query": true}}`, tb2.GetName(), base.TestsDisableGSI(),
 	))
