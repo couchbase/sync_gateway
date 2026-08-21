@@ -27,6 +27,7 @@ import (
 // changes processing currently assumes a deep copy when doing chanOpts := changesOptions.
 type ChangesOptions struct {
 	Since          SequenceID         // sequence # to start _after_
+	SinceRaw       string             // the unparsed since value as the client sent it, for logging only - see String()
 	Limit          int                // Max number of changes to return, if nonzero
 	Conflicts      bool               // Show all conflicting revision IDs, not just winning one?
 	IncludeDocs    bool               // Include doc body of each change?
@@ -1461,10 +1462,21 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	return row, nil
 }
 
+// sinceString renders Since for logging, appending the client's unparsed value when it differs.
+// SequenceID.String() drops LowSeq or TriggeredBy when they are not below the sequence they qualify, so
+// without the raw value a malformed client sequence is indistinguishable from a well-formed one.
+func (options ChangesOptions) sinceString() string {
+	since := options.Since.String()
+	if options.SinceRaw != "" && options.SinceRaw != since {
+		return since + " (raw: " + options.SinceRaw + ")"
+	}
+	return since
+}
+
 func (options ChangesOptions) String() string {
 	return fmt.Sprintf(
 		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t, Revocations: %t, RequestPlusSeq: %d, VersionType: %q}`,
-		options.Since,
+		options.sinceString(),
 		options.Limit,
 		options.Conflicts,
 		options.IncludeDocs,

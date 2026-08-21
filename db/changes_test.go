@@ -464,6 +464,9 @@ func TestChangesOptionsStringer(t *testing.T) {
 	ignoredFields := map[string]struct{}{
 		"ChangesCtx": {},
 		"clientType": {},
+		// SinceRaw has no key of its own - it is appended to the Since value when it differs from the
+		// parsed sequence.  See ChangesOptions.sinceString.
+		"SinceRaw": {},
 	}
 	var expectedFields []string
 	for _, field := range reflect.VisibleFields(reflect.TypeOf(ChangesOptions{})) {

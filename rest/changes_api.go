@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -178,7 +179,8 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = db.ParsePlainSequenceID(h.getJSONStringQuery("since")); err != nil {
+		options.SinceRaw = h.getJSONStringQuery("since")
+		if options.Since, err = db.ParsePlainSequenceID(options.SinceRaw); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -263,7 +265,6 @@ func (h *handler) handleChanges() error {
 
 		base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
 			h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
-
 	}
 
 	// Default to feed type normal
@@ -529,6 +530,8 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			var channelNames []string
 			var err error
 			if _, wsoptions, _, channelNames, _, compress, err = h.readChangesOptionsFromJSON(msg); err != nil {
+				base.DebugfCtx(h.ctx(), base.KeyChanges, "Changes websocket request rejected, invalid options %s: %v",
+					base.UD(string(msg)), err)
 				return
 			}
 			if channelNames != nil {
@@ -594,32 +597,36 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 
 func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, options db.ChangesOptions, filter string, channelsArray []string, docIdsArray []string, compress bool, err error) {
 	var input struct {
-		Feed           string        `json:"feed"`
-		Since          db.SequenceID `json:"since"`
-		Limit          int           `json:"limit"`
-		Style          string        `json:"style"`
-		IncludeDocs    bool          `json:"include_docs"`
-		Filter         string        `json:"filter"`
-		Channels       string        `json:"channels"` // a filter query param, so it has to be a string
-		DocIds         []string      `json:"doc_ids"`
-		HeartbeatMs    *uint64       `json:"heartbeat"`
-		TimeoutMs      *uint64       `json:"timeout"`
-		AcceptEncoding string        `json:"accept_encoding"`
-		ActiveOnly     bool          `json:"active_only"`  // Return active revisions only
-		RequestPlus    *bool         `json:"request_plus"` // Wait for sequence buffering to catch up to database seq value at time request was issued
-		VersionType    string        `json:"version_type"` // Version type to use for changes feed
-	}
-
-	// Initialize since clock and hasher ahead of unmarshalling sequence
-	if h.db != nil {
-		input.Since = db.CreateZeroSinceValue()
+		Feed           string          `json:"feed"`
+		Since          json.RawMessage `json:"since"`
+		Limit          int             `json:"limit"`
+		Style          string          `json:"style"`
+		IncludeDocs    bool            `json:"include_docs"`
+		Filter         string          `json:"filter"`
+		Channels       string          `json:"channels"` // a filter query param, so it has to be a string
+		DocIds         []string        `json:"doc_ids"`
+		HeartbeatMs    *uint64         `json:"heartbeat"`
+		TimeoutMs      *uint64         `json:"timeout"`
+		AcceptEncoding string          `json:"accept_encoding"`
+		ActiveOnly     bool            `json:"active_only"`  // Return active revisions only
+		RequestPlus    *bool           `json:"request_plus"` // Wait for sequence buffering to catch up to database seq value at time request was issued
+		VersionType    string          `json:"version_type"` // Version type to use for changes feed
 	}
 
 	if err = base.JSONUnmarshal(jsonData, &input); err != nil {
 		return
 	}
 	feed = input.Feed
-	options.Since = input.Since
+	// Since is captured as raw JSON so the client's unparsed value survives for logging - see
+	// ChangesOptions.sinceString.  Accepts both a quoted string ("3::2") and a bare number (3).
+	if len(input.Since) > 0 {
+		options.SinceRaw = base.ConvertJSONString(string(input.Since))
+		if options.Since, err = db.ParsePlainSequenceID(options.SinceRaw); err != nil {
+			return
+		}
+	} else {
+		options.Since = db.CreateZeroSinceValue()
+	}
 	options.Limit = input.Limit
 
 	options.Conflicts = input.Style == "all_docs"
