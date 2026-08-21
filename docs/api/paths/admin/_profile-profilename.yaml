@@ -18,6 +18,12 @@ parameters:
         - threadcreate
         - mutex
         - goroutine
+      x-enumDescriptions:
+        heap: A snapshot of memory usage, useful for spotting memory leaks.
+        block: Where the server is waiting on locks or channels.
+        threadcreate: Where new OS threads were created.
+        mutex: Where goroutines are contending for the same lock.
+        goroutine: A snapshot of everything the server is currently doing.
 post:
   summary: Create point-in-time profile
   description: |-
