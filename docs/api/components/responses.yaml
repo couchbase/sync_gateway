@@ -157,9 +157,9 @@ all-docs:
                       type: string
             uniqueItems: true
           total_rows:
-            type: number
+            type: integer
           update_seq:
-            type: number
+            type: integer
         required:
           - rows
           - total_rows
