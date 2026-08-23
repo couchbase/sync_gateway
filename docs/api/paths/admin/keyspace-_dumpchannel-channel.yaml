@@ -30,6 +30,8 @@ get:
       description: Starts the results from the change immediately after the given sequence number.
       schema:
         type: integer
+        format: int64
+        minimum: 0
   responses:
     '200':
       description: Successfully got all documents in the channel
