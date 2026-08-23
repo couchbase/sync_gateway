@@ -50,7 +50,7 @@ post:
             redact_level:
               description: The redaction level to use for redacting the collected logs.
               type: string
-              default: partial
+              default: none
               enum:
                 - partial
                 - none
