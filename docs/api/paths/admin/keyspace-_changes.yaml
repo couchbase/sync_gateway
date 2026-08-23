@@ -163,7 +163,7 @@ post:
               description: Maximum number of changes to return.
               type: integer
             since:
-              description: Starts the results from the change immediately after the given sequence ID. Sequence IDs should be considered opaque; they come from the last_seq property of a prior response.
+              description: Starts the results from the change immediately after the given sequence ID. Sequence IDs should be considered opaque; they come from the last_seq property of a prior response. Accepts either a string or, for a simple sequence, a number.
               oneOf:
                 - type: string
                 - type: integer
