@@ -586,7 +586,9 @@ Changes-feed:
         properties:
           seq:
             description: The change sequence number.
-            type: integer
+            oneOf:
+              - type: integer
+              - type: string
           id:
             description: The document ID the change happened on.
             type: string
