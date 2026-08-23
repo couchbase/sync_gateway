@@ -1614,7 +1614,7 @@ Database:
         The maximum depth a document's revision tree can grow to.
       type: integer
       default: 50
-      minimum: 0
+      minimum: 1
     roles:
       additionalProperties:
         x-additionalPropertiesName: rolename
