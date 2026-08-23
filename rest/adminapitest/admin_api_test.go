@@ -1205,7 +1205,7 @@ func TestMultipleBucketWithBadDbConfigScenario1(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		databaseNames := rt3.ServerContext().AllDatabaseNames()
 		assert.Empty(c, databaseNames)
-	}, 10*time.Second, 100*time.Millisecond)
+	}, rest.ConfigPollingWaitTimeout, 100*time.Millisecond)
 
 	// assert a request to the db fails with correct error message
 	resp := rt3.SendAdminRequest(http.MethodGet, "/db1/_config", "")
@@ -1273,7 +1273,7 @@ func TestMultipleBucketWithBadDbConfigScenario2(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		validDatabase := rt3.ServerContext().AllDatabases()
 		assert.Len(c, validDatabase, 1)
-	}, 10*time.Second, 100*time.Millisecond)
+	}, rest.ConfigPollingWaitTimeout, 100*time.Millisecond)
 }
 
 // TestMultipleBucketWithBadDbConfigScenario3:
@@ -1401,7 +1401,7 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				_, err := rt.ServerContext().GetActiveDatabase(dbName)
 				assert.ErrorIs(c, err, base.ErrNotFound)
-			}, 10*time.Second, 100*time.Millisecond)
+			}, rest.ConfigPollingWaitTimeout, 100*time.Millisecond)
 
 			// assert that a request to the database fails with correct error message
 			resp = rt.SendAdminRequest(http.MethodGet, "/db1/_config", "")

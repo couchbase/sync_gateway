@@ -1097,6 +1097,12 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState string) {
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
+// ConfigPollingWaitTimeout is the timeout to use for waits that depend on the config polling loop picking up a
+// change made directly in the bucket. A poll that reads the config registry before such a change and the database
+// config document after it spends defaultConfigRetryTimeout in getConfigVersionWithRetry before rolling the
+// registry back, so these waits must tolerate more than that to avoid being flaky.
+const ConfigPollingWaitTimeout = defaultConfigRetryTimeout + 10*time.Second
+
 // WaitForDatabase waits for the named database to become active on the server context (e.g. after config polling picks up a valid config), and returns its database context. Fails the test harness if this does not happen within the timeout.
 func (rt *RestTester) WaitForDatabase(dbName string) *db.DatabaseContext {
 	rt.TB().Helper()
@@ -1105,7 +1111,7 @@ func (rt *RestTester) WaitForDatabase(dbName string) *db.DatabaseContext {
 		var err error
 		dbCtx, err = rt.ServerContext().GetActiveDatabase(dbName)
 		assert.NoError(c, err)
-	}, 10*time.Second, 100*time.Millisecond)
+	}, ConfigPollingWaitTimeout, 100*time.Millisecond)
 	return dbCtx
 }
 
@@ -1115,7 +1121,7 @@ func (rt *RestTester) WaitForInvalidDatabases(dbNames ...string) {
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		invalidDatabases := rt.ServerContext().AllInvalidDatabaseNames(rt.TB())
 		assert.ElementsMatch(c, dbNames, invalidDatabases)
-	}, 10*time.Second, 100*time.Millisecond)
+	}, ConfigPollingWaitTimeout, 100*time.Millisecond)
 }
 
 // WaitForBucketMetadataMigrationComplete polls the bucket-wide metadata migration status doc until
