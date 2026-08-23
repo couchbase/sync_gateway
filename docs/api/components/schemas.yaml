@@ -1274,8 +1274,10 @@ Database:
                       type: boolean
                       default: false
         max_processes:
-          description: The maximum amount of concurrent event handling independent functions that can be running at the same time.
+          description: The maximum amount of concurrent event handling independent functions that can be running at the same time. Setting to 0 uses the default.
           type: integer
+          default: 500
+          minimum: 0
         wait_for_process:
           description: The maximum amount of time (in milliseconds) to wait when the event queue is full.
           type: string
@@ -1613,8 +1615,6 @@ Database:
     revs_limit:
       description: |-
         The maximum depth a document's revision tree can grow to.
-
-        Defaults to 100 when `allow_conflicts` is enabled, and must be at least 20 in that case.
       type: integer
       default: 50
       minimum: 1
