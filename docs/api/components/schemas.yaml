@@ -1615,8 +1615,6 @@ Database:
     revs_limit:
       description: |-
         The maximum depth a document's revision tree can grow to.
-
-        Defaults to 100 when `allow_conflicts` is enabled, and must be at least 20 in that case.
       type: integer
       default: 50
       minimum: 1
