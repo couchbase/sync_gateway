@@ -13,11 +13,13 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/testing/require"
 
@@ -267,7 +269,7 @@ func TestStatsSerializationConcurrentWithDBRegistration(t *testing.T) {
 			}
 		})
 	}
-	wg.Wait()
+	WaitWithTimeout(t, &wg, time.Minute)
 }
 
 // TestClearDBStatsConcurrentWithReplicatorRegistration is a regression test for ClearDBStats
@@ -287,6 +289,7 @@ func TestClearDBStatsConcurrentWithReplicatorRegistration(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
+	defer WaitWithTimeout(t, &wg, time.Minute)
 	wg.Go(func() {
 		for i := range 100 {
 			_, err := dbStats.DBReplicatorStats(fmt.Sprintf("repl_%d", i))
@@ -296,7 +299,6 @@ func TestClearDBStatsConcurrentWithReplicatorRegistration(t *testing.T) {
 
 	// Iterates DbReplicatorStats concurrently with the registrations above.
 	stats.ClearDBStats(dbName)
-	wg.Wait()
 }
 
 // newTestDbStats returns a DbStats holding only the replicator map, bypassing NewDBStats so a test
@@ -306,8 +308,8 @@ func newTestDbStats(dbName string) *DbStats {
 }
 
 // TestDBReplicatorStatsFailedRegistrationNotCached checks that a DBReplicatorStats call which fails
-// partway through registration leaves nothing usable-looking behind. The entry is added to the map
-// before its stats are populated, so a retry returns a struct of nil stats and no error.
+// partway through registration caches nothing, so a caller can never be handed a half-populated
+// entry - the failure is reported again instead.
 func TestDBReplicatorStatsFailedRegistrationNotCached(t *testing.T) {
 	// TestMain sets this true, which would skip registration and so never produce a failure.
 	defer func(skip bool) { SkipPrometheusStatsRegistration = skip }(SkipPrometheusStatsRegistration)
@@ -328,17 +330,15 @@ func TestDBReplicatorStatsFailedRegistrationNotCached(t *testing.T) {
 	_, err = second.DBReplicatorStats(replicationID)
 	require.Error(t, err, "expected the duplicate Prometheus registration to fail")
 
-	retry, err := second.DBReplicatorStats(replicationID)
-	if err != nil {
-		return // reporting the failure to the caller is the correct behaviour
-	}
-	require.NotNil(t, retry.NumAttachmentBytesPushed,
-		"retry returned a cached half-initialized entry with no error")
+	require.NotContains(t, maps.Keys(second.DbReplicatorStats), replicationID,
+		"a failed registration was cached")
+
+	_, err = second.DBReplicatorStats(replicationID)
+	require.Error(t, err, "expected the retry to report the registration failure again")
 }
 
 // TestDBReplicatorStatsConcurrentSameID checks that concurrent callers for one replication ID never
-// see the entry before its stats are populated. The entry is published to the map before the fields
-// are set, so a caller that arrives during that window receives a struct of nil stats.
+// see the entry before its stats are populated.
 func TestDBReplicatorStatsConcurrentSameID(t *testing.T) {
 	dbStats := newTestDbStats("TestDBReplicatorStatsConcurrentSameID_db")
 
@@ -355,8 +355,8 @@ func TestDBReplicatorStatsConcurrentSameID(t *testing.T) {
 				if !assert.NoError(t, err) {
 					return
 				}
-				// The last field DBReplicatorStats populates, so it stays nil for the whole
-				// window between publishing the entry and finishing it.
+				// The last field DBReplicatorStats populates, so it is the one left nil by an
+				// entry published before it was finished.
 				if replicatorStats.ProcessedSequenceLenPostCleanup == nil {
 					partial.Add(1)
 				}
@@ -364,7 +364,7 @@ func TestDBReplicatorStatsConcurrentSameID(t *testing.T) {
 		}
 		close(start)
 	}
-	wg.Wait()
+	WaitWithTimeout(t, &wg, time.Minute)
 
 	require.Zero(t, partial.Load(),
 		"%d callers received an entry before its stats were populated", partial.Load())

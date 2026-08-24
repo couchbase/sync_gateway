@@ -1467,13 +1467,7 @@ func (s *SgwStats) ClearDBStats(name string) {
 	dbStats.unregisterCacheStats()
 	dbStats.unregisterCBLReplicationPullStats()
 	dbStats.unregisterCBLReplicationPushStats()
-	// DBReplicatorStats() writes this map lazily, and can run while the database is torn down. Hold
-	// the mutex so iterating here cannot hit "concurrent map read and map write".
-	dbStats.dbReplicatorStatsMutex.Lock()
-	for replName := range dbStats.DbReplicatorStats {
-		dbStats.unregisterReplicationStats(replName)
-	}
-	dbStats.dbReplicatorStatsMutex.Unlock()
+	dbStats.unregisterAllReplicationStats()
 	dbStats.unregisterDatabaseStats()
 	dbStats.unregisterSecurityStats()
 
@@ -2253,6 +2247,17 @@ func (d *DbStats) initSecurityStats() error {
 		d.SecurityStats = resUtil
 	}
 	return nil
+}
+
+// unregisterAllReplicationStats unregisters the stats of every replication on this database.
+// DBReplicatorStats writes the map lazily, and can run while the database is torn down, so the
+// mutex is held for the whole iteration.
+func (d *DbStats) unregisterAllReplicationStats() {
+	d.dbReplicatorStatsMutex.Lock()
+	defer d.dbReplicatorStatsMutex.Unlock()
+	for replicationID := range d.DbReplicatorStats {
+		d.unregisterReplicationStats(replicationID)
+	}
 }
 
 func (d *DbStats) unregisterReplicationStats(replicationID string) {

@@ -438,6 +438,7 @@ func TestStatsLoggerConcurrentWithDatabaseRemoval(t *testing.T) {
 	dbName := rt.GetDatabase().Name
 
 	var wg sync.WaitGroup
+	defer base.WaitWithTimeout(t, &wg, time.Minute)
 	wg.Go(func() {
 		for range 2000 {
 			sc.updateCalculatedStats(ctx)
@@ -445,13 +446,12 @@ func TestStatsLoggerConcurrentWithDatabaseRemoval(t *testing.T) {
 	})
 
 	require.True(t, sc.RemoveDatabase(ctx, dbName, "concurrent stats test"))
-	wg.Wait()
 }
 
 // TestStatsSnapshotExcludesClosedDatabase checks that a database the stats logger can still reach is
 // never one that has been closed. updateCalculatedStats loads the snapshot pointer and then iterates
-// it without a lock, so a removal running alongside leaves it holding a closed DatabaseContext.
-// Close() does not change State, so the DBOnline guard does not skip it.
+// it without a lock, so a removal running alongside leaves it holding a closed DatabaseContext - the
+// DBOnline guard is what stops it collecting stats from one.
 func TestStatsSnapshotExcludesClosedDatabase(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
