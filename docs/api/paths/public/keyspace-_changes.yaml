@@ -140,6 +140,9 @@ post:
               type: integer
             since:
               description: Starts the results from the change immediately after the given sequence ID. Sequence IDs should be considered opaque; they come from the last_seq property of a prior response.
+              oneOf:
+                - type: string
+                - type: integer
             style:
               description: Controls whether to return the current winning revision (`main_only`) or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
               type: string
