@@ -432,7 +432,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// testBucket's closeFn
 		rt.TestBucket.Bucket = dbc.Bucket
 
-		// This is a hack to ensure that ISGR subprotcols are set before replications start.
+		// This is a hack to ensure that ISGR subprotocols are set before replications start.
 		if rt.ISGRSupportedBLIPSubprotocols != nil {
 			dbc.SGReplicateMgr.SupportedBLIPSubprotocols = rt.ISGRSupportedBLIPSubprotocols
 		}

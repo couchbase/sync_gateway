@@ -24,7 +24,7 @@ import (
 // TestISGRPeerOpts has configuration for ISGR peers in a test setup. Everything else about the peers is set by
 // SetupISGRPeersWithOpts.
 type TestISGRPeerOpts struct {
-	// supported protocols for the active peer for ISGR only. Empty means the default protocols.
+	// supported protocols for the active peer for ISGR only. Nil means the default protocols; a non-empty slice forces a specific set of protocols.
 	ActivePeerSupportedBLIPSubProtocols []string
 	// UseDeltas enables delta sync on both peers - a replication only uses deltas if both ends have them enabled.
 	UseDeltas bool
@@ -46,7 +46,7 @@ func deltaSyncConfig(enabled bool) *DeltaSyncConfig {
 
 // TestISGRPeers contains two RestTesters to be used for ISGR testing.
 type TestISGRPeers struct {
-	// ActiveRT represents the peer that initiatiates a replication.
+	// ActiveRT represents the peer that initiates a replication.
 	ActiveRT *RestTester
 	// PassiveRT represents the peer that receives a replication.
 	PassiveRT *RestTester
