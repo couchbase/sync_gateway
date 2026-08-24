@@ -29,7 +29,7 @@ repos:
         # Cache per checkout: a shared cache serves results from other clones of this module,
         # which report findings against that clone's file paths.
         entry: sh -c 'export GOLANGCI_LINT_CACHE="$(git rev-parse --absolute-git-dir)/golangci-lint-cache";
-               exec go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+               exec go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
                run --config=.golangci-strict.yml --fix=false'
         types: [go]
         pass_filenames: false

@@ -89,8 +89,8 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 		}
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		if atomic.CompareAndSwapInt64(&collectionCount, 0, 1) {
-			base.RequireChanSend(t, firstCollectionInitChannel, nil)       // notify the test that indexes have been created for this collection
-			require.NoError(t, base.RequireChanRecv(t, testSignalChannel)) // wait for the test to unblock before proceeding to the next collection
+			base.RequireChanSend(t, firstCollectionInitChannel, nil, "firstCollectionInit-%s", scName)                         // notify the test that indexes have been created for this collection
+			base.RequireChanClosedWithTimeout(t, testSignalChannel, base.TestIndexInitTimeout, "testSignalChannel-%s", scName) // wait for the test to unblock before proceeding to the next collection
 			return
 		}
 		atomic.AddInt64(&collectionCount, 1)
@@ -111,7 +111,7 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	require.NoError(t, base.RequireChanRecvWithTimeout(t, firstCollectionInitChannel, base.TestIndexInitTimeout))
+	require.NoError(t, base.RequireChanRecvWithTimeout(t, firstCollectionInitChannel, base.TestIndexInitTimeout, "first collection init"))
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -122,8 +122,8 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	// Wait for notification on both done channels.  Each one covers all the remaining collections for that database,
 	// so these waits are gated on real index creation and use TestIndexInitTimeout.
-	require.NoError(t, base.RequireChanRecvWithTimeout(t, doneChan1, base.TestIndexInitTimeout))
-	require.NoError(t, base.RequireChanRecvWithTimeout(t, doneChan2, base.TestIndexInitTimeout))
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "db1 InitializeDatabase done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "db2 InitializeDatabase done chan")
 
 	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
 	// The distinct collections are _mobile, _default, collection1, collection2, and

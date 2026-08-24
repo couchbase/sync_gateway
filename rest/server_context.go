@@ -2023,24 +2023,21 @@ func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.
 	httpTransport := &http.Transport{
 		ForceAttemptHTTP2: true,
 
-		Dial: func(network, addr string) (net.Conn, error) {
-			return httpDialer.Dial(network, addr)
-		},
-		DialTLS: func(network, addr string) (net.Conn, error) {
-			tcpConn, err := httpDialer.Dial(network, addr)
-			if err != nil {
-				return nil, err
-			}
-
-			// Update tlsConfig.ServerName based on addr
-			tlsConfig := baseTlsConfig.Clone()
+		DialContext: httpDialer.DialContext,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Update tlsConfig.ServerName based on addr, before dialing, to avoid leaking the connection on error
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, err
 			}
+			tlsConfig := baseTlsConfig.Clone()
 			tlsConfig.ServerName = host
-			tlsConn := tls.Client(tcpConn, tlsConfig)
-			return tlsConn, nil
+
+			tcpConn, err := httpDialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			return tls.Client(tcpConn, tlsConfig), nil
 		},
 		MaxIdleConns:        base.DefaultHttpMaxIdleConns,
 		MaxIdleConnsPerHost: base.DefaultHttpMaxIdleConnsPerHost,

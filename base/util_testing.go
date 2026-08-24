@@ -1080,47 +1080,52 @@ const (
 )
 
 // RequireChanSend performs a blocking send on a channel with a TestChanTimeout timeout. Fails the test if the send cannot complete in time.
-func RequireChanSend[T any](t testing.TB, ch chan<- T, val T) {
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireChanSend[T any](t testing.TB, ch chan<- T, val T, msgAndArgs ...any) {
 	t.Helper()
-	RequireChanSendWithTimeout(t, ch, val, TestChanTimeout)
+	RequireChanSendWithTimeout(t, ch, val, TestChanTimeout, msgAndArgs...)
 }
 
 // RequireChanSendWithTimeout performs a blocking send on a channel with a timeout. Fails the test if the send cannot complete in time.
-func RequireChanSendWithTimeout[T any](t testing.TB, ch chan<- T, val T, timeout time.Duration) {
+func RequireChanSendWithTimeout[T any](t testing.TB, ch chan<- T, val T, timeout time.Duration, msgAndArgs ...any) {
 	t.Helper()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case ch <- val:
 	case <-timer.C:
-		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout), msgAndArgs...)
 	}
 }
 
-// RequireChanRecv reads from a channel with a TestChanTimeout timeout. Fails the test if no value arrives in time.
-func RequireChanRecv[T any](t testing.TB, ch <-chan T) T {
+// RequireChanRecv reads from a channel with a TestChanTimeout timeout. Fails the test if no value arrives in time,
+// or if the channel is closed without a value being sent - use RequireChanClosed for channels that signal by closing.
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireChanRecv[T any](t testing.TB, ch <-chan T, msgAndArgs ...any) T {
 	t.Helper()
-	return RequireChanRecvWithTimeout(t, ch, TestChanTimeout)
+	return RequireChanRecvWithTimeout(t, ch, TestChanTimeout, msgAndArgs...)
 }
 
 // RequireChanRecvWithTimeout reads from a channel with a timeout. Fails the test if no value arrives in time.
-func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration) T {
+func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration, msgAndArgs ...any) T {
 	t.Helper()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case val, ok := <-ch:
-		require.True(t, ok, "channel closed without sending a value")
+		if !ok {
+			require.FailNow(t, "channel closed without sending a value", msgAndArgs...)
+		}
 		return val
 	case <-timer.C:
-		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel read", timeout))
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel read", timeout), msgAndArgs...)
 		return *new(T) // unreachable
 	}
 }
 
 // RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
 // Fails the test if the channel is not closed in time.
-func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration) {
+func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration, msgAndArgs ...any) {
 	t.Helper()
 	for {
 		select {
@@ -1131,16 +1136,38 @@ func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time
 			}
 			return
 		case <-time.After(timeout):
-			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel close", timeout), msgAndArgs...)
+		}
+	}
+}
+
+// RequireNoErrorOnChanCloseWithTimeout waits for an error channel to be closed, failing the test if a non-nil
+// error is sent before the close, or if the channel isn't closed within the timeout.  Use this for channels that
+// report success by closing without a send, and failure by sending an error before closing.
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireNoErrorOnChanCloseWithTimeout(t testing.TB, ch <-chan error, timeout time.Duration, msgAndArgs ...any) {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case err, ok := <-ch:
+			if !ok {
+				return
+			}
+			require.NoError(t, err, msgAndArgs...)
+		case <-timer.C:
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel close", timeout), msgAndArgs...)
 		}
 	}
 }
 
 // RequireChanClosed waits for channel to be closed. Will drain the channel if required.
 // Fails the test if the channel is not closed in TestChanTimeout.
-func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireChanClosed[T any](t testing.TB, ch <-chan T, msgAndArgs ...any) {
 	t.Helper()
-	RequireChanClosedWithTimeout(t, ch, TestChanTimeout)
+	RequireChanClosedWithTimeout(t, ch, TestChanTimeout, msgAndArgs...)
 }
 
 // RequireDocsVisibleToRangeScan blocks until every docID is returned by a KV range scan of
