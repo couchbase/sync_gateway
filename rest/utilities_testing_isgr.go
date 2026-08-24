@@ -277,3 +277,11 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 		PassiveDBURL: passiveDBURL.String(),
 	}
 }
+
+// DbReplicatorStats returns the replication stats for the given database and replication ID. Stats are cached per
+// replication ID, so replicators needing independent stats need distinct IDs.
+func DbReplicatorStats(t testing.TB, database *db.DatabaseContext, replicationID string) *base.DbReplicatorStats {
+	dbstats, err := database.DbStats.DBReplicatorStats(replicationID)
+	require.NoError(t, err)
+	return dbstats
+}

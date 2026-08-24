@@ -71,7 +71,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:    200,
-					ReplicationStatsMap: dbReplicatorStats(t),
+					ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
 					CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:          false,
 				})
@@ -191,7 +191,7 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 			},
 			ChangesBatchSize:           200,
 			ConflictResolverFuncForHLV: resolverFunc,
-			ReplicationStatsMap:        dbReplicatorStats(t),
+			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			Continuous:                 false,
 		})
@@ -310,7 +310,7 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:    200,
-					ReplicationStatsMap: dbReplicatorStats(t),
+					ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
 					CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:          false,
 				})
