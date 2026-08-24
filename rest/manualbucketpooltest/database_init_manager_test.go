@@ -122,8 +122,8 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	// Wait for notification on both done channels.  Each one covers all the remaining collections for that database,
 	// so these waits are gated on real index creation and use TestIndexInitTimeout.
-	base.RequireChanClosedWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "db1 InitializeDatabase done chan")
-	base.RequireChanClosedWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "db2 InitializeDatabase done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "db1 InitializeDatabase done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "db2 InitializeDatabase done chan")
 
 	// Verify initialization/checks were run 7 times total: 3 for db1 and 4 for db2.
 	// The distinct collections are _mobile, _default, collection1, collection2, and

@@ -1141,6 +1141,27 @@ func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time
 	}
 }
 
+// RequireNoErrorOnChanCloseWithTimeout waits for an error channel to be closed, failing the test if a non-nil
+// error is sent before the close, or if the channel isn't closed within the timeout.  Use this for channels that
+// report success by closing without a send, and failure by sending an error before closing.
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireNoErrorOnChanCloseWithTimeout(t testing.TB, ch <-chan error, timeout time.Duration, msgAndArgs ...any) {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case err, ok := <-ch:
+			if !ok {
+				return
+			}
+			require.NoError(t, err, msgAndArgs...)
+		case <-timer.C:
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel close", timeout), msgAndArgs...)
+		}
+	}
+}
+
 // RequireChanClosed waits for channel to be closed. Will drain the channel if required.
 // Fails the test if the channel is not closed in TestChanTimeout.
 // msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.

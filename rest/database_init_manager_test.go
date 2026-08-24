@@ -55,7 +55,7 @@ func TestDatabaseInitManager(t *testing.T) {
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
-	base.RequireChanClosedWithTimeout(t, doneChan, base.TestIndexInitTimeout, "initial init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan, base.TestIndexInitTimeout, "initial init done chan")
 
 }
 
@@ -104,7 +104,7 @@ func TestDatabaseInitPostMigrationExcludesDefault(t *testing.T) {
 	// migrationComplete=true models a system-metadata database that has finished migrating off _default.
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, true)
 	require.NoError(t, err)
-	base.RequireChanClosedWithTimeout(t, doneChan, base.TestIndexInitTimeout, "post-migration init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan, base.TestIndexInitTimeout, "post-migration init done chan")
 
 	seenLock.Lock()
 	defer seenLock.Unlock()
@@ -502,8 +502,8 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	base.RequireChanClosedWithTimeout(t, doneChan, base.TestIndexInitTimeout, "first init done chan")
-	base.RequireChanClosedWithTimeout(t, duplicateDoneChan, base.TestIndexInitTimeout, "duplicate init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan, base.TestIndexInitTimeout, "first init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, duplicateDoneChan, base.TestIndexInitTimeout, "duplicate init done chan")
 
 	// Verify initialization was only run for two collections
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -514,7 +514,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	// Rerun init, should start a new worker for the database and re-verify init for each collection
 	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
-	base.RequireChanClosedWithTimeout(t, rerunDoneChan, base.TestIndexInitTimeout, "repeated init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, rerunDoneChan, base.TestIndexInitTimeout, "repeated init done chan")
 	totalCount = atomic.LoadInt64(&collectionCount)
 	require.Equal(t, expectedCollectionCount*2, totalCount)
 }
@@ -600,7 +600,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	require.Error(t, cancelErr, "expected first init to be cancelled")
 
 	// Wait for notification on new done channel
-	base.RequireChanClosedWithTimeout(t, modifiedDoneChan, base.TestIndexInitTimeout, "modified init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, modifiedDoneChan, base.TestIndexInitTimeout, "modified init done chan")
 
 	// Verify initialization was run for four collections (one prior to cancellation, three for subsequent init)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -698,8 +698,8 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	base.RequireChanClosedWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "db1 init done chan")
-	base.RequireChanClosedWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "db2 init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "db1 init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "db2 init done chan")
 
 	// Wait for db completion notifications for both databases
 	require.NoError(t, base.RequireChanRecv(t, databaseCompleteChannel, "database 1 init complete"))
@@ -766,7 +766,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 			log.Printf("invoking InitializeDatabase again during teardown")
 			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 			require.NoError(t, err)
-			base.RequireChanClosedWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "init done chan for re-invocation during teardown")
+			base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan2, base.TestIndexInitTimeout, "init done chan for re-invocation during teardown")
 		}
 	}
 
@@ -774,7 +774,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
-	base.RequireChanClosedWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "initial init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan1, base.TestIndexInitTimeout, "initial init done chan")
 	wg.Wait()
 
 	// Verify initialization was run for 8 collections, since it runs on 4 collections twice
