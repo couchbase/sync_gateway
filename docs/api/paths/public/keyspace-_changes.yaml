@@ -95,6 +95,12 @@ get:
           - longpoll
           - continuous
           - websocket
+    - name: request_plus
+      in: query
+      description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
+      schema:
+        type: boolean
+        default: false
     - name: version_type
       in: query
       description: 'The preferred type of document versioning to use for the changes feed.'
@@ -131,13 +137,15 @@ post:
           properties:
             limit:
               description: Maximum number of changes to return.
-              type: string
+              type: integer
+            since:
+              description: Starts the results from the change immediately after the given sequence ID. Sequence IDs should be considered opaque; they come from the last_seq property of a prior response.
             style:
               description: Controls whether to return the current winning revision (`main_only`) or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
               type: string
             active_only:
               description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
-              type: string
+              type: boolean
             include_docs:
               description: Include the body associated with each document.
               type: boolean
@@ -157,13 +165,27 @@ post:
                 type: string
             heartbeat:
               description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration.
-              type: string
+              type: integer
             timeout:
               description: 'This is the maximum period (in milliseconds) to wait for a change before the response is sent, even if there are no results. This is only applicable for `feed=longpoll` or `feed=continuous` changes feeds. Setting to 0 results in no timeout.'
-              type: string
+              type: integer
             feed:
               description: 'The type of changes feed to use. '
               type: string
+            request_plus:
+              description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
+              type: boolean
+              default: false
+            version_type:
+              description: The preferred type of document versioning to use for the changes feed.
+              type: string
+              default: rev
+              enum:
+                - rev
+                - cv
+              x-enumDescriptions:
+                rev: 'Revision Tree IDs. For example: 1-293a80ce8f4874724732f27d35b3959a13cd96e0'
+                cv: 'Current Version. For example: 1854e4e557cc0000@zTWkmBiYZgNQo7BHVZrB/Q'
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed
