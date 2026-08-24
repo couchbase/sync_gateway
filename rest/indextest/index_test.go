@@ -132,7 +132,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		require.NoError(t, base.RequireChanRecv(t, unblockInit))
+		base.RequireChanClosedWithTimeout(t, unblockInit, base.TestIndexInitTimeout, "waiting for test to unblock initialization")
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
@@ -156,7 +156,7 @@ func TestAsyncInitializeIndexes(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db
-	require.NoError(t, base.RequireChanRecv(t, initStarted))
+	base.RequireChanClosedWithTimeout(t, initStarted, base.TestIndexInitTimeout, "waiting for initialization to start")
 	log.Printf("initialization started")
 
 	// Get config values before taking db offline
@@ -263,7 +263,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		require.NoError(t, base.RequireChanRecv(t, unblockInit))
+		base.RequireChanClosedWithTimeout(t, unblockInit, base.TestIndexInitTimeout, "waiting for test to unblock initialization")
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 	// Recreate the database with offline=true and a modified sync function
@@ -278,7 +278,7 @@ func TestAsyncInitWithResync(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before calling resync
-	require.NoError(t, base.RequireChanRecv(t, initStarted))
+	base.RequireChanClosedWithTimeout(t, initStarted, base.TestIndexInitTimeout, "waiting for initialization to start")
 	log.Printf("initialization started")
 
 	// Start resync
@@ -350,7 +350,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		require.NoError(t, base.RequireChanRecv(t, unblockInit))
+		base.RequireChanClosedWithTimeout(t, unblockInit, base.TestIndexInitTimeout, "waiting for test to unblock initialization")
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
@@ -376,7 +376,7 @@ func TestAsyncOnlineOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	require.NoError(t, base.RequireChanRecv(t, initStarted))
+	base.RequireChanClosedWithTimeout(t, initStarted, base.TestIndexInitTimeout, "waiting for initialization to start")
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 	verifyInitializationActive(t, sc, dbName, true)
@@ -471,7 +471,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		require.NoError(t, base.RequireChanRecv(t, unblockInit))
+		base.RequireChanClosedWithTimeout(t, unblockInit, base.TestIndexInitTimeout, "waiting for test to unblock initialization")
 	}
 	firstDatabaseComplete := make(chan error)
 	databaseCompleteCount := int64(0)
@@ -510,7 +510,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	require.NoError(t, base.RequireChanRecv(t, initStarted))
+	base.RequireChanClosedWithTimeout(t, initStarted, base.TestIndexInitTimeout, "waiting for initialization to start")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 
 	// Take the database online while async init is still in progress, verify state goes to Starting
@@ -528,7 +528,7 @@ func TestAsyncCreateThenDelete(t *testing.T) {
 
 	close(unblockInit)
 
-	require.NoError(t, base.RequireChanRecv(t, firstDatabaseComplete))
+	base.RequireChanClosedWithTimeout(t, firstDatabaseComplete, base.TestIndexInitTimeout, "waiting for database complete callback")
 
 	// Verify only one collection was initialized asynchronously (in-progress when database was deleted)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -621,7 +621,7 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		require.NoError(t, base.RequireChanRecv(t, unblockInit))
+		base.RequireChanClosedWithTimeout(t, unblockInit, base.TestIndexInitTimeout, "waiting for test to unblock initialization")
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
@@ -645,7 +645,7 @@ func TestAsyncInitConfigUpdates(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	require.NoError(t, base.RequireChanRecv(t, initStarted))
+	base.RequireChanClosedWithTimeout(t, initStarted, base.TestIndexInitTimeout, "waiting for initialization to start")
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 
@@ -738,7 +738,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 			log.Printf("closing initStarted")
 			close(initStarted)
 		}
-		require.NoError(t, base.RequireChanRecv(t, unblockInit))
+		base.RequireChanClosedWithTimeout(t, unblockInit, base.TestIndexInitTimeout, "waiting for test to unblock initialization")
 	}
 	sc.DatabaseInitManager.SetTestCallbacks(collectionCompleteCallback, nil)
 
@@ -774,7 +774,7 @@ func TestAsyncInitRemoteConfigUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for init to start before interacting with the db, validate db state is offline
-	require.NoError(t, base.RequireChanRecv(t, initStarted))
+	base.RequireChanClosedWithTimeout(t, initStarted, base.TestIndexInitTimeout, "waiting for initialization to start")
 	log.Printf("initialization started")
 	waitAndRequireDBState(t, sc, dbName, db.DBOffline)
 
