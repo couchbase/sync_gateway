@@ -428,8 +428,8 @@ func (c *clusterUpdater) stopUpdating() {
 	close(c.terminator)
 
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.stopped = true
-	c.lock.Unlock()
 }
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
@@ -625,20 +625,28 @@ func (m *sgReplicateManager) startAssignedReplication(ctx context.Context, repli
 		return false
 	}
 
-	m.activeReplicatorsLock.Lock()
-	if m.isStopping() {
-		m.activeReplicatorsLock.Unlock()
+	if stopping := m.storeActiveReplicator(replicationID, activeReplicator); stopping {
 		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - not starting replication %s", replicationID)
 		return true
 	}
-	m.activeReplicators[replicationID] = activeReplicator
-	m.activeReplicatorsLock.Unlock()
 
 	if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
 		if startErr := activeReplicator.Start(ctx); startErr != nil {
 			base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
 		}
 	}
+	return false
+}
+
+// storeActiveReplicator adds activeReplicator to the set of replications running on this node, and returns
+// true if the manager began stopping, in which case nothing was stored.
+func (m *sgReplicateManager) storeActiveReplicator(replicationID string, activeReplicator *ActiveReplicator) (stopping bool) {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	if m.isStopping() {
+		return true
+	}
+	m.activeReplicators[replicationID] = activeReplicator
 	return false
 }
 
@@ -872,16 +880,7 @@ func (m *sgReplicateManager) Stop() {
 	// 3. subscribeNodeSetChanges: the heartbeat listener's node set subscription, stopped just above
 	m.closeWg.Wait()
 
-	// Stop active replications
-	m.activeReplicatorsLock.Lock()
-
-	for _, repl := range m.activeReplicators {
-		err := repl.Stop()
-		if err != nil {
-			base.WarnfCtx(m.loggingCtx, "Error stopping replication %s during manager stop: %v", repl.ID, err)
-		}
-	}
-	m.activeReplicatorsLock.Unlock()
+	m.stopActiveReplicators()
 
 	// Remove the node only once its replications are stopped, so that another node does not pick them up
 	// while they are still running here.
@@ -889,6 +888,17 @@ func (m *sgReplicateManager) Stop() {
 		base.WarnfCtx(m.loggingCtx, "Attempt to remove node %v from sg-replicate cfg got error: %v", m.localNodeUUID, err)
 	}
 	m.clusterUpdater.stopUpdating()
+}
+
+// stopActiveReplicators stops all replications currently running on this node.
+func (m *sgReplicateManager) stopActiveReplicators() {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	for _, repl := range m.activeReplicators {
+		if err := repl.Stop(); err != nil {
+			base.WarnfCtx(m.loggingCtx, "Error stopping replication %s during manager stop: %v", repl.ID, err)
+		}
+	}
 }
 
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
