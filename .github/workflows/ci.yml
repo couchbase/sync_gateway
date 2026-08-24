@@ -78,7 +78,7 @@ jobs:
       - name: golangci-lint
         uses: *actions_golangci_lint_version
         with:
-          version: v2.12.2
+          version: v2.13.1
           args: --config=.golangci-strict.yml
 
   test:
