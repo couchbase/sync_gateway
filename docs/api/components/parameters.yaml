@@ -276,7 +276,7 @@ open_revs:
   schema:
     type: string
   example: '["1-abc","2-def"]'
-  description: 'Option to fetch specified revisions of the document. The value can be `all` to fetch all leaf revisions, or a serialized JSON array of revision numbers (i.e. `open_revs=["rev1", "rev2"]`). Only leaf revision bodies that haven''t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
+  description: 'Option to fetch specified revisions of the document. The value can be `all` to fetch all leaf revisions, or a serialized JSON array of revision IDs (i.e. `open_revs=["1-abc", "2-def"]`). Only leaf revision bodies that haven''t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
 pprof-seconds:
   name: seconds
   in: query
