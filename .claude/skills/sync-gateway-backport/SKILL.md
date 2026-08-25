@@ -84,10 +84,11 @@ Skip tickets whose *backport* ticket is already `In Review`/`Resolved` unless as
 
 ## Prerequisites
 
-A conflict often means the release branch is missing a change the backport builds on. Find it before resolving by hand:
+A conflict — or a hunk that calls something the release branch doesn't have — usually means the release branch is missing a change the backport builds on. Find it before resolving by hand, and before concluding that anything has to be dropped:
 
 ```bash
 git log --oneline origin/main -L :<conflicted-function>:<file>   # what touched this before
+git log --oneline -1 -S'<missing symbol>' origin/main -- <dir>/  # which commit introduced a helper or util
 git log --oneline origin/release/x.y.z -i --grep='CBG-<candidate>'  # is it on the branch?
 ```
 
@@ -98,6 +99,14 @@ git log --oneline origin/release/x.y.z -i --grep='CBG-<candidate>'  # is it on t
 | No backport ticket, higher risk — behaviour change, wide blast radius, or you can't tell | **Stop and ask** (AskUserQuestion): backport the prerequisite / adapt the change to the release branch without it / skip the backport |
 
 Adapting around a missing prerequisite is legitimate but costs more and diverges from upstream: every adaptation is a place the branches can drift. If you adapt, list each deviation in the PR body. **Re-run the cherry-pick once the prerequisite is in place** — conflicts frequently vanish entirely and the diff becomes upstream-identical, which is worth far more than a clever manual merge.
+
+### Dropping part of an upstream commit is never your call
+
+A hunk that won't apply because a symbol it uses is missing — a test helper in the same package, a `base` utility, a changed signature — is a missing prerequisite, not a file that doesn't exist on the branch. Run the lookup above on the *missing symbol* first. The two cheapest cases are also the two most common, and the table above already classifies both as low risk to stack: a helper defined in the same test package, and a `*_testing.go` utility in `base`.
+
+If you still believe a hunk should be dropped, **stop and ask** (AskUserQuestion). Recording the drop in the commit message and the PR body is not a substitute for asking — the reviewer meets the decision after it is made, on a branch that looks finished. Offer the real options: backport the prerequisite and apply the commit whole / drop the hunk / skip this backport, and say what each one costs.
+
+**Name the tests, not the files.** "Dropped the `admin_api_test.go` half" reads like a packaging detail; "`TestDCPResyncCollectionsStatus` keeps the 1000-doc timing race this commit was removing" is the actual consequence, and it is the sentence that lets a reviewer overrule you. Half-applying a flake fix is the worst version of this: the backport looks done, CI is green on the run you watched, and the flake is still on the branch.
 
 ## Stacking dependent backports
 
@@ -218,7 +227,8 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - Leaving the auto-generated PR body or the repo PR template in place
 - Submitting or editing a PR body without the `sync-gateway-backport` attribution footer
 - Claiming `test-only` from the commit subject or the ticket instead of the file list — a reviewer who trusts that line skips the production change hidden under it
-- Silently dropping part of the upstream commit because the file doesn't exist on the release branch — find where that code lives on the branch, or say you dropped it
+- Dropping part of the upstream commit on your own judgement — a missing helper is a prerequisite question, and the answer is the user's
+- Half-applying a flake fix: the tests still on the old timing trick keep flaking, and a green CI run proves nothing about them
 
 ## Common mistakes
 
@@ -228,6 +238,9 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | Upstream title pasted whole, keeping its `CBG-nnnn:` prefix | Strip it — one ticket reference per title |
 | `cherry-pick --continue` leaves the upstream commit subject | `git commit --amend` to the backport message |
 | Dropping an upstream test file that has no counterpart on the branch | Apply its changes to wherever that test lives on the release branch |
+| A hunk dropped because a helper it calls doesn't exist on the branch | That helper is a prerequisite — find its commit with `git log -S`, stack it, and apply the hunk whole |
+| Dropping a hunk and documenting it in the commit/PR body instead of asking | The body explains a decision already made. Ask first with AskUserQuestion |
+| Deviation bullet names the file that was dropped | Name the tests that lost the fix, and what they go back to doing |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
 | `test-only` withheld because the PR touches a test helper or the `testing/` package | Test-support code counts as test code — see the pattern table. Only a real production file blocks the marker |
