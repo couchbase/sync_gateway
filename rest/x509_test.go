@@ -118,7 +118,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	status := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+	status := rt.WaitForAttachmentCompactionStatus(db.BackgroundProcessStateCompleted)
 	assert.Equal(t, int64(20), status.MarkedAttachments)
 }
 
