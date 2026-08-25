@@ -21,7 +21,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -1668,4 +1670,290 @@ func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
 			require.Equal(t, attachmentMigrationCASRetryExpected, GetRawGlobalSyncAttachments(t, ds, docID))
 		})
 	}
+}
+
+// bodyWithAttachment is a document body with a single inline attachment, used by the attachment metadata
+// write-path tests.
+func bodyWithAttachment() Body {
+	return Body{
+		"value":         1234,
+		BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+	}
+}
+
+// requireAttachmentMetadataPreserved asserts that the named attachment is still described by
+// _globalSync.attachments_meta with the given digest and length, and that no metadata was left behind in
+// _sync.attachments. Revpos is deliberately not asserted, as write paths legitimately re-stamp it.
+func requireAttachmentMetadataPreserved(t *testing.T, ds base.DataStore, docID, attName, digest string, length int) {
+	t.Helper()
+	require.Empty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0, "attachment metadata should not be left in _sync")
+	atts := GetRawGlobalSyncAttachments(t, ds, docID)
+	att, ok := atts[attName]
+	require.True(t, ok, "attachment %q missing from _globalSync.attachments_meta, found %v", attName, atts)
+	require.Equal(t, digest, att.Digest)
+	require.Equal(t, length, att.Length)
+}
+
+// TestVersionCASCorrectionPreservesGlobalXattr covers the corrective re-stamp path
+// (correctVersionAheadOfCAS -> restampVersionCAS), which re-persists _sync, _vv and _mou from the in-memory
+// document after a write. That marshal excludes the global xattr, so the re-stamp must leave the attachment
+// metadata the write itself put in _globalSync alone.
+//
+// TestWritePathsPreserveUnmigratedAttachmentMetadata covers the same path against a document whose
+// attachment metadata has not been migrated out of _sync yet.
+//
+// The _mou the re-stamp writes is not asserted here, and is wrong: updateAndReturnDoc reads the document
+// without the revSeqNo virtual xattr, so doc.RevSeqNo is zero and _mou.pRev is written as 0 instead of
+// naming the mutation that last wrote the body. Tracked by CBG-5764.
+func TestVersionCASCorrectionPreservesGlobalXattr(t *testing.T) {
+	dbc, ctx := setupTestDB(t)
+	defer dbc.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+	ds := collection.GetCollectionDatastore()
+	retryCount := dbc.DbStats.Database().HLVVersionCASRetryCount
+
+	// put the Sync Gateway clock 100ms ahead of the clock assigning the CAS, so the write generates a version
+	// ahead of its CAS and updateAndReturnDoc corrects it with a re-stamp. Derived from the same source the
+	// bucket uses, so the injected offset is the only difference.
+	dbc.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + uint64(100*time.Millisecond) })
+	defer dbc.hlc.SetClockForTest(sgbucket.HLCWallClock)
+
+	docID := t.Name()
+	before := retryCount.Value()
+	_, _, err := collection.Put(ctx, docID, bodyWithAttachment())
+	require.NoError(t, err)
+	require.Equal(t, before+1, retryCount.Value(), "expected a corrective re-stamp for this write")
+
+	requireAttachmentMetadataPreserved(t, ds, docID, "myatt", "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=", 12)
+}
+
+// unmigratedAttachmentWritePath is one Sync Gateway code path that persists a document's _sync xattr,
+// exercised below against a document whose pre-4.0 attachment metadata has not been migrated yet.
+type unmigratedAttachmentWritePath struct {
+	name string
+	// needsImport leaves the document looking like a write from outside Sync Gateway, so that the path under
+	// test imports it.
+	needsImport bool
+	// create replaces the default document setup (a Put of a document with an inline attachment). It returns
+	// the revision ID of the created document.
+	create func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string
+	// alreadyUnmigrated skips moving the attachment metadata back into _sync, for a create that writes a
+	// document in the pre-4.0 layout itself.
+	alreadyUnmigrated bool
+	run               func(t *testing.T, ctx context.Context, dbc *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string)
+}
+
+// TestWritePathsPreserveUnmigratedAttachmentMetadata pins the invariant that no code path which rewrites a
+// document's _sync xattr may lose pre-4.0 attachment metadata.
+//
+// unmarshalDocumentWithXattrs moves attachment metadata out of _sync.attachments and onto the document's
+// global sync data, so a write that persists _sync without also persisting _globalSync destroys it: for a
+// document attachment migration has not yet reached, the _sync copy is the only copy. Each path below must
+// therefore leave the metadata in _globalSync.attachments_meta with nothing in _sync.attachments.
+//
+// Listing a path here is also a statement that it is expected to keep working against documents written
+// before 4.0.
+//
+// Only the attachment metadata is asserted. Most of these paths are metadata-only updates that also write
+// _mou, whose previous values are wrong today - _mou.pRev names the mutation before the one pCas names
+// whenever a metadata-only update lands on a document another metadata-only update left behind, and the
+// version-CAS correction always writes it as 0. Tracked by CBG-5764.
+func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
+	const (
+		attName   = "myatt"
+		attDigest = "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE="
+		attLength = 12
+	)
+
+	// putWithAttachmentStub updates the document, carrying its existing attachment forward as a stub, the way
+	// a client updating a document with an attachment does.
+	putWithAttachmentStub := func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, rev1ID string) error {
+		body := unmarshalBody(t, `{"value": 5678, "_attachments": {"myatt": {"stub": true, "revpos": 1}}}`)
+		body[BodyRev] = rev1ID
+		_, _, err := collection.Put(ctx, docID, body)
+		return err
+	}
+
+	testCases := []unmigratedAttachmentWritePath{
+		{
+			// updateAndReturnDoc, the path shared by REST, BLIP and inter-Sync Gateway writes
+			name: "Sync Gateway write",
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string) {
+				require.NoError(t, putWithAttachmentStub(t, ctx, collection, docID, rev1ID))
+			},
+		},
+		{
+			// correctVersionAheadOfCAS/restampVersionCAS re-persist _sync, _vv and _mou after the write above
+			name: "Sync Gateway write with version-CAS correction",
+			run: func(t *testing.T, ctx context.Context, dbc *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string) {
+				retryCount := dbc.DbStats.Database().HLVVersionCASRetryCount
+				before := retryCount.Value()
+
+				// put the Sync Gateway clock ahead of the clock assigning the CAS, so the write generates a
+				// version ahead of its CAS and is corrected by a re-stamp
+				dbc.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + uint64(100*time.Millisecond) })
+				defer dbc.hlc.SetClockForTest(sgbucket.HLCWallClock)
+
+				require.NoError(t, putWithAttachmentStub(t, ctx, collection, docID, rev1ID))
+				require.Equal(t, before+1, retryCount.Value(), "expected a corrective re-stamp for this write")
+			},
+		},
+		{
+			// MigrateAttachmentMetadata, used by the import feed and the attachment migration background job
+			name: "attachment migration",
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, _ string) {
+				xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+				require.NoError(t, err)
+				var syncData SyncData
+				require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+				require.NoError(t, collection.MigrateAttachmentMetadata(ctx, docID, cas, &syncData))
+			},
+		},
+		{
+			// ImportDocRaw via OnDemandImportForGet
+			name:        "on-demand import for get",
+			needsImport: true,
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, _ string) {
+				_, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+			},
+		},
+		{
+			// ImportDoc via OnDemandImportForWrite. The import creates a revision for the external write, so
+			// the update that triggered it is then rejected as a conflict - the import is the write under test.
+			name:        "on-demand import for write",
+			needsImport: true,
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string) {
+				err := putWithAttachmentStub(t, ctx, collection, docID, rev1ID)
+				require.Error(t, err)
+				status, _ := base.ErrorAsHTTPStatus(err)
+				require.Equal(t, http.StatusConflict, status)
+			},
+		},
+		{
+			// migrateMetadata, the read-side upgrade of a document written before Sync Gateway 3.0 with its
+			// sync metadata inline in the body
+			name:              "metadata migration from inline sync data",
+			alreadyUnmigrated: true,
+			create: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+				added, err := collection.dataStore.Add(ctx, docID, 0, rawDocWithInlineSyncMetaAndAttachment())
+				require.NoError(t, err)
+				require.True(t, added)
+				return ""
+			},
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, _ string) {
+				_, existingBucketDoc, err := collection.GetDocWithXattrs(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+				_, err = collection.migrateMetadata(ctx, docID, existingBucketDoc, &sgbucket.MutateInOptions{})
+				require.NoError(t, err)
+			},
+		},
+		{
+			// CompactDocChannelHistory, reachable through POST /{keyspace}/_channel_history/{docid}/compact
+			name: "channel history compaction",
+			create: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+				// compaction only writes when there is ended channel history to prune, so move the document
+				// from one channel to another first
+				_, err := collection.UpdateSyncFun(ctx, `function(doc){channel(doc.chan);}`)
+				require.NoError(t, err)
+
+				body := bodyWithAttachment()
+				body["chan"] = "A"
+				rev1ID, _, err := collection.Put(ctx, docID, body)
+				require.NoError(t, err)
+
+				update := unmarshalBody(t, `{"chan": "B", "_attachments": {"myatt": {"stub": true, "revpos": 1}}}`)
+				update[BodyRev] = rev1ID
+				rev2ID, _, err := collection.Put(ctx, docID, update)
+				require.NoError(t, err)
+				return rev2ID
+			},
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, _ string) {
+				compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100)
+				require.NoError(t, err)
+				require.NotEmpty(t, compacted, "compaction should have pruned channel history, or no write happens")
+			},
+		},
+		{
+			// ResyncDocument
+			name: "resync",
+			run: func(t *testing.T, ctx context.Context, _ *Database, collection *DatabaseCollectionWithUser, docID, _ string) {
+				// resync only writes when the sync function changes the document's channels
+				_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("postResync");}`)
+				require.NoError(t, err)
+				require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbc, ctx := setupTestDB(t)
+			defer dbc.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+			ds := collection.GetCollectionDatastore()
+
+			_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("preResync");}`)
+			require.NoError(t, err)
+
+			docID := SafeDocumentName(t, t.Name())
+			var rev1ID string
+			if tc.create != nil {
+				rev1ID = tc.create(t, ctx, collection, docID)
+			} else {
+				rev1ID, _, err = collection.Put(ctx, docID, bodyWithAttachment())
+				require.NoError(t, err)
+			}
+			if !tc.alreadyUnmigrated {
+				require.NotEmpty(t, GetRawGlobalSyncAttachments(t, ds, docID))
+
+				// move the attachment metadata back into _sync, as a pre-4.0 version of Sync Gateway would
+				// have written it. For the import paths, write a new body without macro expanding _sync.cas
+				// as well, so the document looks like an unimported external write.
+				value, _, err := ds.GetRaw(ctx, docID)
+				require.NoError(t, err)
+				if tc.needsImport {
+					value = []byte(`{"value": "external write"}`)
+				}
+				MoveAttachmentXattrFromGlobalToSync(t, ds, docID, value, !tc.needsImport)
+				require.NotEmpty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0, "setup should leave pre-4.0 attachment metadata in _sync")
+			}
+
+			tc.run(t, ctx, dbc, collection, docID, rev1ID)
+
+			requireAttachmentMetadataPreserved(t, ds, docID, attName, attDigest, attLength)
+		})
+	}
+}
+
+// rawDocWithInlineSyncMetaAndAttachment returns a document as Sync Gateway wrote it before 3.0: sync
+// metadata in the body rather than an xattr, with pre-4.0 attachment metadata inside it.
+func rawDocWithInlineSyncMetaAndAttachment() []byte {
+	return []byte(`
+{
+    "_sync": {
+        "rev": "1-ca9ad22802b66f662ff171f226211d5c",
+        "sequence": 1,
+        "recent_sequences": [1],
+        "history": {
+            "revs": ["1-ca9ad22802b66f662ff171f226211d5c"],
+            "parents": [-1],
+            "channels": [null]
+        },
+        "attachments": {
+            "myatt": {
+                "content_type": "text/plain",
+                "digest": "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=",
+                "length": 12,
+                "revpos": 1,
+                "stub": true,
+                "ver": 2
+            }
+        },
+        "cas": "",
+        "time_saved": "2017-11-29T12:46:13.456631-08:00"
+    },
+    "field": "value"
+}
+`)
 }
