@@ -263,6 +263,13 @@ func (h *handler) handleDbOnline() error {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is in progress, this may take some time, try again later")
 	}
 
+	// This handler runs offline, so the state check in validateAndWriteHeaders doesn't apply. A
+	// database being torn down can't be brought back online - the caller needs to retry against the
+	// database that replaces it.
+	if dbState == db.DBStopping {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database is stopping, try again later")
+	}
+
 	body, err := h.readBody()
 	if err != nil {
 		return err
@@ -290,7 +297,8 @@ func (h *handler) handleDbOnline() error {
 		defer func() {
 			if err != nil {
 				// Reset DB state back to Offline on setup failure to avoid being stuck in DBStarting.
-				atomic.StoreUint32(&h.db.State, db.DBOffline)
+				// CAS rather than store, so a reload that closed this context keeps DBStopping.
+				atomic.CompareAndSwapUint32(&h.db.State, db.DBStarting, db.DBOffline)
 			}
 		}()
 		// If the server was closed during the delay, skip the reload entirely.
