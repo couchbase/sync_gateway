@@ -991,3 +991,78 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 	}
 	return nonDefaultDataStoreNames
 }
+
+// TestChanTimeout is the default timeout for the channel helpers below, sized for in-process handshakes.
+const TestChanTimeout = 30 * time.Second
+
+// RequireChanRecv reads from a channel with a TestChanTimeout timeout. Fails the test if no value arrives in time,
+// or if the channel is closed without a value being sent - use RequireChanClosed for channels that signal by closing.
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireChanRecv[T any](t testing.TB, ch <-chan T, msgAndArgs ...any) T {
+	t.Helper()
+	return RequireChanRecvWithTimeout(t, ch, TestChanTimeout, msgAndArgs...)
+}
+
+// RequireChanRecvWithTimeout reads from a channel with a timeout. Fails the test if no value arrives in time.
+func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration, msgAndArgs ...any) T {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case val, ok := <-ch:
+		if !ok {
+			require.FailNow(t, "channel closed without sending a value", msgAndArgs...)
+		}
+		return val
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel read", timeout), msgAndArgs...)
+		return *new(T) // unreachable
+	}
+}
+
+// RequireChanClosed waits for channel to be closed. Will drain the channel if required.
+// Fails the test if the channel is not closed in TestChanTimeout.
+// msgAndArgs is an optional Printf-style description of what is being waited on, included in the failure message.
+func RequireChanClosed[T any](t testing.TB, ch <-chan T, msgAndArgs ...any) {
+	t.Helper()
+	RequireChanClosedWithTimeout(t, ch, TestChanTimeout, msgAndArgs...)
+}
+
+// RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
+// Fails the test if the channel is not closed in time.
+func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration, msgAndArgs ...any) {
+	t.Helper()
+	for {
+		select {
+		case _, ok := <-ch:
+			// drain the channel until it's closed, but fail if it isn't closed within the timeout
+			if ok {
+				continue
+			}
+			return
+		case <-time.After(timeout):
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel close", timeout), msgAndArgs...)
+		}
+	}
+}
+
+// WaitWithTimeout calls for the WaitGroup.Wait() and fails the test if the Wait does not return within the timeout.
+func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
+	t.Helper()
+	// Create a channel so that a goroutine waiting on the waitgroup can send it's result (if any)
+	wgFinished := make(chan bool)
+
+	go func() {
+		wg.Wait()
+		wgFinished <- true
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-wgFinished:
+		return
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
+	}
+}

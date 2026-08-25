@@ -32,6 +32,10 @@ const (
 	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
 	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
 	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
+
+	// sgReplicateStartupWait is how long the replication startup goroutine waits for the server context to
+	// start before starting replications anyway.
+	sgReplicateStartupWait = 10 * time.Second
 )
 
 var DefaultCheckpointInterval = time.Second * 5 // default value used for time-based checkpointing
@@ -388,6 +392,45 @@ func (rc *ReplicationConfig) Redacted(ctx context.Context) *ReplicationConfig {
 	return &config
 }
 
+// clusterUpdater serialises cluster config updates against manager teardown.  Updates run on the caller's
+// goroutine, so they cannot be tracked on closeWg: an Add racing its Wait is a misuse panic, not a wait.
+type clusterUpdater struct {
+	lock       sync.RWMutex  // Read-held for the duration of an update, so stopUpdating can drain in-flight ones
+	stopped    bool          // Guarded by lock - once set, no further updates run
+	terminator chan struct{} // Closed by stopUpdating - see terminated
+}
+
+func newClusterUpdater() *clusterUpdater {
+	return &clusterUpdater{terminator: make(chan struct{})}
+}
+
+// terminated is closed when teardown begins.  An in-flight update holds lock until it returns, so it can
+// never see stopped being set - this channel is the only way its CAS retry loop learns to give up.
+func (c *clusterUpdater) terminated() <-chan struct{} {
+	return c.terminator
+}
+
+// run calls fn with the gate read-held, so stopUpdating waits for it.  No-ops once updates have stopped.
+func (c *clusterUpdater) run(fn func() error) error {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	if c.stopped {
+		return nil
+	}
+	return fn()
+}
+
+// stopUpdating tells in-flight updates to give up, waits for them, and refuses any that start afterwards.
+func (c *clusterUpdater) stopUpdating() {
+	// Before requesting the write side, not after: otherwise an in-flight update works through all its CAS
+	// retries before the drain can complete.
+	close(c.terminator)
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.stopped = true
+}
+
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
 	cfg                        cbgt.Cfg                      // Key-value store implementation
@@ -396,9 +439,9 @@ type sgReplicateManager struct {
 	localNodeUUID              string                        // nodeUUID for this SG node
 	activeReplicators          map[string]*ActiveReplicator  // currently assigned replications
 	activeReplicatorsLock      sync.RWMutex                  // Mutex for activeReplications
-	clusterUpdateTerminator    chan struct{}                 // Terminator for cluster update retry
+	clusterUpdater             *clusterUpdater               // Serialises cluster config updates against manager teardown
 	clusterSubscribeTerminator chan struct{}                 // Terminator for cluster change monitoring
-	closeWg                    sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
+	closeWg                    sync.WaitGroup                // Teardown waitgroup for goroutines this manager owns (startup, subscribe, heartbeat)
 	dbContext                  *DatabaseContext              // reference to the parent DatabaseContext
 	CheckpointInterval         time.Duration                 // The value to be used for time-based checkpoints
 }
@@ -460,7 +503,7 @@ func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 			defer dbc.SGReplicateMgr.closeWg.Done()
 
 			// Wait for the server context to be started
-			t := time.NewTimer(time.Second * 10)
+			t := time.NewTimer(sgReplicateStartupWait)
 			defer t.Stop()
 			select {
 			case <-dbc.ServerContextHasStarted:
@@ -469,6 +512,9 @@ func (dbc *DatabaseContext) startReplications(ctx context.Context) {
 				base.InfofCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Timed out waiting for server context startup... starting ISGR replications for %q anyway", dbc.Name)
 			case <-dbc.terminator:
 				base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Database context for %q closed before starting ISGR replications - aborting...", dbc.Name)
+				return
+			case <-dbc.SGReplicateMgr.clusterSubscribeTerminator:
+				base.DebugfCtx(dbc.SGReplicateMgr.loggingCtx, base.KeyReplicate, "Replication manager for %q stopped before starting ISGR replications - aborting...", dbc.Name)
 				return
 			}
 
@@ -490,8 +536,8 @@ func NewSGReplicateManager(ctx context.Context, dbContext *DatabaseContext, cfg 
 	return &sgReplicateManager{
 		cfg:                        cfg,
 		loggingCtx:                 base.CorrelationIDLogCtx(ctx, sgrClusterMgrContextID),
-		clusterUpdateTerminator:    make(chan struct{}),
 		clusterSubscribeTerminator: make(chan struct{}),
+		clusterUpdater:             newClusterUpdater(),
 		dbContext:                  dbContext,
 		activeReplicators:          make(map[string]*ActiveReplicator),
 		CheckpointInterval:         DefaultCheckpointInterval,
@@ -528,6 +574,11 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 // assigned to this node, and starts the process to monitor future changes to the cluster config.
 func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 
+	if m.isStopping() {
+		base.DebugfCtx(ctx, base.KeyCluster, "Manager is stopping - skipping replication startup before cluster read")
+		return nil
+	}
+
 	replications, err := m.GetReplications()
 	if err != nil {
 		return err
@@ -535,24 +586,66 @@ func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 	m.validateReplications(ctx, replications)
 	for replicationID, replicationCfg := range replications {
 		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Replication %s is assigned to node %s (local node is %s) on start up", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
-		if replicationCfg.AssignedNode == m.localNodeUUID {
-			activeReplicator, err := m.InitializeReplication(replicationCfg)
-			if err != nil {
-				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
-				m.saveInitializationError(replicationCfg, err)
-				continue
-			}
-			m.activeReplicatorsLock.Lock()
-			m.activeReplicators[replicationID] = activeReplicator
-			m.activeReplicatorsLock.Unlock()
-			if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
-				if startErr := activeReplicator.Start(ctx); startErr != nil {
-					base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
-				}
-			}
+		if replicationCfg.AssignedNode != m.localNodeUUID {
+			continue
+		}
+		if stopping := m.startAssignedReplication(ctx, replicationID, replicationCfg); stopping {
+			return nil
 		}
 	}
+
+	// Check for return to avoid launching new goroutines if Stop called when Start is still running
+	if m.isStopping() {
+		base.DebugfCtx(ctx, base.KeyCluster, "Manager is stopping - not subscribing to cluster config changes")
+		return nil
+	}
 	return m.SubscribeCfgChanges(ctx)
+}
+
+// startAssignedReplication initializes and starts a single replication assigned to the local node, and
+// returns true if the manager began stopping, in which case nothing was started and no further replications
+// should be either.
+//
+// The stopping check only avoids opening connections Stop is about to close - Stop's drain is what
+// guarantees nothing is left running.  activeReplicatorsLock is deliberately not held across Start, unlike
+// RefreshReplicationCfg, because Start's reachability request has no timeout and would block every reader of
+// activeReplicators, including the replication status endpoints.
+func (m *sgReplicateManager) startAssignedReplication(ctx context.Context, replicationID string, replicationCfg *ReplicationCfg) (stopping bool) {
+	activeReplicator, err := m.InitializeReplication(replicationCfg)
+	if err != nil {
+		base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
+		// An error persisted here outlives the database, and would report the replication as errored purely
+		// because this node was shutting down.
+		if m.isStopping() {
+			return true
+		}
+		m.saveInitializationError(replicationCfg, err)
+		return false
+	}
+
+	if stopping := m.storeActiveReplicator(replicationID, activeReplicator); stopping {
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - not starting replication %s", replicationID)
+		return true
+	}
+
+	if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
+		if startErr := activeReplicator.Start(ctx); startErr != nil {
+			base.WarnfCtx(m.loggingCtx, "Unable to start replication %s: %v", replicationID, startErr)
+		}
+	}
+	return false
+}
+
+// storeActiveReplicator adds activeReplicator to the set of replications running on this node, and returns
+// true if the manager began stopping, in which case nothing was stored.
+func (m *sgReplicateManager) storeActiveReplicator(replicationID string, activeReplicator *ActiveReplicator) (stopping bool) {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	if m.isStopping() {
+		return true
+	}
+	m.activeReplicators[replicationID] = activeReplicator
+	return false
 }
 
 // NewActiveReplicatorConfig converts an incoming ReplicationCfg to an ActiveReplicatorConfig
@@ -740,36 +833,61 @@ func (m *sgReplicateManager) saveInitializationError(config *ReplicationCfg, ini
 	}
 }
 
+// isStopping returns true once Stop has begun.
+func (m *sgReplicateManager) isStopping() bool {
+	select {
+	case <-m.clusterSubscribeTerminator:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *sgReplicateManager) Stop() {
 
-	// Close subscribe terminator first to stop subscribing/responding to cluster config changes prior to
-	// stopping replications and removing node
+	// Stop subscribing/responding to cluster config changes, and stop the heartbeat listener, before
+	// tearing anything down.
 	close(m.clusterSubscribeTerminator)
-
-	// Stop active replications
-	m.activeReplicatorsLock.Lock()
-
-	for _, repl := range m.activeReplicators {
-		err := repl.Stop()
-		if err != nil {
-			base.WarnfCtx(m.loggingCtx, "Error stopping replication %s during manager stop: %v", repl.ID, err)
-		}
+	if m.heartbeatListener != nil {
+		// Must be before the Wait below: its goroutine is on closeWg but exits only on this terminator.
+		m.heartbeatListener.Stop()
 	}
-	m.activeReplicatorsLock.Unlock()
+
+	// Drain these before stopping replications, so the loop below is the last word on what is running:
+	// 1. SubscribeCfgChanges: waiting for events to call RefreshReplicationCfg on
+	// 2. startReplications: goroutine that handles initial startup of ISGR replications after database goes online
+	// 3. subscribeNodeSetChanges: the heartbeat listener's node set subscription, stopped just above
+	m.closeWg.Wait()
+
+	m.stopActiveReplicators()
+
+	// Remove the node only once its replications are stopped, so that another node does not pick them up
+	// while they are still running here.
 	if err := m.RemoveNode(m.localNodeUUID); err != nil {
 		base.WarnfCtx(m.loggingCtx, "Attempt to remove node %v from sg-replicate cfg got error: %v", m.localNodeUUID, err)
 	}
-	if m.heartbeatListener != nil {
-		m.heartbeatListener.Stop()
-	}
-	close(m.clusterUpdateTerminator)
+	m.clusterUpdater.stopUpdating()
+}
 
-	m.closeWg.Wait()
+// stopActiveReplicators stops all replications currently running on this node.
+func (m *sgReplicateManager) stopActiveReplicators() {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	for _, repl := range m.activeReplicators {
+		if err := repl.Stop(); err != nil {
+			base.WarnfCtx(m.loggingCtx, "Error stopping replication %s during manager stop: %v", repl.ID, err)
+		}
+	}
 }
 
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
 // have been added to or removed from this node
 func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
+
+	if m.isStopping() {
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - skipping replication cfg refresh before cluster read")
+		return nil
+	}
 
 	base.InfofCtx(m.loggingCtx, base.KeyCluster, "Replication definitions changed - refreshing...")
 	configReplications, err := m.GetReplications()
@@ -779,6 +897,11 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 
 	m.activeReplicatorsLock.Lock()
 	defer m.activeReplicatorsLock.Unlock()
+
+	if m.isStopping() {
+		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Manager is stopping - skipping replication cfg refresh after cluster read")
+		return nil
+	}
 
 	// check for active replications that should be stopped
 	for replicationID, activeReplicator := range m.activeReplicators {
@@ -917,13 +1040,18 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 	return sgrCluster, cas, nil
 }
 
-// updateCluster manages CAS retry for SGRCluster updates.
+// updateCluster manages CAS retry for SGRCluster updates.  No-ops once the manager has stopped.
 func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
-	m.closeWg.Add(1)
-	defer m.closeWg.Done()
+	return m.clusterUpdater.run(func() error {
+		return m._updateCluster(callback)
+	})
+}
+
+// _updateCluster is the CAS retry loop for updateCluster.  Requires the cluster update gate to be held.
+func (m *sgReplicateManager) _updateCluster(callback ClusterUpdateFunc) error {
 	for i := 1; i <= maxSGRClusterCasRetries; i++ {
 		select {
-		case <-m.clusterUpdateTerminator:
+		case <-m.clusterUpdater.terminated():
 			base.DebugfCtx(m.loggingCtx, base.KeyReplicate, "manager terminated, bailing out of update retry loop")
 			return nil
 		default:
