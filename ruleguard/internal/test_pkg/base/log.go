@@ -6,6 +6,11 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
+//go:build ruleguard
+// +build ruleguard
+
+// Package base is a stand-in for the real base package, so the ruleguard fixtures can call the
+// logging wrappers the rules match on.
 package base
 
 import (

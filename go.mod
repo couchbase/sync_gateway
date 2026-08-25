@@ -29,6 +29,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.70.0
+	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20260131233133-1193a855cc76
 	github.com/shirou/gopsutil/v4 v4.26.7
@@ -81,7 +82,6 @@ require (
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
-	github.com/quasilyte/go-ruleguard/dsl v0.3.23 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
@@ -116,9 +116,6 @@ replace github.com/coder/websocket => github.com/couchbasedeps/websocket v1.8.15
 tool (
 	github.com/google/addlicense
 	github.com/mattn/goveralls
-	// a library, so not runnable via 'go tool' - listed here so 'go mod tidy' keeps the require
-	// that golangci-lint's ruleguard rule loader resolves ruleguard/rules-*.go against.
-	github.com/quasilyte/go-ruleguard/dsl
 	golang.org/x/tools/cmd/goimports
 	gotest.tools/gotestsum
 )
