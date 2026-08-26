@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -1574,4 +1575,231 @@ func getBucketDocument(t *testing.T, collection *DatabaseCollection, docID strin
 		Expiry:      expiry,
 		IsTombstone: len(body) == 0,
 	}
+}
+
+// docRevSeqNo returns the document's current server revision sequence number.
+func docRevSeqNo(t *testing.T, collection *DatabaseCollectionWithUser, docID string) uint64 {
+	t.Helper()
+	xattrs, _, err := collection.dataStore.GetXattrs(base.TestCtx(t), docID, []string{base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	return RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+}
+
+// mouWritePath is one code path that persists a metadata-only update: a mutation that changes a document's
+// metadata without changing its body.
+type mouWritePath struct {
+	name string
+	// setup writes the document and leaves it in the state the path under test expects. The document's CAS
+	// and revision sequence number as of the end of setup are what _mou then has to point back at.
+	setup func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (revID string)
+	// run performs the metadata-only write, and nothing else - the document's body is left as setup wrote
+	// it, so _mou has to point back at the state observed between the two.
+	run func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string)
+}
+
+// TestMetadataOnlyUpdateWritePaths pins _mou for every code path that writes one.
+//
+// A metadata-only update states that Sync Gateway changed a document's metadata without touching its body.
+// Two properties have to hold for each path: _mou.cas has to name the mutation just made, which is how the
+// import feed tells the mutation is Sync Gateway's own rather than an external write to import, and _mou.pCas
+// has to name the mutation that last changed the body, so a reader can still identify which version of the
+// body the document holds.
+//
+// Each case then performs a second metadata-only write, from a different path, to check that pCas and pRev
+// are both carried forward rather than moved on to the first metadata-only write - they have to keep
+// describing the same mutation as each other.
+func TestMetadataOnlyUpdateWritePaths(t *testing.T) {
+	// sdkBodyWrite writes the document body from outside Sync Gateway, leaving the metadata xattrs in place.
+	// The document then needs importing, and the CAS of this write is the one _mou.pCas has to name.
+	sdkBodyWrite := func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+		_, _, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
+		require.NoError(t, err)
+		_, err = collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"value": "written outside Sync Gateway"}`), 0)
+		require.NoError(t, err)
+	}
+
+	putDoc := func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+		revID, _, err := collection.Put(ctx, docID, Body{"value": 1234})
+		require.NoError(t, err)
+		return revID
+	}
+
+	paths := []mouWritePath{
+		{
+			// ImportDocRaw through OnDemandImportForGet
+			name: "on-demand import for get",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+				revID := putDoc(t, ctx, collection, docID)
+				sdkBodyWrite(t, ctx, collection, docID)
+				return revID
+			},
+			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, _ string) {
+				_, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+			},
+		},
+		{
+			// ImportDoc through OnDemandImportForWrite. The import creates a revision for the external write,
+			// so the update that triggered it is rejected as a conflict; the import is the write under test.
+			name: "on-demand import for write",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+				revID := putDoc(t, ctx, collection, docID)
+				sdkBodyWrite(t, ctx, collection, docID)
+				return revID
+			},
+			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) {
+				_, _, err := collection.Put(ctx, docID, Body{BodyRev: revID, "value": 5678})
+				require.Error(t, err)
+				status, _ := base.ErrorAsHTTPStatus(err)
+				require.Equal(t, http.StatusConflict, status)
+			},
+		},
+		{
+			// MigrateAttachmentMetadata
+			name: "attachment metadata migration",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+				revID, _, err := collection.Put(ctx, docID, Body{
+					"value":         1234,
+					BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+				})
+				require.NoError(t, err)
+
+				// put the document into the pre-4.0 layout, with its attachment metadata in the sync xattr
+				value, _, err := collection.dataStore.GetRaw(ctx, docID)
+				require.NoError(t, err)
+				MoveAttachmentXattrFromGlobalToSync(t, collection.GetCollectionDatastore(), docID, value, true)
+				return revID
+			},
+			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, _ string) {
+				syncData, _, cas := getSyncAndMou(t, collection, docID)
+				require.NotEmpty(t, syncData.AttachmentsPre4dot0)
+				require.NoError(t, collection.MigrateAttachmentMetadata(ctx, docID, cas, syncData))
+			},
+		},
+		{
+			// CompactDocChannelHistory
+			name: "channel history compaction",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) string {
+				// compaction only writes when there is ended channel history to prune, so move the document
+				// from one channel to another. The second put is the last write to the body.
+				_, err := collection.UpdateSyncFun(ctx, `function(doc){channel(doc.chan);}`)
+				require.NoError(t, err)
+
+				rev1ID, _, err := collection.Put(ctx, docID, Body{"value": 1234, "chan": "A"})
+				require.NoError(t, err)
+				rev2ID, _, err := collection.Put(ctx, docID, Body{BodyRev: rev1ID, "value": 5678, "chan": "B"})
+				require.NoError(t, err)
+				return rev2ID
+			},
+			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, _ string) {
+				compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100)
+				require.NoError(t, err)
+				require.NotEmpty(t, compacted, "compaction should have pruned channel history, or no write happens")
+			},
+		},
+		{
+			// ResyncDocument
+			name:  "resync",
+			setup: putDoc,
+			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, _ string) {
+				// resync only writes when the sync function changes the document's channels
+				_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("resynced");}`)
+				require.NoError(t, err)
+				require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+			},
+		},
+	}
+	// The remaining path that writes an _mou, restampVersionCAS, does not fit this table: its metadata-only
+	// write follows a body write it makes itself, so _mou points at that write rather than at the state
+	// setup left behind. It is covered by TestRestampVersionCASMou.
+
+	for _, tc := range paths {
+		t.Run(tc.name, func(t *testing.T) {
+			dbc, ctx := setupTestDB(t)
+			defer dbc.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+			_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("initial");}`)
+			require.NoError(t, err)
+
+			const docID = "metadataOnlyUpdateDoc"
+			revID := tc.setup(t, ctx, collection, docID)
+
+			syncData, mou, bodyCas := getSyncAndMou(t, collection, docID)
+			require.NotNil(t, syncData)
+			require.Nil(t, mou, "a write of the body should not leave a metadata-only update behind")
+			bodyRevSeqNo := docRevSeqNo(t, collection, docID)
+
+			tc.run(t, ctx, collection, docID, revID)
+
+			_, mou, cas := getSyncAndMou(t, collection, docID)
+			require.NotNil(t, mou, "a metadata-only write has to record a metadata-only update")
+			require.Equal(t, base.CasToString(cas), mou.HexCAS, "_mou.cas has to name this mutation, so it is not imported as an external write")
+			require.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "_mou.pCas has to name the mutation that last changed the body")
+			require.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "_mou.pRev has to name the same mutation as pCas")
+			bodyWriteHexCas, bodyWriteRevSeqNo := mou.PreviousHexCAS, mou.PreviousRevSeqNo
+
+			// A second metadata-only write, from a different path than the one under test. Both previous
+			// values have to be carried forward, or they stop naming the last write to the body.
+			_, err = collection.UpdateSyncFun(ctx, `function(doc){channel("chained");}`)
+			require.NoError(t, err)
+			require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+
+			_, mou, cas = getSyncAndMou(t, collection, docID)
+			require.NotNil(t, mou)
+			require.Equal(t, base.CasToString(cas), mou.HexCAS)
+			require.Equal(t, bodyWriteHexCas, mou.PreviousHexCAS, "pCas has to survive a second metadata-only write")
+			require.Equal(t, bodyWriteRevSeqNo, mou.PreviousRevSeqNo, "pRev has to survive a second metadata-only write alongside pCas")
+		})
+	}
+}
+
+// TestAttachmentMigrationMouCarriedForward covers attachment metadata migration of a document whose previous
+// mutation was already a metadata-only update, as happens to a document replicated by mobile XDCR from a
+// cluster that had not migrated its attachment metadata. The migration has to carry the previous values
+// forward from that update rather than naming it, so they keep describing the last write to the body.
+func TestAttachmentMigrationMouCarriedForward(t *testing.T) {
+	dbc, ctx := setupTestDB(t)
+	defer dbc.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+	ds := collection.GetCollectionDatastore()
+
+	docID := "migrationMouCarriedForward"
+	_, _, err := collection.Put(ctx, docID, Body{
+		"value":         1234,
+		BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+	})
+	require.NoError(t, err)
+
+	// put the document into the pre-4.0 layout, with its attachment metadata in the sync xattr. This is the
+	// last write to the body, so _mou has to point at it throughout.
+	value, _, err := ds.GetRaw(ctx, docID)
+	require.NoError(t, err)
+	MoveAttachmentXattrFromGlobalToSync(t, ds, docID, value, true)
+	_, _, bodyCas := getSyncAndMou(t, collection, docID)
+	bodyRevSeqNo := docRevSeqNo(t, collection, docID)
+
+	// stamp a metadata-only update over it, the way mobile XDCR does, so the document's most recent mutation
+	// is one and the migration below has something to carry forward
+	stampedMou := &MetadataOnlyUpdate{
+		PreviousHexCAS:   base.CasToString(bodyCas),
+		PreviousRevSeqNo: bodyRevSeqNo,
+	}
+	opts := &sgbucket.MutateInOptions{
+		MacroExpansion: []sgbucket.MacroExpansionSpec{sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas)},
+	}
+	_, err = ds.UpdateXattrs(ctx, docID, 0, bodyCas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, stampedMou)}, opts)
+	require.NoError(t, err)
+
+	syncData, existingMou, preMigrationCas := getSyncAndMou(t, collection, docID)
+	require.NotEmpty(t, syncData.AttachmentsPre4dot0, "the document should still be in the pre-4.0 layout")
+	require.Equal(t, base.CasToString(preMigrationCas), existingMou.HexCAS, "the document's last mutation has to be a metadata-only update")
+
+	require.NoError(t, collection.MigrateAttachmentMetadata(ctx, docID, preMigrationCas, syncData))
+
+	_, mou, migratedCas := getSyncAndMou(t, collection, docID)
+	require.NotNil(t, mou)
+	require.Equal(t, base.CasToString(migratedCas), mou.HexCAS)
+	require.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "pCas has to be carried forward from the update being replaced")
+	require.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "pRev has to be carried forward alongside pCas")
 }

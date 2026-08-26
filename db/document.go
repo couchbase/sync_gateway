@@ -1469,9 +1469,14 @@ func (doc *Document) channelsForRevTreeID(revTreeID string) (base.Set, bool) {
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
 func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
 	var prevCas string
+	prevRevNo := revNo
 	currentCasString := base.CasToString(currentCas)
 	if currentMou != nil && currentCasString == currentMou.HexCAS {
+		// The mutation being replaced was itself a metadata-only update, so carry its previous values
+		// forward - pCas and pRev have to keep describing the same mutation, the one that last wrote the
+		// document body.
 		prevCas = currentMou.PreviousHexCAS
+		prevRevNo = currentMou.PreviousRevSeqNo
 	} else {
 		prevCas = currentCasString
 	}
@@ -1479,7 +1484,7 @@ func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *Meta
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
 		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
 		PreviousHexCAS:   prevCas,
-		PreviousRevSeqNo: revNo,
+		PreviousRevSeqNo: prevRevNo,
 	}
 	return metadataOnlyUpdate
 }

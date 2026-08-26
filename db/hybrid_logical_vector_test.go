@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"maps"
 	"math/rand/v2"
 	"strconv"
@@ -375,10 +376,12 @@ func TestHLVImport(t *testing.T) {
 				require.NoError(t, err)
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				// the mutation being imported was itself a metadata-only update, so both previous values are
+				// carried forward from it and keep describing the write that last changed the body
 				return &MetadataOnlyUpdate{
 					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
 					PreviousHexCAS:   output.preImportMou.PreviousHexCAS,
-					PreviousRevSeqNo: output.preImportRevSeqNo,
+					PreviousRevSeqNo: output.preImportMou.PreviousRevSeqNo,
 				}
 			},
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
@@ -440,10 +443,12 @@ func TestHLVImport(t *testing.T) {
 				require.NoError(t, err)
 			},
 			expectedMou: func(output *outputData) *MetadataOnlyUpdate {
+				// the mutation being imported was itself a metadata-only update, so both previous values are
+				// carried forward from it and keep describing the write that last changed the body
 				return &MetadataOnlyUpdate{
 					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
 					PreviousHexCAS:   output.preImportMou.PreviousHexCAS,
-					PreviousRevSeqNo: output.preImportRevSeqNo,
+					PreviousRevSeqNo: output.preImportMou.PreviousRevSeqNo,
 				}
 			},
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
@@ -556,6 +561,128 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 		assert.Greater(t, doc.HLV.Version, doc.Cas, "version beyond the wait bound should be left ahead of CAS")
 		assert.Equal(t, before, retryCount.Value(), "skipped correction should not increment the stat")
 	})
+}
+
+// TestRestampVersionCASSkipsConcurrentWrite covers restampVersionCAS declining to re-stamp a document that
+// has moved on since the write it was asked to correct. The correction applies to that write only, and the
+// concurrent writer is the one that has to satisfy cv.ver <= cas for its own mutation.
+func TestRestampVersionCASSkipsConcurrentWrite(t *testing.T) {
+	dbc, ctx := setupTestDB(t)
+	defer dbc.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+	docID := t.Name()
+	rev1ID, doc, err := collection.Put(ctx, docID, Body{"value": 1234})
+	require.NoError(t, err)
+	casOfFirstWrite := doc.Cas
+
+	// a second write moves the document on
+	_, concurrentDoc, err := collection.Put(ctx, docID, Body{BodyRev: rev1ID, "value": 5678})
+	require.NoError(t, err)
+
+	_, err = collection.restampVersionCAS(ctx, docID, doc, casOfFirstWrite)
+	require.Error(t, err, "a superseded write must not be re-stamped")
+	require.True(t, isSupersededWriteError(err), "the re-stamp has to fail in a way correctVersionAheadOfCAS skips on, got %v", err)
+
+	_, _, casAfter := getSyncAndMou(t, collection, docID)
+	require.Equal(t, concurrentDoc.Cas, casAfter, "the concurrent write must be left untouched")
+}
+
+// TestRestampVersionCASMou covers _mou for the version-CAS correction. This is the one path that writes a
+// metadata-only update immediately after a body write of its own, rather than over a document some earlier
+// write left behind, so _mou has to name the write being corrected - the other paths are covered by
+// TestMetadataOnlyUpdateWritePaths.
+func TestRestampVersionCASMou(t *testing.T) {
+	testCases := []struct {
+		name string
+		// write makes the body write whose version-CAS correction is under test, over the document left by
+		// setup at revID.
+		write       func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) *Document
+		isTombstone bool
+	}{
+		{
+			name: "live document",
+			write: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) *Document {
+				_, doc, err := collection.Put(ctx, docID, Body{BodyRev: revID, "value": 5678, "chan": "B"})
+				require.NoError(t, err)
+				return doc
+			},
+		},
+		{
+			name: "tombstone",
+			write: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) *Document {
+				_, doc, err := collection.DeleteDoc(ctx, docID, DocVersion{RevTreeID: revID})
+				require.NoError(t, err)
+				return doc
+			},
+			isTombstone: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dbc, ctx := setupTestDB(t)
+			defer dbc.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+			// move the document between channels, so the ended channel history the carry-forward step below
+			// compacts is there to prune
+			_, err := collection.UpdateSyncFun(ctx, `function(doc){channel(doc.chan);}`)
+			require.NoError(t, err)
+
+			docID := "restampVersionCASDoc"
+			rev1ID, _, err := collection.Put(ctx, docID, Body{"value": 1234, "chan": "A"})
+			require.NoError(t, err)
+			rev2ID, _, err := collection.Put(ctx, docID, Body{BodyRev: rev1ID, "value": 1234, "chan": "B"})
+			require.NoError(t, err)
+
+			// the state before the write under test - _mou must end up naming a mutation after this one
+			_, mou, priorCas := getSyncAndMou(t, collection, docID)
+			require.Nil(t, mou, "a write of the body should not leave a metadata-only update behind")
+			priorRevSeqNo := docRevSeqNo(t, collection, docID)
+
+			retryCount := dbc.DbStats.Database().HLVVersionCASRetryCount
+			before := retryCount.Value()
+
+			// SG clock ahead of the server, so the write's generated version exceeds its CAS and is corrected
+			dbc.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + uint64(100*time.Millisecond) })
+			defer dbc.hlc.SetClockForTest(sgbucket.HLCWallClock)
+
+			doc := testCase.write(t, ctx, collection, docID, rev2ID)
+			require.Equal(t, before+1, retryCount.Value(), "expected a corrective re-stamp for this write")
+			require.LessOrEqual(t, doc.HLV.Version, doc.Cas, "version should be corrected to <= CAS")
+
+			body, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+			require.NoError(t, err)
+			require.Equal(t, testCase.isTombstone, len(body) == 0, "the re-stamp must not change whether the document is a tombstone")
+
+			require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+			require.NotNil(t, mou, "the re-stamp has to record a metadata-only update")
+			restampRevSeqNo := RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+
+			require.Equal(t, base.CasToString(cas), mou.HexCAS, "_mou.cas has to name the re-stamp, so it is not imported as an external write")
+			// the corrected write's own CAS is not observable from outside it, so both previous values are
+			// pinned by sandwiching them between the write before it and the re-stamp that follows it
+			require.Greater(t, mou.PreviousCAS(), priorCas, "pCas has to name the write being corrected, not the one before it")
+			require.Less(t, mou.PreviousCAS(), cas, "pCas has to name a mutation older than the re-stamp itself")
+			require.Greater(t, mou.PreviousRevSeqNo, priorRevSeqNo, "pRev has to name the same mutation as pCas, the write being corrected")
+			require.Less(t, mou.PreviousRevSeqNo, restampRevSeqNo, "pRev has to name a mutation older than the re-stamp itself")
+			bodyWriteHexCas, bodyWriteRevSeqNo := mou.PreviousHexCAS, mou.PreviousRevSeqNo
+
+			// A second metadata-only write, from a different path - channel history compaction, which unlike
+			// resync applies to a tombstone as well as a live document. Both previous values have to be
+			// carried forward, or they stop naming the last write to the body.
+			compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100)
+			require.NoError(t, err)
+			require.NotEmpty(t, compacted, "compaction should have pruned channel history, or no write happens")
+
+			_, mou, cas = getSyncAndMou(t, collection, docID)
+			require.NotNil(t, mou)
+			require.Equal(t, base.CasToString(cas), mou.HexCAS)
+			require.Equal(t, bodyWriteHexCas, mou.PreviousHexCAS, "pCas has to survive a second metadata-only write")
+			require.Equal(t, bodyWriteRevSeqNo, mou.PreviousRevSeqNo, "pRev has to survive a second metadata-only write alongside pCas")
+		})
+	}
 }
 
 // TestHLVMapToCBLString:
