@@ -223,7 +223,7 @@ Empty output → add the line. Any surviving path → leave it off, even for a o
 | `*_test_helper*.go`, `*_test_utils.go` | `rest/api_test_helpers.go`, `auth/jwt_test_utils.go`, `rest/replicatortest/replicator_test_helper.go` |
 | the leaky bucket fault-injection layer | `base/leaky_bucket.go`, `base/leaky_datastore.go` |
 
-The repo's top-level `testing/` package is test-only in its entirety — every file, every subpackage, no exceptions and nothing to check case by case. It exists solely to be imported by tests; nothing in `base`, `db`, `rest`, or `channels` links it into a running server. A backport whose whole diff lands under `testing/` is `test-only` on that basis alone. The same goes for any new subpackage that appears there later, which is why the grep matches the directory rather than a list of names.
+The repo's top-level `testing/` package is test-support code in its entirety — every file, every subpackage, no exceptions and nothing to check case by case. It exists to support tests; however, note it may still be compiled into the server binary when imported by non-test packages (for example, `base/logging.go` imports `github.com/couchbase/sync_gateway/testing/assert` for test helper functions). A backport whose whole diff lands under `testing/` is generally still low risk because no request path should reach it.
 
 `base/leaky_bucket.go` and `base/leaky_datastore.go` are the odd ones out by name: they carry no test marker at all and live beside production `base` code, but they are the fault-injection wrappers that only `GetTestBucket`-style test setup ever constructs. No request path reaches them — treat them as test code.
 
