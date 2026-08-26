@@ -1310,7 +1310,14 @@ func (sc *ServerContext) asyncDatabaseOnline(nonCancelCtx base.NonCancellableCon
 
 	if !atomic.CompareAndSwapUint32(&dbc.State, db.DBStarting, db.DBOnline) {
 		// 2nd atomic might end up being Starting here if there's a legitimate race, but it's the most we can do for CAS
-		base.PanicfCtx(ctx, "database state wasn't Starting during asyncDatabaseOnline Online transition... now %q", db.RunStateString[atomic.LoadUint32(&dbc.State)])
+		state := atomic.LoadUint32(&dbc.State)
+		// StartOnlineProcesses only takes BucketLock for read, so a Close can mark the database
+		// Stopping while it runs. Losing the transition to a teardown is expected, not a bug.
+		if state == db.DBStopping {
+			base.InfofCtx(ctx, base.KeyAll, "Database was closed while starting online processes, not bringing it online")
+			return
+		}
+		base.PanicfCtx(ctx, "database state wasn't Starting during asyncDatabaseOnline Online transition... now %q", db.RunStateString[state])
 	}
 
 	_ = dbc.EventMgr.RaiseDBStateChangeEvent(ctx, dbc.Name, "online", dbLoadedStateChangeMsg, &sc.Config.API.AdminInterface)
