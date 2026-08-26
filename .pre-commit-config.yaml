@@ -12,13 +12,13 @@ repos:
       - id: addlicense
         name: addlicense
         language: system
-        entry: go run github.com/google/addlicense@latest -f licenses/addlicense.tmpl
+        entry: go tool addlicense -f licenses/addlicense.tmpl
         types_or: [go, python]
 
       - id: goimports
         name: goimports
         language: system
-        entry: go run golang.org/x/tools/cmd/goimports@latest
+        entry: go tool goimports
         args: [-w]
         types: [go]
 
