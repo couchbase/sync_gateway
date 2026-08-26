@@ -41,7 +41,7 @@ dev = [
   "pytest-httpserver>=1.1.5",
   "ruff>=0.16.3",
   "trustme>=1.2.1",
-  "ty==0.0.72", # pre-release, pin exactly
+  "ty==0.0.74", # pre-release, pin exactly
 ]
 
 [tool.ty.environment]
