@@ -1954,7 +1954,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		RemoteDBURL:           userDBURL(rt, username),
 		WebsocketPingInterval: time.Millisecond * 10,
 		Continuous:            true,
-		ReplicationStatsMap:   dbReplicatorStats(t),
+		ReplicationStatsMap:   dbReplicatorStats(t, rt.GetDatabase()),
 		CollectionsEnabled:    !rt.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -2021,7 +2021,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -2098,7 +2098,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
 
-		dbstats := dbReplicatorStats(t)
+		dbstats := dbReplicatorStats(t, rt1.GetDatabase())
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -2357,7 +2357,7 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 			Continuous: true,
 			// aggressive reconnect intervals for testing purposes
 			TotalReconnectTimeout:  time.Millisecond * 10,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -2535,7 +2535,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRuunner.SupportedSubprotocols,
 		})
@@ -2806,7 +2806,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       changesBatchSize,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -2973,7 +2973,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       changesBatchSize,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -3096,7 +3096,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3148,7 +3148,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3210,7 +3210,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3305,11 +3305,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		}
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"1")
 		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 
@@ -3361,11 +3357,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		}
 
 		// Create a new replicator using the same config, which should use the checkpoint set from the first.
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"2")
 		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 		require.NoError(t, ar.Start(ctx1))
@@ -3463,11 +3455,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		arConfig.SetCheckpointPrefix(t, "cluster1:")
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, edge1.GetDatabase(), t.Name()+"edge1")
 		edge1Replicator, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 
@@ -3526,11 +3514,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		ctx2 := edge2.Context()
 
 		// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, edge2.GetDatabase(), t.Name()+"edge2")
 		arConfig.ActiveDB = &db.Database{
 			DatabaseContext: edge2.GetDatabase(),
 		}
@@ -3558,11 +3542,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		rt2.WaitForPendingChanges()
 
 		// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, edge1.GetDatabase(), t.Name()+"edge1")
 		arConfig.ActiveDB = &db.Database{
 			DatabaseContext: edge1.GetDatabase(),
 		}
@@ -3622,7 +3602,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3680,7 +3660,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3745,7 +3725,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 			ChangesBatchSize:       200,
 			Continuous:             true,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3903,10 +3883,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
-				stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := stats.DBReplicatorStats(t.Name())
-				require.NoError(t, err)
+				replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          rest.SafeDocumentName(t, t.Name()),
@@ -4146,10 +4123,6 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				require.NoError(t, err)
 
 				replicationID := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				dbstats, err := stats.DBReplicatorStats(replicationID)
-				require.NoError(t, err)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
@@ -4162,7 +4135,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 					ConflictResolverFunc:       customConflictResolver,
 					ConflictResolverFuncForHLV: customConflictResolver,
 					Continuous:                 true,
-					ReplicationStatsMap:        dbstats,
+					ReplicationStatsMap:        rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
 				})
@@ -4286,10 +4259,6 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		rt1.WaitForPendingChanges()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 		srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -4310,7 +4279,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			InsecureSkipVerify:     true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -4365,10 +4334,6 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4379,7 +4344,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			InsecureSkipVerify:     false,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -4438,10 +4403,6 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4451,7 +4412,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -4609,11 +4570,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		}
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"1")
 		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 
@@ -4671,11 +4628,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		require.NoError(t, err)
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 		arConfig.RemoteDBURL = passiveDBURL
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"2")
 
 		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
@@ -4752,10 +4705,6 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		activeRT.WaitForPendingChanges()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4765,7 +4714,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 				DatabaseContext: activeRT.GetDatabase(),
 			},
 			Continuous:          true,
-			ReplicationStatsMap: dbstats,
+			ReplicationStatsMap: rest.DbReplicatorStats(t, activeRT.GetDatabase(), replicationID),
 			CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 			// CBG-4786: remove this protocol line in this ticket
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
@@ -4892,10 +4841,6 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 		ctx1 := rt1.Context()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4905,7 +4850,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -4986,10 +4931,6 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -5000,7 +4941,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -5079,10 +5020,6 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 		ctx1 := rt1.Context()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -5095,7 +5032,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 			ChangesBatchSize:       changesBatchSize,
 			Filter:                 base.ByChannelFilter,
 			FilterChannels:         []string{"chan1"},
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -5275,10 +5212,6 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 						id, err := base.GenerateRandomID()
 						require.NoError(t, err)
-						sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-						require.NoError(t, err)
-						dbstats, err := sgwStats.DBReplicatorStats(id)
-						require.NoError(t, err)
 
 						arConfig := db.ActiveReplicatorConfig{
 							ID:          id,
@@ -5292,7 +5225,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 							InitialReconnectInterval: time.Millisecond,
 							MaxReconnectInterval:     time.Millisecond * 50,
 							TotalReconnectTimeout:    timeoutVal,
-							ReplicationStatsMap:      dbstats,
+							ReplicationStatsMap:      rest.DbReplicatorStats(t, rt1.GetDatabase(), id),
 							CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 							SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 						}
@@ -5363,10 +5296,6 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 		id, err := base.GenerateRandomID()
 		require.NoError(t, err)
-		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          id,
@@ -5380,7 +5309,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 			InitialReconnectInterval: time.Millisecond,
 			MaxReconnectInterval:     time.Millisecond * 50,
 			TotalReconnectTimeout:    time.Second * 30,
-			ReplicationStatsMap:      dbstats,
+			ReplicationStatsMap:      rest.DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 		}
@@ -5445,7 +5374,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 			InitialReconnectInterval: time.Millisecond,
 			MaxReconnectInterval:     time.Millisecond * 50,
 			TotalReconnectTimeout:    time.Second * 5,
-			ReplicationStatsMap:      dbReplicatorStats(t),
+			ReplicationStatsMap:      dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 		}
 
@@ -5683,10 +5612,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				id := rest.SafeDocumentName(t, t.Name())
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
-				dbstats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := dbstats.DBReplicatorStats(id)
-				require.NoError(t, err)
+				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
@@ -6035,7 +5961,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				},
 				Continuous:             true,
 				ConflictResolverFunc:   defaultConflictResolver,
-				ReplicationStatsMap:    dbReplicatorStats(t),
+				ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
@@ -6159,7 +6085,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 				},
 				Continuous:             true,
 				ConflictResolverFunc:   defaultConflictResolver,
-				ReplicationStatsMap:    dbReplicatorStats(t),
+				ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 				CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
@@ -6463,7 +6389,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		},
 		Continuous:          true,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: dbReplicatorStats(t),
+		ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -6615,10 +6541,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		require.NoError(t, err)
 
 		id := rest.SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
+		replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -6628,7 +6551,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:                 false,
-			ReplicationStatsMap:        dbstats,
+			ReplicationStatsMap:        replicationStats,
 			ConflictResolutionType:     db.ConflictResolverCustom,
 			ConflictResolverFunc:       customConflictResolver,
 			ConflictResolverFuncForHLV: customConflictResolver,
@@ -6644,11 +6567,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 		require.NoError(t, ar.Start(ctx1))
 
-		base.RequireWaitForStat(t, func() int64 {
-			dbRepStats, err := base.SyncGatewayStats.DbStats[id].DBReplicatorStats(ar.ID)
-			require.NoError(t, err)
-			return dbRepStats.PulledCount.Value()
-		}, 1)
+		base.RequireWaitForStat(t, replicationStats.PulledCount.Value, 1)
 
 		rt1.WaitForReplicationStatus(id, db.ReplicationStateStopped)
 	})
@@ -6693,10 +6612,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 		// Set-up replicator //
 		id := rest.SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
+		replicationStats := rest.DbReplicatorStats(t, activeRT.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -6708,7 +6624,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 			Continuous:             true,
 			ChangesBatchSize:       1,
 			DeltasEnabled:          true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    replicationStats,
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -6732,11 +6648,9 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		// Replicate resurrection to passive
 		sgrRunner.WaitForVersion("test", passiveRT, resurrectedVersion)
 
-		dbRepStats, err := base.SyncGatewayStats.DbStats[id].DBReplicatorStats(ar.ID)
-		require.NoError(t, err)
 		base.RequireWaitForStat(t, func() int64 {
 			// should be 1 given delta is sent for delete, but not for resurrection
-			return dbRepStats.PushDeltaSentCount.Value()
+			return replicationStats.PushDeltaSentCount.Value()
 		}, 1)
 
 		// Shutdown replicator to close out
@@ -6802,7 +6716,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 			Continuous:             true,
 			ChangesBatchSize:       200,
 			DeltasEnabled:          true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -6882,7 +6796,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 			},
 			Continuous:             false,
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			PurgeOnRemoval:         false,
 			Filter:                 base.ByChannelFilter,
 			FilterChannels:         []string{"rev1chan"},
@@ -6926,7 +6840,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			PurgeOnRemoval:         false,
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
@@ -7001,11 +6915,6 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		require.NoError(t, err)
 		ctx := rt.Context()
 
-		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-
 		id := rest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 			ID:                     id,
@@ -7013,7 +6922,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 			ActiveDB:               &db.Database{DatabaseContext: rt.GetDatabase()},
 			RemoteDBURL:            remoteURL,
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    dbReplicatorStats(t, rt.GetDatabase()),
 			CollectionsEnabled:     !rt.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -7613,7 +7522,7 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 			Direction:           direction,
 			ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
 			RemoteDBURL:         url,
-			ReplicationStatsMap: dbReplicatorStats(t),
+			ReplicationStatsMap: dbReplicatorStats(t, rt.GetDatabase()),
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "default collection is not configured")
@@ -7748,7 +7657,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 		Direction:           db.ActiveReplicatorTypePush,
 		ActiveDB:            &db.Database{DatabaseContext: rt1.GetDatabase()},
 		RemoteDBURL:         userDBURL(rt2, username),
-		ReplicationStatsMap: dbReplicatorStats(t),
+		ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
 		Continuous:          true,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
@@ -7841,7 +7750,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	username := "alice"
 	passiveRT.CreateUser(username, []string{"*"})
 	passiveDBURL := userDBURL(passiveRT, username)
-	stats := dbReplicatorStats(t)
+	stats := dbReplicatorStats(t, activeRT.GetDatabase())
 	ar, err := db.NewActiveReplicator(activeRT.Context(), &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
@@ -7875,12 +7784,10 @@ func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	require.Equal(t, expectedBody, doc.Body(base.TestCtx(t)))
 }
 
-func dbReplicatorStats(t *testing.T) *base.DbReplicatorStats {
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	return dbstats
+// dbReplicatorStats returns the replication stats for the given database, keyed on the test name. Use
+// rest.DbReplicatorStats for a specific replication ID.
+func dbReplicatorStats(t testing.TB, database *db.DatabaseContext) *base.DbReplicatorStats {
+	return rest.DbReplicatorStats(t, database, t.Name())
 }
 
 // userDBURL creates a public server for the passive RT and returns the URL for the given user, e.g. http://alice:password@localhost:1234/dbname. The webserver will be closed by testing.T.Cleanup.

@@ -53,7 +53,7 @@ func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -160,7 +160,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 					},
 					ChangesBatchSize:       200,
 					Continuous:             true,
-					ReplicationStatsMap:    dbReplicatorStats(t),
+					ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 					CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 					SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 				})
@@ -263,7 +263,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -408,7 +408,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 					},
 					ChangesBatchSize:       200,
 					Continuous:             true,
-					ReplicationStatsMap:    dbReplicatorStats(t),
+					ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 					CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 					SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 				})
@@ -503,10 +503,7 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 		legacyRevRt2 := rt2InitDoc.GetRevTreeID()
 
 		id := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(id)
-		require.NoError(t, err)
+		replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -614,7 +611,7 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -740,10 +737,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 				require.NoError(t, err)
 
 				id := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := stats.DBReplicatorStats(id)
-				require.NoError(t, err)
+				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
@@ -921,10 +915,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				require.NoError(t, err)
 
 				id := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := stats.DBReplicatorStats(id)
-				require.NoError(t, err)
+				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
@@ -1082,10 +1073,7 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 
 		require.Equal(t, legacyInitRevRt1, legacyRevRt2)
 
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
+		replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          t.Name(),
@@ -1157,10 +1145,7 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 		rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
 		legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
 
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
+		replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          t.Name(),

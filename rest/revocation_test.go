@@ -1536,10 +1536,6 @@ func TestReplicatorRevocations(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1550,7 +1546,7 @@ func TestReplicatorRevocations(t *testing.T) {
 			},
 			Continuous:             false,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -1607,10 +1603,6 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1621,7 +1613,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 			},
 			Continuous:             false,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -1687,10 +1679,6 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1701,7 +1689,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 			},
 			Continuous:             false,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -1762,10 +1750,6 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword(revocationTestUser, RestTesterDefaultUserPassword)
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		revocationTester.addRole(revocationTestUser, revocationTestRole)
 		rt2.WaitForPendingChanges()
@@ -1779,7 +1763,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 			},
 			Continuous:             true,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -1865,10 +1849,6 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", "letmein")
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1879,7 +1859,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 			},
 			Continuous:             true,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -1952,10 +1932,6 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 
 		id := SafeDocumentName(t, t.Name())
 		passiveDBURL.User = url.UserPassword(username, password)
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		_ = rt2.PutDoc("docA", `{"channels": ["ABC"]}`)
 		rt2.WaitForPendingChanges()
@@ -1970,7 +1946,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 			Continuous:             false,
 			PurgeOnRemoval:         true,
 			FilterChannels:         []string{"ABC"},
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -2032,10 +2008,6 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
 		_ = rt2.PutDoc("docAB", `{"channels": ["A","B"]}`)
@@ -2053,7 +2025,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 			},
 			Continuous:             false,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -2124,10 +2096,6 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", "letmein")
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		activeReplCfg := &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -2138,7 +2106,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 			},
 			Continuous:             false,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -2510,10 +2478,6 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 		passiveDBURL.User = url.UserPassword("user", "letmein")
 		id := SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -2523,7 +2487,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -2566,10 +2530,6 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 		require.NoError(t, ar.Stop())
 		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-		sgwStats, err = base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		ar, err = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -2580,7 +2540,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 			},
 			Continuous:             true,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:     base.TestsUseNamedCollections(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})

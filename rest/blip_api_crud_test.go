@@ -2635,18 +2635,13 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 
 		replicationID := SafeDocumentName(t, t.Name())
 
-		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
-
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:                     replicationID,
 			Direction:              db.ActiveReplicatorTypePull,
 			ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
 			RemoteDBURL:            remoteURL,
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, activeRT.GetDatabase(), replicationID),
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
