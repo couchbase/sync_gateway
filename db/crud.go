@@ -1249,36 +1249,38 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 	if err != nil {
 		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 	}
-	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyCRUD, "Could not determine revSeqNo found when attempting to migrate sync data attachments to global xattr for doc %q. Assuming 0. Error: %v", base.UD(docID), err)
-	}
-
 	var currentMou *MetadataOnlyUpdate
 	if xattrs[base.MouXattrName] != nil {
 		if err := base.JSONUnmarshal(xattrs[base.MouXattrName], &currentMou); err != nil {
 			return base.RedactErrorf("Failed to Unmarshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 		}
 	}
-	// Migrating attachment metadata only changes metadata, so the update has to describe the mutation that
-	// last wrote the document body - carried forward from the current _mou when that was itself a
-	// metadata-only update.
-	metadataOnlyUpdate := computeMetadataOnlyUpdate(cas, revSeqNo, currentMou)
-	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
-	if err != nil {
-		return base.RedactErrorf("Failed to marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
-	}
 
 	// build macro expansion for sync data. This will avoid the update to xattrs causing an extra import event (i.e. sync cas will be == to doc cas)
 	opts := &sgbucket.MutateInOptions{}
-	spec := append(macroExpandSpec(base.SyncXattrName), sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
-	opts.MacroExpansion = spec
+	opts.MacroExpansion = macroExpandSpec(base.SyncXattrName)
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 
 	updatedXattr := map[string][]byte{
 		base.SyncXattrName:   rawSyncXattr,
 		base.GlobalXattrName: globalXattr,
-		base.MouXattrName:    rawMouXattr,
+	}
+
+	// Migrating attachment metadata only changes metadata, so the update has to describe the mutation that
+	// last wrote the document body - carried forward from the current _mou when that was itself a
+	// metadata-only update. Without a revSeqNo there is no such mutation to name: a _mou whose pRev is a
+	// made-up zero describes a different mutation than its pCas, so no _mou is written at all.
+	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	if err != nil {
+		base.WarnfCtx(ctx, "Could not determine revSeqNo when attempting to migrate sync data attachments to global xattr for doc %q - migrating without a metadata-only update marker. Error: %v", base.UD(docID), err)
+	} else {
+		metadataOnlyUpdate := computeMetadataOnlyUpdate(cas, revSeqNo, currentMou)
+		rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
+		if err != nil {
+			return base.RedactErrorf("Failed to marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+		}
+		updatedXattr[base.MouXattrName] = rawMouXattr
+		opts.MacroExpansion = append(opts.MacroExpansion, sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas))
 	}
 	_, err = c.dataStore.UpdateXattrs(ctx, docID, 0, cas, updatedXattr, opts)
 	return err
@@ -3283,8 +3285,9 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 
 	cas2, err := db.restampVersionCAS(ctx, key, doc, casOut)
 	if err != nil {
-		if isSupersededWriteError(err) {
-			// A concurrent writer beat us to it; it's that writer's responsibility to satisfy the invariant.
+		// The write this correction applies to has already been superseded by a concurrent write, so the
+		// correction is skipped - it's that writer's responsibility to satisfy the invariant.
+		if errors.Is(err, base.ErrUpdateCancel) || base.IsCasMismatch(err) {
 			base.DebugfCtx(ctx, base.KeyVV, "Skipping CAS re-stamp for doc %q due to our generated version %d ahead of CAS %d: concurrent update won ahead of re-stamp", base.UD(doc.ID), doc.HLV.Version, casOut)
 			return doc
 		}
@@ -3308,13 +3311,6 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	return doc
 }
 
-// isSupersededWriteError reports whether err means the write a correction was asked to apply to has already
-// been superseded by a concurrent write. The correction applies to that one write only, so it is skipped and
-// satisfying the invariant becomes the concurrent writer's responsibility.
-func isSupersededWriteError(err error) bool {
-	return errors.Is(err, base.ErrUpdateCancel) || base.IsCasMismatch(err)
-}
-
 // restampVersionCAS re-persists the document's _sync and _vv xattrs so the server assigns a fresh CAS,
 // leaving the current version (cv.ver) unchanged while macro-expanding _sync.cas and _vv.cvCas to the new
 // CAS. It is a metadata-only update guarded on the supplied CAS: the revision, sequence and body are
@@ -3326,40 +3322,41 @@ func (db *DatabaseCollectionWithUser) restampVersionCAS(ctx context.Context, key
 		return 0, err
 	}
 
-	opts := &sgbucket.MutateInOptions{PreserveExpiry: true}
-	return db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), 0, nil, opts,
-		func(currentValue []byte, currentXattrs map[string][]byte, currentCas uint64) (sgbucket.UpdatedDoc, error) {
+	opts := &sgbucket.MutateInOptions{
+		PreserveExpiry: true,
+		MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
+			sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas),
+			sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+		},
+	}
+
+	// Nothing outside the xattrs changes, so the body is left where it is - that keeps a tombstone a
+	// tombstone, and avoids pulling the body of a live document over the wire on every correction.
+	return base.WriteUpdateXattrOnly(ctx, db.dataStore, key, []string{base.SyncXattrName, base.VirtualXattrRevSeqNo}, 0, opts,
+		func(currentXattrs map[string][]byte, currentCas uint64) (map[string][]byte, error) {
 			// Only the write this is correcting may be re-stamped. A concurrent write has already moved the
 			// document on, and satisfying the invariant is that writer's responsibility.
 			if currentCas != cas {
-				return sgbucket.UpdatedDoc{}, base.ErrUpdateCancel
+				return nil, base.ErrUpdateCancel
 			}
 
 			// The write being corrected is the mutation _mou has to point back at, so take the revision
 			// sequence number the server assigned it.
 			revSeqNo, err := unmarshalRevSeqNo(currentXattrs[base.VirtualXattrRevSeqNo])
 			if err != nil {
-				return sgbucket.UpdatedDoc{}, base.RedactErrorf("failed to determine revSeqNo when attempting to re-persist %s to correct version and CAS drift. Error: %v", base.UD(doc.ID), err)
+				return nil, base.RedactErrorf("failed to determine revSeqNo when attempting to re-persist %s to correct version and CAS drift. Error: %v", base.UD(doc.ID), err)
 			}
 			mou := computeMetadataOnlyUpdate(cas, revSeqNo, doc.MetadataOnlyUpdate)
 			rawMouXattr, err := base.JSONMarshal(mou)
 			if err != nil {
-				return sgbucket.UpdatedDoc{}, base.RedactErrorf("failed to marshal _mou when attempting to re-persist %s to correct version and CAS drift. Error: %v", base.UD(doc.ID), err)
+				return nil, base.RedactErrorf("failed to marshal _mou when attempting to re-persist %s to correct version and CAS drift. Error: %v", base.UD(doc.ID), err)
 			}
 
-			return sgbucket.UpdatedDoc{
-				Doc: nil, // the body is not being changed
-				Xattrs: map[string][]byte{
-					base.SyncXattrName: syncXattr,
-					base.VvXattrName:   vvXattr,
-					base.MouXattrName:  rawMouXattr,
-				},
-				IsTombstone: len(currentValue) == 0,
-				Spec: []sgbucket.MacroExpansionSpec{
-					sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas),
-					sgbucket.NewMacroExpansionSpec(xattrCurrentVersionCASPath(base.VvXattrName), sgbucket.MacroCas),
-					sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
-				},
+			return map[string][]byte{
+				base.SyncXattrName: syncXattr,
+				base.VvXattrName:   vvXattr,
+				base.MouXattrName:  rawMouXattr,
 			}, nil
 		})
 }

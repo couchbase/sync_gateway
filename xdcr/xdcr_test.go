@@ -558,16 +558,27 @@ func TestXDCRMatchingTimestamps(t *testing.T) {
 			Version:           matchingCAS,
 			CurrentVersionCAS: matchingCAS,
 		}
-		xattrs := map[string][]byte{
-			base.VvXattrName:  base.MustJSONMarshal(t, hlv),
-			base.MouXattrName: base.MustJSONMarshal(t, &db.MetadataOnlyUpdate{HexCAS: "expand"}),
+		bodyCas, err := ds.WriteWithXattrs(ctx, docID, 0, 0, []byte(body), map[string][]byte{
+			base.VvXattrName: base.MustJSONMarshal(t, hlv),
+		}, nil, nil)
+		require.NoError(t, err)
+
+		// _mou.cas == cas is what makes XDCR resolve on _vv.cvCAS, giving the tie this test is about. Its
+		// previous values have to name the write that last changed the body - the write above - or the
+		// document is left in a state Sync Gateway would never produce.
+		_, xattrs, _, err := ds.GetWithXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+		require.NoError(t, err)
+		mou := &db.MetadataOnlyUpdate{
+			HexCAS:           "expand",
+			PreviousHexCAS:   base.CasToString(bodyCas),
+			PreviousRevSeqNo: db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
 		}
 		opts := &sgbucket.MutateInOptions{
 			MacroExpansion: []sgbucket.MacroExpansionSpec{
 				sgbucket.NewMacroExpansionSpec(db.XattrMouCasPath(), sgbucket.MacroCas),
 			},
 		}
-		_, err := ds.WriteWithXattrs(ctx, docID, 0, 0, []byte(body), xattrs, nil, opts)
+		_, err = ds.UpdateXattrs(ctx, docID, 0, bodyCas, map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, mou)}, opts)
 		require.NoError(t, err)
 	}
 
