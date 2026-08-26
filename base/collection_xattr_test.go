@@ -17,6 +17,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestWriteTombstoneWithXattrs(t *testing.T) {
@@ -1958,4 +1959,112 @@ func TestMetadataStoreSubdocStoreWriteOperations(t *testing.T) {
 	_, _, err = fallbackStore.GetSubDocRaw(ctx, writeDocID, "a")
 	require.Error(t, err)
 	require.True(t, IsDocNotFoundError(err))
+}
+
+// TestWriteUpdateXattrOnly covers the xattr-only read-modify-write: the document body has to be left exactly
+// as it was - present, absent, or a tombstone - while the callback's xattrs are written under the CAS the
+// callback saw.
+func TestWriteUpdateXattrOnly(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.GetSingleDataStore()
+
+	const xattrKey = "_xattr1"
+	xattrKeys := []string{xattrKey}
+	updatedXattrs := map[string][]byte{xattrKey: []byte(`{"a":"updated"}`)}
+
+	t.Run("live document keeps its body", func(t *testing.T) {
+		docID := sgtest.SafeDocumentName(t, t.Name())
+		body := []byte(`{"foo":"bar"}`)
+		cas, err := col.WriteWithXattrs(ctx, docID, 0, 0, body, map[string][]byte{xattrKey: []byte(`{"a":"b"}`)}, nil, nil)
+		require.NoError(t, err)
+
+		casOut, err := WriteUpdateXattrOnly(ctx, col, docID, xattrKeys, 0, nil, func(currentXattrs map[string][]byte, currentCas uint64) (map[string][]byte, error) {
+			require.Equal(t, cas, currentCas)
+			requireXattrsEqual(t, map[string][]byte{xattrKey: []byte(`{"a":"b"}`)}, currentXattrs)
+			return updatedXattrs, nil
+		})
+		require.NoError(t, err)
+		require.NotEqual(t, cas, casOut)
+
+		finalBody, finalXattrs, finalCas, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+		require.NoError(t, err)
+		require.JSONEq(t, string(body), string(finalBody), "the body must not be touched by an xattr-only update")
+		requireXattrsEqual(t, updatedXattrs, finalXattrs)
+		require.Equal(t, casOut, finalCas)
+	})
+
+	t.Run("tombstone stays a tombstone", func(t *testing.T) {
+		docID := sgtest.SafeDocumentName(t, t.Name())
+		cas, err := col.WriteTombstoneWithXattrs(ctx, docID, 0, 0, map[string][]byte{xattrKey: []byte(`{"a":"b"}`)}, nil, false, nil)
+		require.NoError(t, err)
+
+		casOut, err := WriteUpdateXattrOnly(ctx, col, docID, xattrKeys, 0, nil, func(currentXattrs map[string][]byte, currentCas uint64) (map[string][]byte, error) {
+			require.Equal(t, cas, currentCas)
+			return updatedXattrs, nil
+		})
+		require.NoError(t, err)
+		require.NotEqual(t, cas, casOut)
+
+		finalBody, finalXattrs, _, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+		require.NoError(t, err)
+		require.Empty(t, finalBody, "the document must still be a tombstone")
+		requireXattrsEqual(t, updatedXattrs, finalXattrs)
+	})
+
+	t.Run("callback error abandons the write", func(t *testing.T) {
+		docID := sgtest.SafeDocumentName(t, t.Name())
+		originalXattrs := map[string][]byte{xattrKey: []byte(`{"a":"b"}`)}
+		cas, err := col.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), originalXattrs, nil, nil)
+		require.NoError(t, err)
+
+		_, err = WriteUpdateXattrOnly(ctx, col, docID, xattrKeys, 0, nil, func(map[string][]byte, uint64) (map[string][]byte, error) {
+			return updatedXattrs, ErrUpdateCancel
+		})
+		require.ErrorIs(t, err, ErrUpdateCancel)
+
+		_, finalXattrs, finalCas, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+		require.NoError(t, err)
+		require.Equal(t, cas, finalCas, "an abandoned update must not write")
+		requireXattrsEqual(t, originalXattrs, finalXattrs)
+	})
+
+	t.Run("concurrent write triggers a cas retry", func(t *testing.T) {
+		docID := sgtest.SafeDocumentName(t, t.Name())
+		cas, err := col.WriteWithXattrs(ctx, docID, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrKey: []byte(`{"a":"b"}`)}, nil, nil)
+		require.NoError(t, err)
+
+		concurrentXattrs := map[string][]byte{xattrKey: []byte(`{"a":"concurrent"}`)}
+		callbackCount := 0
+		casOut, err := WriteUpdateXattrOnly(ctx, col, docID, xattrKeys, 0, nil, func(currentXattrs map[string][]byte, currentCas uint64) (map[string][]byte, error) {
+			callbackCount++
+			if callbackCount == 1 {
+				require.Equal(t, cas, currentCas)
+				// move the document on behind our back, so the guarded write fails and the callback is re-invoked
+				_, concurrentErr := col.WriteWithXattrs(ctx, docID, 0, currentCas, []byte(`{"foo":"concurrent"}`), concurrentXattrs, nil, nil)
+				require.NoError(t, concurrentErr)
+				return updatedXattrs, nil
+			}
+			require.NotEqual(t, cas, currentCas, "the retry has to work from the concurrent write's cas")
+			requireXattrsEqual(t, concurrentXattrs, currentXattrs)
+			return updatedXattrs, nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, callbackCount)
+
+		finalBody, finalXattrs, finalCas, err := col.GetWithXattrs(ctx, docID, xattrKeys)
+		require.NoError(t, err)
+		require.Equal(t, casOut, finalCas)
+		require.JSONEq(t, `{"foo":"concurrent"}`, string(finalBody), "the concurrent write's body must survive")
+		requireXattrsEqual(t, updatedXattrs, finalXattrs)
+	})
+
+	t.Run("missing document is an error", func(t *testing.T) {
+		_, err := WriteUpdateXattrOnly(ctx, col, sgtest.SafeDocumentName(t, t.Name()), xattrKeys, 0, nil, func(map[string][]byte, uint64) (map[string][]byte, error) {
+			require.Fail(t, "callback must not be invoked for a document that does not exist")
+			return nil, nil
+		})
+		require.Error(t, err)
+	})
 }

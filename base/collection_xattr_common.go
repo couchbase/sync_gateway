@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -245,6 +246,64 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 		value = nil
 		xattrs = nil
 		cas = 0
+	}
+}
+
+// WriteUpdateXattrOnlyFunc is the callback invoked by WriteUpdateXattrOnly with the document's current xattrs and CAS.
+// It returns the xattrs to upsert. Returning ErrUpdateCancel abandons the update without writing anything;
+// returning ErrCasFailureShouldRetry re-reads the document and invokes the callback again.
+type WriteUpdateXattrOnlyFunc func(currentXattrs map[string][]byte, currentCas uint64) (updatedXattrs map[string][]byte, err error)
+
+// WriteUpdateXattrOnly is the xattr-only analogue of WriteUpdateWithXattrs: it fetches the requested xattrs,
+// invokes the callback to compute the xattrs to write, and upserts them guarded on the CAS the fetch
+// returned, repeating the cycle on CAS failure. The document body is neither fetched nor written, so this
+// is the cheaper option whenever an update only touches metadata - WriteUpdateWithXattrs always pulls the
+// body over the wire, even when the callback leaves it alone.
+//
+// The document has to exist, and at least one of xattrKeys has to be present on it - unlike
+// WriteUpdateWithXattrs this never inserts. Tombstones are updated in place like any other document.
+func WriteUpdateXattrOnly(ctx context.Context, store DataStore, k string, xattrKeys []string, exp uint32, opts *sgbucket.MutateInOptions, callback WriteUpdateXattrOnlyFunc) (casOut uint64, err error) {
+	var previousLoopCas *uint64
+	for {
+		xattrs, cas, err := store.GetXattrs(ctx, k, xattrKeys)
+		if err != nil {
+			DebugfCtx(ctx, KeyCRUD, "Retrieval of existing xattrs failed during WriteUpdateXattrOnly for key=%s, xattrKeys=%s: %v", UD(k), UD(xattrKeys), err)
+			return 0, err
+		}
+
+		// defensive check to prevent infinite loops in case of CAS retry
+		if previousLoopCas != nil && *previousLoopCas == cas {
+			err := RedactErrorf("CAS retry triggered, but no change in document CAS detected for key=%s, xattrKeys=%s", UD(k), UD(xattrKeys))
+			WarnfCtx(ctx, "%s", err)
+			return 0, err
+		}
+
+		updatedXattrs, err := callback(xattrs, cas)
+		if errors.Is(err, ErrCasFailureShouldRetry) {
+			previousLoopCas = nil
+			continue
+		} else if err != nil {
+			return 0, err
+		}
+
+		worker := func() (shouldRetry bool, err error, value uint64) {
+			newCas, writeErr := store.UpdateXattrs(ctx, k, exp, cas, updatedXattrs, opts)
+			if writeErr != nil {
+				return IsRecoverableWriteError(writeErr), writeErr, 0
+			}
+			return false, nil, newCas
+		}
+		writeErr, newCas := RetryLoopCas(ctx, "WriteUpdateXattrOnly", worker, DefaultRetrySleeper())
+		if writeErr == nil {
+			return newCas, nil
+		}
+
+		if !IsDocNotFoundError(writeErr) && !IsCasMismatch(writeErr) {
+			WarnfCtx(ctx, "Failed to update xattrs for key=%s, xattrKeys=%s: %v", UD(k), UD(xattrKeys), writeErr)
+			return 0, writeErr
+		}
+		// Retry on cas failure, re-reading the xattrs the callback works from.
+		previousLoopCas = Ptr(cas)
 	}
 }
 

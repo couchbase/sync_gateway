@@ -405,6 +405,11 @@ func (c *Collection) isRecoverableReadError(err error) bool {
 
 // Recoverable errors trigger retry for gocb v2 write operations
 func (c *Collection) isRecoverableWriteError(err error) bool {
+	return IsRecoverableWriteError(err)
+}
+
+// IsRecoverableWriteError returns true for errors that should trigger a retry of a gocb v2 write operation.
+func IsRecoverableWriteError(err error) bool {
 
 	if err == nil {
 		return false
