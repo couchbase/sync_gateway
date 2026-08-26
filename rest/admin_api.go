@@ -263,13 +263,6 @@ func (h *handler) handleDbOnline() error {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is in progress, this may take some time, try again later")
 	}
 
-	// This handler runs offline, so the state check in validateAndWriteHeaders doesn't apply. A
-	// database being torn down can't be brought back online - the caller needs to retry against the
-	// database that replaces it.
-	if dbState == db.DBStopping {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database is stopping, try again later")
-	}
-
 	body, err := h.readBody()
 	if err != nil {
 		return err
@@ -328,7 +321,14 @@ func (h *handler) handleDbOnline() error {
 		} else {
 			var oldConfig DbConfig
 			// persistent config here
-			bucket := h.db.Bucket.GetName()
+			// Close doesn't take AccessLock, so it can nil the bucket after the CAS above succeeded.
+			bucketRef, open := h.db.BucketIfOpen()
+			if !open {
+				err = base.RedactErrorf("database %q was closed while being brought online", base.MD(h.db.Name))
+				base.InfofCtx(contextNoCancel.Ctx, base.KeyCRUD, "%v", err)
+				return
+			}
+			bucket := bucketRef.GetName()
 			dbName := h.db.Name
 			var cas uint64
 			var updatedDbConfig *DatabaseConfig

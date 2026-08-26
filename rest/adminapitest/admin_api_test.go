@@ -1495,18 +1495,23 @@ func TestDBOnlineSingle(t *testing.T) {
 	assert.True(t, body["state"].(string) == "Online")
 }
 
-// TestDBOnlineWhileStopping checks that _online reports a failure for a database that is being torn
-// down, rather than returning 200 and silently giving up in the background goroutine.
+// TestDBOnlineWhileStopping checks that _online on a database context being torn down reports
+// success and leaves it alone. A concurrent _online reloads the database, which closes the context
+// the second request already resolved, and that request must not fail - see TestDBOnlineConcurrent.
 func TestDBOnlineWhileStopping(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
+	dbc := rt.GetDatabase()
 	// _online runs offline, so the state check in validateAndWriteHeaders doesn't reject this.
-	atomic.StoreUint32(&rt.GetDatabase().State, db.DBStopping)
+	atomic.StoreUint32(&dbc.State, db.DBStopping)
 
-	response := rt.SendAdminRequest(http.MethodPost, "/db/_online", "")
-	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
-	require.Contains(t, response.Body.String(), "Database is stopping")
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/db/_online", ""), http.StatusOK)
+
+	// The background goroutine only transitions an Offline database, so the state stays put.
+	require.Never(t, func() bool {
+		return atomic.LoadUint32(&dbc.State) != db.DBStopping
+	}, time.Second, 10*time.Millisecond)
 }
 
 // Take DB online concurrently using two goroutines
