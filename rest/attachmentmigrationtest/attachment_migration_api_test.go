@@ -30,6 +30,7 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false, // turn off import feed to stop the feed migrating attachments
 		}},
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
@@ -51,15 +52,24 @@ func TestAttachmentMigrationAPI(t *testing.T) {
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
 
 	// add some docs for migration
-	numDocs, _ := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
+	numDocs, legacyKeys := addDocsForMigrationProcess(t, ctx, collection, rt.Bucket())
+
+	// Pause migration at the first legacy doc so the duplicate start request below is
+	// guaranteed to arrive while the run is genuinely still in progress.
+	pauser := newMigrationPauser(rt)
+	defer pauser.Close()
+	pauser.Pause(legacyKeys[0])
 
 	// kick off migration
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser.WaitUntilBlocked()
 
 	// attempt to kick off again, should error
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_attachment_migration", "")
 	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+	pauser.Release()
 
 	// Wait for run to complete
 	_ = rt.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
@@ -191,7 +201,7 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 		DatabaseConfig:   dbCfg,
 	})
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.LeakyBucketClone(base.LeakyBucketConfig{}),
 		DatabaseConfig:   dbCfg,
 	})
 	defer rt2.Close()
@@ -242,12 +252,26 @@ func TestAttachmentMigrationMultiNode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, db.BackgroundProcessStateStopped, rt2MigrationStatus.State)
 
+	// Add a fresh legacy attachment now that the run is genuinely stopped. On a real cluster (and
+	// even Rosmar), stopping isn't instant, so the original vBucket 0 docs may already be migrated
+	// by this point -- a doc created after Stopped is confirmed is guaranteed unmigrated, giving the
+	// resumed run below something to genuinely block on.
+	resumeDocID := base.VBucket0DocIDs(t, rt1.Bucket(), 6)[5]
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, resumeDocID, []byte(`{}`), "att", []byte("att body"))
+
+	// Pause again, bound to rt2's own leaky datastore this time -- the resumed run below performs
+	// its writes through rt2, so a pauser bound to rt1 wouldn't intercept them.
+	pauser2 := newMigrationPauser(rt2)
+	defer pauser2.Close()
+	pauser2.Pause(resumeDocID)
+
 	// kick off migration run again on node 2. Should resume and have same migration id.
-	// Note: with the small Rosmar test dataset the resumed migration can finish before the
-	// transient Running state is observable, so we don't poll for it here — the resume is
-	// instead verified by the migrationID equality check on the final Completed status below.
 	resp = rt2.SendAdminRequest("POST", "/{{.db}}/_attachment_migration?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	pauser2.WaitUntilBlocked()
+	status = rt2.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateRunning)
+	assert.Equal(t, migrationID, status.MigrationID)
+	pauser2.Release()
 
 	// Wait for run to be marked as complete on both nodes
 	status = rt1.WaitForAttachmentMigrationStatus(db.BackgroundProcessStateCompleted)
