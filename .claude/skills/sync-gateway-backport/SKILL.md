@@ -266,7 +266,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | A hunk dropped because a helper it calls doesn't exist on the branch | That helper is a prerequisite — find its commit with `git log -S`, stack it, and apply the hunk whole |
 | Dropping a hunk and documenting it in the commit/PR body instead of asking | The body explains a decision already made. Ask first with AskUserQuestion |
 | Deviation bullet names the file that was dropped | Name the tests that lost the fix, and what they go back to doing |
-| Treating a `testing/require` vs `stretchr/testify/require` import conflict as a blocker or a prerequisite | Rename the imports to the branch's own and take the upstream side of the rest; list it as a deviation |
+| Treating a `testing/require` vs `github.com/stretchr/testify/require` import conflict as a blocker or a prerequisite | Rename the imports to the branch's own and take the upstream side of the rest; list it as a deviation |
 | Backporting the `testing/assert` / `testing/require` wrapper packages to resolve one import conflict | Branch-wide change on an unrelated ticket — rename the imports in the cherry-picked file instead |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
