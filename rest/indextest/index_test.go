@@ -47,7 +47,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		indexUsers := "sg_users_x1"
 		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore(ctx))
 		require.NoError(t, err)
-		indexNames, err := metadataCollection.GetIndexes()
+		indexNames, err := metadataCollection.GetIndexes(ctx)
 		require.NoError(t, err)
 
 		if rt.GetDatabase().UseLegacySyncDocsIndex() {
@@ -946,7 +946,7 @@ func TestPartitionedIndexes(t *testing.T) {
 	collection, err := base.AsCollection(rt.GetSingleDataStore())
 	require.NoError(t, err)
 
-	indexNames, err := collection.GetIndexes()
+	indexNames, err := collection.GetIndexes(base.TestCtx(t))
 	require.NoError(t, err)
 
 	expectedIndexNames := []string{

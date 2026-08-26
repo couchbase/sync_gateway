@@ -38,6 +38,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const kDefaultSlowQueryWarningThreshold uint32 = 500 // ms
@@ -688,6 +689,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// we do not have per database logging parameters, but it is still useful to have the database name in the log context. This must be set again after dbcOptionsFromConfig is called.
 	ctx = base.DatabaseLogCtx(ctx, dbName, nil)
 
+	ctx, dbOnlineSpan := base.StartSpan(ctx, "sgw.db.online",
+		attribute.String("sgw.db.name", dbName),
+		attribute.String("sgw.bucket.name", spec.BucketName),
+		attribute.Int("sgw.db.scope_count", len(config.Scopes)),
+		attribute.Bool("sgw.db.load_from_bucket", options.loadFromBucket),
+	)
+	defer func() { base.EndSpan(dbOnlineSpan, returnedError) }()
+
 	defer func() {
 		if returnedError == nil {
 			return
@@ -765,12 +774,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 
 	// the connectToBucketFn is used for testing seam
+	bucketConnectCtx, bucketConnectSpan := base.StartSpan(ctx, "sgw.bucket.connect",
+		attribute.Bool("sgw.bucket.fail_fast", options.failFast))
 	if sc.connectToBucketFn != nil {
 		// the connectToBucketFn is used for testing seam
-		bucket, err = sc.connectToBucketFn(ctx, spec, options.failFast)
+		bucket, err = sc.connectToBucketFn(bucketConnectCtx, spec, options.failFast)
 	} else {
-		bucket, err = db.ConnectToBucket(ctx, spec, options.failFast)
+		bucket, err = db.ConnectToBucket(bucketConnectCtx, spec, options.failFast)
 	}
+	base.EndSpan(bucketConnectSpan, err)
 	if err != nil {
 		if options.loadFromBucket {
 			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseBucketConnectionError))
@@ -851,7 +863,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		contextOptions.MetadataStore = bucket.DefaultDataStore(ctx)
 	}
-	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
+	metaValidateCtx, metaValidateSpan := base.StartSpan(ctx, "sgw.db.metadata_store_validate")
+	err = validateMetadataStore(metaValidateCtx, contextOptions.MetadataStore)
+	base.EndSpan(metaValidateSpan, err)
 	if err != nil {
 		if options.loadFromBucket {
 			sc._handleInvalidDatabaseConfig(ctx, spec.BucketName, config, db.NewDatabaseError(db.DatabaseInvalidDatastore))
@@ -2158,6 +2172,10 @@ func cbRBACWhoAmI(ctx context.Context, httpClient *http.Client, managementEndpoi
 }
 
 func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
+	ctx, span := base.StartSpan(ctx, "sgw.auth.check_roles",
+		attribute.Int("sgw.auth.requested_role_count", len(requestedRoles)))
+	defer func() { base.EndSpan(span, err) }()
+
 	whoAmIResults, statusCode, err := cbRBACWhoAmI(ctx, httpClient, managementEndpoints, username, password)
 	if err != nil || statusCode != http.StatusOK {
 		return statusCode, err
@@ -2182,6 +2200,14 @@ func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoint
 }
 
 func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path, contentType string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
+	ctx, span := base.StartSpan(ctx, "sgw.auth.cbs_request", attribute.String("sgw.auth.path", path))
+	authStart := time.Now()
+	defer func() {
+		base.RecordPhase(ctx, "auth", time.Since(authStart))
+		span.SetAttributes(attribute.Int("sgw.auth.status_code", statusCode))
+		base.EndSpan(span, err)
+	}()
+
 	retryCount := 0
 
 	worker := func() (shouldRetry bool, err error, value any) {

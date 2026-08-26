@@ -160,6 +160,7 @@ func (rc *LRURevisionCache) Get(ctx context.Context, docID, versionString string
 
 	docRev, cacheHit, err := value.load(ctx, rc.backingStores[collectionID], loadBackup)
 	rc.statsRecorderFunc(cacheHit)
+	base.SetSpanBoolAttr(ctx, "sgw.revcache.hit", cacheHit)
 
 	incrementStatEvent := !cacheHit && err == nil
 	if incrementStatEvent {
@@ -230,6 +231,7 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, collect
 
 	docRev, cacheHit, err := value.loadForDoc(ctx, rc.backingStores[collectionID], bucketDoc)
 	rc.statsRecorderFunc(cacheHit)
+	base.SetSpanBoolAttr(ctx, "sgw.revcache.hit", cacheHit)
 
 	incrementStatEvent := !cacheHit && err == nil
 	if incrementStatEvent {

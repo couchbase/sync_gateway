@@ -35,7 +35,7 @@ func NewRosmarDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOption
 }
 
 // Start a DCP feed, returns a channel that will be closed when the feed is done.
-func (dc *RosmarDCPClient) Start() (chan error, error) {
+func (dc *RosmarDCPClient) Start(_ context.Context) (chan error, error) {
 	doneChan := make(chan error)
 	dc.doneChan = make(chan struct{})
 	dc.terminator = make(chan bool)

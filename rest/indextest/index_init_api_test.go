@@ -361,7 +361,7 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 	syncDocsIdx := "sg_syncDocs" + indexNameSuffix
 
 	// prior to database creation, there should be only syncDocs
-	indexes, err := n1qlStore.GetIndexes()
+	indexes, err := n1qlStore.GetIndexes(ctx)
 	require.NoError(t, err)
 	require.Contains(t, indexes, syncDocsIdx)
 	require.NotContains(t, indexes, userIdx)
@@ -372,7 +372,7 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 	require.True(t, rt.GetDatabase().UseLegacySyncDocsIndex())
 
 	// after database creation, there should be only syncDocs
-	indexes, err = n1qlStore.GetIndexes()
+	indexes, err = n1qlStore.GetIndexes(ctx)
 	require.NoError(t, err)
 	require.Contains(t, indexes, syncDocsIdx)
 	require.NotContains(t, indexes, userIdx)
@@ -380,7 +380,7 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 
 	// this call should not create new indexes
 	runIndexInit(rt, `{"create_separate_principal_indexes":false}`)
-	indexes, err = n1qlStore.GetIndexes()
+	indexes, err = n1qlStore.GetIndexes(ctx)
 	require.NoError(t, err)
 	require.NotContains(t, indexes, userIdx)
 	require.NotContains(t, indexes, roleIdx)
@@ -388,7 +388,7 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 
 	// this should create new indexes
 	runIndexInit(rt, `{"create_separate_principal_indexes":true}`)
-	indexes, err = n1qlStore.GetIndexes()
+	indexes, err = n1qlStore.GetIndexes(ctx)
 	require.NoError(t, err)
 	require.Contains(t, indexes, syncDocsIdx)
 	require.Contains(t, indexes, userIdx)
@@ -407,7 +407,7 @@ func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {
 	//require.Lenf(t, body.Result, 1, "expected one database in post upgrade response")
 	//require.Lenf(t, body.Result[dbName].RemovedIndexes, 1, "expected one syncDocs index to be removed")
 
-	//indexes, err = n1qlStore.GetIndexes()
+	//indexes, err = n1qlStore.GetIndexes(ctx)
 	//require.NoError(t, err)
 	//require.NotContains(t, indexes, syncDocsIdx)
 	//require.Contains(t, indexes, userIdx)

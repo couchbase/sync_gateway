@@ -148,7 +148,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
 		return 0, dcpClient, err
 	}
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
@@ -391,7 +391,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		return 0, nil, err
 	}
 
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
@@ -527,7 +527,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	}
 	metadataKeyPrefix := dcpClient.GetMetadataKeyPrefix()
 
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		// simplify close in CBG-2234

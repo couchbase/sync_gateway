@@ -92,7 +92,7 @@ func (c *Collection) Query(ctx context.Context, statement string, params map[str
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		TracefCtx(ctx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
-		queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), keyspaceStatement, n1qlOptions)
+		queryResults, queryErr := c.Bucket.runQuery(ctx, c.ScopeName(), keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
@@ -166,12 +166,13 @@ func (c *Collection) BuildDeferredIndexes(ctx context.Context, indexSet []string
 	return BuildDeferredIndexes(ctx, c, indexSet)
 }
 
-func (b *GocbV2Bucket) runQuery(scopeName string, statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
+func (b *GocbV2Bucket) runQuery(ctx context.Context, scopeName string, statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
 	b.waitForAvailQueryOp()
 
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
 	}
+	n1qlOptions.ParentSpan = GocbParentSpan(ctx)
 
 	queryResults, err := b.bucket.Scope(scopeName).Query(statement, n1qlOptions)
 	// In the event that we get an error during query we should release a view op as Close() will not be called.
@@ -182,8 +183,8 @@ func (b *GocbV2Bucket) runQuery(scopeName string, statement string, n1qlOptions 
 	return queryResults, err
 }
 
-func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
-	queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), statement, nil)
+func (c *Collection) executeQuery(ctx context.Context, statement string) (sgbucket.QueryResultIterator, error) {
+	queryResults, queryErr := c.Bucket.runQuery(ctx, c.ScopeName(), statement, nil)
 	if queryErr != nil {
 		return nil, queryErr
 	}
@@ -195,8 +196,8 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 	return resultsIterator, nil
 }
 
-func (c *Collection) executeStatement(statement string) error {
-	queryResults, queryErr := c.Bucket.runQuery(c.ScopeName(), statement, nil)
+func (c *Collection) executeStatement(ctx context.Context, statement string) error {
+	queryResults, queryErr := c.Bucket.runQuery(ctx, c.ScopeName(), statement, nil)
 	if queryErr != nil {
 		return queryErr
 	}
@@ -216,8 +217,8 @@ func (c *Collection) IsErrNoResults(err error) bool {
 	return errors.Is(err, gocb.ErrNoResult)
 }
 
-func (c *Collection) GetIndexes() (indexes []string, err error) {
-	return GetAllIndexes(c.indexManager())
+func (c *Collection) GetIndexes(ctx context.Context) (indexes []string, err error) {
+	return GetAllIndexes(ctx, c.indexManager())
 }
 
 // waitUntilQueryServiceReady will wait for the specified duration until the query service is available.

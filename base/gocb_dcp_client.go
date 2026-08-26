@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/gocbcore/v10/memd"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 //
@@ -109,9 +110,11 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 
 	numVbuckets := options.NumVBuckets
 	if numVbuckets == 0 {
-		var err error
-		numVbuckets, err = bucket.GetMaxVbno(ctx)
-		if err != nil {
+		if err := TraceSpan(ctx, "sgw.dcp.get_max_vbno", func(ctx context.Context) error {
+			var err error
+			numVbuckets, err = bucket.GetMaxVbno(ctx)
+			return err
+		}); err != nil {
 			return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 		}
 	}
@@ -134,7 +137,8 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		return nil, fmt.Errorf("error generating DCP stream name: %w", err)
 	}
 	client := &GoCBDCPClient{
-		ctx:              ctx,
+		// detached: this context lives as long as the feed, so it must not carry the startup span
+		ctx:              DetachSpan(ctx),
 		dcpStreamName:    dcpStreamName,
 		workers:          make([]*DCPWorker, numWorkers),
 		numVbuckets:      numVbuckets,
@@ -281,8 +285,10 @@ func (dc *GoCBDCPClient) configureOneShot() error {
 }
 
 // Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
-func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
-	err = dc.initAgent(dc.spec)
+func (dc *GoCBDCPClient) Start(ctx context.Context) (doneChan chan error, err error) {
+	err = TraceSpan(ctx, "sgw.dcp.init_agent", func(context.Context) error {
+		return dc.initAgent(dc.spec)
+	})
 	if err != nil {
 		return dc.doneChannel, err
 	}
@@ -292,14 +298,29 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 			return dc.doneChannel, err
 		}
 	}
+
+	_, workerSpan := StartSpan(ctx, "sgw.dcp.start_workers",
+		attribute.Int("sgw.dcp.worker_count", len(dc.workers)))
+	// dc.ctx, not the span context: the workers outlive this span.
 	dc.startWorkers(dc.ctx)
+	workerSpan.End()
+
+	// One span for the whole loop, not one per vbucket: a bucket has 1024 vbuckets by default, and
+	// a span each would swamp the startup trace for no diagnostic gain.
+	_, streamSpan := StartSpan(ctx, "sgw.dcp.open_streams",
+		attribute.Int("sgw.dcp.vbucket_count", int(dc.numVbuckets)))
+	defer streamSpan.End()
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
 		if openErr != nil {
-			return dc.doneChannel, fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			err = fmt.Errorf("Unable to start DCP client, error opening stream for vb %d: %w", i, openErr)
+			RecordSpanError(streamSpan, err)
+			streamSpan.SetAttributes(attribute.Int("sgw.dcp.vbuckets_opened", int(i)))
+			return dc.doneChannel, err
 		}
 	}
+	streamSpan.SetAttributes(attribute.Int("sgw.dcp.vbuckets_opened", int(dc.numVbuckets)))
 	return dc.doneChannel, nil
 }
 

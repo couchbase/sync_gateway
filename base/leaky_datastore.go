@@ -570,20 +570,20 @@ func (lds *LeakyDataStore) WaitForIndexesOnline(ctx context.Context, indexNames 
 	return n1qlStore.WaitForIndexesOnline(ctx, indexNames, option)
 }
 
-func (lds *LeakyDataStore) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
+func (lds *LeakyDataStore) executeQuery(ctx context.Context, statement string) (sgbucket.QueryResultIterator, error) {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return nil, err
 	}
-	return n1qlStore.executeQuery(statement)
+	return n1qlStore.executeQuery(ctx, statement)
 }
 
-func (lds *LeakyDataStore) executeStatement(statement string) error {
+func (lds *LeakyDataStore) executeStatement(ctx context.Context, statement string) error {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return err
 	}
-	return n1qlStore.executeStatement(statement)
+	return n1qlStore.executeStatement(ctx, statement)
 }
 
 func (lds *LeakyDataStore) waitUntilQueryServiceReady(timeout time.Duration) error {
@@ -594,12 +594,12 @@ func (lds *LeakyDataStore) waitUntilQueryServiceReady(timeout time.Duration) err
 	return n1qlStore.waitUntilQueryServiceReady(timeout)
 }
 
-func (lds *LeakyDataStore) GetIndexes() (indexes []string, err error) {
+func (lds *LeakyDataStore) GetIndexes(ctx context.Context) (indexes []string, err error) {
 	n1qlStore, err := lds.getN1QLStore()
 	if err != nil {
 		return nil, err
 	}
-	return n1qlStore.GetIndexes()
+	return n1qlStore.GetIndexes(ctx)
 }
 
 func (lds *LeakyDataStore) Scan(ctx context.Context, scanType sgbucket.ScanType, opts sgbucket.ScanOptions) (sgbucket.ScanResultIterator, error) {

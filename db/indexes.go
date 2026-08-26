@@ -20,6 +20,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -288,11 +289,15 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
-func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) error {
+func (i *SGIndex) createIfNeeded(ctx context.Context, bucket base.N1QLStore, options InitializeIndexOptions) (returnedError error) {
 	if options.NumPartitions < 1 {
 		return fmt.Errorf("Invalid number of partitions specified for index %s: %d, needs to be greater than 0", i.simpleName, options.NumPartitions)
 	}
 	indexName := i.fullIndexName(options.NumPartitions)
+
+	ctx, span := base.StartSpan(ctx, "sgw.index.create",
+		attribute.String("sgw.index.name", indexName))
+	defer func() { base.EndSpan(span, returnedError) }()
 
 	// Create index
 	base.InfofCtx(ctx, base.KeyQuery, "Creating index %s if it doesn't already exist...", indexName)
@@ -377,7 +382,11 @@ func (s sgIndexesToBuild) FullIndexNames() []string {
 }
 
 // Initializes Sync Gateway indexes for datastore.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options InitializeIndexOptions) error {
+func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options InitializeIndexOptions) (returnedError error) {
+	ctx, span := base.StartSpan(ctx, "sgw.indexes.initialize",
+		attribute.Int("sgw.indexes.num_partitions", int(options.NumPartitions)))
+	defer func() { base.EndSpan(span, returnedError) }()
+
 	if options.NumPartitions < 1 {
 		return fmt.Errorf("Invalid number of partitions specified: %d, needs to be greater than 0", options.NumPartitions)
 	}
@@ -560,7 +569,7 @@ func RemoveUnusedIndexes(ctx context.Context, bucket base.Bucket, inUseIndexes C
 			errs = errs.Append(base.RedactErrorf("datastore %s(%T) is not a N1QLStore", base.MD(dsName), dataStore))
 			continue
 		}
-		allIndexes, err := n1qlStore.GetIndexes()
+		allIndexes, err := n1qlStore.GetIndexes(ctx)
 		if err != nil {
 			errs = errs.Append(base.RedactErrorf("failed to get indexes for datastore %s: %w", base.MD(dsName), err))
 			continue

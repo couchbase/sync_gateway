@@ -181,7 +181,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.loggingCtx, bh.collection.DatabaseCollection))
 				bh.collectionCtx, _ = bh.collections.get(nil)
 			}
-			bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
+			bh.loggingCtx = bh.collection.AddCollectionContext(bh.loggingCtx)
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -202,7 +202,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			DatabaseCollection: bh.collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
-		bh.loggingCtx = bh.collection.AddCollectionContext(bh.BlipSyncContext.loggingCtx)
+		bh.loggingCtx = bh.collection.AddCollectionContext(bh.loggingCtx)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
@@ -1071,6 +1071,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or rev")
 	}
+	base.SetDocIDAttr(bh.loggingCtx, docID)
 
 	if bh.readOnly {
 		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, rev:%s", docID, rev)

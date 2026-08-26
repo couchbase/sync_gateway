@@ -45,6 +45,16 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	base.InitializeMemoryLoggers()
 	base.LogSyncGatewayVersion(ctx)
 
+	tracingShutdown, tracingErr := base.InitTracing(ctx)
+	if tracingErr != nil {
+		return tracingErr
+	}
+	defer func() {
+		if err := tracingShutdown(ctx); err != nil {
+			base.WarnfCtx(ctx, "Error shutting down tracing: %v", err)
+		}
+	}()
+
 	flagStartupConfig, fs, disablePersistentConfig, err := parseFlags(ctx, osArgs)
 	if err != nil {
 		// Return nil for ErrHelp so the shell exit code is 0

@@ -16,12 +16,14 @@ import (
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/rosmar"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // DCPClient is an interface for all DCP implementations.
 type DCPClient interface {
-	// Start will start the DCP feed. It returns a channel marking the end of the feed.
-	Start() (chan error, error)
+	// Start will start the DCP feed. It returns a channel marking the end of the feed. ctx is used
+	// for tracing the startup only; the feed itself outlives it.
+	Start(ctx context.Context) (chan error, error)
 	// Close will shut down the DCP feed.
 	Close() error
 	// GetMetadata returns the current DCP metadata.
@@ -52,7 +54,7 @@ type DCPClientOptions struct {
 }
 
 // NewDCPClient creates a new DCPClient to receive events from a bucket.
-func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DCPClient, error) {
+func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (dcpClient DCPClient, returnedError error) {
 	if bucket == nil {
 		return nil, fmt.Errorf("bucket must be provided")
 	} else if opts.Callback == nil {
@@ -76,11 +78,20 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 	if !ok {
 		return nil, fmt.Errorf("bucket type %T does not have a DCPClient implementation", underlyingBucket)
 	}
+
+	ctx, clientInitSpan := StartSpan(ctx, "sgw.dcp.client_init",
+		attribute.String("sgw.dcp.feed_id", opts.FeedID))
+	defer func() { EndSpan(clientInitSpan, returnedError) }()
+
 	var collectionIDs []uint32
 
-	cm, err := gocbBucket.GetCollectionManifest()
-	if err != nil {
-		return nil, err
+	var cm gocbcore.Manifest
+	if returnedError = TraceSpan(ctx, "sgw.dcp.get_collection_manifest", func(context.Context) error {
+		var manifestErr error
+		cm, manifestErr = gocbBucket.GetCollectionManifest()
+		return manifestErr
+	}); returnedError != nil {
+		return nil, returnedError
 	}
 
 	for scopeName, collections := range opts.CollectionNames {
@@ -129,9 +140,13 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 	}
 
 	if opts.FromLatestSequence {
-		metadata, err := getHighSeqMetadata(ctx, gocbBucket)
-		if err != nil {
-			return nil, err
+		var metadata []DCPMetadata
+		if returnedError = TraceSpan(ctx, "sgw.dcp.get_high_seq_metadata", func(ctx context.Context) error {
+			var seqErr error
+			metadata, seqErr = getHighSeqMetadata(ctx, gocbBucket)
+			return seqErr
+		}); returnedError != nil {
+			return nil, returnedError
 		}
 		options.InitialMetadata = metadata
 	}
@@ -153,7 +168,12 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (do
 	bucketName := bucket.GetName()
 	feedName := opts.FeedID
 
-	doneChan, err = client.Start()
+	startErr := TraceSpan(ctx, "sgw.dcp.feed_start", func(spanCtx context.Context) error {
+		var startErr error
+		doneChan, startErr = client.Start(spanCtx)
+		return startErr
+	})
+	err = startErr
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
 		_ = client.Close()

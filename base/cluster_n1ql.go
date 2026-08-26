@@ -146,7 +146,7 @@ func (cl *ClusterOnlyN1QLStore) Query(ctx context.Context, statement string, par
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		TracefCtx(ctx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
-		queryResults, queryErr := cl.runQuery(keyspaceStatement, n1qlOptions)
+		queryResults, queryErr := cl.runQuery(ctx, keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
 				rawResult:                  queryResults.Raw(),
@@ -179,8 +179,8 @@ func (cl *ClusterOnlyN1QLStore) Query(ctx context.Context, statement string, par
 }
 
 // executeQuery runs a N1QL query against the cluster.  Does not throttle query ops.
-func (cl *ClusterOnlyN1QLStore) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
-	queryResults, queryErr := cl.runQuery(statement, nil)
+func (cl *ClusterOnlyN1QLStore) executeQuery(ctx context.Context, statement string) (sgbucket.QueryResultIterator, error) {
+	queryResults, queryErr := cl.runQuery(ctx, statement, nil)
 	if queryErr != nil {
 		return nil, queryErr
 	}
@@ -192,8 +192,8 @@ func (cl *ClusterOnlyN1QLStore) executeQuery(statement string) (sgbucket.QueryRe
 	return resultsIterator, nil
 }
 
-func (cl *ClusterOnlyN1QLStore) executeStatement(statement string) error {
-	queryResults, queryErr := cl.runQuery(statement, nil)
+func (cl *ClusterOnlyN1QLStore) executeStatement(ctx context.Context, statement string) error {
+	queryResults, queryErr := cl.runQuery(ctx, statement, nil)
 	if queryErr != nil {
 		return queryErr
 	}
@@ -208,10 +208,11 @@ func (cl *ClusterOnlyN1QLStore) executeStatement(statement string) error {
 	return queryResults.Err()
 }
 
-func (cl *ClusterOnlyN1QLStore) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
+func (cl *ClusterOnlyN1QLStore) runQuery(ctx context.Context, statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {
 	if n1qlOptions == nil {
 		n1qlOptions = &gocb.QueryOptions{}
 	}
+	n1qlOptions.ParentSpan = GocbParentSpan(ctx)
 	queryResults, err := cl.cluster.Query(statement, n1qlOptions)
 
 	return queryResults, err
@@ -253,11 +254,11 @@ func (cl *ClusterOnlyN1QLStore) EscapedKeyspace() string {
 	return fmt.Sprintf("`%s`.`%s`.`%s`", cl.bucketName, cl.scopeName, cl.collectionName)
 }
 
-func (cl *ClusterOnlyN1QLStore) GetIndexes() (indexes []string, err error) {
+func (cl *ClusterOnlyN1QLStore) GetIndexes(ctx context.Context) (indexes []string, err error) {
 	if cl.supportsCollections {
-		return GetAllIndexes(cl.indexManager(cl.scopeName, cl.collectionName))
+		return GetAllIndexes(ctx, cl.indexManager(cl.scopeName, cl.collectionName))
 	} else {
-		return GetAllIndexes(cl.indexManager("", ""))
+		return GetAllIndexes(ctx, cl.indexManager("", ""))
 	}
 }
 

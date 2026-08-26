@@ -91,12 +91,15 @@ func (c *Collection) GetName() string {
 // KV store
 
 func (c *Collection) Get(ctx context.Context, k string, rv any) (cas uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "get", k)
+	defer func() { EndSpan(span, err) }()
 
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
 	getOptions := &gocb.GetOptions{
 		Transcoder: NewSGJSONTranscoder(),
+		ParentSpan: GocbParentSpan(ctx),
 	}
 	getResult, err := c.Collection.Get(k, getOptions)
 	if err != nil {
@@ -107,11 +110,15 @@ func (c *Collection) Get(ctx context.Context, k string, rv any) (cas uint64, err
 }
 
 func (c *Collection) GetRaw(ctx context.Context, k string) (rv []byte, cas uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "get_raw", k)
+	defer func() { EndSpan(span, err) }()
+
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
 	getOptions := &gocb.GetOptions{
 		Transcoder: NewSGRawTranscoder(),
+		ParentSpan: GocbParentSpan(ctx),
 	}
 	getRawResult, getErr := c.Collection.Get(k, getOptions)
 	if getErr != nil {
@@ -220,6 +227,9 @@ func (c *Collection) SetRaw(ctx context.Context, k string, exp uint32, opts *sgb
 }
 
 func (c *Collection) WriteCas(ctx context.Context, k string, exp uint32, cas uint64, v any, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "write_cas", k)
+	defer func() { EndSpan(span, err) }()
+
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -228,6 +238,7 @@ func (c *Collection) WriteCas(ctx context.Context, k string, exp uint32, cas uin
 		insertOpts := &gocb.InsertOptions{
 			Expiry:     CbsExpiryToDuration(exp),
 			Transcoder: NewSGJSONTranscoder(),
+			ParentSpan: GocbParentSpan(ctx),
 		}
 		if opt == sgbucket.Raw {
 			insertOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -238,6 +249,7 @@ func (c *Collection) WriteCas(ctx context.Context, k string, exp uint32, cas uin
 			Cas:        gocb.Cas(cas),
 			Expiry:     CbsExpiryToDuration(exp),
 			Transcoder: NewSGJSONTranscoder(),
+			ParentSpan: GocbParentSpan(ctx),
 		}
 		if opt == sgbucket.Raw {
 			replaceOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -267,6 +279,9 @@ func (c *Collection) Remove(ctx context.Context, k string, cas uint64) (casOut u
 }
 
 func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "update", k)
+	defer func() { EndSpan(span, err) }()
+
 	for {
 		var value []byte
 		var err error
@@ -275,6 +290,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 		// Load the existing value.
 		getOptions := &gocb.GetOptions{
 			Transcoder: gocb.NewRawJSONTranscoder(),
+			ParentSpan: GocbParentSpan(ctx),
 		}
 
 		var cas uint64

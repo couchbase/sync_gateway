@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -360,6 +361,12 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 
 // unmarshalDocumentWithXattrs populates individual xattrs on unmarshalDocumentWithXattrs from a provided xattrs map
 func (db *DatabaseCollection) unmarshalDocumentWithXattrs(ctx context.Context, docid string, data []byte, xattrs map[string][]byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+	ctx, span := base.StartSpan(ctx, "sgw.doc.unmarshal",
+		attribute.String("sgw.doc_id", docid),
+		attribute.Int("sgw.doc.body_bytes", len(data)),
+		attribute.Int("sgw.doc.unmarshal_level", int(unmarshalLevel)))
+	defer func() { base.EndSpan(span, err) }()
+
 	return unmarshalDocumentWithXattrs(ctx, docid, data, xattrs[base.SyncXattrName], xattrs[base.VvXattrName], xattrs[base.MouXattrName], xattrs[db.UserXattrKey()], xattrs[base.VirtualXattrRevSeqNo], xattrs[base.GlobalXattrName], cas, unmarshalLevel)
 
 }
@@ -480,20 +487,27 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 //   - attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //     revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //     that hasn't changed since one of those revisions will be returned as a stub.
-func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV string, maxHistory int, historyFrom []string) (DocumentRevision, error) {
+func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revOrCV string, maxHistory int, historyFrom []string) (_ DocumentRevision, returnedError error) {
+	ctx, span := base.StartSpan(ctx, "sgw.doc.get", attribute.String("sgw.doc_id", docid))
+	defer func() { base.EndSpan(span, returnedError) }()
+
 	var (
 		revision DocumentRevision
 		getErr   error
 	)
 
+	revCacheCtx, revCacheSpan := base.StartSpan(ctx, "sgw.revcache.get", attribute.String("sgw.doc_id", docid))
+	revCacheStart := time.Now()
 	if revOrCV != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, getErr = db.revisionCache.Get(ctx, docid, revOrCV, base.IsRevTreeID(revOrCV))
+		revision, getErr = db.revisionCache.Get(revCacheCtx, docid, revOrCV, base.IsRevTreeID(revOrCV))
 	} else {
 		// No rev given, so load active revision
-		revision, getErr = db.revisionCache.GetActive(ctx, docid)
+		revision, getErr = db.revisionCache.GetActive(revCacheCtx, docid)
 	}
+	base.RecordPhase(ctx, "revcache", time.Since(revCacheStart))
+	base.EndSpan(revCacheSpan, getErr)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
 	}
@@ -1141,7 +1155,10 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 }
 
 // updateHLV updates the HLV in the sync data appropriately based on what type of document update event we are encountering. mouMatch represents if the _mou.cas == doc.cas
-func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType, mouMatch bool, generatedVersion uint64) (*Document, error) {
+func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document, docUpdateEvent DocUpdateType, mouMatch bool, generatedVersion uint64) (retDoc *Document, returnedError error) {
+	ctx, span := base.StartSpan(ctx, "sgw.doc.update_hlv",
+		attribute.Int("sgw.doc.update_event", int(docUpdateEvent)))
+	defer func() { base.EndSpan(span, returnedError) }()
 
 	hasHLV := d.HLV != nil
 	if d.HLV == nil {
@@ -2460,6 +2477,9 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
 func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]any, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	ctx, span := base.StartSpan(ctx, "sgw.doc.run_sync_fn", attribute.String("sgw.doc_id", doc.ID))
+	defer span.End()
+
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
@@ -2500,7 +2520,11 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	return
 }
 
-func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments updatedAttachments) error {
+func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments updatedAttachments) (returnedError error) {
+	ctx, span := base.StartSpan(ctx, "sgw.doc.add_attachments",
+		attribute.Int("sgw.doc.attachment_count", len(newAttachments)))
+	defer func() { base.EndSpan(span, returnedError) }()
+
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(ctx, newAttachments)
 	if err != nil {
@@ -2514,7 +2538,10 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 }
 
 // assignSequence assigns a global sequence number from database.
-func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) (seqs []uint64, returnedError error) {
+	ctx, span := base.StartSpan(ctx, "sgw.doc.assign_sequence")
+	defer func() { base.EndSpan(span, returnedError) }()
+
 	return c.dbCtx.assignSequence(ctx, docSequence, doc, unusedSequences)
 }
 
@@ -2684,7 +2711,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 }
 
 func (col *DatabaseCollectionWithUser) documentUpdateFunc(
-	ctx context.Context,
+	ctxIn context.Context,
 	docExists bool,
 	doc *Document,
 	allowImport bool,
@@ -2703,6 +2730,11 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	changedRoleAccessUsers []string,
 	createNewRevIDSkipped bool,
 	err error) {
+
+	ctx, span := base.StartSpan(ctxIn, "sgw.doc.update_revision",
+		attribute.String("sgw.doc_id", doc.ID),
+		attribute.Bool("sgw.doc.exists", docExists))
+	defer func() { base.EndSpan(span, err) }()
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -2857,6 +2889,16 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
+	ctx, span := base.StartSpan(ctx, "sgw.doc.write",
+		attribute.String("sgw.doc_id", docid),
+		attribute.Bool("sgw.doc.is_import", isImport))
+	writeAttempts := 0
+	defer func() {
+		// the update callback re-runs on CAS conflict, so this is the retry count for the write
+		span.SetAttributes(attribute.Int("sgw.doc.write_attempts", writeAttempts))
+		base.EndSpan(span, err)
+	}()
+
 	var prevCurrentRev string
 	var storedDoc *Document
 	var changedAccessPrincipals, changedRoleAccessUsers []string // Returned by documentUpdateFunc
@@ -2891,6 +2933,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		}
 		casOut, err = db.dataStore.WriteUpdateWithXattrs(ctx, key, db.syncGlobalSyncMouAndUserXattrKeys(), initialExpiry, existingDoc, opts, func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (updatedDoc sgbucket.UpdatedDoc, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
+			writeAttempts++
 			if doc, err = db.unmarshalDocumentWithXattrs(ctx, docid, currentValue, currentXattrs, cas, DocUnmarshalAll); err != nil {
 				return
 			}
@@ -2944,7 +2987,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			doc.SetCrc32cUserXattrHash()
 
 			var rawSyncXattr, rawMouXattr, rawVvXattr, rawGlobalSync, rawDocBody []byte
+			_, marshalSpan := base.StartSpan(ctx, "sgw.doc.marshal", attribute.String("sgw.doc_id", docid))
 			rawDocBody, rawSyncXattr, rawVvXattr, rawMouXattr, rawGlobalSync, err = doc.MarshalWithXattrs()
+			if marshalSpan.IsRecording() {
+				marshalSpan.SetAttributes(
+					attribute.Int("sgw.doc.body_bytes", len(rawDocBody)),
+					attribute.Int("sgw.doc.sync_xattr_bytes", len(rawSyncXattr)))
+			}
+			base.EndSpan(marshalSpan, err)
 			if err != nil {
 				return updatedDoc, err
 			}
@@ -3066,6 +3116,10 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	if doc.History[newRevID] != nil {
+		ctx, revCacheSpan := base.StartSpan(ctx, "sgw.revcache.store",
+			attribute.String("sgw.doc_id", docid))
+		defer revCacheSpan.End()
+
 		// Store the new revision in the cache
 		history, getHistoryErr := doc.History.getHistory(newRevID)
 		if getHistoryErr != nil {

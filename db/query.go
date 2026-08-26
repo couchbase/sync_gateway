@@ -20,6 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Used for queries that only return doc id
@@ -397,6 +398,11 @@ const (
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
 func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName string, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool, dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (results sgbucket.QueryResultIterator, err error) {
+
+	ctx, span := base.StartSpan(ctx, "sgw.n1ql.query",
+		attribute.String("sgw.query.name", queryName),
+		attribute.Bool("sgw.query.adhoc", adhoc))
+	defer func() { base.EndSpan(span, err) }()
 
 	startTime := time.Now()
 	if threshold := slowQueryWarningThreshold; threshold > 0 {

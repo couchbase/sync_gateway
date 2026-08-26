@@ -21,6 +21,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type BackgroundProcessState string
@@ -313,6 +314,22 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		return err
 	}
 
+	// The goroutines below outlive this call, so they must not inherit the caller's span - otherwise
+	// a background job started during database startup keeps attaching spans to the startup trace
+	// long after it has finished. The job gets its own trace, linked back to whatever started it.
+	//
+	// Note for long-running jobs (resync in particular): this root span stays open for the whole
+	// run, so its trace grows for as long as the job does. Per-phase spans would be the right shape
+	// for a production version.
+	jobCtx, jobSpan := base.StartDetachedSpan(ctx, "sgw.background_job."+b.name,
+		attribute.String("sgw.background_job.name", b.name))
+	// record the job's trace ID on the caller's span - Jaeger renders links one way only
+	base.SpanFromContext(ctx).SetAttributes(
+		attribute.String("sgw.background_job."+b.name+".trace_id", jobSpan.SpanContext().TraceID().String()))
+
+	// status polling outlives the job span, so keep it out of the job's trace entirely
+	bgCtx := base.DetachSpan(ctx)
+
 	if b.mode() == backgroundManagerModeSingleNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
 		go func(terminator *base.SafeTerminator) {
@@ -321,9 +338,9 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			for {
 				select {
 				case <-ticker.C:
-					err := b.UpdateSingleNodeClusterAwareStatus(ctx)
+					err := b.UpdateSingleNodeClusterAwareStatus(bgCtx)
 					if err != nil {
-						base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
+						base.WarnfCtx(bgCtx, "Failed to update background manager status in periodic polling: %v, will retry", err)
 					}
 				case <-terminator.Done():
 					ticker.Stop()
@@ -335,13 +352,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
-			b.startPollingMultiNodeStatus(ctx, b.terminator)
+			b.startPollingMultiNodeStatus(bgCtx, b.terminator)
 		})
 	}
 	go func() {
-		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
+		err := b.Process.Run(jobCtx, options, b.UpdateStatusClusterAware, b.terminator)
+		base.EndSpan(jobSpan, err)
 		if err != nil {
-			base.ErrorfCtx(ctx, "Error: %v", err)
+			base.ErrorfCtx(jobCtx, "Error: %v", err)
 			b.SetError(err)
 		}
 

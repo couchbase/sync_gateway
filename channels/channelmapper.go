@@ -17,6 +17,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	_ "github.com/robertkrimen/otto/underscore"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 /** Result of running a channel-mapper function. */
@@ -61,7 +62,14 @@ func GetDefaultSyncFunction(scopeName, collectionName string) string {
 
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(ctx context.Context, body map[string]any, oldBodyJSON string, metaMap map[string]any, userCtx map[string]any) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(ctx context.Context, body map[string]any, oldBodyJSON string, metaMap map[string]any, userCtx map[string]any) (output *ChannelMapperOutput, returnedError error) {
+	ctx, span := base.StartSpan(ctx, "sgw.sync_fn")
+	syncFnStart := time.Now()
+	defer func() {
+		base.RecordPhase(ctx, "sync_fn", time.Since(syncFnStart))
+		base.EndSpan(span, returnedError)
+	}()
+
 	numberFixBody := ConvertJSONNumbers(body)
 	numberFixMetaMap := ConvertJSONNumbers(metaMap)
 
@@ -69,7 +77,14 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(ctx context.Context, body ma
 	if err != nil {
 		return nil, err
 	}
-	output := result1.(*ChannelMapperOutput)
+	output = result1.(*ChannelMapperOutput)
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.Int("sgw.sync_fn.channel_count", len(output.Channels)),
+			attribute.Int("sgw.sync_fn.access_grant_count", len(output.Access)),
+			attribute.Int("sgw.sync_fn.role_grant_count", len(output.Roles)),
+		)
+	}
 	return output, nil
 }
 

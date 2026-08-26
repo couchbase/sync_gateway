@@ -134,7 +134,8 @@ func TestCollectionBlipHandler(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
 			bh := blipHandler{
-				db: allDB,
+				db:         allDB,
+				loggingCtx: ctx,
 				BlipSyncContext: &BlipSyncContext{
 					loggingCtx:  ctx,
 					collections: &blipCollections{},

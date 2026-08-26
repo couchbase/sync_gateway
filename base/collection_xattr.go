@@ -182,6 +182,9 @@ func (c *Collection) SubdocWrite(ctx context.Context, k string, subdocKey string
 
 // subdocGetBodyAndXattrs retrieves the document body and xattrs in a single LookupIn subdoc operation.  Does not require both to exist.
 func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattrKeys []string, fetchBody bool) (isTombstone bool, rawBody []byte, xattrs map[string][]byte, cas uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "subdoc_get", k)
+	defer func() { EndSpan(span, err) }()
+
 	xattrs = make(map[string][]byte, len(xattrKeys))
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
@@ -195,7 +198,15 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 		if fetchBody {
 			ops = append(ops, gocb.GetSpec("", &gocb.GetSpecOptions{}))
 		}
-		res, lookupErr := c.Collection.LookupIn(k, ops, LookupOptsAccessDeleted)
+		// only copy the shared options when there is a span to attach, to keep the untraced path
+		// allocation-free
+		lookupOpts := LookupOptsAccessDeleted
+		if parentSpan := GocbParentSpan(ctx); parentSpan != nil {
+			tracedOpts := *LookupOptsAccessDeleted
+			tracedOpts.ParentSpan = parentSpan
+			lookupOpts = &tracedOpts
+		}
+		res, lookupErr := c.Collection.LookupIn(k, ops, lookupOpts)
 		// There are two 'partial success' error codes:
 		//   ErrMemdSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
 		//   ErrMemdSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr exists but doc is deleted (tombstone)
@@ -299,7 +310,10 @@ func (c *Collection) createTombstone(_ context.Context, k string, exp uint32, ca
 }
 
 // insertBodyAndXattrs inserts a document and associated xattrs in a single mutateIn operation.  Writes cas and crc32c to the xattr using macro expansion.
-func (c *Collection) insertBodyAndXattrs(_ context.Context, k string, exp uint32, v any, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+func (c *Collection) insertBodyAndXattrs(ctx context.Context, k string, exp uint32, v any, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "subdoc_insert", k)
+	defer func() { EndSpan(span, err) }()
+
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -312,6 +326,7 @@ func (c *Collection) insertBodyAndXattrs(_ context.Context, k string, exp uint32
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsInsert,
+		ParentSpan:    GocbParentSpan(ctx),
 	}
 	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
@@ -411,6 +426,9 @@ func (c *Collection) updateXattrs(ctx context.Context, k string, exp uint32, cas
 
 // updateBodyAndXattrs updates the document body and xattrs of an existing document. Writes cas and crc32c to the xattr using macro expansion.
 func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint32, cas uint64, opts *sgbucket.MutateInOptions, v any, xattrs map[string][]byte, xattrsToDelete []string) (casOut uint64, err error) {
+	ctx, span := StartKVSpan(ctx, "subdoc_update", k)
+	defer func() { EndSpan(span, err) }()
+
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
@@ -432,6 +450,7 @@ func (c *Collection) updateBodyAndXattrs(ctx context.Context, k string, exp uint
 		Expiry:        CbsExpiryToDuration(exp),
 		StoreSemantic: gocb.StoreSemanticsReplace,
 		Cas:           gocb.Cas(cas),
+		ParentSpan:    GocbParentSpan(ctx),
 	}
 	fillMutateInOptions(ctx, options, opts)
 	result, mutateErr := c.Collection.MutateIn(k, mutateOps, options)

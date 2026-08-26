@@ -1,0 +1,25 @@
+# Everything the OpenTelemetry PoC needs: a Couchbase Server to back Sync Gateway, an OTLP
+# collector for Sync Gateway to send spans to, and Jaeger to look at them in.
+#
+# Couchbase Server starts empty. tools/otel-poc/demo.sh initialises the cluster and creates the
+# bucket; see the README if you would rather do that by hand.
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: sgw-otel-jaeger
+    ports:
+      - "16686:16686" # Jaeger UI
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    container_name: sgw-otel-collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC - point SG_OTEL_ENDPOINT here
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - jaeger

@@ -24,6 +24,8 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -47,10 +49,16 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, rep
 	if db.Options.MaxConcurrentRevs != nil {
 		maxInFlightRevs = *db.Options.MaxConcurrentRevs
 	}
+	// A BLIP connection is long-lived and carries an unbounded number of messages, so it cannot be
+	// the parent of their spans - that would build a single trace that grows for the life of the
+	// replication. Each message gets its own trace instead, linked back to the connection.
+	connectionLink := base.SpanLinkFromContext(ctx)
+
 	bsc := &BlipSyncContext{
 		blipContext:             bc,
 		blipContextDb:           db,
-		loggingCtx:              ctx,
+		loggingCtx:              base.DetachSpan(ctx),
+		connectionLink:          connectionLink,
 		terminator:              make(chan bool),
 		userChangeWaiter:        db.NewUserWaiter(),
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
@@ -102,7 +110,8 @@ type BlipSyncContext struct {
 	blipContext                 *blip.Context
 	activeCBMobileSubprotocol   CBMobileSubprotocolVersion // The active subprotocol version for this connection
 	blipContextDb               *Database                  // 'master' database instance for the replication, used as source when creating handler-specific databases
-	loggingCtx                  context.Context            // logging context for connection
+	loggingCtx                  context.Context            // logging context for connection (span detached - see NewBlipSyncContext)
+	connectionLink              trace.Link                 // links each message's trace back to the connection
 	dbUserLock                  sync.RWMutex               // Must be held when refreshing the db user
 	allowedAttachments          map[string]AllowedAttachment
 	allowedAttachmentsLock      sync.Mutex
@@ -177,6 +186,8 @@ func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) 
 // Includes the outer handler as a nested function.
 func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
+	spanName := "blip." + profile
+
 	// Wrap the handler function with a function that adds handling needed by all handlers
 	handlerFnWrapper := func(rq *blip.Message) {
 
@@ -201,7 +212,20 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		}()
 
 		startTime := time.Now()
-		handler := newBlipHandler(bsc.loggingCtx, bsc, bsc.copyContextDatabase(), bsc.incrementSerialNumber())
+		serialNumber := bsc.incrementSerialNumber()
+
+		// Root span for this BLIP message. A replication is a long-lived connection carrying
+		// potentially millions of messages, so the message - not the replication - is the unit of
+		// work a trace can represent.
+		msgCtx, span := base.StartSpanWithLink(bsc.loggingCtx, spanName, bsc.connectionLink)
+		defer span.End()
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("sgw.blip.profile", profile),
+				attribute.Int64("sgw.blip.serial_number", int64(serialNumber)))
+		}
+
+		handler := newBlipHandler(msgCtx, bsc, bsc.copyContextDatabase(), serialNumber)
 
 		// Trace log the full message body and properties
 		if base.LogTraceEnabled(bsc.loggingCtx, base.KeySyncMsg) {
@@ -211,6 +235,8 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 		if err := handlerFn(handler, rq); err != nil {
 			status, msg := base.ErrorAsHTTPStatus(err)
+			span.SetAttributes(attribute.Int("sgw.blip.status", status))
+			base.RecordSpanError(span, err)
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}

@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -145,8 +146,39 @@ func makeHandlerWithOptions(server *ServerContext, privs handlerPrivs, accessPer
 		// re-assign ctx and serial number for panic handler
 		ctx = h.ctx()
 		serialNumber = h.formatSerialNumber()
+
+		// Root span for the request. Sync Gateway is ctx-plumbed from here down to the KV layer, so
+		// everything the request does hangs off this span. When inbound propagation is enabled and
+		// the caller sent a traceparent, this continues their trace instead of starting one.
+		spanCtx := base.ExtractInboundTraceContext(h.ctx(), rq.Header)
+		spanCtx, span := base.StartSpan(spanCtx, "sgw.rest."+rq.Method)
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("http.request.method", rq.Method),
+				attribute.String("url.path", rq.URL.Path),
+				attribute.String("sgw.correlation_id", serialNumber),
+			)
+			h.rqCtx = base.WithPhaseTimings(spanCtx)
+
+			// Server-Timing has to be written just before the headers flush, once the work is done.
+			if w, ok := h.response.(*NonCountedResponseWriter); ok {
+				w.beforeWriteHeader = func() {
+					if v := base.ServerTimingHeader(h.ctx(), time.Since(h.startTime)); v != "" {
+						h.setHeader("Server-Timing", v)
+					}
+				}
+			}
+		}
+
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
+		if span.IsRecording() {
+			span.SetAttributes(attribute.Int("http.response.status_code", h.status))
+			if h.db != nil {
+				span.SetAttributes(attribute.String("sgw.db.name", h.db.Name))
+			}
+		}
+		base.EndSpan(span, err)
 		h.logDuration(true)
 		h.reportDbStats()
 	})
@@ -940,7 +972,10 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	start := time.Now()
+	authCtx, authSpan := base.StartSpan(h.ctx(), "sgw.auth.public")
 	auditFields, err := h.setUserForPublicAuth(dbCtx)
+	base.RecordPhase(authCtx, "auth", time.Since(start))
+	base.EndSpan(authSpan, err)
 	dbCtx.DbStats.Security().TotalAuthTime.Add(time.Since(start).Nanoseconds())
 	if err != nil {
 		dbCtx.DbStats.Security().AuthFailedCount.Add(1)

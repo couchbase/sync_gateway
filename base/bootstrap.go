@@ -283,6 +283,7 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: GoCBv2TimeoutsConfig(nil, nil),
 		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
+		Tracer:         NewGocbTracer(),
 	}
 
 	cbCluster := &CouchbaseCluster{

@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/exp/maps"
 )
 
@@ -403,6 +404,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 		}
 	}()
+
+	ctx, span := base.StartSpan(ctx, "sgw.db.new_context",
+		attribute.Bool("sgw.db.auto_import", autoImport))
+	defer func() { base.EndSpan(span, returnedError) }()
 
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
@@ -2346,6 +2351,10 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		return base.RedactErrorf("cannot start online processes for database %q because it is closed", base.MD(db.Name))
 	}
 
+	ctx, onlineSpan := base.StartSpan(ctx, "sgw.db.start_online_processes",
+		attribute.Bool("sgw.db.auto_import", db.autoImport))
+	defer func() { base.EndSpan(onlineSpan, returnedError) }()
+
 	needChangeCacheUnlock := false
 	defer func() {
 		if returnedError != nil {
@@ -2364,18 +2373,23 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// Create config-based principals
 	// Create default users & roles:
 	if db.Options.ConfigPrincipals != nil {
-		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
-			return err
-		}
-		if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
-			return err
-		}
-
-		if db.Options.ConfigPrincipals.Guest != nil {
-			guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
-			if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
+		if err := base.TraceSpan(ctx, "sgw.db.install_principals", func(ctx context.Context) error {
+			if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Roles, "role"); err != nil {
 				return err
 			}
+			if err := db.InstallPrincipals(ctx, db.Options.ConfigPrincipals.Users, "user"); err != nil {
+				return err
+			}
+
+			if db.Options.ConfigPrincipals.Guest != nil {
+				guest := map[string]*auth.PrincipalConfig{base.GuestUsername: db.Options.ConfigPrincipals.Guest}
+				if err := db.InstallPrincipals(ctx, guest, "user"); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -2385,14 +2399,16 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	if err := db.changeCache.Init(
-		ctx,
-		db,
-		db.channelCache,
-		notifyChange,
-		db.Options.CacheOptions,
-		db.MetadataKeys,
-	); err != nil {
+	if err := base.TraceSpan(ctx, "sgw.change_cache.init", func(ctx context.Context) error {
+		return db.changeCache.Init(
+			ctx,
+			db,
+			db.channelCache,
+			notifyChange,
+			db.Options.CacheOptions,
+			db.MetadataKeys,
+		)
+	}); err != nil {
 		base.InfofCtx(ctx, base.KeyCache, "Error initializing the change cache: %s", err)
 		return err
 	}
@@ -2419,7 +2435,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		if err != nil {
 			return pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(db.Bucket.GetName()).Redact())
 		}
-		err = heartbeater.StartSendingHeartbeats(ctx)
+		err = base.TraceSpan(ctx, "sgw.heartbeater.start", heartbeater.StartSendingHeartbeats)
 		if err != nil {
 			return err
 		}
@@ -2428,7 +2444,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	// If sgreplicate is enabled on this node, register this node to accept notifications
 	if sgReplicateEnabled {
-		registerNodeErr := db.SGReplicateMgr.StartLocalNode(db.UUID, db.Heartbeater)
+		registerNodeErr := base.TraceSpan(ctx, "sgw.sgreplicate.start_local_node", func(context.Context) error {
+			return db.SGReplicateMgr.StartLocalNode(db.UUID, db.Heartbeater)
+		})
 		if registerNodeErr != nil {
 			return registerNodeErr
 		}
@@ -2437,7 +2455,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	// Start DCP feed
 	base.InfofCtx(ctx, base.KeyChanges, "Starting mutation feed on bucket %v", base.MD(db.Bucket.GetName()))
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
-	if err := db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore); err != nil {
+	if err := base.TraceSpan(ctx, "sgw.mutation_listener.start", func(ctx context.Context) error {
+		return db.mutationListener.Start(ctx, db.Bucket, cacheFeedStatsMap.Map, db.Scopes, db.MetadataStore)
+	}); err != nil {
 		return err
 	}
 
@@ -2457,7 +2477,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	}
 
 	needChangeCacheUnlock = false
-	if err := db.changeCache.Start(initialSequence); err != nil {
+	if err := base.TraceSpan(ctx, "sgw.change_cache.start", func(context.Context) error {
+		return db.changeCache.Start(initialSequence)
+	}); err != nil {
 		return err
 	}
 
@@ -2466,7 +2488,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	if db.autoImport {
 		ctx := db.AddBucketUserLogContext(ctx)
 		db.ImportListener = NewImportListener(ctx, db.MetadataKeys.DCPVersionedCheckpointPrefix(db.Options.GroupID, db.Options.ImportVersion), db)
-		if importFeedErr := db.ImportListener.StartImportFeed(db); importFeedErr != nil {
+		if importFeedErr := base.TraceSpan(ctx, "sgw.import_listener.start", func(context.Context) error {
+			return db.ImportListener.StartImportFeed(db)
+		}); importFeedErr != nil {
 			db.ImportListener = nil
 			return importFeedErr
 		}

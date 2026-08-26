@@ -185,7 +185,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options Attachment
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] Starting DCP feed for attachment migration", migrationLoggingID)
 
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment migration DCP feed: %v", migrationLoggingID, err)
 		_ = dcpClient.Close()

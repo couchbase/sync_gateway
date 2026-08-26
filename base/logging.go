@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // GetLogKeys returns log keys in a map
@@ -330,6 +331,13 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 				if logCtx, ok := ctxVal.(ContextAdder); ok {
 					format = logCtx.addContext(format)
 				}
+			}
+		}
+		// Correlate log lines with the trace they were emitted under, so a reader can pivot
+		// between the two.
+		if tracingEnabled.Load() {
+			if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+				format = "trace:" + sc.TraceID().String() + " " + format
 			}
 		}
 	}

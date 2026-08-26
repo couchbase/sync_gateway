@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // When external revision storage is used, maximum body size (in bytes) to store inline.
@@ -1076,6 +1077,10 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
 func (doc *Document) updateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
+	_, span := base.StartSpan(ctx, "sgw.doc.update_channels",
+		attribute.Int("sgw.doc.channel_count", len(newChannels)))
+	defer func() { base.EndSpan(span, err) }()
+
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {

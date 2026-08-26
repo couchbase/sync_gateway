@@ -359,7 +359,7 @@ func (p *migrationPauser) Pause(docID string) {
 	if !p.callbackSet.CompareAndSwap(false, true) {
 		require.FailNow(p.t, "migrationPauser.Pause called while already paused; call Release first")
 	}
-	p.blocked = make(chan struct{})
+	p.block	ed = make(chan struct{})
 	p.blockCh = make(chan struct{})
 	p.ds.SetUpdateXattrsCallback(func(key string) {
 		if key != docID {

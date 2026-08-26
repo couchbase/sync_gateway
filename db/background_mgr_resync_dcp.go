@@ -450,7 +450,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err
 		}
-		r.dcpDoneChan, err = dcpClient.Start()
+		r.dcpDoneChan, err = dcpClient.Start(ctx)
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to start resync DCP feed! %v", err)
 			_ = dcpClient.Close()

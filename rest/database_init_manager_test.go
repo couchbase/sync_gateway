@@ -250,7 +250,7 @@ func TestDatabaseInitCollectionsForMetadataStoreMode(t *testing.T) {
 			require.NoError(t, err)
 			n1qlStore, ok := base.AsN1QLStore(dataStore)
 			require.True(t, ok, "expected %s to be a N1QLStore, got %T", base.DefaultScopeAndCollectionName(), dataStore)
-			indexes, err := n1qlStore.GetIndexes()
+			indexes, err := n1qlStore.GetIndexes(ctx)
 			require.NoError(t, err)
 			if testCase.expectDefaultCollectionInit {
 				require.NotEmpty(t, indexes, "expected indexes to have been built on %s", base.DefaultScopeAndCollectionName())
@@ -386,7 +386,7 @@ func requireDefaultCollectionIndexes(t *testing.T, tb *base.TestBucket, indexesT
 	require.NoError(t, err)
 	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	require.True(t, ok, "expected %s to be a N1QLStore, got %T", base.DefaultScopeAndCollectionName(), dataStore)
-	indexes, err := n1qlStore.GetIndexes()
+	indexes, err := n1qlStore.GetIndexes(base.TestCtx(t))
 	require.NoError(t, err)
 	expected := db.GetIndexNames(db.InitializeIndexOptions{
 		MetadataIndexes:     indexesType,

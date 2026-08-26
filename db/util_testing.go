@@ -264,7 +264,7 @@ func purgeWithDCPFeed(ctx context.Context, bucket base.Bucket, tbp *base.TestBuc
 	if err != nil {
 		return err
 	}
-	doneChan, err := dcpClient.Start()
+	doneChan, err := dcpClient.Start(ctx)
 
 	if err != nil {
 		_ = dcpClient.Close()

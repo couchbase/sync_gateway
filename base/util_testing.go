@@ -362,7 +362,7 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 
 	// Retrieve all indexes on the bucket/collection
-	indexes, err := n1QLStore.GetIndexes()
+	indexes, err := n1QLStore.GetIndexes(ctx)
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func DropAllIndexes(ctx context.Context, n1QLStore N1QLStore) error {
 	// DROP INDEX is asynchronous, but generally quick. Wait for all indexes to disappear as part of the test harness.
 	err, _ = RetryLoop(ctx, "Waiting for no indexes on the bucket", func() (shouldRetry bool, err error, _ any) {
 		// Retrieve all indexes on the bucket/collection
-		indexes, err = n1QLStore.GetIndexes()
+		indexes, err = n1QLStore.GetIndexes(ctx)
 		if err != nil {
 			return false, err, nil
 		}

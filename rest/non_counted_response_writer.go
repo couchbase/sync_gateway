@@ -18,6 +18,21 @@ import (
 // NonCountedResponseWriter is a passhtrough http.ResponseWriter that satisfies the CoutableResponseWriter interface.
 type NonCountedResponseWriter struct {
 	http.ResponseWriter
+	// beforeWriteHeader, if set, runs immediately before headers are flushed - the last point at
+	// which a header can still be added.
+	beforeWriteHeader func()
+	headerWritten     bool
+}
+
+// WriteHeader runs beforeWriteHeader once, then flushes.
+func (w *NonCountedResponseWriter) WriteHeader(status int) {
+	if !w.headerWritten {
+		w.headerWritten = true
+		if w.beforeWriteHeader != nil {
+			w.beforeWriteHeader()
+		}
+	}
+	w.ResponseWriter.WriteHeader(status)
 }
 
 // NewNonCountedResponseWriter returns a new NonCountedResponseWriter that wraps the given ResponseWriter.

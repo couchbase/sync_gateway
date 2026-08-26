@@ -67,18 +67,23 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: timeoutsConfig,
 		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
+		Tracer:         NewGocbTracer(),
 	}
 
+	_, connectSpan := StartSpan(ctx, "sgw.cluster.connect")
 	cluster, err := gocb.Connect(connString, clusterOptions)
+	EndSpan(connectSpan, err)
 	if err != nil {
 		InfofCtx(ctx, KeyAuth, "Unable to connect to cluster: %v", err)
 		return nil, err
 	}
 
-	err = cluster.WaitUntilReady(time.Second*30, &gocb.WaitUntilReadyOptions{
-		DesiredState:  gocb.ClusterStateOnline,
-		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
-		RetryStrategy: gocbRetryStrategy(spec.FastFailOnInitialConnection),
+	err = TraceSpan(ctx, "sgw.cluster.wait_until_ready", func(context.Context) error {
+		return cluster.WaitUntilReady(time.Second*30, &gocb.WaitUntilReadyOptions{
+			DesiredState:  gocb.ClusterStateOnline,
+			ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
+			RetryStrategy: gocbRetryStrategy(spec.FastFailOnInitialConnection),
+		})
 	})
 
 	if err != nil {
@@ -112,8 +117,10 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
 
-	err := bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
-		RetryStrategy: gocbRetryStrategy(failFast),
+	err := TraceSpan(ctx, "sgw.bucket.wait_until_ready", func(context.Context) error {
+		return bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
+			RetryStrategy: gocbRetryStrategy(failFast),
+		})
 	})
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
@@ -123,7 +130,12 @@ func GetGocbV2BucketFromCluster(ctx context.Context, cluster *gocb.Cluster, spec
 		WarnfCtx(ctx, "Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}
-	clusterCompatMajor, clusterCompatMinor, err := GetClusterVersion(cluster)
+	var clusterCompatMajor, clusterCompatMinor int
+	err = TraceSpan(ctx, "sgw.cluster.get_version", func(context.Context) error {
+		var versionErr error
+		clusterCompatMajor, clusterCompatMinor, versionErr = GetClusterVersion(cluster)
+		return versionErr
+	})
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
 		return nil, err

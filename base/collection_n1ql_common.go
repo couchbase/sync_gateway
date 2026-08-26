@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // gocb v1 and v2 have distinct declarations of consistency mode, but values are consistent
@@ -70,13 +71,13 @@ type N1QLStore interface {
 	WaitForIndexesOnline(ctx context.Context, indexNames []string, option WaitForIndexesOnlineOption) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
-	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
+	executeQuery(ctx context.Context, statement string) (sgbucket.QueryResultIterator, error)
 
 	// executeStatement executes the specified statement and closes the response, returning any errors received.
-	executeStatement(statement string) error
+	executeStatement(ctx context.Context, statement string) error
 
 	// getIndexes retrieves all index names, used by test harness
-	GetIndexes() (indexes []string, err error)
+	GetIndexes(ctx context.Context) (indexes []string, err error)
 
 	// waitUntilQueryServiceReady waits until the query service is ready to accept requests
 	waitUntilQueryServiceReady(timeout time.Duration) error
@@ -110,8 +111,10 @@ type indexManager struct {
 	collectionName string
 }
 
-func (im *indexManager) GetAllIndexes() ([]gocb.QueryIndex, error) {
-	opts := &gocb.GetAllQueryIndexesOptions{}
+func (im *indexManager) GetAllIndexes(ctx context.Context) ([]gocb.QueryIndex, error) {
+	opts := &gocb.GetAllQueryIndexesOptions{
+		ParentSpan: GocbParentSpan(ctx),
+	}
 
 	if im.collection != nil {
 		return im.collection.GetAllIndexes(opts)
@@ -203,7 +206,7 @@ func createIndexFromStatement(ctx context.Context, store N1QLStore, indexName st
 
 	TracefCtx(ctx, KeyQuery, "Attempting to create index %q using statement: [%s]", indexName, UD(createStatement))
 
-	err := store.executeStatement(createStatement)
+	err := store.executeStatement(ctx, createStatement)
 	if err == nil {
 		return nil
 	}
@@ -244,10 +247,14 @@ func waitForIndexExistence(ctx context.Context, store N1QLStore, indexName strin
 }
 
 // BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the N1QLStore keyspace.
-func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) error {
+func BuildDeferredIndexes(ctx context.Context, s N1QLStore, indexSet []string) (returnedError error) {
 	if len(indexSet) == 0 {
 		return nil
 	}
+
+	ctx, span := StartSpan(ctx, "sgw.indexes.build_deferred",
+		attribute.StringSlice("sgw.index.names", indexSet))
+	defer func() { EndSpan(span, returnedError) }()
 
 	InfofCtx(ctx, KeyQuery, "Building deferred indexes: %v", indexSet)
 
@@ -284,7 +291,7 @@ func buildIndexes(ctx context.Context, s N1QLStore, indexNames []string) error {
 	indexNameList := StringSliceToN1QLArray(indexNames, "`")
 
 	buildStatement := fmt.Sprintf("BUILD INDEX ON %s(%s)", s.EscapedKeyspace(), indexNameList)
-	err := s.executeStatement(buildStatement)
+	err := s.executeStatement(ctx, buildStatement)
 
 	if IsIndexerRetryBuildError(err) {
 		InfofCtx(ctx, KeyQuery, "Indexer returned error that will be automatically retried by the index service - waiting for that to complete. Error:%v", err)
@@ -344,7 +351,7 @@ func GetIndexesMeta(ctx context.Context, store N1QLStore, indexNames []string) (
 	if store.IndexMetaScopeID() != "" {
 		statement += fmt.Sprintf(" AND indexes.scope_id = '%s'", store.IndexMetaScopeID())
 	}
-	results, err := store.executeQuery(statement)
+	results, err := store.executeQuery(ctx, statement)
 	if store.IsErrNoResults(err) {
 		return nil, nil
 	} else if err != nil {
@@ -369,7 +376,7 @@ func GetIndexesMeta(ctx context.Context, store N1QLStore, indexNames []string) (
 func DropIndex(ctx context.Context, store N1QLStore, indexName string) error {
 	statement := fmt.Sprintf("DROP INDEX default:%s.`%s`", store.EscapedKeyspace(), indexName)
 
-	err := store.executeStatement(statement)
+	err := store.executeStatement(ctx, statement)
 	if err != nil && !IsIndexerRetryIndexError(err) {
 		return err
 	}
@@ -598,7 +605,11 @@ func IndexMetaKeyspaceID(bucketName, scopeName, collectionName string) string {
 }
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
-func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManager, indexNames []string, waitOption WaitForIndexesOnlineOption) error {
+func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManager, indexNames []string, waitOption WaitForIndexesOnlineOption) (returnedError error) {
+	ctx, span := StartSpan(ctx, "sgw.indexes.wait_online",
+		attribute.StringSlice("sgw.index.names", indexNames))
+	defer func() { EndSpan(span, returnedError) }()
+
 	var retrySleeper RetrySleeper
 	initialWaitTime := 100
 	maxSleepTime := 5000
@@ -617,7 +628,7 @@ func WaitForIndexesOnline(ctx context.Context, keyspace string, mgr *indexManage
 
 	err, _ := RetryLoop(ctx, "WaitForIndexesOnline", func() (shouldRetry bool, err error, _ any) {
 		watchedOnlineIndexCount := 0
-		currIndexes, err := mgr.GetAllIndexes()
+		currIndexes, err := mgr.GetAllIndexes(ctx)
 		if err != nil {
 			return false, err, nil
 		}
@@ -675,7 +686,7 @@ func GetSystemCollectionIndexesMeta(ctx context.Context, store N1QLStore, scopeN
 		strings.Join(quotedNames, ","),
 	)
 
-	results, err := store.executeQuery(statement)
+	results, err := store.executeQuery(ctx, statement)
 	if store.IsErrNoResults(err) {
 		return nil, nil
 	} else if err != nil {
@@ -749,9 +760,9 @@ func WaitForSystemCollectionIndexesOnline(ctx context.Context, store N1QLStore, 
 	return err
 }
 
-func GetAllIndexes(mgr *indexManager) (indexes []string, err error) {
+func GetAllIndexes(ctx context.Context, mgr *indexManager) (indexes []string, err error) {
 	indexes = []string{}
-	indexInfo, err := mgr.GetAllIndexes()
+	indexInfo, err := mgr.GetAllIndexes(ctx)
 	if err != nil {
 		return indexes, err
 	}

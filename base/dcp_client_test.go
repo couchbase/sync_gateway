@@ -62,7 +62,7 @@ func TestOneShotDCP(t *testing.T) {
 	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	defer func() {
@@ -141,7 +141,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 		}
 	}()
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Wait for some processing to complete, then close the feed
@@ -230,7 +230,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
-			doneChan, startErr := dcpClient.Start()
+			doneChan, startErr := dcpClient.Start(ctx)
 			require.NoError(t, startErr)
 
 			// Wait for first feed to complete
@@ -265,7 +265,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient2, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
-			doneChan2, startErr2 := dcpClient2.Start()
+			doneChan2, startErr2 := dcpClient2.Start(ctx)
 			require.Error(t, startErr2)
 
 			require.NoError(t, dcpClient2.Close())
@@ -285,7 +285,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			dcpClient3, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
-			doneChan3, startErr3 := dcpClient3.Start()
+			doneChan3, startErr3 := dcpClient3.Start(ctx)
 			require.NoError(t, startErr3)
 
 			// Wait for third feed to complete
@@ -348,7 +348,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	dcpClient, err := NewGocbDCPClient(ctx, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	_, startErr := dcpClient.Start()
+	_, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Add documents
@@ -385,7 +385,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	// function to force the rollback of some vBuckets
 	dcpClient1.forceRollbackvBucket(vbUUID)
 
-	doneChan, startErr := dcpClient1.Start()
+	doneChan, startErr := dcpClient1.Start(ctx)
 	require.NoError(t, startErr)
 
 	defer func() {
@@ -456,7 +456,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	dcpClient = newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	// Wait for first feed to complete
@@ -491,7 +491,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	dcpClient2 := newDCPClientWithFastCheckpointing(t, bucket, dcpClientOpts)
 
-	doneChan2, startErr2 := dcpClient2.Start()
+	doneChan2, startErr2 := dcpClient2.Start(ctx)
 	require.NoError(t, startErr2)
 
 	// Wait for second feed to complete
@@ -569,7 +569,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	dcpClient, err := NewGocbDCPClient(ctx, callback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 	defer func() {
 		assert.NoError(t, dcpClient.Close())
@@ -597,7 +597,7 @@ func TestDCPOutOfRangeSequence(t *testing.T) {
 	dcpClient, err = NewGocbDCPClient(ctx, callback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
-	_, startErr = dcpClient.Start()
+	_, startErr = dcpClient.Start(ctx)
 	require.Error(t, startErr)
 	require.Contains(t, startErr.Error(), "out of range")
 
@@ -657,7 +657,7 @@ func TestDCPFeedEventTypes(t *testing.T) {
 	dcpClient, err := NewDCPClient(ctx, bucket, clientOptions)
 	require.NoError(t, err)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	defer func() {
@@ -807,7 +807,7 @@ func TestDCPFeedContentBodyOnlyDocs(t *testing.T) {
 					}
 					dcpClient, err := NewDCPClient(ctx, bucket, feedArgs)
 					require.NoError(t, err)
-					doneChan, err := dcpClient.Start()
+					doneChan, err := dcpClient.Start(ctx)
 					require.NoError(t, err)
 					defer func() {
 						assert.NoError(t, dcpClient.Close())
@@ -957,7 +957,7 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 
 	dcpClient := newDCPClientWithFastCheckpointing(t, bucket, dcpOptions)
 
-	doneChan, startErr := dcpClient.Start()
+	doneChan, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 
 	defer func() {
@@ -1109,7 +1109,7 @@ func TestDCPDataType(t *testing.T) {
 	dcpClient, err := NewDCPClient(ctx, bucket, dcpOptions)
 	require.NoError(t, err)
 
-	_, startErr := dcpClient.Start()
+	_, startErr := dcpClient.Start(ctx)
 	require.NoError(t, startErr)
 	defer func() { assert.NoError(t, dcpClient.Close()) }()
 
