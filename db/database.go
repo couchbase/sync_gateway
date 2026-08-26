@@ -809,6 +809,9 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 }
 
 func (context *DatabaseContext) Close(ctx context.Context) {
+	// Mark stopping before teardown so the lock-free stats reader skips this database.
+	atomic.StoreUint32(&context.State, DBStopping)
+
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
@@ -837,6 +840,15 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	base.RemovePerDbStats(context.Name)
 
+}
+
+// BucketIfOpen returns the database's bucket, or false if the database has been closed. Callers
+// holding a DatabaseContext they didn't resolve under a lock need this rather than reading Bucket
+// directly, since Close nils it.
+func (context *DatabaseContext) BucketIfOpen() (base.Bucket, bool) {
+	context.BucketLock.RLock()
+	defer context.BucketLock.RUnlock()
+	return context.Bucket, context.Bucket != nil
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.

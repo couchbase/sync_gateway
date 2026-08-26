@@ -377,6 +377,27 @@ func TestStatsLoggerStopped(t *testing.T) {
 	time.Sleep(time.Millisecond * 10)
 }
 
+// TestAsyncDatabaseOnlineClosedDatabase covers asyncDatabaseOnline losing the race with a database
+// teardown. StartOnlineProcesses only takes BucketLock for read, so a Close can mark the database
+// Stopping while it runs, and the online transition then has nothing to do. It used to panic.
+func TestAsyncDatabaseOnlineClosedDatabase(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	// Offline first, so StartOnlineProcesses has something to start.
+	rt.TakeDbOffline()
+
+	dbc := rt.GetDatabase()
+	atomic.StoreUint32(&dbc.State, db.DBStopping)
+
+	// Version must match, or asyncDatabaseOnline returns before reaching the online transition.
+	sc.asyncDatabaseOnline(base.NewNonCancelCtxForDatabase(base.TestCtx(t)), dbc, nil, sc.GetDbVersion(dbc.Name))
+
+	require.Equal(t, db.DBStopping, atomic.LoadUint32(&dbc.State),
+		"a closing database was brought online by asyncDatabaseOnline")
+}
+
 func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
