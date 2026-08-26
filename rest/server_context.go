@@ -78,7 +78,7 @@ type ServerContext struct {
 
 	// databasesSnapshot holds the values of _databases for the stats logger to read without taking
 	// _databasesLock, which a config update can hold for a long time while it waits on index
-	// readiness (CBG-5472). Kept in step with _databases by the mutation helpers.
+	// readiness. Kept in step with _databases by the mutation helpers.
 	databasesSnapshot atomic.Pointer[[]*db.DatabaseContext]
 
 	// serverCtx is cancelled by Close() to broadcast server shutdown to all background
@@ -1979,7 +1979,7 @@ func (sc *ServerContext) _updateDatabasesSnapshot() {
 }
 
 // Updates stats that are more efficient to calculate at stats collection time. Reads
-// databasesSnapshot rather than _databases, so it never blocks on _databasesLock (CBG-5472).
+// databasesSnapshot rather than _databases, so it never blocks on _databasesLock.
 func (sc *ServerContext) updateCalculatedStats(ctx context.Context) {
 	snapshot := sc.databasesSnapshot.Load()
 	if snapshot == nil {

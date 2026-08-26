@@ -12,6 +12,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"log"
@@ -447,8 +448,9 @@ type AuditStat struct {
 	NumAuditsFilteredByRole *SgwIntStat `json:"num_audits_filtered_by_role"`
 }
 
-type DbStats struct {
-	dbName                  string
+// dbStatsFields holds every serialized field of DbStats. MarshalJSON copies this struct whole, so a
+// stat added here reaches the output without MarshalJSON having to name it.
+type dbStatsFields struct {
 	CacheStats              *CacheStats                   `json:"cache,omitempty"`
 	CBLReplicationPullStats *CBLReplicationPullStats      `json:"cbl_replication_pull,omitempty"`
 	CBLReplicationPushStats *CBLReplicationPushStats      `json:"cbl_replication_push,omitempty"`
@@ -460,7 +462,37 @@ type DbStats struct {
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 	MigrationStats          *MigrationStats               `json:"metadata_migration,omitempty"`
 	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
-	dbReplicatorStatsMutex  sync.Mutex
+}
+
+// DbStats is the per-database stats tree.
+// Declare new serialized stats in dbStatsFields, not here.
+type DbStats struct {
+	dbStatsFields
+
+	dbName                 string
+	dbReplicatorStatsMutex sync.Mutex
+}
+
+// Compile-time interface check.
+var _ json.Marshaler = &DbStats{}
+
+// cloneDbReplicatorStatsMap returns a shallow copy of the DbReplicatorStats map, to hold the
+// replicator lock for as short a time as possible.
+func (d *DbStats) cloneDbReplicatorStatsMap() map[string]*DbReplicatorStats {
+	d.dbReplicatorStatsMutex.Lock()
+	defer d.dbReplicatorStatsMutex.Unlock()
+	return maps.Clone(d.DbReplicatorStats)
+}
+
+// MarshalJSON serializes the database stats. DBReplicatorStats writes DbReplicatorStats lazily
+// whenever a replication first reports a stat, so the map is swapped for a clone that no other
+// goroutine can write.
+func (d *DbStats) MarshalJSON() ([]byte, error) {
+	// Copy every serialized field, then swap in a clone of the map that cannot be read unguarded.
+	statsCopy := d.dbStatsFields
+	statsCopy.DbReplicatorStats = d.cloneDbReplicatorStatsMap()
+
+	return JSONMarshalCanonical(statsCopy)
 }
 
 type CacheStats struct {
@@ -1380,8 +1412,10 @@ type QueryStat struct {
 func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, metadataMigrationEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
 	// Build and register dbStats before taking the map lock, so Prometheus registration stays outside it.
 	dbStats := &DbStats{
-		dbName:            name,
-		DbReplicatorStats: make(map[string]*DbReplicatorStats),
+		dbName: name,
+		dbStatsFields: dbStatsFields{
+			DbReplicatorStats: make(map[string]*DbReplicatorStats),
+		},
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created

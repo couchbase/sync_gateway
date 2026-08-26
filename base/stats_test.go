@@ -11,11 +11,13 @@ licenses/APL2.txt.
 package base
 
 import (
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"maps"
 	"math"
 	"reflect"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -211,16 +213,24 @@ func newTestSgwStats() *SgwStats {
 	return &SgwStats{sgwStatsFields: sgwStatsFields{DbStats: map[string]*DbStats{}}}
 }
 
-// TestSgwStatsSerializedFieldsAreEmbedded fails when an exported field is declared on SgwStats
-// instead of sgwStatsFields, because String() copies only sgwStatsFields and would drop it.
-func TestSgwStatsSerializedFieldsAreEmbedded(t *testing.T) {
-	for _, field := range reflect.VisibleFields(reflect.TypeFor[SgwStats]()) {
-		if !field.IsExported() {
-			continue
-		}
-		// Promoted fields have an index path through the embedded struct, declared fields do not.
-		assert.Greater(t, len(field.Index), 1,
-			"SgwStats.%s must be declared in sgwStatsFields so String() serializes it", field.Name)
+// TestSerializedStatFieldsAreEmbedded fails when an exported field is declared on SgwStats or
+// DbStats instead of its embedded fields struct, because the marshaller copies only the embedded
+// struct and would drop it.
+func TestSerializedStatFieldsAreEmbedded(t *testing.T) {
+	for outer, inner := range map[reflect.Type]string{
+		reflect.TypeFor[SgwStats](): "sgwStatsFields",
+		reflect.TypeFor[DbStats]():  "dbStatsFields",
+	} {
+		t.Run(outer.Name(), func(t *testing.T) {
+			for _, field := range reflect.VisibleFields(outer) {
+				if !field.IsExported() {
+					continue
+				}
+				// Promoted fields have an index path through the embedded struct, declared fields do not.
+				assert.Greater(t, len(field.Index), 1,
+					"%s.%s must be declared in %s so it is serialized", outer.Name(), field.Name, inner)
+			}
+		})
 	}
 }
 
@@ -301,10 +311,65 @@ func TestClearDBStatsConcurrentWithReplicatorRegistration(t *testing.T) {
 	stats.ClearDBStats(dbName)
 }
 
+// TestStatsSerializationConcurrentWithReplicatorRegistration is a regression test for the stats
+// output iterating DbReplicatorStats without dbReplicatorStatsMutex, which crashed the process with
+// "concurrent map iteration and map write" when a replication registered mid-serialization. Fails
+// without -race too.
+func TestStatsSerializationConcurrentWithReplicatorRegistration(t *testing.T) {
+	stats := newTestSgwStats()
+	const dbName = "TestStatsSerializationConcurrentWithReplicatorRegistration_db"
+
+	dbStats, err := stats.NewDBStats(dbName, false, false, false, false, nil, nil)
+	require.NoError(t, err)
+
+	// The map is cheapest to marshal, and the window widest, while it is still small.
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := range 500 {
+			_, err := dbStats.DBReplicatorStats(fmt.Sprintf("repl_%d", i))
+			if !assert.NoError(t, err) {
+				return
+			}
+		}
+	})
+	wg.Go(func() {
+		for range 500 {
+			_ = stats.String()
+		}
+	})
+	WaitWithTimeout(t, &wg, time.Minute)
+}
+
+// TestDbStatsSerializedShape pins the stat groups DbStats.MarshalJSON emits, since a hand-written
+// marshaller can silently drop one.
+func TestDbStatsSerializedShape(t *testing.T) {
+	stats := newTestSgwStats()
+	const dbName = "TestDbStatsSerializedShape_db"
+
+	dbStats, err := stats.NewDBStats(dbName, true, true, false, true, []string{"queryName"}, []string{"scope.collection"})
+	require.NoError(t, err)
+	_, err = dbStats.DBReplicatorStats("repl")
+	require.NoError(t, err)
+
+	marshalled, err := JSONMarshalCanonical(dbStats)
+	require.NoError(t, err)
+
+	var groups map[string]json.RawMessage
+	require.NoError(t, JSONUnmarshal(marshalled, &groups))
+	require.ElementsMatch(t, []string{
+		"cache", "cbl_replication_pull", "cbl_replication_push", "database", "delta_sync",
+		"gsi_views", "replications", "security", "shared_bucket_import", "metadata_migration",
+		"per_collection",
+	}, slices.Collect(maps.Keys(groups)))
+}
+
 // newTestDbStats returns a DbStats holding only the replicator map, bypassing NewDBStats so a test
 // can use the same dbName twice.
 func newTestDbStats(dbName string) *DbStats {
-	return &DbStats{dbName: dbName, DbReplicatorStats: map[string]*DbReplicatorStats{}}
+	return &DbStats{
+		dbName:        dbName,
+		dbStatsFields: dbStatsFields{DbReplicatorStats: map[string]*DbReplicatorStats{}},
+	}
 }
 
 // TestDBReplicatorStatsFailedRegistrationNotCached checks that a DBReplicatorStats call which fails
