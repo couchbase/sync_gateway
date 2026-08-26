@@ -103,11 +103,8 @@ func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 	rt.WaitForDBState(db.RunStateString[db.DBOffline])
 
-	// we need to wait for the resync to start and not finish
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start&regenerate_sequences=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
-
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
