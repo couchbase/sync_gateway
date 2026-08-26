@@ -842,6 +842,15 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 }
 
+// BucketIfOpen returns the database's bucket, or false if the database has been closed. Callers
+// holding a DatabaseContext they didn't resolve under a lock need this rather than reading Bucket
+// directly, since Close nils it.
+func (context *DatabaseContext) BucketIfOpen() (base.Bucket, bool) {
+	context.BucketLock.RLock()
+	defer context.BucketLock.RUnlock()
+	return context.Bucket, context.Bucket != nil
+}
+
 // stopBackgroundManagers stops any running BackgroundManager.
 // Returns a list of StoppableBackgroundManager it signalled to stop.
 func (dbCtx *DatabaseContext) stopBackgroundManagers(ctx context.Context) (stopped []StoppableBackgroundManager) {

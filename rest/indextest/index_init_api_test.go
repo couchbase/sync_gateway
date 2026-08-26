@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -331,6 +332,23 @@ func TestChangeIndexPartitionsWithViews(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	rest.AssertHTTPErrorReason(t, resp, http.StatusBadRequest, "_index_init is a GSI-only feature and is not supported when using views")
+}
+
+// TestIndexInitWhileStopping checks that starting an index init against a database being torn down
+// is rejected. _index_init runs offline, so the state check in validateAndWriteHeaders doesn't cover
+// it, and it used to reach h.db.Bucket and panic into a 500 once Close had nilled it.
+func TestIndexInitWhileStopping(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	atomic.StoreUint32(&rt.GetDatabase().State, db.DBStopping)
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)
+	rest.AssertHTTPErrorReason(t, resp, http.StatusServiceUnavailable, "Database is stopping, try again later")
+
+	// Stopping an init doesn't touch the bucket, so it stays available.
+	resp = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
 }
 
 func TestChangeIndexSeparatePrincipalIndexes(t *testing.T) {

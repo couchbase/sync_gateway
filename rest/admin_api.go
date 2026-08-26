@@ -484,6 +484,13 @@ func (h *handler) handlePostIndexInit() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "action %q not supported... must be either 'start' or 'stop'", action)
 	}
 
+	// This handler runs offline, so the state check in validateAndWriteHeaders doesn't apply. There's
+	// no point initialising indexes for a database that is being torn down. Stopping an init is still
+	// allowed above, since that doesn't touch the bucket.
+	if atomic.LoadUint32(&h.db.State) == db.DBStopping {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database is stopping, try again later")
+	}
+
 	var req PostIndexInitRequest
 	if err := h.readJSONInto(&req); err != nil {
 		return err
@@ -529,8 +536,14 @@ func (h *handler) handlePostIndexInit() error {
 	// Skip metadata index initialization on _default._default if it has been dropped (e.g. after a
 	// completed metadata migration) — building indexes on a missing collection would retry until the
 	// op times out. Default to attempting init on _default if existence can't be determined.
+	// The state check above is a point-in-time read and this handler holds no AccessLock, so the
+	// database can still be closed underneath us before we get here.
+	bucket, open := h.db.BucketIfOpen()
+	if !open {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database is stopping, try again later")
+	}
 	defaultCollectionPresent := true
-	if exists, existsErr := defaultCollectionExists(h.ctx(), h.db.Bucket); existsErr != nil {
+	if exists, existsErr := defaultCollectionExists(h.ctx(), bucket); existsErr != nil {
 		base.WarnfCtx(h.ctx(), "db:%s unable to determine whether _default._default exists while reinitializing indexes: %v — will attempt index init on _default", base.MD(h.db.Name), existsErr)
 	} else {
 		defaultCollectionPresent = exists
