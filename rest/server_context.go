@@ -73,8 +73,13 @@ type ServerContext struct {
 	_dbRegistry         map[string]struct{}               // _dbRegistry is a map of db names, used to ensure uniqueness even when db isn't active
 	_collectionRegistry map[string]string                 // _collectionRegistry is a map of fully qualified collection name to db name, used for local uniqueness checks
 	_dbConfigs          map[string]*RuntimeDatabaseConfig // _dbConfigs is a map of db name to the RuntimeDatabaseConfig
-	_databases          map[string]*db.DatabaseContext    // _databases is a map of dbname to db.DatabaseContext
+	_databases          map[string]*db.DatabaseContext    // _databases is a map of dbname to db.DatabaseContext. Mutate via _addDatabase/_deleteDatabase/_clearDatabases
 	_databasesLock      sync.RWMutex                      // Lock for _databases and other db-specific maps above
+
+	// databasesSnapshot holds the values of _databases for the stats logger to read without taking
+	// _databasesLock, which a config update can hold for a long time while it waits on index
+	// readiness. Kept in step with _databases by the mutation helpers.
+	databasesSnapshot atomic.Pointer[[]*db.DatabaseContext]
 
 	// serverCtx is cancelled by Close() to broadcast server shutdown to all background
 	// goroutines that hold a reference to this ServerContext (e.g. handleDbOnline).
@@ -320,7 +325,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		db.Close(ctx)
 		_ = db.EventMgr.RaiseDBStateChangeEvent(ctx, db.Name, "offline", "Database context closed", &sc.Config.API.AdminInterface)
 	}
-	sc._databases = nil
+	sc._clearDatabases()
 	sc.invalidDatabaseConfigTracking.dbNames = nil
 }
 
@@ -1220,7 +1225,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// Register it so HTTP handlers can find it:
-	sc._databases[dbcontext.Name] = dbcontext
+	sc._addDatabase(dbcontext)
 	sc._dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
 	sc._dbRegistry[dbName] = struct{}{}
 	for _, name := range fqCollections {
@@ -1828,8 +1833,9 @@ func (sc *ServerContext) _unloadDatabase(ctx context.Context, dbName string) boo
 		return false
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
+	// Drop it from the snapshot before teardown, so the stats logger stops seeing it first.
+	sc._deleteDatabase(dbName)
 	dbCtx.Close(ctx)
-	delete(sc._databases, dbName)
 	return true
 }
 
@@ -1946,17 +1952,44 @@ func (sc *ServerContext) logNetworkInterfaceStats(ctx context.Context) {
 
 }
 
-// Updates stats that are more efficient to calculate at stats collection time
+// _addDatabase registers a database. The caller must hold sc._databasesLock for write.
+func (sc *ServerContext) _addDatabase(dbContext *db.DatabaseContext) {
+	sc._databases[dbContext.Name] = dbContext
+	sc._updateDatabasesSnapshot()
+}
+
+// _deleteDatabase removes a database. The caller must hold sc._databasesLock for write.
+func (sc *ServerContext) _deleteDatabase(dbName string) {
+	delete(sc._databases, dbName)
+	sc._updateDatabasesSnapshot()
+}
+
+// _clearDatabases removes every database and marks the server context closed, so that
+// _getOrAddDatabaseFromConfig can tell a closed server apart from one with no databases. The caller
+// must hold sc._databasesLock for write.
+func (sc *ServerContext) _clearDatabases() {
+	sc._databases = nil
+	sc._updateDatabasesSnapshot()
+}
+
+// _updateDatabasesSnapshot refreshes databasesSnapshot to match _databases. The caller must hold
+// sc._databasesLock for write.
+func (sc *ServerContext) _updateDatabasesSnapshot() {
+	sc.databasesSnapshot.Store(base.Ptr(slices.Collect(maps.Values(sc._databases))))
+}
+
+// Updates stats that are more efficient to calculate at stats collection time. Reads
+// databasesSnapshot rather than _databases, so it never blocks on _databasesLock.
 func (sc *ServerContext) updateCalculatedStats(ctx context.Context) {
-	sc._databasesLock.RLock()
-	defer sc._databasesLock.RUnlock()
-	for _, dbContext := range sc._databases {
-		dbState := atomic.LoadUint32(&dbContext.State)
-		if dbState == db.DBOnline {
+	snapshot := sc.databasesSnapshot.Load()
+	if snapshot == nil {
+		return
+	}
+	for _, dbContext := range *snapshot {
+		if atomic.LoadUint32(&dbContext.State) == db.DBOnline {
 			dbContext.UpdateCalculatedStats(ctx)
 		}
 	}
-
 }
 
 // initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use.
