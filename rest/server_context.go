@@ -99,6 +99,7 @@ type ServerContext struct {
 	ActiveReplicationsCounter
 	invalidDatabaseConfigTracking invalidDatabaseConfigs
 	SGCollect                     *sgCollect // singleton instance for this server's sgcollect_info process
+	NodeUID                       string     // Stable identifier for this SG node, derived deterministically from host fingerprint
 }
 
 type ActiveReplicationsCounter struct {
