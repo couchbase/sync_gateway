@@ -1437,15 +1437,27 @@ func (doc *Document) MarshalWithXattrs() (data, syncXattr, vvXattr, mouXattr, gl
 			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc MouData with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
 	}
-	// marshal global xattrs if there are attachments defined
-	if len(doc.Attachments()) > 0 {
-		globalXattr, err = base.JSONMarshal(doc._globalSync)
-		if err != nil {
-			return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc GlobalXattr with id: %s.  Error: %v", base.UD(doc.ID), err))
-		}
+	globalXattr, err = doc.marshalGlobalXattr()
+	if err != nil {
+		return nil, nil, nil, nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattrs() doc GlobalXattr with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	return data, syncXattr, vvXattr, mouXattr, globalXattr, nil
+}
+
+// marshalGlobalXattr returns the marshalled global sync xattr, or nil when the document has no attachments -
+// the only thing GlobalSyncData carries. A nil return means "no global xattr to write", which
+// updateAndReturnDoc turns into a delete of any existing one, so a field added to GlobalSyncData that can
+// outlive a document's attachments would need this gate widened to match.
+//
+// Attachment metadata written before 4.0 is moved out of the sync xattr onto the global sync data when the
+// document is unmarshalled, so a write that persists the sync xattr must persist this alongside it: for a
+// document attachment migration has not yet reached, the sync xattr held the only copy.
+func (doc *Document) marshalGlobalXattr() ([]byte, error) {
+	if len(doc.Attachments()) == 0 {
+		return nil, nil
+	}
+	return base.JSONMarshal(doc._globalSync)
 }
 
 // channelsForRevTreeID returns the set of channels the given revision is in for the document
