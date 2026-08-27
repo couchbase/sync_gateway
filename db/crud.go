@@ -2721,6 +2721,11 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	} else {
 		base.DebugfCtx(ctx, base.KeyVV, "updateDoc(%q): has no _mou", base.UD(doc.ID))
 	}
+	// Capture the current rev before the callback runs. For ISGR writes the callback aligns the rev tree and makes
+	// the incoming revision current, so the post-callback value below can't be used to tell whether this write
+	// changed the winning revision.
+	preCallbackRev := doc.GetRevTreeID()
+
 	// Invoke the callback to update the document and with a new revision body to be used by the Sync Function:
 	newDoc, newAttachments, createNewRevIDSkipped, updatedExpiry, err := callback(doc)
 	if err != nil {
@@ -2803,7 +2808,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
-	if doc.GetRevTreeID() != prevCurrentRev || createNewRevIDSkipped {
+	if doc.GetRevTreeID() != preCallbackRev || createNewRevIDSkipped {
 		// Most of the time this update will change the doc's current rev. (The exception is
 		// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
 		// need to update the doc's top-level Channels and Access properties to correspond
@@ -2823,7 +2828,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	} else {
 
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
-			base.UD(doc.ID), newRevID, prevCurrentRev)
+			base.UD(doc.ID), newRevID, preCallbackRev)
 	}
 
 	// Prune old revision history to limit the number of revisions:

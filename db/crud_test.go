@@ -2576,3 +2576,138 @@ func TestProposedRev(t *testing.T) {
 		})
 	}
 }
+
+// TestPutExistingCurrentVersionISGRNewDocChannels reproduces the case where a brand-new document arriving over an
+// ISGR pull replication is written without its channels being persisted (channel_set: null), making it invisible to
+// the changes feed. See https://www.couchbase.com/forums/t/41307
+func TestPutExistingCurrentVersionISGRNewDocChannels(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	const (
+		docID    = "isgrDoc"
+		chanName = "event-123"
+		revID    = "1-abc"
+	)
+
+	// simulate a brand-new doc arriving from another Sync Gateway over ISGR - the sending SGW provides its rev tree
+	// history alongside the HLV
+	newDoc := CreateTestDocument(docID, "", Body{"channels": []string{chanName}}, false, 0)
+	opts := PutDocOptions{
+		NewDoc:         newDoc,
+		NewDocHLV:      &HybridLogicalVector{SourceID: "remoteSource", Version: 1234},
+		RevTreeHistory: []string{revID},
+		ISGRWrite:      true,
+		ExistingDoc:    &sgbucket.BucketDocument{},
+	}
+	_, _, _, err := collection.PutExistingCurrentVersion(ctx, opts)
+	require.NoError(t, err)
+
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, revID, doc.GetRevTreeID())
+	require.NotZero(t, doc.Sequence)
+	// ChannelMap values are nil for channels the doc is currently in, so check for key presence
+	_, inChannel := doc.Channels[chanName]
+	require.True(t, inChannel, "sync function channel not persisted for ISGR-written doc, channels=%v", doc.Channels)
+}
+
+const isgrScopeSyncFn = `function(doc){ if (doc.channels) { channel(doc.channels); access("bob", doc.channels); } }`
+
+// TestPutExistingCurrentVersionISGRAccessGrant verifies access() grants from the sync function are persisted
+// for a new document arriving over ISGR. See https://www.couchbase.com/forums/t/41307
+func TestPutExistingCurrentVersionISGRAccessGrant(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, isgrScopeSyncFn, db.Options.JavascriptTimeout)
+
+	newDoc := CreateTestDocument("accessDoc", "", Body{"channels": []string{"chanA"}}, false, 0)
+	_, _, _, err := collection.PutExistingCurrentVersion(ctx, PutDocOptions{
+		NewDoc:         newDoc,
+		NewDocHLV:      &HybridLogicalVector{SourceID: "remote", Version: 1234},
+		RevTreeHistory: []string{"1-abc"},
+		ISGRWrite:      true,
+		ExistingDoc:    &sgbucket.BucketDocument{},
+	})
+	require.NoError(t, err)
+
+	doc, err := collection.GetDocument(ctx, "accessDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+	t.Logf("channels=%v access=%v", doc.Channels, doc.Access)
+	require.NotEmpty(t, doc.Access, "access() grant dropped on ISGR write")
+}
+
+// TestPutExistingCurrentVersionISGRTombstoneChannelRemoval verifies an ISGR tombstone for a live local document
+// records the channel removals, rather than leaving the doc in its previous channels.
+func TestPutExistingCurrentVersionISGRTombstoneChannelRemoval(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// local live doc with correct channel metadata
+	rev, _, err := collection.Put(ctx, "tombDoc", Body{"channels": []string{"chanA"}})
+	require.NoError(t, err)
+	local, err := collection.GetDocument(ctx, "tombDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+	_, hasA := local.Channels["chanA"]
+	require.True(t, hasA, "precondition: local write sets chanA, channels=%v", local.Channels)
+	t.Logf("before tombstone: rev=%s channels=%v", rev, local.Channels)
+
+	// incoming ISGR tombstone that dominates the local version
+	incomingHLV := local.HLV.Copy()
+	incomingHLV.PreviousVersions = HLVVersions{incomingHLV.SourceID: incomingHLV.Version}
+	incomingHLV.SourceID = "remote"
+	incomingHLV.Version = local.HLV.Version + 1000
+
+	tombstone := CreateTestDocument("tombDoc", "", Body{}, true, 0)
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, PutDocOptions{
+		NewDoc:                         tombstone,
+		NewDocHLV:                      incomingHLV,
+		RevTreeHistory:                 []string{"2-def", rev},
+		ISGRWrite:                      true,
+		ForceAllowConflictingTombstone: true,
+	})
+	require.NoError(t, err)
+
+	doc, err := collection.GetDocument(ctx, "tombDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+	t.Logf("after ISGR tombstone: deleted=%v channels=%v", doc.IsDeleted(), doc.Channels)
+	require.NotNil(t, doc.Channels["chanA"], "chanA not marked removed by ISGR tombstone, channels=%v", doc.Channels)
+}
+
+// TestPutExistingCurrentVersionISGRLegacyDocChannels verifies an ISGR write onto a pre-upgrade document (rev tree,
+// no HLV) persists the channels calculated by the sync function, rather than leaving the legacy channel set in place.
+func TestPutExistingCurrentVersionISGRLegacyDocChannels(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	// pre-upgrade doc: rev tree, no HLV
+	rev1, _ := collection.CreateDocNoHLV(t, ctx, "legacyDoc", Body{"channels": []string{"chanA"}})
+	legacyDoc, err := collection.GetDocument(ctx, "legacyDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Nil(t, legacyDoc.HLV, "precondition: doc must have no HLV")
+	_, hasA := legacyDoc.Channels["chanA"]
+	require.True(t, hasA, "precondition: legacy write sets chanA, channels=%v", legacyDoc.Channels)
+
+	// ISGR write moving the doc from chanA to chanB, carrying rev tree history
+	newDoc := CreateTestDocument("legacyDoc", "", Body{"channels": []string{"chanB"}}, false, 0)
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, PutDocOptions{
+		NewDoc:         newDoc,
+		NewDocHLV:      &HybridLogicalVector{SourceID: "remote", Version: 123456789},
+		RevTreeHistory: []string{"2-def", rev1},
+		ISGRWrite:      true,
+	})
+	require.NoError(t, err)
+
+	doc, err := collection.GetDocument(ctx, "legacyDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+	_, inB := doc.Channels["chanB"]
+	require.True(t, inB, "chanB not persisted on ISGR write to legacy doc, channels=%v", doc.Channels)
+}
