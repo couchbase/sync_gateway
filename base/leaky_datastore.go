@@ -162,6 +162,12 @@ func (lds *LeakyDataStore) WriteCas(ctx context.Context, k string, exp uint32, c
 	return lds.dataStore.WriteCas(ctx, k, exp, cas, v, opt)
 }
 func (lds *LeakyDataStore) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
+	if preUpdateCb := lds.bucket.getPreUpdateCallback(); preUpdateCb != nil {
+		if err := preUpdateCb(k); err != nil {
+			return 0, err
+		}
+	}
+
 	updateCb := lds.bucket.getUpdateCallback()
 	forceTimeoutKeys := lds.bucket.getForceTimeoutErrorOnUpdateKeys()
 
@@ -368,6 +374,10 @@ func (lds *LeakyDataStore) SetPostUpdateCallback(callback func(key string)) {
 
 func (lds *LeakyDataStore) SetUpdateCallback(callback func(key string)) {
 	lds.bucket.setUpdateCallback(callback)
+}
+
+func (lds *LeakyDataStore) SetPreUpdateCallback(callback func(key string) error) {
+	lds.bucket.setPreUpdateCallback(callback)
 }
 
 func (lds *LeakyDataStore) SetWriteCasCallback(callback func(key string) (uint64, error)) {
