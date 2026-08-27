@@ -323,7 +323,8 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, _, remoteDbURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteDbURLString := peers.ActiveRT, peers.PassiveDBURL
 
 		passiveDBURL, err := url.Parse(remoteDbURLString)
 		require.NoError(t, err)
@@ -358,7 +359,8 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, _, remoteDbURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteDbURLString := peers.ActiveRT, peers.PassiveDBURL
 
 		localCollection := activeRT.GetSingleDataStore().ScopeName() + "." + activeRT.GetSingleDataStore().CollectionName()
 		localCollections := []string{localCollection}
@@ -397,7 +399,8 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, remoteDbURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteDbURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		localCollection := activeRT.GetSingleDataStore().ScopeName() + ".invalid"
 		localCollections := []string{localCollection}

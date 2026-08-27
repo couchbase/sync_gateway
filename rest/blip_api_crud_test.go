@@ -2628,7 +2628,8 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	sgrRunner := NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		activeCtx := activeRT.Context()
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)

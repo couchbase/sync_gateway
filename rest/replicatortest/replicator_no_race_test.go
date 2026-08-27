@@ -46,7 +46,8 @@ func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
 		t.Cleanup(reduceTestCheckpointInterval(50 * time.Millisecond))
 		t.Cleanup(db.SuspendSequenceBatching())
 
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
 		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
@@ -63,8 +64,7 @@ func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
 		changesResults := remoteRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
 		changesResults.RequireDocIDs(t, []string{docABC1, docDEF1})
 
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		activeRT.WaitForAssignedReplications(1)
 		activeRT2.WaitForAssignedReplications(1)

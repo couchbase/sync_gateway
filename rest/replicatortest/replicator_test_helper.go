@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -59,28 +58,6 @@ func requirePersistedReplicationProgress(rt *rest.RestTester, replicationID stri
 		assert.Equal(c, expectedDocs, persistedDocs(status), "%s: %s in persisted replication status document", replicationID, statName)
 	}, 20*time.Second, 10*time.Millisecond)
 	rt.WaitForCheckpointLastSequence(db.RealSpecialDocID(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID))
-}
-
-// AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
-func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
-
-	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
-	activeRT = rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			CustomTestBucket:   testBucket.NoCloseClone(),
-			SgReplicateEnabled: true,
-			SyncFn:             channels.DocChannelsSyncFunction,
-			DatabaseConfig: &rest.DatabaseConfig{
-				DbConfig: rest.DbConfig{
-					Name: dbName,
-				},
-			},
-		})
-
-	// Trigger the lazy load of bucket for RestTester startup
-	_ = activeRT.Bucket()
-
-	return activeRT
 }
 
 // createOrUpdateDoc creates a new document the specified document id, and body value in a channel named "alice".
