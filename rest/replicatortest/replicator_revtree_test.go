@@ -44,7 +44,8 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -70,10 +71,11 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 					ActiveDB: &db.Database{
 						DatabaseContext: rt1.GetDatabase(),
 					},
-					ChangesBatchSize:    200,
-					ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
-					CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-					Continuous:          false,
+					ChangesBatchSize:       200,
+					ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
+					SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+					CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+					Continuous:             false,
 				})
 				require.NoError(t, err)
 				defer func() { assert.NoError(t, ar.Stop()) }()
@@ -167,7 +169,8 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -192,6 +195,7 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 			ChangesBatchSize:           200,
 			ConflictResolverFuncForHLV: resolverFunc,
 			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
+			SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			Continuous:                 false,
 		})
@@ -286,7 +290,8 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -309,10 +314,11 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 					ActiveDB: &db.Database{
 						DatabaseContext: rt1.GetDatabase(),
 					},
-					ChangesBatchSize:    200,
-					ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
-					CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
-					Continuous:          false,
+					ChangesBatchSize:       200,
+					ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
+					SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+					CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+					Continuous:             false,
 				})
 				require.NoError(t, err)
 				defer func() { assert.NoError(t, ar.Stop()) }()

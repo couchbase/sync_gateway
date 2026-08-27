@@ -474,7 +474,8 @@ func TestPushReplicationAPI(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt1
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt1doc")
@@ -519,7 +520,8 @@ func TestPullReplicationAPI(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt2
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt2doc")
@@ -560,7 +562,8 @@ func TestDisableConcurrentReplicationLimitDuringReplications(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 		rest.RequireStatus(t, resp, http.StatusOK)
@@ -605,7 +608,8 @@ func TestConcurrentReplicationLimitContinuous(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// update runtime config to limit to 2 concurrent replication connections
 		resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
@@ -671,7 +675,8 @@ func TestReplicationStatusActions(t *testing.T) {
 		// Increase checkpoint persistence frequency for cross-node status verification
 		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
 		t.Cleanup(reduceCheckpointInterval)
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt2
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt2doc")
@@ -761,7 +766,8 @@ func TestReplicationStatusActions(t *testing.T) {
 func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT := peers.ActiveRT, peers.PassiveRT
 
 		// Build connection string for active RT
 		srv := httptest.NewServer(activeRT.TestPublicHandler())
@@ -798,7 +804,8 @@ func TestReplicationRebalancePull(t *testing.T) {
 		// Increase checkpoint persistence frequency for cross-node status verification
 		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
 		t.Cleanup(reduceCheckpointInterval)
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on remote
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
@@ -832,8 +839,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 		}
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Wait for replication to be rebalanced to activeRT2
 		activeRT.WaitForAssignedReplications(1)
@@ -892,7 +898,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 		// Increase checkpoint persistence frequency for cross-node status verification
 		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
 		t.Cleanup(reduceCheckpointInterval)
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on active
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
@@ -929,8 +936,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 		}
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Wait for replication to be rebalanced to activeRT2
 		activeRT.WaitForAssignedReplications(1)
@@ -978,7 +984,8 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create 20 docs on rt2
 		docCount := 20
@@ -1013,8 +1020,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 		assert.Equal(t, int64(docCount), status.DocsRead)
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Get replication status for non-local replication
 		remoteStatus := activeRT2.GetReplicationStatus(replicationID)
@@ -1038,7 +1044,8 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		// Create push replications, verify running, also verify active replicators are created
 		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault, "")
 		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault, "")
@@ -1503,7 +1510,8 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Add docs to two channels
 		bulkDocs := `
@@ -1583,7 +1591,8 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Add docs to two channels
 		bulkDocs := `
@@ -1675,7 +1684,8 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on remote
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
@@ -1698,8 +1708,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		_ = activeRT.GetDocBody(docDEF1)
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Wait for replication to be rebalanced to activeRT2
 		activeRT.WaitForAssignedReplications(1)
@@ -1831,7 +1840,8 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt1
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt1doc")
@@ -1866,7 +1876,8 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create initial doc on rt1
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
@@ -1992,7 +2003,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -2082,18 +2094,11 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					CacheConfig: &rest.CacheConfig{
-						// shorten pending sequence handling to speed up test
-						ChannelCacheConfig: &rest.ChannelCacheConfig{
-							MaxWaitPending: base.Ptr(uint32(1)),
-						},
-					},
-				}},
-			},
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			// shorten pending sequence handling to speed up test
+			PassiveMaxWaitPending: base.Ptr(uint32(1)),
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -2230,7 +2235,8 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				activeRT, _, remoteURL := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, remoteURL := peers.ActiveRT, peers.PassiveDBURL
 				var resp *rest.TestResponse
 
 				if test.specified {
@@ -2293,7 +2299,8 @@ func TestReconnectReplicator(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				activeRT, remoteRT, remoteURL := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, remoteRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				var resp *rest.TestResponse
 				const replicationName = "replication1"
 
@@ -2343,7 +2350,8 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 
 		id, err := base.GenerateRandomID()
 		require.NoError(t, err)
@@ -2405,7 +2413,8 @@ func TestTotalSyncTimeStat(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, remoteURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		const repName = "replication1"
 
 		startValue := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
@@ -2512,11 +2521,12 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		username = "alice"
 	)
 
-	sgrRuunner := rest.NewSGRTestRunner(t)
-	sgrRuunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRuunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
@@ -2537,7 +2547,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 			Continuous:             true,
 			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
-			SupportedBLIPProtocols: sgrRuunner.SupportedSubprotocols,
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
 		require.NoError(t, err)
 		defer func() { assert.NoError(t, ar.Stop()) }()
@@ -2548,7 +2558,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		assert.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt2 to arrive at rt1
-		sgrRuunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.WaitForVersion(docID, rt1, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -2564,7 +2574,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 		// wait for the new document written to rt2 to arrive at rt1
-		sgrRuunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.WaitForVersion(docID, rt1, version)
 
 		doc2, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
@@ -2663,9 +2673,10 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 				reduceCheckpoint := reduceTestCheckpointInterval(50 * time.Millisecond)
 				t.Cleanup(reduceCheckpoint)
 
-				rt1, rt2, remoteURL := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 					UserChannelAccess: []string{username},
 				})
+				rt1, rt2, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 				resolverCode := `
 					function(conflict) {
@@ -2786,9 +2797,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		// Create first batch of docs
 		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
 		for i := range numRT2DocsInitial {
@@ -3080,9 +3092,10 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
@@ -3127,9 +3140,10 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
@@ -3191,9 +3205,10 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		ctx1 := rt1.Context()
 		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
@@ -3280,9 +3295,10 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		// Create first batch of docs
@@ -3422,9 +3438,10 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	)
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		_, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt2 := peers.PassiveRT
 		// Create first batch of docs
 		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt1doc"
 		for i := range numRT1DocsInitial {
@@ -3583,7 +3600,8 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
@@ -3643,9 +3661,10 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
@@ -3707,9 +3726,10 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
@@ -3861,7 +3881,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
 				base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 
@@ -4083,7 +4104,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
 				base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
 
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 
@@ -4249,9 +4271,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
@@ -4314,9 +4337,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
@@ -4689,9 +4713,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		ctx := base.TestCtx(t)
-		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -4833,9 +4858,10 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	const username = "alice"
 	sgrRunner.Run(func(t *testing.T) {
 		ctx := base.TestCtx(t)
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -4920,9 +4946,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -5005,9 +5032,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{"chan1", "chan2"},
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -5187,9 +5215,10 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 				for _, timeoutVal := range timeoutVals {
 					t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
 						username := "alice"
-						rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+						peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 							UserChannelAccess: []string{username},
 						})
+						rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 						// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 						srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5279,9 +5308,10 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			AvoidUserCreation: true,
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 		srv := httptest.NewServer(rt2.TestPublicHandler())
 		defer srv.Close()
@@ -5356,7 +5386,8 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		id, err := base.GenerateRandomID()
@@ -5375,6 +5406,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 			MaxReconnectInterval:     time.Millisecond * 50,
 			TotalReconnectTimeout:    time.Second * 5,
 			ReplicationStatsMap:      dbReplicatorStats(t, rt1.GetDatabase()),
+			SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 		}
 
@@ -5587,7 +5619,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := base.TestCtx(t)
 				base.RequireNumTestBuckets(t, 2)
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				passiveDBURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 
@@ -5755,7 +5788,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		for _, test := range tombstoneTests {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := base.TestCtx(t)
-				localActiveRT, remotePassiveRT, _ := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				localActiveRT, remotePassiveRT := peers.ActiveRT, peers.PassiveRT
 
 				replConf := `
 			{
@@ -6243,7 +6277,8 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
 
-				activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 				// Create initial revision(s) on local
 				docID := test.name
@@ -6441,7 +6476,8 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 				docID := test.name
 
@@ -6528,7 +6564,8 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		// Passive
-		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		customConflictResolver, err := db.NewCustomConflictResolver(ctx1, `function(conflict){
@@ -6584,26 +6621,10 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
-			ActiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UseDeltas: true,
 		})
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 		activeCtx := activeRT.Context()
 
 		// Create a document //
@@ -6678,26 +6699,10 @@ func TestUnprocessableDeltas(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
-			ActiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UseDeltas: true,
 		})
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 
 		activeCtx := activeRT.Context()
 
@@ -6764,7 +6769,8 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 		activeCtx := activeRT.Context()
 		collection, _ := activeRT.GetSingleTestDatabaseCollection()
 
@@ -6820,7 +6826,8 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 
 		activeCtx := activeRT.Context()
 
@@ -6910,7 +6917,8 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		_, rt, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt, passiveDBURL := peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(passiveDBURL)
 		require.NoError(t, err)
 		ctx := rt.Context()
@@ -7058,7 +7066,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, remoteURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
 
@@ -7818,7 +7827,8 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, _, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteURLString := peers.ActiveRT, peers.PassiveDBURL
 
 		// create a replication and assert the updated at field is present in the config
 		activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
