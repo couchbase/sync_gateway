@@ -23,8 +23,12 @@ import (
 const remapGoCBLogLevels = true
 
 // This file implements wrappers around the loggers of external packages
-// so that all of SG's logging output is consistent
-func initExternalLoggers() {
+// so that all of SG's logging output is consistent.
+//
+// These are set in init and never again - the external packages hold them in plain unsynchronised
+// globals, so writing them once anything else could be logging is a data race. Only the log levels are
+// adjustable at runtime, via updateExternalLoggers.
+func init() {
 	if remapGoCBLogLevels {
 		gocb.SetLogger(GoCBLoggerRemapped{})
 		gocbcore.SetLogger(GoCBCoreLoggerRemapped{})
@@ -37,14 +41,12 @@ func initExternalLoggers() {
 	// Set the clog level to DEBUG and do filtering for debug inside ClogCallback functions
 	clog.SetLevel(clog.LevelDebug)
 
-	// Redirect Walrus logging to SG logs, and set an appropriate level:
+	// Redirect Rosmar logging to SG logs
 	rosmar.LoggingCallback = rosmarLogger
-
-	updateExternalLoggers()
 }
 
 func updateExternalLoggers() {
-	// use context.Background() since this is called from init or to reset test logging
+	// use context.Background() since this is called on logging config changes and to reset test logging
 	logger := consoleLogger.Load()
 	if logger.shouldLog(context.Background(), LevelDebug, KeyWalrus) {
 		rosmar.SetLogLevel(rosmar.LevelDebug)

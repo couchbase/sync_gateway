@@ -19,12 +19,18 @@ import (
 
 const standardMessage = "foobar"
 
-// RequireLogIs asserts that the logs produced by function f contain string s.
-func requireLogIs(t testing.TB, s string, f func()) {
+// captureConsoleLogs returns the console output produced by f, logged at the given level and keys.
+func captureConsoleLogs(t testing.TB, logLevel LogLevel, logKeys []LogKey, f func()) string {
 	t.Helper()
 	b := bytes.Buffer{}
 
+	keyNames := make([]string, 0, len(logKeys))
+	for _, logKey := range logKeys {
+		keyNames = append(keyNames, logKey.String())
+	}
 	config := &ConsoleLoggerConfig{
+		LogLevel:     &logLevel,
+		LogKeys:      keyNames,
 		ColorEnabled: Ptr(false),
 		FileLoggerConfig: FileLoggerConfig{
 			Enabled: Ptr(true),
@@ -33,7 +39,6 @@ func requireLogIs(t testing.TB, s string, f func()) {
 	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
 	require.NoError(t, err)
 	tempLogger.logger.SetOutput(&b)
-	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
 
 	// Temporarily override logger output for the given function call
 	oldLogger := consoleLogger.Swap(tempLogger)
@@ -44,7 +49,15 @@ func requireLogIs(t testing.TB, s string, f func()) {
 	f()
 
 	FlushLogBuffers()
-	originalLog := b.String()
+	return b.String()
+}
+
+// RequireLogIs asserts that the logs produced by function f contain string s.
+func requireLogIs(t testing.TB, s string, f func()) {
+	t.Helper()
+	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
+
+	originalLog := captureConsoleLogs(t, LevelInfo, nil, f)
 	require.GreaterOrEqual(t, len(originalLog), timestampLength, "%q is not a valid log line, needs to contain timestamp", originalLog)
 	log := originalLog[timestampLength:]
 	require.Equal(t, s, log)
