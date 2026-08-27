@@ -140,8 +140,8 @@ func InitLogging(ctx context.Context, logFilePath string,
 	}
 	auditLogger.Store(rawAuditLogger)
 
-	// Initialize external loggers too
-	initExternalLoggers()
+	// Pick up any console log level/key changes for the external loggers too
+	updateExternalLoggers()
 
 	return nil
 }
