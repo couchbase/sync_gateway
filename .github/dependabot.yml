@@ -18,6 +18,10 @@ updates:
       interval: "weekly"
     registries:
       - gh-private
+  - package-ecosystem: "gomod"
+    directory: "/integration-test/tools"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "uv"
     directory: "/"
     schedule:

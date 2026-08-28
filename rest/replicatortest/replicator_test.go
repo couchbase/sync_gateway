@@ -474,7 +474,8 @@ func TestPushReplicationAPI(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt1
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt1doc")
@@ -519,7 +520,8 @@ func TestPullReplicationAPI(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt2
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt2doc")
@@ -560,7 +562,8 @@ func TestDisableConcurrentReplicationLimitDuringReplications(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 		rest.RequireStatus(t, resp, http.StatusOK)
@@ -605,7 +608,8 @@ func TestConcurrentReplicationLimitContinuous(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// update runtime config to limit to 2 concurrent replication connections
 		resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
@@ -671,7 +675,8 @@ func TestReplicationStatusActions(t *testing.T) {
 		// Increase checkpoint persistence frequency for cross-node status verification
 		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
 		t.Cleanup(reduceCheckpointInterval)
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt2
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt2doc")
@@ -761,7 +766,8 @@ func TestReplicationStatusActions(t *testing.T) {
 func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT := peers.ActiveRT, peers.PassiveRT
 
 		// Build connection string for active RT
 		srv := httptest.NewServer(activeRT.TestPublicHandler())
@@ -798,7 +804,8 @@ func TestReplicationRebalancePull(t *testing.T) {
 		// Increase checkpoint persistence frequency for cross-node status verification
 		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
 		t.Cleanup(reduceCheckpointInterval)
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on remote
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
@@ -832,8 +839,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 		}
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Wait for replication to be rebalanced to activeRT2
 		activeRT.WaitForAssignedReplications(1)
@@ -892,7 +898,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 		// Increase checkpoint persistence frequency for cross-node status verification
 		reduceCheckpointInterval := reduceTestCheckpointInterval(50 * time.Millisecond)
 		t.Cleanup(reduceCheckpointInterval)
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on active
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
@@ -929,8 +936,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 		}
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Wait for replication to be rebalanced to activeRT2
 		activeRT.WaitForAssignedReplications(1)
@@ -978,7 +984,8 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create 20 docs on rt2
 		docCount := 20
@@ -1013,8 +1020,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 		assert.Equal(t, int64(docCount), status.DocsRead)
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Get replication status for non-local replication
 		remoteStatus := activeRT2.GetReplicationStatus(replicationID)
@@ -1038,7 +1044,8 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		// Create push replications, verify running, also verify active replicators are created
 		activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault, "")
 		activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault, "")
@@ -1503,7 +1510,8 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Add docs to two channels
 		bulkDocs := `
@@ -1583,7 +1591,8 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Add docs to two channels
 		bulkDocs := `
@@ -1675,7 +1684,8 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on remote
 		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
@@ -1698,8 +1708,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		_ = activeRT.GetDocBody(docDEF1)
 
 		// Add another node to the active cluster
-		activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
-		defer activeRT2.Close()
+		activeRT2 := peers.AddActiveRT(t)
 
 		// Wait for replication to be rebalanced to activeRT2
 		activeRT.WaitForAssignedReplications(1)
@@ -1831,7 +1840,8 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt1
 		docID1 := rest.SafeDocumentName(t, t.Name()+"rt1doc")
@@ -1866,7 +1876,8 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create initial doc on rt1
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
@@ -1954,7 +1965,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		RemoteDBURL:           userDBURL(rt, username),
 		WebsocketPingInterval: time.Millisecond * 10,
 		Continuous:            true,
-		ReplicationStatsMap:   dbReplicatorStats(t),
+		ReplicationStatsMap:   dbReplicatorStats(t, rt.GetDatabase()),
 		CollectionsEnabled:    !rt.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -1992,7 +2003,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -2021,7 +2033,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -2082,23 +2094,16 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					CacheConfig: &rest.CacheConfig{
-						// shorten pending sequence handling to speed up test
-						ChannelCacheConfig: &rest.ChannelCacheConfig{
-							MaxWaitPending: base.Ptr(uint32(1)),
-						},
-					},
-				}},
-			},
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			// shorten pending sequence handling to speed up test
+			PassiveMaxWaitPending: base.Ptr(uint32(1)),
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
 
-		dbstats := dbReplicatorStats(t)
+		dbstats := dbReplicatorStats(t, rt1.GetDatabase())
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -2230,7 +2235,8 @@ func TestReplicatorReconnectBehaviour(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				activeRT, _, remoteURL := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, remoteURL := peers.ActiveRT, peers.PassiveDBURL
 				var resp *rest.TestResponse
 
 				if test.specified {
@@ -2293,7 +2299,8 @@ func TestReconnectReplicator(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				activeRT, remoteRT, remoteURL := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, remoteRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				var resp *rest.TestResponse
 				const replicationName = "replication1"
 
@@ -2343,7 +2350,8 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 
 		id, err := base.GenerateRandomID()
 		require.NoError(t, err)
@@ -2357,7 +2365,7 @@ func TestReplicatorReconnectTimeout(t *testing.T) {
 			Continuous: true,
 			// aggressive reconnect intervals for testing purposes
 			TotalReconnectTimeout:  time.Millisecond * 10,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -2405,7 +2413,8 @@ func TestTotalSyncTimeStat(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, remoteURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		const repName = "replication1"
 
 		startValue := passiveRT.GetDatabase().DbStats.DatabaseStats.TotalSyncTime.Value()
@@ -2512,11 +2521,12 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		username = "alice"
 	)
 
-	sgrRuunner := rest.NewSGRTestRunner(t)
-	sgrRuunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRuunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
@@ -2535,9 +2545,9 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
-			SupportedBLIPProtocols: sgrRuunner.SupportedSubprotocols,
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
 		require.NoError(t, err)
 		defer func() { assert.NoError(t, ar.Stop()) }()
@@ -2548,7 +2558,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		assert.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt2 to arrive at rt1
-		sgrRuunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.WaitForVersion(docID, rt1, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -2564,7 +2574,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 		// wait for the new document written to rt2 to arrive at rt1
-		sgrRuunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.WaitForVersion(docID, rt1, version)
 
 		doc2, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
@@ -2663,9 +2673,10 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 				reduceCheckpoint := reduceTestCheckpointInterval(50 * time.Millisecond)
 				t.Cleanup(reduceCheckpoint)
 
-				rt1, rt2, remoteURL := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 					UserChannelAccess: []string{username},
 				})
+				rt1, rt2, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 				resolverCode := `
 					function(conflict) {
@@ -2786,9 +2797,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		// Create first batch of docs
 		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
 		for i := range numRT2DocsInitial {
@@ -2806,7 +2818,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       changesBatchSize,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -2973,7 +2985,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       changesBatchSize,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -3080,9 +3092,10 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
@@ -3096,7 +3109,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3127,9 +3140,10 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
@@ -3148,7 +3162,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3191,9 +3205,10 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		ctx1 := rt1.Context()
 		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
@@ -3210,7 +3225,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3280,9 +3295,10 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		// Create first batch of docs
@@ -3305,11 +3321,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		}
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"1")
 		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 
@@ -3361,11 +3373,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		}
 
 		// Create a new replicator using the same config, which should use the checkpoint set from the first.
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"2")
 		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 		require.NoError(t, ar.Start(ctx1))
@@ -3430,9 +3438,10 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	)
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		_, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt2 := peers.PassiveRT
 		// Create first batch of docs
 		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt1doc"
 		for i := range numRT1DocsInitial {
@@ -3463,11 +3472,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		arConfig.SetCheckpointPrefix(t, "cluster1:")
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, edge1.GetDatabase(), t.Name()+"edge1")
 		edge1Replicator, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 
@@ -3526,11 +3531,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		ctx2 := edge2.Context()
 
 		// Create a new replicator using the same ID, which should NOT use the checkpoint set by the first edge.
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge2", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, edge2.GetDatabase(), t.Name()+"edge2")
 		arConfig.ActiveDB = &db.Database{
 			DatabaseContext: edge2.GetDatabase(),
 		}
@@ -3558,11 +3559,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		rt2.WaitForPendingChanges()
 
 		// run a replicator on edge1 again to make sure that edge2 didn't blow away its checkpoint
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"edge1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, edge1.GetDatabase(), t.Name()+"edge1")
 		arConfig.ActiveDB = &db.Database{
 			DatabaseContext: edge1.GetDatabase(),
 		}
@@ -3603,7 +3600,8 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
@@ -3622,7 +3620,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3663,9 +3661,10 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
@@ -3680,7 +3679,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3727,9 +3726,10 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
@@ -3745,7 +3745,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 			ChangesBatchSize:       200,
 			Continuous:             true,
 			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -3881,7 +3881,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
 				base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 
@@ -3903,10 +3904,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
-				stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := stats.DBReplicatorStats(t.Name())
-				require.NoError(t, err)
+				replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          rest.SafeDocumentName(t, t.Name()),
@@ -4106,7 +4104,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
 				base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCRUD)
 
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 
@@ -4146,10 +4145,6 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				require.NoError(t, err)
 
 				replicationID := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				dbstats, err := stats.DBReplicatorStats(replicationID)
-				require.NoError(t, err)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
@@ -4162,7 +4157,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 					ConflictResolverFunc:       customConflictResolver,
 					ConflictResolverFuncForHLV: customConflictResolver,
 					Continuous:                 true,
-					ReplicationStatsMap:        dbstats,
+					ReplicationStatsMap:        rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					SupportedBLIPProtocols:     sgrRunner.SupportedSubprotocols,
 				})
@@ -4276,9 +4271,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
@@ -4286,10 +4282,6 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		rt1.WaitForPendingChanges()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 		srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -4310,7 +4302,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			InsecureSkipVerify:     true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -4345,9 +4337,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
@@ -4365,10 +4358,6 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4379,7 +4368,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			InsecureSkipVerify:     false,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -4438,10 +4427,6 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4451,7 +4436,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -4609,11 +4594,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		}
 
 		// Create the first active replicator to pull from seq:0
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"1")
 		ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
 
@@ -4671,11 +4652,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		require.NoError(t, err)
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 		arConfig.RemoteDBURL = passiveDBURL
-		stats, err = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err = stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
-		arConfig.ReplicationStatsMap = dbstats
+		arConfig.ReplicationStatsMap = rest.DbReplicatorStats(t, rt1.GetDatabase(), t.Name()+"2")
 
 		ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 		require.NoError(t, err)
@@ -4736,9 +4713,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		ctx := base.TestCtx(t)
-		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -4752,10 +4730,6 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 		activeRT.WaitForPendingChanges()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4765,7 +4739,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 				DatabaseContext: activeRT.GetDatabase(),
 			},
 			Continuous:          true,
-			ReplicationStatsMap: dbstats,
+			ReplicationStatsMap: rest.DbReplicatorStats(t, activeRT.GetDatabase(), replicationID),
 			CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 			// CBG-4786: remove this protocol line in this ticket
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
@@ -4884,18 +4858,15 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	const username = "alice"
 	sgrRunner.Run(func(t *testing.T) {
 		ctx := base.TestCtx(t)
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
 		ctx1 := rt1.Context()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4905,7 +4876,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -4975,9 +4946,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -4986,10 +4958,6 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -5000,7 +4968,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -5064,9 +5032,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{"chan1", "chan2"},
 		})
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
@@ -5079,10 +5048,6 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 		ctx1 := rt1.Context()
 		replicationID := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(replicationID, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -5095,7 +5060,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 			ChangesBatchSize:       changesBatchSize,
 			Filter:                 base.ByChannelFilter,
 			FilterChannels:         []string{"chan1"},
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		}
@@ -5250,9 +5215,10 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 				for _, timeoutVal := range timeoutVals {
 					t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
 						username := "alice"
-						rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+						peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 							UserChannelAccess: []string{username},
 						})
+						rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 						// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 						srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -5275,10 +5241,6 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 						id, err := base.GenerateRandomID()
 						require.NoError(t, err)
-						sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-						require.NoError(t, err)
-						dbstats, err := sgwStats.DBReplicatorStats(id)
-						require.NoError(t, err)
 
 						arConfig := db.ActiveReplicatorConfig{
 							ID:          id,
@@ -5292,7 +5254,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 							InitialReconnectInterval: time.Millisecond,
 							MaxReconnectInterval:     time.Millisecond * 50,
 							TotalReconnectTimeout:    timeoutVal,
-							ReplicationStatsMap:      dbstats,
+							ReplicationStatsMap:      rest.DbReplicatorStats(t, rt1.GetDatabase(), id),
 							CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 							SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 						}
@@ -5346,9 +5308,10 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			AvoidUserCreation: true,
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 		srv := httptest.NewServer(rt2.TestPublicHandler())
 		defer srv.Close()
@@ -5363,10 +5326,6 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 		id, err := base.GenerateRandomID()
 		require.NoError(t, err)
-		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(id)
-		require.NoError(t, err)
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          id,
@@ -5380,7 +5339,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 			InitialReconnectInterval: time.Millisecond,
 			MaxReconnectInterval:     time.Millisecond * 50,
 			TotalReconnectTimeout:    time.Second * 30,
-			ReplicationStatsMap:      dbstats,
+			ReplicationStatsMap:      rest.DbReplicatorStats(t, rt1.GetDatabase(), id),
 			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 		}
@@ -5427,7 +5386,8 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		id, err := base.GenerateRandomID()
@@ -5445,7 +5405,8 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 			InitialReconnectInterval: time.Millisecond,
 			MaxReconnectInterval:     time.Millisecond * 50,
 			TotalReconnectTimeout:    time.Second * 5,
-			ReplicationStatsMap:      dbReplicatorStats(t),
+			ReplicationStatsMap:      dbReplicatorStats(t, rt1.GetDatabase()),
+			SupportedBLIPProtocols:   sgrRunner.SupportedSubprotocols,
 			CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 		}
 
@@ -5658,7 +5619,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := base.TestCtx(t)
 				base.RequireNumTestBuckets(t, 2)
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				passiveDBURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 
@@ -5683,10 +5645,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				id := rest.SafeDocumentName(t, t.Name())
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
-				dbstats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := dbstats.DBReplicatorStats(id)
-				require.NoError(t, err)
+				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
@@ -5829,7 +5788,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		for _, test := range tombstoneTests {
 			t.Run(test.name, func(t *testing.T) {
 				ctx := base.TestCtx(t)
-				localActiveRT, remotePassiveRT, _ := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				localActiveRT, remotePassiveRT := peers.ActiveRT, peers.PassiveRT
 
 				replConf := `
 			{
@@ -6035,7 +5995,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				},
 				Continuous:             true,
 				ConflictResolverFunc:   defaultConflictResolver,
-				ReplicationStatsMap:    dbReplicatorStats(t),
+				ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
@@ -6159,7 +6119,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 				},
 				Continuous:             true,
 				ConflictResolverFunc:   defaultConflictResolver,
-				ReplicationStatsMap:    dbReplicatorStats(t),
+				ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 				CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 				SupportedBLIPProtocols: []string{db.CBMobileReplicationV3.SubprotocolString()}, // only relevant for v3 and below replications
 			}
@@ -6317,7 +6277,8 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				base.RequireNumTestBuckets(t, 2)
 
-				activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 				// Create initial revision(s) on local
 				docID := test.name
@@ -6463,7 +6424,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		},
 		Continuous:          true,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: dbReplicatorStats(t),
+		ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
 	require.NoError(t, err)
@@ -6515,7 +6476,8 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		for _, test := range testCases {
 			t.Run(test.name, func(t *testing.T) {
-				activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 				docID := test.name
 
@@ -6602,7 +6564,8 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		// Passive
-		rt1, rt2, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		customConflictResolver, err := db.NewCustomConflictResolver(ctx1, `function(conflict){
@@ -6615,10 +6578,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		require.NoError(t, err)
 
 		id := rest.SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
+		replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -6628,7 +6588,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			Continuous:                 false,
-			ReplicationStatsMap:        dbstats,
+			ReplicationStatsMap:        replicationStats,
 			ConflictResolutionType:     db.ConflictResolverCustom,
 			ConflictResolverFunc:       customConflictResolver,
 			ConflictResolverFuncForHLV: customConflictResolver,
@@ -6644,11 +6604,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 		require.NoError(t, ar.Start(ctx1))
 
-		base.RequireWaitForStat(t, func() int64 {
-			dbRepStats, err := base.SyncGatewayStats.DbStats[id].DBReplicatorStats(ar.ID)
-			require.NoError(t, err)
-			return dbRepStats.PulledCount.Value()
-		}, 1)
+		base.RequireWaitForStat(t, replicationStats.PulledCount.Value, 1)
 
 		rt1.WaitForReplicationStatus(id, db.ReplicationStateStopped)
 	})
@@ -6665,26 +6621,10 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
-			ActiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UseDeltas: true,
 		})
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 		activeCtx := activeRT.Context()
 
 		// Create a document //
@@ -6693,10 +6633,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 		// Set-up replicator //
 		id := rest.SafeDocumentName(t, t.Name())
-		sgwStats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := sgwStats.DBReplicatorStats(id)
-		require.NoError(t, err)
+		replicationStats := rest.DbReplicatorStats(t, activeRT.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -6708,7 +6645,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 			Continuous:             true,
 			ChangesBatchSize:       1,
 			DeltasEnabled:          true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    replicationStats,
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -6732,11 +6669,9 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		// Replicate resurrection to passive
 		sgrRunner.WaitForVersion("test", passiveRT, resurrectedVersion)
 
-		dbRepStats, err := base.SyncGatewayStats.DbStats[id].DBReplicatorStats(ar.ID)
-		require.NoError(t, err)
 		base.RequireWaitForStat(t, func() int64 {
 			// should be 1 given delta is sent for delete, but not for resurrection
-			return dbRepStats.PushDeltaSentCount.Value()
+			return replicationStats.PushDeltaSentCount.Value()
 		}, 1)
 
 		// Shutdown replicator to close out
@@ -6764,26 +6699,10 @@ func TestUnprocessableDeltas(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
-			ActiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{
-					DbConfig: rest.DbConfig{
-						DeltaSync: &rest.DeltaSyncConfig{
-							Enabled: base.Ptr(true),
-						},
-					},
-				},
-			},
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UseDeltas: true,
 		})
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 
 		activeCtx := activeRT.Context()
 
@@ -6802,7 +6721,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 			Continuous:             true,
 			ChangesBatchSize:       200,
 			DeltasEnabled:          true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -6850,7 +6769,8 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		restartBatching := db.SuspendSequenceBatching()
 		t.Cleanup(restartBatching)
 
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 		activeCtx := activeRT.Context()
 		collection, _ := activeRT.GetSingleTestDatabaseCollection()
 
@@ -6882,7 +6802,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 			},
 			Continuous:             false,
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			PurgeOnRemoval:         false,
 			Filter:                 base.ByChannelFilter,
 			FilterChannels:         []string{"rev1chan"},
@@ -6906,7 +6826,8 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, _ := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT := peers.ActiveRT, peers.PassiveRT
 
 		activeCtx := activeRT.Context()
 
@@ -6926,7 +6847,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 			},
 			Continuous:             true,
 			ChangesBatchSize:       200,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			PurgeOnRemoval:         false,
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
@@ -6996,15 +6917,11 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		_, rt, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt, passiveDBURL := peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(passiveDBURL)
 		require.NoError(t, err)
 		ctx := rt.Context()
-
-		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
 
 		id := rest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
@@ -7013,7 +6930,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 			ActiveDB:               &db.Database{DatabaseContext: rt.GetDatabase()},
 			RemoteDBURL:            remoteURL,
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    dbReplicatorStats(t, rt.GetDatabase()),
 			CollectionsEnabled:     !rt.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -7149,7 +7066,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, remoteURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
 
@@ -7613,7 +7531,7 @@ func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
 			Direction:           direction,
 			ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
 			RemoteDBURL:         url,
-			ReplicationStatsMap: dbReplicatorStats(t),
+			ReplicationStatsMap: dbReplicatorStats(t, rt.GetDatabase()),
 		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "default collection is not configured")
@@ -7748,7 +7666,7 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 		Direction:           db.ActiveReplicatorTypePush,
 		ActiveDB:            &db.Database{DatabaseContext: rt1.GetDatabase()},
 		RemoteDBURL:         userDBURL(rt2, username),
-		ReplicationStatsMap: dbReplicatorStats(t),
+		ReplicationStatsMap: dbReplicatorStats(t, rt1.GetDatabase()),
 		Continuous:          true,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
@@ -7841,7 +7759,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	username := "alice"
 	passiveRT.CreateUser(username, []string{"*"})
 	passiveDBURL := userDBURL(passiveRT, username)
-	stats := dbReplicatorStats(t)
+	stats := dbReplicatorStats(t, activeRT.GetDatabase())
 	ar, err := db.NewActiveReplicator(activeRT.Context(), &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
@@ -7875,12 +7793,10 @@ func requireBodyEqual(t *testing.T, expected string, doc *db.Document) {
 	require.Equal(t, expectedBody, doc.Body(base.TestCtx(t)))
 }
 
-func dbReplicatorStats(t *testing.T) *base.DbReplicatorStats {
-	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-	require.NoError(t, err)
-	dbstats, err := stats.DBReplicatorStats(t.Name())
-	require.NoError(t, err)
-	return dbstats
+// dbReplicatorStats returns the replication stats for the given database, keyed on the test name. Use
+// rest.DbReplicatorStats for a specific replication ID.
+func dbReplicatorStats(t testing.TB, database *db.DatabaseContext) *base.DbReplicatorStats {
+	return rest.DbReplicatorStats(t, database, t.Name())
 }
 
 // userDBURL creates a public server for the passive RT and returns the URL for the given user, e.g. http://alice:password@localhost:1234/dbname. The webserver will be closed by testing.T.Cleanup.
@@ -7911,7 +7827,8 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, _, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteURLString := peers.ActiveRT, peers.PassiveDBURL
 
 		// create a replication and assert the updated at field is present in the config
 		activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")

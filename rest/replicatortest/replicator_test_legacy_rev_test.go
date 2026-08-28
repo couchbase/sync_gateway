@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -30,9 +29,10 @@ func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
 		docIDRT2 := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		rt2InitDoc := rt2.CreateDocNoHLV(docIDRT2, db.Body{"source": "rt2", "channels": []string{username}})
@@ -53,7 +53,7 @@ func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -113,9 +113,10 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				// Active is SGW1 in diagram above
 				// Passive is SGW2 in diagram above
-				rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 					UserChannelAccess: []string{username},
 				})
+				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
 				docID := rest.SafeDocumentName(t, t.Name())
@@ -160,7 +161,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 					},
 					ChangesBatchSize:       200,
 					Continuous:             true,
-					ReplicationStatsMap:    dbReplicatorStats(t),
+					ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 					CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 					SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 				})
@@ -228,9 +229,10 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t
 	// Active is SGW1 in diagram above
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name())
@@ -263,7 +265,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -344,9 +346,10 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				// Active is SGW1 in diagram above
 				// Passive is SGW2 in diagram above
-				rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 					UserChannelAccess: []string{username},
 				})
+				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
 				docID := rest.SafeDocumentName(t, t.Name())
@@ -408,7 +411,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 					},
 					ChangesBatchSize:       200,
 					Continuous:             true,
-					ReplicationStatsMap:    dbReplicatorStats(t),
+					ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 					CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 					SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 				})
@@ -484,9 +487,10 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
@@ -503,10 +507,7 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 		legacyRevRt2 := rt2InitDoc.GetRevTreeID()
 
 		id := rest.SafeDocumentName(t, t.Name())
-		stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(id)
-		require.NoError(t, err)
+		replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -582,9 +583,10 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 	// Passive is SGW2 in diagram above
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docID := rest.SafeDocumentName(t, t.Name())
@@ -614,7 +616,7 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 			},
 			ChangesBatchSize:       200,
 			Continuous:             true,
-			ReplicationStatsMap:    dbReplicatorStats(t),
+			ReplicationStatsMap:    dbReplicatorStats(t, rt1.GetDatabase()),
 			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})
@@ -691,9 +693,10 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				// Passive is SGW2 in diagram above
 				// Active is SGW1 in diagram above
-				rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 					UserChannelAccess: []string{username},
 				})
+				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
 				docID := rest.SafeDocumentName(t, t.Name())
@@ -740,10 +743,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 				require.NoError(t, err)
 
 				id := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := stats.DBReplicatorStats(id)
-				require.NoError(t, err)
+				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
@@ -869,9 +869,10 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
 				// Passive (SGW2 in diagram above)
-				rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 					UserChannelAccess: []string{username},
 				})
+				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
 				docID := rest.SafeDocumentName(t, t.Name())
@@ -921,10 +922,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				require.NoError(t, err)
 
 				id := rest.SafeDocumentName(t, t.Name())
-				stats, err := base.SyncGatewayStats.NewDBStats(id, false, false, false, false, nil, nil)
-				require.NoError(t, err)
-				replicationStats, err := stats.DBReplicatorStats(id)
-				require.NoError(t, err)
+				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
@@ -1038,27 +1036,11 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
-			ActiveRestTesterConfig: &rest.RestTesterConfig{
-				SyncFn: channels.DocChannelsSyncFunction,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Name: "activedb",
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
-					},
-				}},
-			},
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				SyncFn: channels.DocChannelsSyncFunction,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Name: "passivedb",
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
-					},
-				}},
-			},
+			UseDeltas:         true,
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
@@ -1082,10 +1064,7 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 
 		require.Equal(t, legacyInitRevRt1, legacyRevRt2)
 
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
+		replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          t.Name(),
@@ -1127,27 +1106,11 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 	const username = "alice"
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, _ := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			UserChannelAccess: []string{username},
-			ActiveRestTesterConfig: &rest.RestTesterConfig{
-				SyncFn: channels.DocChannelsSyncFunction,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Name: "activedb",
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
-					},
-				}},
-			},
-			PassiveRestTesterConfig: &rest.RestTesterConfig{
-				SyncFn: channels.DocChannelsSyncFunction,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Name: "passivedb",
-					DeltaSync: &rest.DeltaSyncConfig{
-						Enabled: base.Ptr(true),
-					},
-				}},
-			},
+			UseDeltas:         true,
 		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
 		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
@@ -1157,10 +1120,7 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 		rt1InitDoc := rt1.CreateDocNoHLV(docIDToPush, bodyRT1)
 		legacyInitRevRt1 := rt1InitDoc.GetRevTreeID()
 
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		replicationStats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
+		replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          t.Name(),

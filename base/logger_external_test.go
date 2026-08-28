@@ -11,9 +11,12 @@ package base
 import (
 	"testing"
 
+	"github.com/couchbase/clog"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbaselabs/rosmar"
 )
 
 func TestGoCBLogLevelEquality(t *testing.T) {
@@ -28,4 +31,32 @@ func TestGoCBLogLevelEquality(t *testing.T) {
 	assert.Equal(t, gocb.LogDebug, gocb.LogLevel(gocbcore.LogDebug))
 
 	assert.Equal(t, gocb.LogTrace, gocb.LogLevel(gocbcore.LogTrace))
+}
+
+// TestExternalLoggersWiredAtInit ensures the external packages' logging is redirected into SG's logs by
+// init. Those packages hold their loggers in plain unsynchronised globals, so init is the only point at
+// which they can safely be set - anywhere later races with whatever is already logging through them.
+func TestExternalLoggersWiredAtInit(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+		logFn    func()
+	}{
+		{
+			name:     "rosmar",
+			expected: "[WRN] Rosmar: external logger check",
+			logFn:    func() { rosmar.LoggingCallback(rosmar.LevelWarn, "external logger check") },
+		},
+		{
+			name:     "clog",
+			expected: "[INF] DCP: external logger check",
+			logFn:    func() { clog.Warnf("external logger check") },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			logs := captureConsoleLogs(t, LevelDebug, []LogKey{KeyAll}, test.logFn)
+			require.Contains(t, logs, test.expected)
+		})
+	}
 }

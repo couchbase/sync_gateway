@@ -64,6 +64,7 @@ type RestTesterConfig struct {
 	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
 	adminInterface                   string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
+	ISGRSupportedBLIPSubprotocols    []string                    // Forces the BLIP subprotocols used by this node's ISGR active replicators - see Bucket(). Not supported with PersistentConfig.
 	AutoImport                       *bool
 	HideProductInfo                  bool
 	AdminInterfaceAuthentication     bool
@@ -414,18 +415,33 @@ func (rt *RestTester) Bucket() base.Bucket {
 			_, err := rt.TestBucket.GetMetadataStore().Incr(ctx, syncSeqKey, 0, rt.InitSyncSeq, 0)
 			require.NoError(rt.TB(), err)
 		}
+		// ISGRSupportedBLIPSubprotocols has no config surface, so it is written onto the SGReplicateMgr below,
+		// after the database exists. Give the database a fresh, unclosed hasStarted so startReplications waits on
+		// it until the close(hasStarted) at the end of this function, once the subprotocols are set. That wait is
+		// bounded: startReplications gives up after 10s and starts replications anyway.
+		rt.RestTesterServerContext.hasStarted = make(chan struct{})
+
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
 		require.NoError(rt.TB(), err)
 		ctx = rt.Context() // get new ctx with db info before passing it down
 
+		dbc := rt.RestTesterServerContext.Database(ctx, rt.DatabaseConfig.Name)
+
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
-		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, rt.DatabaseConfig.Name).Bucket
+		rt.TestBucket.Bucket = dbc.Bucket
+
+		// This is a hack to ensure that ISGR subprotocols are set before replications start.
+		if rt.ISGRSupportedBLIPSubprotocols != nil {
+			dbc.SGReplicateMgr.SupportedBLIPSubprotocols = rt.ISGRSupportedBLIPSubprotocols
+		}
 
 		if rt.DatabaseConfig.Guest == nil {
 			rt.SetAdminParty(rt.GuestEnabled)
 		}
+	} else {
+		require.Empty(rt.TB(), rt.ISGRSupportedBLIPSubprotocols, "ISGRSupportedBLIPSubprotocols is not supported with PersistentConfig - the database is created by the test, after the server context has started")
 	}
 
 	// PostStartup (without actually waiting 5 seconds)

@@ -61,13 +61,24 @@ linters:
           - govet
         path: (_test.*\.go)
         text: fieldalignment # detect Go structs that would take less memory if their fields were sorted
-      # The logging implementation itself, the standalone CLIs under tools/, and tests (which print
-      # diagnostics and generate data) write to stdout by design.
-      # tools/ is matched unanchored: reported paths can gain a prefix when golangci-lint
-      # replays cached results from another checkout of this module.
+      # The logging implementation itself, the standalone CLIs under tools/, the ruleguard fixture
+      # stub, and tests (which print diagnostics and generate data) write to stdout by design.
+      # tools/ and ruleguard/ are matched unanchored: reported paths can gain a prefix when
+      # golangci-lint replays cached results from another checkout of this module.
       - linters:
           - forbidigo
-        path: (base/logging\.go|base/redactor\.go|(^|/)tools/|_test.*\.go)
+        path: (base/logging\.go|base/redactor\.go|(^|/)tools/|(^|/)ruleguard/internal/|_test.*\.go)
+      # The ruleguard fixtures are deliberately-bad code that exists to trip the rules in
+      # ruleguard/rules-*.go, so the rule findings and the %w misuse they rely on are expected
+      # output. Scoped by message so the rest of gocritic and govet still applies to them.
+      - linters:
+          - gocritic
+        text: "^ruleguard:"
+        path: (^|/)ruleguard/.*_test\.go
+      - linters:
+          - govet
+        text: "^printf:"
+        path: (^|/)ruleguard/.*_test\.go
       - text:  "missing cases in switch"
         linters:
           - exhaustive
@@ -80,3 +91,7 @@ formatters:
 
 run:
   allow-parallel-runners: true
+  # ruleguard/ builds only under this tag, so set it here to lint the rule files rather than skip
+  # the directory entirely. No other package in the repo uses the tag.
+  build-tags:
+    - ruleguard
