@@ -159,12 +159,19 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 	// Otherwise, we should resume with the resync ID, and the previous stats specified in the doc.
 	var resetMsg string // an optional message about why we're resetting
 	var statusDoc ResyncManagerStatusDocDCP
+	// Unmarshal ahead of the guard chain rather than inside it, so statusDoc.ResyncID is populated on
+	// every path that falls through to the purge below - including an explicit reset, which previously
+	// short-circuited before the unmarshal and so never purged the abandoned run's checkpoints.
+	var unmarshalErr error
+	if clusterStatus != nil {
+		unmarshalErr = base.JSONUnmarshal(clusterStatus, &statusDoc)
+	}
 	if clusterStatus == nil {
 		resetMsg = "no previous run found"
+	} else if unmarshalErr != nil {
+		resetMsg = "failed to unmarshal cluster status"
 	} else if options.Reset {
 		resetMsg = "reset option requested"
-	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
-		resetMsg = "failed to unmarshal cluster status"
 	} else if statusDoc.State == BackgroundProcessStateCompleted {
 		resetMsg = "previous run completed"
 	} else if !base.SlicesEqualIgnoreOrder(r.collectionIDs, statusDoc.CollectionIDs) {

@@ -351,3 +351,108 @@ func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
 	require.NotEmpty(t, raw)
 	require.Equal(t, byte(base.SyncInfoTypeV1), raw[0], "expected V1 prefix byte from attachment migration write at ccv 4.1")
 }
+
+// TestAttachmentMigrationCheckpointsRemovedOnCompletion demonstrates the other half of CBG-5041:
+// nothing purges DCP checkpoints when a background task finishes successfully.
+//
+// BackgroundManager's terminal transition persists the final status and deletes the heartbeat doc,
+// but never touches checkpoints. The only automatic cleanup in the codebase is a side effect inside
+// the gocb client - deactivateVbucket purges when the last vBucket's stream ends cleanly and the
+// feed is one-shot. RosmarDCPClient.Close has no equivalent, so on the default unit test backing
+// store a completed migration leaves its checkpoint behind forever.
+//
+// This test therefore fails on rosmar/walrus and passes against Couchbase Server, which is exactly
+// the inconsistency the ticket asks us to remove.
+func TestAttachmentMigrationCheckpointsRemovedOnCompletion(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	for i := range 10 {
+		docBody := Body{
+			"value":         1234,
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		}
+		_, doc, err := collection.Put(ctx, fmt.Sprintf("%s_%d", t.Name(), i), docBody)
+		require.NoError(t, err)
+		require.NotNil(t, doc.Attachments())
+	}
+
+	mgr := db.AttachmentMigrationManager
+	process := mgr.Process.(*AttachmentMigrationManager)
+
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	migrationID := getAttachmentMigrationStats(t, db).MigrationID
+	require.NotEmpty(t, migrationID)
+
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, process.getCheckpointPrefix(migrationID), db.dcpFeedMode()),
+		"completed migration run %q left its DCP checkpoints behind", migrationID)
+}
+
+// TestAttachmentMigrationResetPurgesStoppedRunCheckpoints is the durable reset test for attachment
+// migration - the counterpart to TestAttachmentCompactionResetPurgesStoppedRunCheckpoints.
+//
+// A run stopped part way through keeps its checkpoints on every backend, because it never reaches the
+// gocb client's implicit purge in deactivateVbucket. That is also the realistic reason an operator
+// resets: the previous run got stuck. Reset must purge those checkpoints, and does not.
+//
+// Migration fails here in a subtler way than compaction. It *does* call purgeCheckpoints on every
+// fresh run, but aimed at the wrong ID. The order in BackgroundManager.start is resetStatus() ->
+// Init() -> Run():
+//
+//  1. ResetStatus nils both a.CollectionIDs and a.MigrationID
+//  2. Init's reset branch sets a.MigrationID to a new UUID, never reading statusDoc.MigrationID
+//  3. Run calls resetDCPMetadataIfNeeded, where matchingCollectionIDs compares the now-nil
+//     CollectionIDs against the live ones and so always mismatches, always firing the purge - against
+//     a.MigrationID, which by then is the *new* ID
+//
+// So it deletes checkpoints that do not exist yet, logs "Purging invalid checkpoints for background
+// task run <new ID>" as though it worked, and leaves the stopped run's documents orphaned.
+func TestAttachmentMigrationResetPurgesStoppedRunCheckpoints(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// a large number of docs is needed to stop the migration midway through without it completing first
+	for i := range 4000 {
+		docBody := Body{
+			"value":         1234,
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		}
+		_, doc, err := collection.Put(ctx, fmt.Sprintf("%s_%d", t.Name(), i), docBody)
+		require.NoError(t, err)
+		require.NotNil(t, doc.Attachments())
+	}
+
+	mgr := db.AttachmentMigrationManager
+	process := mgr.Process.(*AttachmentMigrationManager)
+	feedMode := db.dcpFeedMode()
+
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{}))
+	wg := sync.WaitGroup{}
+	defer base.WaitWithTimeout(t, &wg, 30*time.Second)
+	wg.Go(func() {
+		waitForAttachmentMigrationDocsProcessed(t, db, 200)
+		require.NoError(t, mgr.Stop(ctx))
+	})
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateStopped)
+
+	stoppedMigrationID := getAttachmentMigrationStats(t, db).MigrationID
+	require.NotEmpty(t, stoppedMigrationID)
+
+	stoppedPrefix := process.getCheckpointPrefix(stoppedMigrationID)
+	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, stoppedPrefix, feedMode),
+		"precondition: a stopped migration should have persisted checkpoints")
+
+	// reset - this abandons the stopped run's ID rather than resuming it
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{Reset: true}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	require.NotEqual(t, stoppedMigrationID, getAttachmentMigrationStats(t, db).MigrationID,
+		"reset should have started a new migration run")
+
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, stoppedPrefix, feedMode),
+		"reset left behind the checkpoints for abandoned migration run %q", stoppedMigrationID)
+}
