@@ -5,14 +5,18 @@ Sync Gateway is a horizontally scalable web server that securely manages access 
 ## Build & Test
 
 ```sh
-go build -o bin/sync_gateway .   # Community Edition (default)
-go test ./...                    # unit tests, in-memory Rosmar backing store
+go build -tags cb_sg_enterprise,cb_sg_devmode -o bin/sync_gateway .   # Enterprise Edition
+go test -tags cb_sg_enterprise,cb_sg_devmode ./...                    # unit tests, in-memory Rosmar backing store
 ```
 
-- **Enterprise Edition** builds and tests need the `cb_sg_enterprise,cb_sg_devmode` build tags on every Go command, plus SSH access to a private repo — see [docs/BUILD.md](docs/BUILD.md). Don't add these tags unless you specifically intend to test EE.
+- **Enterprise Edition is the default** — pass the `cb_sg_enterprise,cb_sg_devmode` build tags on every Go command unless you were specifically asked to test Community Edition. EE also needs SSH access to a private repo — see [docs/BUILD.md](docs/BUILD.md).
+- **Community Edition** is what you get with no build tags: `go build -o bin/sync_gateway .` / `go test ./...`. Only drop the tags when CE behaviour is what's being tested.
+- **If the EE dependencies can't be fetched** (no SSH access to the private repo), fall back to CE and say explicitly that the results are CE-only.
+- **CI runs both**: GitHub Actions (`.github/workflows/ci.yml`) builds and tests CE; Jenkins (`Jenkinsfile`, `jenkins-integration-build.sh`) runs EE.
 - **Integration tests** against a real Couchbase Server are covered in [docs/TESTING.md](docs/TESTING.md): starting a local cluster with `integration-test/start_cbs.py`, the `SG_TEST_*` environment variables, and the bucket pool.
 - **Python tooling** (`tools/`): See [tools/AGENTS.md](tools/AGENTS.md).
 - **Lint**: CI enforces `.golangci-strict.yml`; reproduce it locally with `pre-commit run golangci-lint --all-files`. Some conventions are enforced here rather than written down — the linter message explains the fix.
+- **CI tools** are pinned by `tool` directives in `go.mod` and run as `go tool <name>` — `gotestsum`, `addlicense`, `goimports`, `goveralls`. No install step is needed. `cbdinocluster` is pinned in its own module: `go -C integration-test/tools tool cbdinocluster`.
 
 Git: `main` is the current in-development version. Released versions and backports live in `release/x.y.z` branches. Feature branches are named `CBG-xxxx` after the Jira ticket.
 
@@ -31,7 +35,7 @@ The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime objec
 - **Caching** — `RevisionCache` (LRU, sharded) + `ChannelCache` (per-channel change feeds).
 - **Database states** — Offline → Starting → Online → Stopping (+ Resyncing).
 - **Configuration** — `StartupConfig` (server-level, file/CLI) vs `DbConfig` (per-database); persistent config stored in Couchbase Server.
-- **Editions** — CE is the default; EE is gated behind the `cb_sg_enterprise` build tag. Edition-specific implementations live in paired `*_ce.go` / `*_ee.go` files.
+- **Editions** — EE is gated behind the `cb_sg_enterprise` build tag; CE is what builds without it. Edition-specific implementations live in paired `*_ce.go` / `*_ee.go` files.
 
 ## Conventions
 

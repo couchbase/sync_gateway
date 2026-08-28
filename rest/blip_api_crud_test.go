@@ -2628,17 +2628,13 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	sgrRunner := NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, remoteRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		activeCtx := activeRT.Context()
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
 		replicationID := SafeDocumentName(t, t.Name())
-
-		stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(replicationID)
-		require.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:                     replicationID,
@@ -2646,7 +2642,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 			ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
 			RemoteDBURL:            remoteURL,
 			Continuous:             true,
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    DbReplicatorStats(t, activeRT.GetDatabase(), replicationID),
 			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 		})

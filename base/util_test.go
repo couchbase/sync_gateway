@@ -1921,6 +1921,48 @@ func TestKeysPresent(t *testing.T) {
 	}
 }
 
+func TestPopMapEntry(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		m := map[string]int{"a": 1, "b": 2}
+		value, ok := PopMapEntry(m, "a")
+		assert.True(t, ok)
+		assert.Equal(t, 1, value)
+		assert.Equal(t, map[string]int{"b": 2}, m)
+	})
+
+	t.Run("absent leaves map untouched", func(t *testing.T) {
+		m := map[string]int{"a": 1}
+		value, ok := PopMapEntry(m, "x")
+		assert.False(t, ok)
+		assert.Equal(t, 0, value, "expected zero value for an absent key")
+		assert.Equal(t, map[string]int{"a": 1}, m)
+	})
+
+	t.Run("zero value stored for key", func(t *testing.T) {
+		// ok has to tell a stored zero value apart from an absent key.
+		m := map[string]int{"a": 0}
+		value, ok := PopMapEntry(m, "a")
+		assert.True(t, ok)
+		assert.Equal(t, 0, value)
+		assert.Empty(t, m)
+	})
+
+	t.Run("nil map", func(t *testing.T) {
+		var m map[string]*int
+		value, ok := PopMapEntry(m, "a")
+		assert.False(t, ok)
+		assert.Nil(t, value)
+	})
+
+	t.Run("named map type", func(t *testing.T) {
+		type stringSet map[string]struct{}
+		m := stringSet{"a": {}}
+		_, ok := PopMapEntry(m, "a")
+		assert.True(t, ok)
+		assert.Empty(t, m)
+	})
+}
+
 func TestIsRevTreeID(t *testing.T) {
 	tests := []struct {
 		value    string
