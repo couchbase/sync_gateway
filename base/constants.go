@@ -94,6 +94,21 @@ const (
 	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
 	DefaultHttpIdleConnTimeout = 90000 * time.Millisecond
 
+	// Establishing a new TCP connection, and the interval between keep-alive probes.  A transport cloned
+	// from http.DefaultTransport inherits these through its DialContext; one built by hand needs them.
+	DefaultHttpDialTimeout   = 30 * time.Second
+	DefaultHttpDialKeepAlive = 30 * time.Second
+
+	// Waiting for a 100-continue response before sending a request body.
+	DefaultHttpExpectContinueTimeout = 1 * time.Second
+
+	// The TLS handshake.  http.Transport applies its own TLSHandshakeTimeout only on its internal TLS path,
+	// so a transport with a custom DialTLSContext enforces this deadline itself.
+	DefaultHttpTLSHandshakeTimeout = 10 * time.Second
+
+	// Waiting for response headers once a request has been written.
+	DefaultHttpResponseHeaderTimeout = 30 * time.Second
+
 	// Number of kv connections (pipelines) per Couchbase Server node
 	DefaultGocbKvPoolSize = 2
 

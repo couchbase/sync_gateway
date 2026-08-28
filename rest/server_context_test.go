@@ -29,6 +29,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestIsPerDBMigrationInProgress verifies the guard that prevents a joining node from marking
@@ -461,7 +462,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx)
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx, base.DefaultHttpTLSHandshakeTimeout)
 	require.NoError(t, err)
 	svrctx.NoX509HTTPClient = noX509HttpClient
 
@@ -1295,4 +1296,77 @@ func TestCollectStackTraceFile(t *testing.T) {
 	files := getFilenames(t, tempPath)
 	require.Len(t, files, 10)
 	require.ElementsMatch(t, files, expectedFiles)
+}
+
+// TestNoX509HttpClientTimeouts asserts the bootstrap HTTP client's timeouts are all non-zero.  This is the
+// only hand-built http.Transport in the tree: it inherits nothing, so each timeout is set explicitly.
+func TestNoX509HttpClientTimeouts(t *testing.T) {
+	ctx := base.TestCtx(t)
+	sc := &ServerContext{
+		Config: &StartupConfig{
+			Bootstrap: BootstrapConfig{ServerTLSSkipVerify: base.Ptr(true)},
+		},
+	}
+	client, err := sc.initializeNoX509HttpClient(ctx, base.DefaultHttpTLSHandshakeTimeout)
+	require.NoError(t, err)
+
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok, "expected bootstrap client to carry an *http.Transport, got %T", client.Transport)
+	sgtest.RequireNonZeroHTTPTimeouts(t, transport)
+
+	assert.Equal(t, base.DefaultHttpResponseHeaderTimeout, transport.ResponseHeaderTimeout)
+	assert.Equal(t, base.DefaultHttpExpectContinueTimeout, transport.ExpectContinueTimeout)
+	assert.Equal(t, base.DefaultHttpIdleConnTimeout, transport.IdleConnTimeout)
+
+	// this transport builds its own dialer rather than inheriting one from http.DefaultTransport, so the
+	// dial timeouts are ours to set and worth asserting
+	assert.NotEqual(t, time.Duration(0), base.DefaultHttpDialTimeout,
+		"net.Dialer.Timeout must not be 0, which means no limit")
+	assert.NotEqual(t, time.Duration(0), base.DefaultHttpDialKeepAlive, "net.Dialer.KeepAlive must not be 0")
+
+	// TLSHandshakeTimeout is intentionally unset: http.Transport honours it only on its own TLS path, so
+	// DialTLSContext enforces the deadline itself.  Asserting it non-zero would suggest a bound never applied.
+	assert.Equal(t, time.Duration(0), transport.TLSHandshakeTimeout)
+	assert.NotNil(t, transport.DialTLSContext)
+	assert.NotEqual(t, time.Duration(0), base.DefaultHttpTLSHandshakeTimeout,
+		"the handshake deadline enforced by DialTLSContext must not be 0")
+}
+
+// TestNoX509HttpClientTLSHandshakeTimeout asserts the bootstrap HTTP client bounds the TLS handshake.  It
+// supplies its own DialTLSContext, which http.Transport's TLSHandshakeTimeout doesn't cover, and the
+// handshake runs while dialing - before any request is written - so ResponseHeaderTimeout doesn't either.
+func TestNoX509HttpClientTLSHandshakeTimeout(t *testing.T) {
+	const handshakeTimeout = 500 * time.Millisecond
+	const failedHandshakes = 5
+
+	ctx := base.TestCtx(t)
+	sc := &ServerContext{
+		Config: &StartupConfig{
+			Bootstrap: BootstrapConfig{ServerTLSSkipVerify: base.Ptr(true)},
+		},
+	}
+	// a short deadline rather than the production one, to keep this out of the long-running suite
+	client, err := sc.initializeNoX509HttpClient(ctx, handshakeTimeout)
+	require.NoError(t, err)
+
+	// a listener that completes the TCP handshake and then goes silent, never speaking TLS
+	listener := sgtest.NewStallingListener(t)
+
+	// repeated so the connection accounting below is a real leak check, not a single-connection coincidence
+	for range failedHandshakes {
+		start := time.Now()
+		_, err = client.Get("https://" + listener.Addr() + "/pools")
+		elapsed := time.Since(start)
+
+		require.Error(t, err, "expected the stalled TLS handshake to be given up on, not to hang")
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		// gave up on its own deadline rather than hanging - allow slack above the nominal timeout
+		assert.Less(t, elapsed, handshakeTimeout+30*time.Second,
+			"handshake took %v, expected to give up near %v", elapsed, handshakeTimeout)
+	}
+
+	listener.RequireAcceptedConnections(t, failedHandshakes)
+	// DialTLSContext closes the TCP connection when the handshake fails.  Without that the socket outlives
+	// the request, since a connection the transport never returned isn't in its pool to be cleaned up.
+	listener.RequireClosedConnections(t, failedHandshakes)
 }

@@ -163,7 +163,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx)
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx, base.DefaultHttpTLSHandshakeTimeout)
 	require.NoError(t, err)
 	svrctx.NoX509HTTPClient = noX509HttpClient
 
@@ -461,7 +461,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	require.NoError(t, err)
 	svrctx.GoCBAgent = goCBAgent
 
-	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx)
+	noX509HttpClient, err := svrctx.initializeNoX509HttpClient(ctx, base.DefaultHttpTLSHandshakeTimeout)
 	require.NoError(t, err)
 	svrctx.NoX509HTTPClient = noX509HttpClient
 

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
 )
@@ -793,6 +794,120 @@ func TestDefaultHTTPTransport(t *testing.T) {
 		transport := DefaultHTTPTransport()
 		assert.NotNil(t, transport, "Returned DefaultHTTPTransport was unexpectedly nil")
 	})
+}
+
+// TestDefaultHTTPTransportOverrides asserts the transport we hand out differs from http.DefaultTransport in
+// ResponseHeaderTimeout and nothing else.  Listing the fields worth checking by hand would miss the failure
+// that matters - a future change dropping one of the values Clone() carries over - so walk them all.
+func TestDefaultHTTPTransportOverrides(t *testing.T) {
+	stdlib := reflect.ValueOf(http.DefaultTransport.(*http.Transport)).Elem()
+	ours := reflect.ValueOf(DefaultHTTPTransport()).Elem()
+
+	var differs []string
+	for i := range stdlib.NumField() {
+		field := stdlib.Type().Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		expected, actual := stdlib.Field(i), ours.Field(i)
+		if field.Type.Kind() == reflect.Func || field.Type.Kind() == reflect.Map {
+			// funcs, and the maps holding them, aren't comparable - only their presence can be checked
+			if expected.IsNil() != actual.IsNil() {
+				differs = append(differs, field.Name)
+			}
+		} else if !reflect.DeepEqual(expected.Interface(), actual.Interface()) {
+			differs = append(differs, field.Name)
+		}
+	}
+	// TLSNextProto: Clone() drops the h2 entry http.DefaultTransport installs lazily (and installs there as
+	// a side effect of the Clone above).  The clone still negotiates HTTP/2, via ForceAttemptHTTP2.
+	assert.ElementsMatch(t, []string{"ResponseHeaderTimeout", "TLSNextProto"}, differs)
+	assert.Equal(t, DefaultHttpResponseHeaderTimeout, DefaultHTTPTransport().ResponseHeaderTimeout)
+}
+
+// TestHTTPClientTimeouts asserts every timeout on the transports we hand out is non-zero, so a misbehaving
+// remote can't block a caller.  Most are inherited from http.DefaultTransport via Clone(); this guards a
+// future change that hand-builds a transport and drops them to zero, meaning no limit.
+func TestHTTPClientTimeouts(t *testing.T) {
+	transports := []struct {
+		name      string
+		transport func() *http.Transport
+	}{
+		{name: "DefaultHTTPTransport", transport: DefaultHTTPTransport},
+		{name: "GetHttpClient", transport: func() *http.Transport {
+			return GetHttpClient(false).Transport.(*http.Transport)
+		}},
+		{name: "GetHttpClient insecureSkipVerify", transport: func() *http.Transport {
+			return GetHttpClient(true).Transport.(*http.Transport)
+		}},
+		{name: "GetHttpClientForWebSocket", transport: func() *http.Transport {
+			return GetHttpClientForWebSocket(false).Transport.(*http.Transport)
+		}},
+	}
+	for _, transportTest := range transports {
+		t.Run(transportTest.name, func(t *testing.T) {
+			transport := transportTest.transport()
+			sgtest.RequireNonZeroHTTPTimeouts(t, transport)
+
+			timeouts := []struct {
+				name     string
+				actual   time.Duration
+				expected time.Duration
+			}{
+				// bounds the wait for response headers once the request has been written
+				{name: "ResponseHeaderTimeout", actual: transport.ResponseHeaderTimeout, expected: DefaultHttpResponseHeaderTimeout},
+				// bounds the TLS handshake - inherited from http.DefaultTransport
+				{name: "TLSHandshakeTimeout", actual: transport.TLSHandshakeTimeout, expected: 10 * time.Second},
+				// bounds the wait for a 100-continue response before sending the body
+				{name: "ExpectContinueTimeout", actual: transport.ExpectContinueTimeout, expected: DefaultHttpExpectContinueTimeout},
+				// bounds how long an idle pooled connection is retained
+				{name: "IdleConnTimeout", actual: transport.IdleConnTimeout, expected: 90 * time.Second},
+			}
+			for _, timeout := range timeouts {
+				t.Run(timeout.name, func(t *testing.T) {
+					assert.NotEqual(t, time.Duration(0), timeout.actual, "%s must not be 0, which means no limit", timeout.name)
+					assert.Equal(t, timeout.expected, timeout.actual)
+				})
+			}
+
+			// net.Dialer.Timeout lives inside the DialContext closure Clone() copies, so it can't be read
+			// back here.  A nil DialContext is the failure worth guarding: it means a hand-built transport
+			// dropped the dialer and its timeout.
+			assert.NotNil(t, transport.DialContext, "DialContext must be set, otherwise net.Dialer.Timeout is lost")
+		})
+	}
+}
+
+// TestHTTPClientResponseHeaderTimeout asserts our HTTP clients give up on a server that accepts a
+// connection but never sends response headers.
+func TestHTTPClientResponseHeaderTimeout(t *testing.T) {
+	tests := []struct {
+		name   string
+		client func() *http.Client
+	}{
+		{name: "GetHttpClient", client: func() *http.Client { return GetHttpClient(false) }},
+		{name: "GetHttpClient insecureSkipVerify", client: func() *http.Client { return GetHttpClient(true) }},
+		{name: "GetHttpClientForWebSocket", client: func() *http.Client { return GetHttpClientForWebSocket(false) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			listener := sgtest.NewStallingListener(t)
+
+			client := test.client()
+			transport, ok := client.Transport.(*http.Transport)
+			require.True(t, ok, "expected client to carry an *http.Transport, got %T", client.Transport)
+			require.Equal(t, DefaultHttpResponseHeaderTimeout, transport.ResponseHeaderTimeout)
+			// each call returns its own client, so shorten this one rather than waiting out the default
+			transport.ResponseHeaderTimeout = 10 * time.Millisecond
+
+			_, err := client.Get("http://" + listener.Addr() + "/")
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "timeout awaiting response headers")
+			listener.RequireAcceptedConnections(t, 1)
+			// giving up has to hang up too, otherwise every stalled request leaks a connection
+			listener.RequireClosedConnections(t, 1)
+		})
+	}
 }
 
 func TestIsDeltaError(t *testing.T) {

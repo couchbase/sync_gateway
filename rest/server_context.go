@@ -83,7 +83,6 @@ type ServerContext struct {
 
 	statsContext      *statsContext
 	BootstrapContext  *bootstrapContext
-	HTTPClient        *http.Client
 	cpuPprofFileMutex sync.Mutex // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
 	cpuPprofFile      *os.File   // An open file descriptor holds the reference during CPU profiling
 
@@ -175,7 +174,6 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		_dbConfigs:          map[string]*RuntimeDatabaseConfig{},
 		_databases:          map[string]*db.DatabaseContext{},
 		DatabaseInitManager: &DatabaseInitManager{},
-		HTTPClient:          http.DefaultClient,
 		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
 		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion, clusterCompatVersion: base.NodeClusterCompatVersion},
 		hasStarted:          make(chan struct{}),
@@ -2000,7 +1998,7 @@ func (sc *ServerContext) initializeGoCBAgent(ctx context.Context) (*gocbcore.Age
 // without any x509 keypair included in the tls config.  This client can be used to perform basic
 // authentication checks against the server.
 // Client creation otherwise clones the approach used by gocb.
-func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.Client, error) {
+func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context, tlsHandshakeTimeout time.Duration) (*http.Client, error) {
 
 	// baseTlsConfig defines the tlsConfig except for ServerName, which is updated based
 	// on addr in DialTLS
@@ -2021,8 +2019,8 @@ func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.
 	}
 
 	httpDialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
+		Timeout:   base.DefaultHttpDialTimeout,
+		KeepAlive: base.DefaultHttpDialKeepAlive,
 	}
 
 	// gocbcore: We set ForceAttemptHTTP2, which will update the base-config to support HTTP2
@@ -2044,11 +2042,25 @@ func (sc *ServerContext) initializeNoX509HttpClient(ctx context.Context) (*http.
 			if err != nil {
 				return nil, err
 			}
-			return tls.Client(tcpConn, tlsConfig), nil
+			// Handshake here, under an explicit deadline.  http.Transport applies TLSHandshakeTimeout only
+			// on its own TLS path, and handshakes a custom-dialed *tls.Conn under the dial context, which
+			// carries no deadline - so a server that stalls TLS after connecting would block here.
+			tlsConn := tls.Client(tcpConn, tlsConfig)
+			handshakeCtx, cancelHandshake := context.WithTimeout(ctx, tlsHandshakeTimeout)
+			defer cancelHandshake()
+			if err := tlsConn.HandshakeContext(handshakeCtx); err != nil {
+				_ = tcpConn.Close() // avoid leaking the connection on handshake failure
+				return nil, err
+			}
+			return tlsConn, nil
 		},
 		MaxIdleConns:        base.DefaultHttpMaxIdleConns,
 		MaxIdleConnsPerHost: base.DefaultHttpMaxIdleConnsPerHost,
 		IdleConnTimeout:     base.DefaultHttpIdleConnTimeout,
+		// gocbcore sets neither; both bound stages where a stalled server would hold up the auth check.
+		// TLSHandshakeTimeout is absent deliberately - DialTLSContext above enforces that deadline.
+		ResponseHeaderTimeout: base.DefaultHttpResponseHeaderTimeout,
+		ExpectContinueTimeout: base.DefaultHttpExpectContinueTimeout,
 	}
 
 	httpCli := &http.Client{
@@ -2226,7 +2238,7 @@ func (sc *ServerContext) initializeGocbAdminConnection(ctx context.Context) erro
 	}
 	sc.GoCBAgent = goCBAgent
 
-	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx)
+	sc.NoX509HTTPClient, err = sc.initializeNoX509HttpClient(ctx, base.DefaultHttpTLSHandshakeTimeout)
 	base.InfofCtx(ctx, base.KeyAll, "Finished initializing server admin connection")
 	return err
 }

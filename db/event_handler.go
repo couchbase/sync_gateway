@@ -75,6 +75,11 @@ func NewWebhook(ctx context.Context, url string, filterFnString string, timeout 
 	// Initialize transport and client
 	transport := base.DefaultHTTPTransport()
 	transport.DisableKeepAlives = false
+	// let the configured timeout govern the header wait too, so a long timeout isn't capped.  A zero
+	// timeout leaves Client.Timeout unbounded, so the transport default has to bound the header wait.
+	if wh.timeout > 0 {
+		transport.ResponseHeaderTimeout = wh.timeout
+	}
 	wh.client = &http.Client{Transport: transport, Timeout: wh.timeout}
 
 	if options != nil {

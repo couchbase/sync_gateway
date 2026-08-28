@@ -1204,7 +1204,12 @@ func ExpvarVar2Int(ctx context.Context, expvarVar expvar.Var) int64 {
 func DefaultHTTPTransport() *http.Transport {
 	// This type assertion will panic if http.DefaultTransport ever changes to not be a http.Transport
 	// We'll catch this in development/unit testing pretty quickly if it does happen.
-	return http.DefaultTransport.(*http.Transport).Clone()
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// bounds the wait for response headers, so a remote that accepts the connection and then goes silent
+	// fails the request rather than blocking the caller.  The dial and TLS handshake timeouts are both
+	// satisfied by this point, so nothing else limits it.
+	transport.ResponseHeaderTimeout = DefaultHttpResponseHeaderTimeout
+	return transport
 }
 
 // IsFleeceDeltaError returns true if the given error originates from go-fleecedelta.
@@ -1605,15 +1610,14 @@ func GetRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 // GetHttpClient returns a new HTTP client with TLS certificate verification
 // disabled when insecureSkipVerify is true and enabled otherwise.
 func GetHttpClient(insecureSkipVerify bool) *http.Client {
+	transport := DefaultHTTPTransport()
 	if insecureSkipVerify {
-		transport := DefaultHTTPTransport()
 		if transport.TLSClientConfig == nil {
 			transport.TLSClientConfig = new(tls.Config)
 		}
 		transport.TLSClientConfig.InsecureSkipVerify = true
-		return &http.Client{Transport: transport}
 	}
-	return &http.Client{}
+	return &http.Client{Transport: transport}
 }
 
 // Like GetHttpClient, and also turns off the NODELAY option on the underlying TCP socket.

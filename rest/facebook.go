@@ -52,7 +52,7 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 	params := url.Values{"fields": []string{"id,name,email"}, "access_token": []string{accessToken}}
 	destUrl := fbUrl + "/me?" + params.Encode()
 
-	res, err := http.Get(destUrl)
+	res, err := base.GetHttpClient(false).Get(destUrl)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusGatewayTimeout, "Unable to send request to Facebook API: %v", err)
 	}
