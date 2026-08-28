@@ -1210,3 +1210,66 @@ func MigrateSeqCounterForTest(t testing.TB, ctx context.Context, ms *base.Metada
 func usingShardedResync(testing.TB) bool {
 	return base.IsEnterpriseEdition() && !sgtest.UnitTestUrlIsWalrus()
 }
+
+// dcpCheckpointKeys returns every document key a DCP feed using checkpointPrefix would persist for
+// the given feed mode. The layout differs per backend: rosmar writes a single document at the
+// prefix, the gocb client writes one document per worker, and cbgt writes one per vBucket.
+func dcpCheckpointKeys(t testing.TB, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) []string {
+	t.Helper()
+	switch feedMode {
+	case base.DCPFeedRosmar:
+		return []string{checkpointPrefix}
+	case base.DCPFeedGocb:
+		keys := make([]string, 0, base.DefaultNumWorkers)
+		for workerID := range base.DefaultNumWorkers {
+			keys = append(keys, fmt.Sprintf("%s%d", checkpointPrefix, workerID))
+		}
+		return keys
+	case base.DCPFeedSharded:
+		keys := make([]string, 0, db.NumVBuckets())
+		for vbNo := range db.NumVBuckets() {
+			keys = append(keys, fmt.Sprintf("%s%d", checkpointPrefix, vbNo))
+		}
+		return keys
+	default:
+		require.FailNow(t, "unhandled DCP feed mode", "%s", feedMode)
+		return nil
+	}
+}
+
+// existingDCPCheckpoints returns the subset of checkpoint documents for checkpointPrefix that are
+// currently present in the database's metadata store.
+func existingDCPCheckpoints(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) []string {
+	t.Helper()
+	var found []string
+	for _, key := range dcpCheckpointKeys(t, db, checkpointPrefix, feedMode) {
+		_, _, err := db.MetadataStore.GetRaw(ctx, key)
+		if err == nil {
+			found = append(found, key)
+			continue
+		}
+		require.True(t, base.IsDocNotFoundError(err), "unexpected error reading DCP checkpoint %q: %v", key, err)
+	}
+	return found
+}
+
+// writeDCPCheckpoint persists a DCP checkpoint document for checkpointPrefix, so a test can construct
+// the state of a previous run that still owns checkpoints and assert on whether a later operation
+// purges it. The contents are irrelevant - all that matters is that a document exists at a key the
+// purge is expected to target.
+func writeDCPCheckpoint(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) {
+	t.Helper()
+	if feedMode == base.DCPFeedGocb {
+		// use the real metadata writer so the document matches what a gocb feed would leave behind
+		metadata := base.NewDCPMetadataCS(ctx, db.MetadataStore, db.NumVBuckets(), base.DefaultNumWorkers, checkpointPrefix)
+		metadata.Persist(ctx, 0, []uint16{0})
+	} else {
+		key := checkpointPrefix
+		if feedMode == base.DCPFeedSharded {
+			key = fmt.Sprintf("%s%d", checkpointPrefix, 0)
+		}
+		require.NoError(t, db.MetadataStore.SetRaw(ctx, key, 0, nil, []byte("{}")))
+	}
+	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, db, checkpointPrefix, feedMode),
+		"failed to seed DCP checkpoint for prefix %q", checkpointPrefix)
+}
