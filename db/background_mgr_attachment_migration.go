@@ -342,6 +342,11 @@ type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationMeta            `json:"meta"`
 }
 
+// purgeCompletedCheckpoints implements dcpCheckpointPurger.
+func (a *AttachmentMigrationManager) purgeCompletedCheckpoints(ctx context.Context) error {
+	return a.purgeCheckpoints(ctx, a.databaseCtx, a.MigrationID)
+}
+
 // purgeCheckpoints will remove the checkpoints for a specific migration ID.
 func (a *AttachmentMigrationManager) purgeCheckpoints(ctx context.Context, db *DatabaseContext, migrationID string) error {
 	return base.PurgeDCPCheckpoints(

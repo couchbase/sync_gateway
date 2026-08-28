@@ -1365,3 +1365,43 @@ func TestResyncInitPurgesCompletedRunCheckpoints(t *testing.T) {
 	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, previousPrefix, feedMode),
 		"Init did not purge the completed previous run %q's checkpoints", previousResyncID)
 }
+
+// TestResyncInitDoesNotPurgeRunningRunOnJoin guards against a joining node purging an in-flight run's
+// checkpoints.
+//
+// ResyncManagerMeta.Options persists the ResyncOptions a run was started with so Join can reconstruct
+// them. A run started with Reset:true therefore hands Reset:true back to every node that joins it -
+// while the run is still going. Init must not treat that as a request to abandon the running run.
+func TestResyncInitDoesNotPurgeRunningRunOnJoin(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	defer func() {
+		_ = db.ResyncManager.Stop(ctx)
+		db.ResyncManager.resetStatus()
+	}()
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+	feedMode := db.distributedDCPFeedMode()
+
+	runningResyncID := uuid.NewString()
+	prefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, runningResyncID, process.Distributed)
+	writeDCPCheckpoint(t, ctx, db.DatabaseContext, prefix, feedMode)
+
+	clusterData, err := json.Marshal(ResyncManagerStatusDocDCP{
+		ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+			BackgroundManagerStatus: BackgroundManagerStatus{State: BackgroundProcessStateRunning},
+			ResyncID:                runningResyncID,
+		},
+		ResyncManagerMeta: ResyncManagerMeta{
+			CollectionIDs: slices.Collect(maps.Keys(db.CollectionByID)),
+		},
+	})
+	require.NoError(t, err)
+
+	// what Join passes: the persisted options (Reset:true) plus a status doc that is still Running
+	_, err = process.Init(ctx, ResyncOptions{Collections: base.NewCollectionNames(), Reset: true}, clusterData)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, prefix, feedMode),
+		"Init purged the checkpoints of the still-running resync run %q", runningResyncID)
+}

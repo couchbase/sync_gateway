@@ -30,7 +30,7 @@ type runFunctionStartedCallbackFunc func(context.Context, AttachmentCompactionOp
 // AttachmentCompactionManager implements the attachment compaction background process. Compaction
 // runs in three sequential phases — mark, sweep, cleanup.
 //
-// Fields _compactID, _phase, _vbuuids, _dryRun are protected by lock.
+// Fields _compactID, _phase, _vbuuids, _dryRun, _database are protected by lock.
 type AttachmentCompactionManager struct {
 	// MarkedAttachments counts attachments marked as live during the mark phase.
 	MarkedAttachments base.AtomicInt
@@ -38,10 +38,11 @@ type AttachmentCompactionManager struct {
 	PurgedAttachments base.AtomicInt
 
 	// The following fields are protected by lock and must be accessed via their getters/setters.
-	_compactID string   // unique identifier for the current compaction run, used to tag marked attachments
-	_phase     string   // current phase: "mark", "sweep", "cleanup", or "" when idle
-	_vbuuids   []uint64 // vBucket UUIDs captured after the mark phase, used to detect DCP rollbacks in cleanup
-	_dryRun    bool     // when true, sweep phase reports but does not delete attachments
+	_compactID string    // unique identifier for the current compaction run, used to tag marked attachments
+	_phase     string    // current phase: "mark", "sweep", "cleanup", or "" when idle
+	_vbuuids   []uint64  // vBucket UUIDs captured after the mark phase, used to detect DCP rollbacks in cleanup
+	_dryRun    bool      // when true, sweep phase reports but does not delete attachments
+	_database  *Database // captured in Init; the completion purge runs after Run has returned, so it has no options to read
 
 	lock                       sync.RWMutex
 	runFunctionStartedCallback atomic.Pointer[runFunctionStartedCallbackFunc]
@@ -74,6 +75,7 @@ func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base
 
 func (a *AttachmentCompactionManager) Init(ctx context.Context, options AttachmentCompactionOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	options.Database.DbStats.Database().CompactionAttachmentStartTime.Set(uint64(time.Now().UTC().Unix()))
+	a.setDatabase(options.Database)
 
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
@@ -225,6 +227,26 @@ func (*AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, databa
 	)
 }
 
+// setDatabase stores the Database for use after Run has returned.
+func (a *AttachmentCompactionManager) setDatabase(database *Database) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a._database = database
+}
+
+// purgeCompletedCheckpoints implements dcpCheckpointPurger.
+func (a *AttachmentCompactionManager) purgeCompletedCheckpoints(ctx context.Context) error {
+	a.lock.RLock()
+	database, compactID := a._database, a._compactID
+	a.lock.RUnlock()
+
+	if database == nil || compactID == "" {
+		return nil
+	}
+	return a.purgeAllPhaseCheckpoints(ctx, database, compactID)
+}
+
 // purgeAllPhaseCheckpoints removes the DCP checkpoints for every phase of the given compaction run.
 // Compaction persists one checkpoint prefix per phase, so all three must be purged or two thirds of
 // the run's checkpoints are left orphaned.
@@ -292,6 +314,12 @@ func (a *AttachmentCompactionManager) initializeNewRun(compactID string, dryRun 
 
 	a._compactID = compactID
 	a._dryRun = dryRun
+	// A new run must start from the mark phase with no inherited vBucket UUIDs. The manager is long
+	// lived (one per DatabaseContext) and neither ResetStatus nor this function used to clear these, so
+	// a run that stopped during sweep or cleanup had its phase inherited by the next run. Entering
+	// sweep under a new compactID that has marked nothing purges every live v1 attachment.
+	a._phase = ""
+	a._vbuuids = nil
 }
 
 // initializeFromPreviousStatus restores in-memory state from a previously persisted status document
