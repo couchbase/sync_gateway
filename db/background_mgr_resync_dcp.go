@@ -170,7 +170,9 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 		resetMsg = "no previous run found"
 	} else if unmarshalErr != nil {
 		resetMsg = "failed to unmarshal cluster status"
-	} else if options.Reset {
+	} else if options.Reset && statusDoc.State != BackgroundProcessStateRunning {
+		// A Running status doc means this Start is a node joining an in-flight run, not an operator
+		// abandoning it - resuming is correct, and purging its checkpoints would break it.
 		resetMsg = "reset option requested"
 	} else if statusDoc.State == BackgroundProcessStateCompleted {
 		resetMsg = "previous run completed"
@@ -226,6 +228,11 @@ func totalResyncDocs(ctx context.Context, collections DatabaseCollections) (uint
 		total += count
 	}
 	return total, nil
+}
+
+// purgeCompletedCheckpoints implements dcpCheckpointPurger.
+func (r *ResyncManagerDCP) purgeCompletedCheckpoints(ctx context.Context) error {
+	return r.purgeCheckpoints(ctx, r.ResyncID)
 }
 
 // purgeCheckpoints removes checkpoints for a given resync run.

@@ -173,6 +173,20 @@ type BackgroundManagerProcessI[O any] interface {
 	ResetStatus()
 }
 
+// dcpCheckpointPurger is implemented by BackgroundManager processes that persist DCP checkpoints, so
+// the manager can clean them up once a run completes successfully. Processes with no DCP feed
+// (tombstone compaction, async index init, metadata migration) simply do not implement it.
+//
+// This belongs on the manager rather than on the DCP client: GoCBDCPClient purges one-shot feeds
+// implicitly in deactivateVbucket, but RosmarDCPClient and the cbgt/sharded path used by distributed
+// resync do not. Without this, whether a completed run cleans up depends on which client it happened
+// to use rather than on whether the task actually succeeded.
+type dcpCheckpointPurger interface {
+	// purgeCompletedCheckpoints removes the DCP checkpoints belonging to the run that has just
+	// completed.
+	purgeCompletedCheckpoints(ctx context.Context) error
+}
+
 // StoppableBackgroundManager allows stopping of the generic background managers.
 type StoppableBackgroundManager interface {
 	GetName() string
@@ -353,7 +367,21 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		} else if b.status.State == BackgroundProcessStateRunning {
 			b.status.State = BackgroundProcessStateCompleted
 		}
+		becameCompleted := b.status.State == BackgroundProcessStateCompleted
 		b.statusLock.Unlock()
+
+		// A successful run's DCP checkpoints are dead weight - nothing will ever resume from them.
+		// Completed only: a stopped or errored run must keep its checkpoints so the next Start resumes.
+		// Abandoning those instead is handled at reset time, in each process's Init.
+		if becameCompleted {
+			if purger, ok := any(b.Process).(dcpCheckpointPurger); ok {
+				// WithoutCancel so a database shutdown racing the final transition cannot silently skip
+				// the deletes.
+				if purgeErr := purger.purgeCompletedCheckpoints(context.WithoutCancel(ctx)); purgeErr != nil {
+					base.WarnfCtx(ctx, "Failed to purge DCP checkpoints after completing %q: %v, these will be abandoned and unused", b.name, purgeErr)
+				}
+			}
+		}
 
 		// Once our background process run has completed we should update the completed status and delete the heartbeat
 		// doc
