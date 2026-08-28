@@ -142,11 +142,6 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			passiveDBURL, err := url.Parse(srv.URL + "/" + rt2DbName)
 			require.NoError(t, err)
 
-			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-			require.NoError(t, err)
-			dbstats, err := stats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
-
 			// The mapping of `""` for activeKeyspace3 requires that these two collections are the same name.
 			assert.Equal(t, activeKeyspace3, passiveKeyspace3)
 
@@ -160,7 +155,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 				},
 				ChangesBatchSize:         200,
 				Continuous:               true,
-				ReplicationStatsMap:      dbstats,
+				ReplicationStatsMap:      dbReplicatorStats(t, rt1.GetDatabase()),
 				CollectionsEnabled:       true,
 				CollectionsLocal:         localCollections,
 				CollectionsRemote:        remoteCollections,
@@ -328,12 +323,8 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, _, remoteDbURLString := sgrRunner.SetupSGRPeers(t)
-
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteDbURLString := peers.ActiveRT, peers.PassiveDBURL
 
 		passiveDBURL, err := url.Parse(remoteDbURLString)
 		require.NoError(t, err)
@@ -346,7 +337,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 			ActiveDB: &db.Database{
 				DatabaseContext: activeRT.GetDatabase(),
 			},
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     true,
 			CollectionsLocal:       localCollections,
 			CollectionsRemote:      remoteCollections,
@@ -368,16 +359,12 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, _, remoteDbURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, remoteDbURLString := peers.ActiveRT, peers.PassiveDBURL
 
 		localCollection := activeRT.GetSingleDataStore().ScopeName() + "." + activeRT.GetSingleDataStore().CollectionName()
 		localCollections := []string{localCollection}
 		remoteCollections := []string{"missing.collection"}
-
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
 
 		passiveDBURL, err := url.Parse(remoteDbURLString)
 		require.NoError(t, err)
@@ -390,7 +377,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 			ActiveDB: &db.Database{
 				DatabaseContext: activeRT.GetDatabase(),
 			},
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     true,
 			CollectionsLocal:       localCollections,
 			CollectionsRemote:      remoteCollections,
@@ -412,17 +399,13 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, remoteDbURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteDbURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		localCollection := activeRT.GetSingleDataStore().ScopeName() + ".invalid"
 		localCollections := []string{localCollection}
 		remoteCollection := passiveRT.GetSingleDataStore().ScopeName() + "." + passiveRT.GetSingleDataStore().CollectionName()
 		remoteCollections := []string{remoteCollection}
-
-		stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, false, nil, nil)
-		require.NoError(t, err)
-		dbstats, err := stats.DBReplicatorStats(t.Name())
-		require.NoError(t, err)
 
 		passiveDBURL, err := url.Parse(remoteDbURLString)
 		require.NoError(t, err)
@@ -435,7 +418,7 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 			ActiveDB: &db.Database{
 				DatabaseContext: activeRT.GetDatabase(),
 			},
-			ReplicationStatsMap:    dbstats,
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 			CollectionsEnabled:     true,
 			CollectionsLocal:       localCollections,
 			CollectionsRemote:      remoteCollections,

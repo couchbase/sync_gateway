@@ -22,7 +22,10 @@ import sys
 import tempfile
 import textwrap
 
-CBDINOCLUSTER = "github.com/couchbaselabs/cbdinocluster@latest"
+# cbdinocluster is pinned by a tool directive in its own module rather than the root go.mod, so
+# invoke it through that module's directory to stay independent of the caller's working directory.
+_TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
+CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
 DEFAULT_CBS_VERSION = "8.0.1"
 DEFAULT_SERVICES = "kv,n1ql,index"
 DEFAULT_MEMORY_MB = 3072
@@ -57,9 +60,7 @@ def ensure_initialized() -> None:
     # default to enabled under --auto and would otherwise probe for credentials we don't have.
     run(
         [
-            "go",
-            "run",
-            CBDINOCLUSTER,
+            *CBDINOCLUSTER,
             "init",
             "--auto",
             "--disable-k8s",
@@ -85,7 +86,7 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
         return None
 
     result = subprocess.run(
-        ["go", "run", CBDINOCLUSTER, "get-definition", cluster_id],
+        [*CBDINOCLUSTER, "get-definition", cluster_id],
         capture_output=True,
         text=True,
         check=False,
@@ -233,7 +234,7 @@ def main() -> None:
         print(f"Cluster definition written to {def_file}:", flush=True)
         print(yaml_content, flush=True)
 
-        allocate_cmd = ["go", "run", CBDINOCLUSTER, "allocate", "--def-file", def_file]
+        allocate_cmd = [*CBDINOCLUSTER, "allocate", "--def-file", def_file]
         if opts.purpose:
             allocate_cmd += ["--purpose", opts.purpose]
 
@@ -248,7 +249,7 @@ def main() -> None:
             f.write(cluster_id + "\n")
         print(f"Wrote cluster ID to {state_path}", flush=True)
 
-    connstr_cmd = ["go", "run", CBDINOCLUSTER, "connstr", cluster_id]
+    connstr_cmd = [*CBDINOCLUSTER, "connstr", cluster_id]
     connstr_cmd += ["--tls"] if opts.tls else ["--no-tls"]
     connstr_result = run(
         connstr_cmd,

@@ -19,7 +19,7 @@ import (
 	"log"
 	"testing"
 
-	"ruleguard/internal/test_pkg/base"
+	"github.com/couchbase/sync_gateway/ruleguard/internal/test_pkg/base"
 )
 
 // should have 29 valid usages and 29 invalid usages when ruleguard is run on this file/function

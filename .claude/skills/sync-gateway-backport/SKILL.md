@@ -100,6 +100,25 @@ git log --oneline origin/release/x.y.z -i --grep='CBG-<candidate>'  # is it on t
 
 Adapting around a missing prerequisite is legitimate but costs more and diverges from upstream: every adaptation is a place the branches can drift. If you adapt, list each deviation in the PR body. **Re-run the cherry-pick once the prerequisite is in place** — conflicts frequently vanish entirely and the diff becomes upstream-identical, which is worth far more than a clever manual merge.
 
+### The testify import rename is not a blocker
+
+`main` uses the repo's own assertion wrappers, `github.com/couchbase/sync_gateway/testing/assert` and `github.com/couchbase/sync_gateway/testing/require`; older release branches still import `github.com/stretchr/testify/{assert,require}` directly. A commit that touches a test file converted upstream will therefore conflict on the import block, and often on nothing else.
+
+**That is not a missing prerequisite and not a reason to stop.** The wrappers are API-compatible with testify at every call site the repo uses, so resolve it by keeping the release branch's testify imports and taking the upstream side of everything else:
+
+```bash
+git diff --name-only --diff-filter=U          # what conflicted
+git diff HEAD -- <file>                        # confirm the import block is the whole of it
+```
+
+Do not backport the wrapper packages themselves to make the conflict go away — that is a branch-wide change riding in on an unrelated ticket. Do not drop the hunk either. Rename the imports in the cherry-picked file to whatever that branch already uses, keep the assertions as they are, and note it as a deviation:
+
+```
+- `rest/attachment_test.go` — release branch predates the `testing/require` wrappers; imports renamed back to `github.com/stretchr/testify/require`
+```
+
+If the conflict is *only* the import lines, this makes the backport routine — but it is still an edit after the cherry-pick, so the PR is unclean, not clean. Only escalate if upstream also uses a wrapper helper that testify has no equivalent for; that is a real prerequisite and goes through the table above.
+
 ### Dropping part of an upstream commit is never your call
 
 A hunk that won't apply because a symbol it uses is missing — a test helper in the same package, a `base` utility, a changed signature — is a missing prerequisite, not a file that doesn't exist on the branch. Run the lookup above on the *missing symbol* first. The two cheapest cases are also the two most common, and the table above already classifies both as low risk to stack: a helper defined in the same test package, and a `*_testing.go` utility in `base`.
@@ -187,7 +206,7 @@ Include it only when **every file the branch touches is recognised test code**. 
 
 ```bash
 git diff --name-only origin/release/x.y.z...HEAD \
-  | grep -vE '_test\.go$|_testing\.go$|(^|/)testing/|(^|/)(utilities_testing|main_test_|util_test_|api_test_helpers|jwt_test_utils|replicator_test_helper)'
+  | grep -vE '_test\.go$|_testing\.go$|(^|/)testing/|(^|/)(utilities_testing|main_test_|util_test_|api_test_helpers|jwt_test_utils|replicator_test_helper|leaky_bucket|leaky_datastore)'
 ```
 
 Empty output → add the line. Any surviving path → leave it off, even for a one-line production change. Do not narrow the command to `-- '*.go'`: a diff of only docs, scripts, CI config, or a Dockerfile would then print nothing and look test-only when it is not. Clean and unclean backports both get it; the two markers are independent — an unclean cherry-pick of a test-only change is still test-only.
@@ -198,10 +217,15 @@ Empty output → add the line. Any surviving path → leave it off, even for a o
 |---|---|
 | `*_test.go` | the ordinary case |
 | `*_testing.go` | `base/util_testing.go`, `db/utilities_hlv_testing.go`, `channels/util_testing.go` |
-| anything under a `testing/` directory | `testing/assert/`, `testing/require/`, `testing/sgtest/` |
+| **everything under the top-level `testing/` package** | all of `testing/assert/`, `testing/require/`, `testing/sgtest/`, and any subpackage added later |
 | `utilities_testing*` | the whole `rest/utilities_testing_*.go` family, `base/utilities_testing_rbac.go` |
 | `main_test_*`, `util_test_*` | `base/main_test_bucket_pool.go`, `base/util_test_race.go` |
 | `*_test_helper*.go`, `*_test_utils.go` | `rest/api_test_helpers.go`, `auth/jwt_test_utils.go`, `rest/replicatortest/replicator_test_helper.go` |
+| the leaky bucket fault-injection layer | `base/leaky_bucket.go`, `base/leaky_datastore.go` |
+
+The repo's top-level `testing/` package is test-support code in its entirety — every file, every subpackage, no exceptions and nothing to check case by case. It exists to support tests; however, note it may still be compiled into the server binary when imported by non-test packages (for example, `base/logging.go` imports `github.com/couchbase/sync_gateway/testing/assert` for test helper functions). A backport whose whole diff lands under `testing/` is generally still low risk because no request path should reach it.
+
+`base/leaky_bucket.go` and `base/leaky_datastore.go` are the odd ones out by name: they carry no test marker at all and live beside production `base` code, but they are the fault-injection wrappers that only `GetTestBucket`-style test setup ever constructs. No request path reaches them — treat them as test code.
 
 One name-based exception, which the grep above deliberately does not filter: **`rest/oidc_test_provider.go` is production code.** It backs the registered `/_oidc_testing` route, so it is reachable in a running deployment. A PR touching it is not test-only whatever its name suggests.
 
@@ -227,6 +251,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - Leaving the auto-generated PR body or the repo PR template in place
 - Submitting or editing a PR body without the `sync-gateway-backport` attribution footer
 - Claiming `test-only` from the commit subject or the ticket instead of the file list — a reviewer who trusts that line skips the production change hidden under it
+- Stopping a backport over a testify-vs-wrapper import conflict, or pulling the wrapper packages onto the branch to avoid renaming two import lines
 - Dropping part of the upstream commit on your own judgement — a missing helper is a prerequisite question, and the answer is the user's
 - Half-applying a flake fix: the tests still on the old timing trick keep flaking, and a green CI run proves nothing about them
 
@@ -241,9 +266,11 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | A hunk dropped because a helper it calls doesn't exist on the branch | That helper is a prerequisite — find its commit with `git log -S`, stack it, and apply the hunk whole |
 | Dropping a hunk and documenting it in the commit/PR body instead of asking | The body explains a decision already made. Ask first with AskUserQuestion |
 | Deviation bullet names the file that was dropped | Name the tests that lost the fix, and what they go back to doing |
+| Treating a `testing/require` vs `github.com/stretchr/testify/require` import conflict as a blocker or a prerequisite | Rename the imports to the branch's own and take the upstream side of the rest; list it as a deviation |
+| Backporting the `testing/assert` / `testing/require` wrapper packages to resolve one import conflict | Branch-wide change on an unrelated ticket — rename the imports in the cherry-picked file instead |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
-| `test-only` withheld because the PR touches a test helper or the `testing/` package | Test-support code counts as test code — see the pattern table. Only a real production file blocks the marker |
+| `test-only` withheld because the PR touches a test helper, `base/leaky_*.go`, or anything under `testing/` | Test-support code counts as test code, and the whole `testing/` package is test code by definition — see the pattern table. Only a real production file blocks the marker |
 | `test-only` on a PR touching `rest/oidc_test_provider.go` | Despite the name it backs the live `/_oidc_testing` route, so it is production |
 | `test-only` on a test-support-only diff that also bumps `go.mod` | A dependency bump ships. Check `go.mod`/`go.sum` separately — the `*.go` grep misses it |
 | Title says `(test-only)` but the body line is missing, or the reverse | Both come from the same check — set both or neither |
