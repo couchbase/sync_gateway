@@ -124,7 +124,7 @@ func initializeLoggers(ctx context.Context) {
 	initialCollationBufferSize := 0
 
 	consoleLogger.Store(mustInitConsoleLogger(context.Background(), &ConsoleLoggerConfig{LogKeys: []string{logKeyNames[KeyHTTP]}, FileLoggerConfig: FileLoggerConfig{Enabled: Ptr(true), CollationBufferSize: &initialCollationBufferSize}}))
-	initExternalLoggers()
+	updateExternalLoggers()
 }
 
 type logFn func(ctx context.Context, format string, args ...any)

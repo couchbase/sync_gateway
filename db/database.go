@@ -809,6 +809,9 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 }
 
 func (context *DatabaseContext) Close(ctx context.Context) {
+	// Mark stopping before teardown so the lock-free stats reader skips this database.
+	atomic.StoreUint32(&context.State, DBStopping)
+
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
@@ -837,6 +840,15 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	base.RemovePerDbStats(context.Name)
 
+}
+
+// BucketIfOpen returns the database's bucket, or false if the database has been closed. Callers
+// holding a DatabaseContext they didn't resolve under a lock need this rather than reading Bucket
+// directly, since Close nils it.
+func (context *DatabaseContext) BucketIfOpen() (base.Bucket, bool) {
+	context.BucketLock.RLock()
+	defer context.BucketLock.RUnlock()
+	return context.Bucket, context.Bucket != nil
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.
@@ -1985,13 +1997,17 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 
 		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs()
+		_, rawSyncXattr, _, rawMouXattr, rawGlobalSync, err := updatedDoc.MarshalWithXattrs()
+		xattrs := map[string][]byte{
+			base.SyncXattrName: rawSyncXattr,
+			base.MouXattrName:  rawMouXattr,
+		}
+		if rawGlobalSync != nil {
+			xattrs[base.GlobalXattrName] = rawGlobalSync
+		}
 		updatedDoc := sgbucket.UpdatedDoc{
-			Doc: nil, // Resync does not require document body update
-			Xattrs: map[string][]byte{
-				base.SyncXattrName: rawSyncXattr,
-				base.MouXattrName:  rawMouXattr,
-			},
+			Doc:    nil, // Resync does not require document body update
+			Xattrs: xattrs,
 			Expiry: updatedExpiry,
 			Spec: []sgbucket.MacroExpansionSpec{
 				sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),

@@ -46,7 +46,8 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -67,7 +68,7 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -192,7 +193,8 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -213,7 +215,7 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:           200,
-			ReplicationStatsMap:        dbReplicatorStats(t),
+			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 			ConflictResolverFuncForHLV: resolverFunc,
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			Continuous:                 false,
@@ -443,7 +445,8 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -467,7 +470,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -744,7 +747,8 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -766,7 +770,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -971,7 +975,8 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -997,7 +1002,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -1170,7 +1175,8 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -1191,7 +1197,7 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -1316,7 +1322,8 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -1337,7 +1344,7 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -1444,7 +1451,8 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -1491,7 +1499,7 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:           200,
-			ReplicationStatsMap:        dbReplicatorStats(t),
+			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 			ConflictResolverFunc:       customConflictResolver,
 			ConflictResolverFuncForHLV: customConflictResolver,
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
@@ -1593,7 +1601,8 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -1640,7 +1649,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFunc:       customConflictResolver,
 					ConflictResolverFuncForHLV: customConflictResolver,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
@@ -1738,7 +1747,8 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+				peers := sgrRunner.SetupSGRPeers(t)
+				rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 				remoteURL, err := url.Parse(remoteURLString)
 				require.NoError(t, err)
 				ctx1 := rt1.Context()
@@ -1759,7 +1769,7 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 						DatabaseContext: rt1.GetDatabase(),
 					},
 					ChangesBatchSize:           200,
-					ReplicationStatsMap:        dbReplicatorStats(t),
+					ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 					ConflictResolverFuncForHLV: resolverFunc,
 					CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 					Continuous:                 false,
@@ -1862,7 +1872,8 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -1893,7 +1904,7 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:           200,
-			ReplicationStatsMap:        dbReplicatorStats(t),
+			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 			ConflictResolverFuncForHLV: resolverFunc,
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			Continuous:                 false,
@@ -1966,7 +1977,8 @@ func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -2002,7 +2014,7 @@ func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:           200,
-			ReplicationStatsMap:        dbReplicatorStats(t),
+			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 			ConflictResolverFuncForHLV: resolverFunc,
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			Continuous:                 false,
@@ -2059,7 +2071,8 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		rt1, rt2, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
@@ -2074,8 +2087,7 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 		require.NoError(t, err)
 
 		// add active rt to simulate two nodes on active cluster
-		active := addActiveRT(t, rt1.GetDatabase().Name, rt1.TestBucket)
-		defer active.Close()
+		active := peers.AddActiveRT(t)
 
 		replicationID := rest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -2086,7 +2098,7 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 				DatabaseContext: rt1.GetDatabase(),
 			},
 			ChangesBatchSize:           200,
-			ReplicationStatsMap:        dbReplicatorStats(t),
+			ReplicationStatsMap:        dbReplicatorStats(t, rt1.GetDatabase()),
 			ConflictResolverFuncForHLV: resolverFunc,
 			CollectionsEnabled:         !rt1.GetDatabase().OnlyDefaultCollection(),
 			Continuous:                 true,
@@ -2130,7 +2142,8 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		docID := rest.SafeDocumentName(t, t.Name())
 		rt1Version := activeRT.PutDoc(docID, `{"source":"activeRT","channels":["alice"]}`)
@@ -2180,7 +2193,8 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 	sgrRunner := rest.NewSGRTestRunner(t)
 	// v4 protocol only test
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		activeRT, passiveRT, remoteURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		docID := rest.SafeDocumentName(t, t.Name())
 
 		rt2Version := passiveRT.PutDoc(docID, `{"source":"passiveRT","channels":["alice"]}`)
@@ -2234,7 +2248,8 @@ func TestDefaultConflictResolverMatchingTimestamps(t *testing.T) {
 	// digest, not by timestamp), so only the V4 subtest is run.
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
-		activeRT, passiveRT, remoteDBURLString := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteDBURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteDBURLString)
 		require.NoError(t, err)
 		activeRTCtx := activeRT.Context()
@@ -2250,7 +2265,7 @@ func TestDefaultConflictResolverMatchingTimestamps(t *testing.T) {
 		require.Equal(t, activeRTVersion.CV.Value, passiveRTVersion.CV.Value, "test requires activeRT and passiveRT to generate matching HLC timestamps")
 		require.NotEqual(t, activeRTVersion.CV.SourceID, passiveRTVersion.CV.SourceID)
 
-		replicationStats := dbReplicatorStats(t)
+		replicationStats := dbReplicatorStats(t, activeRT.GetDatabase())
 		config := db.ActiveReplicatorConfig{
 			ID:          t.Name(),
 			Direction:   db.ActiveReplicatorTypePushAndPull,

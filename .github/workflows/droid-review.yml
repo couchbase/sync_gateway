@@ -48,11 +48,9 @@ jobs:
       )
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
+      contents: read # actions/checkout
+      pull-requests: write # post review comments - the only write Droid needs here
+      id-token: write # exchange for a Factory Droid GitHub App token, since no github_token input is supplied
     steps:
       - name: Checkout repository
         uses: *actions_checkout_version

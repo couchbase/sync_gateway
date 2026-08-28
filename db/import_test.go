@@ -1803,3 +1803,171 @@ func TestAttachmentMigrationMouCarriedForward(t *testing.T) {
 	require.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "pCas has to be carried forward from the update being replaced")
 	require.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "pRev has to be carried forward alongside pCas")
 }
+
+// TestImportTombstoneAttachmentMetadata records the attachment metadata an import leaves on a tombstone,
+// which is not what a Sync Gateway delete leaves.
+//
+// A Sync Gateway delete creates a revision with no attachments, so there is no global xattr to marshal and
+// updateAndReturnDoc adds _globalSync to XattrsToDelete: the tombstone carries no attachment metadata. An
+// import never reaches that delete. updateAndReturnDoc derives isNewDocCreation from currentValue == nil,
+// and an SDK delete has already removed the body, so importing an existing tombstone is misclassified as a
+// document creation and the delete is suppressed. On the ImportDoc path the hand-built existingBucketDoc
+// (db/import.go) carries no _globalSync either, so the guard is missed twice over - fixing one of the two
+// leaves the behaviour below unchanged. Whatever the bucket held survives:
+//   - already migrated: _globalSync is left in place, so the tombstone keeps attachment metadata that a
+//     Sync Gateway delete would have dropped
+//   - not yet migrated: there is no global xattr to leave alone, and unmarshalDocumentWithXattrs has already
+//     cleared SyncData.AttachmentsPre4dot0, so the tombstone ends up with none
+//
+// The second case is the one that matches a Sync Gateway delete. The first is a leftover rather than a
+// guarantee, and a harmless one: the attachment compaction mark phase skips tombstones (it returns early on
+// len(event.Value) == 0), so nothing reads it and the attachment blobs are swept either way.
+func TestImportTombstoneAttachmentMetadata(t *testing.T) {
+	const (
+		attName   = "myatt"
+		attDigest = "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE="
+		attLength = 12
+	)
+
+	testCases := []struct {
+		name      string
+		unmigrate bool
+	}{
+		{name: "migrated attachment metadata", unmigrate: false},
+		{name: "unmigrated attachment metadata", unmigrate: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// no import listener, so the SDK tombstone created below stays unimported until this test
+			// imports it, as OnDemandImportForWrite does when a write lands on top of a tombstone
+			dbc, ctx := setupTestDB(t)
+			defer dbc.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+			ds := collection.GetCollectionDatastore()
+
+			docID := "importTombstoneDoc"
+			_, _, err := collection.Put(ctx, docID, bodyWithAttachment())
+			require.NoError(t, err)
+			require.NotEmpty(t, GetRawGlobalSyncAttachments(t, ds, docID))
+
+			if tc.unmigrate {
+				// make the document look like it was written by a pre-4.0 version of Sync Gateway:
+				// attachment metadata in _sync.attachments, no _globalSync xattr
+				value, _, err := ds.GetRaw(ctx, docID)
+				require.NoError(t, err)
+				MoveAttachmentXattrFromGlobalToSync(t, ds, docID, value, true)
+				require.NotEmpty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
+			}
+
+			// delete through the SDK. The body is removed but the system xattrs are preserved, leaving a
+			// tombstone that Sync Gateway did not write and so requires import.
+			require.NoError(t, ds.Delete(ctx, docID))
+
+			// load the tombstone without triggering the on-demand import that GetDocument would perform,
+			// so ImportDoc is called with the same document state OnDemandImportForWrite passes it
+			existingDoc, _, err := collection.getDocWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), DocUnmarshalAll)
+			require.NoError(t, err)
+			require.True(t, existingDoc.Deleted, "SDK delete should leave a body-less document")
+			require.NotEmpty(t, existingDoc.Attachments(), "attachment metadata should be visible on the loaded tombstone")
+
+			importedDoc, err := collection.ImportDoc(ctx, docID, existingDoc, importDocOptions{ // nolint:staticcheck
+				isDelete: true,
+				mode:     ImportOnDemand,
+				revSeqNo: existingDoc.RevSeqNo,
+			})
+			require.NoError(t, err)
+			require.True(t, importedDoc.IsDeleted(), "import of an SDK delete should produce a tombstone revision")
+
+			// the pre-4.0 location must not be left populated by the import
+			require.Empty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
+
+			xattrs, _, err := ds.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+			require.True(t, err == nil || base.IsXattrNotFoundError(err), "unexpected error reading global xattr: %v", err)
+			atts := attachmentMetaFromGlobalXattr(t, xattrs[base.GlobalXattrName])
+
+			if tc.unmigrate {
+				require.Empty(t, atts, "an unmigrated document leaves no attachment metadata, matching a Sync Gateway delete")
+				return
+			}
+			att, ok := atts[attName]
+			require.True(t, ok, "attachment %q missing from _globalSync.attachments_meta, found %v", attName, atts)
+			require.Equal(t, attDigest, att.Digest)
+			require.Equal(t, attLength, att.Length)
+		})
+	}
+}
+
+// TestOnDemandImportForWriteOverLegacyTombstone drives the tombstone branch of ImportDoc through its only
+// production caller, OnDemandImportForWrite: a Sync Gateway write landing on an unimported SDK tombstone
+// whose attachment metadata was never migrated out of _sync.
+//
+// The import runs first and advances the document to a new tombstone revision, so the write itself is
+// rejected as a conflict - what a client sees when a resurrection races the import of a tombstone. What the
+// tombstone is left holding depends on the backing store, because it depends on whether the enclosing write
+// re-runs its callback after the import changed the document's CAS:
+//   - Couchbase Server: it does not, so the import persists the document the tombstone branch built, which
+//     carries no global xattr, and the tombstone ends up with no attachment metadata.
+//   - Rosmar: the write retries, re-reading the full xattr set, so the import sees the legacy
+//     _sync.attachments merged in and writes them to _globalSync.
+//
+// The Couchbase Server outcome is the one that matches a Sync Gateway delete, which drops _globalSync
+// deliberately - see TestImportTombstoneAttachmentMetadata. Both are deterministic (verified over 25 runs
+// against Couchbase Server and 200 against Rosmar), and neither leaves metadata behind in the pre-4.0
+// location, which is what this test is here to pin.
+func TestOnDemandImportForWriteOverLegacyTombstone(t *testing.T) {
+	dbc, ctx := setupTestDB(t)
+	defer dbc.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+	ds := collection.GetCollectionDatastore()
+
+	docID := "resurrectedLegacyTombstone"
+	_, _, err := collection.Put(ctx, docID, bodyWithAttachment())
+	require.NoError(t, err)
+
+	// make the document look like it was written by a pre-4.0 version of Sync Gateway: attachment metadata
+	// in _sync.attachments, no _globalSync xattr
+	value, _, err := ds.GetRaw(ctx, docID)
+	require.NoError(t, err)
+	MoveAttachmentXattrFromGlobalToSync(t, ds, docID, value, true)
+	require.NotEmpty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
+
+	// delete through the SDK, leaving a tombstone Sync Gateway did not write
+	require.NoError(t, ds.Delete(ctx, docID))
+
+	// attempt to resurrect the document. The write triggers OnDemandImportForWrite for the tombstone before
+	// applying the update, and is then rejected as a conflict.
+	_, _, err = collection.Put(ctx, docID, Body{
+		"value":         5678,
+		BodyAttachments: map[string]any{"newatt": map[string]any{"content_type": "text/plain", "data": "Z29vZGJ5ZQ=="}},
+	})
+	require.Error(t, err)
+	status, _ := base.ErrorAsHTTPStatus(err)
+	require.Equal(t, http.StatusConflict, status)
+
+	// whatever the backing store does with the global xattr, the pre-4.0 location must not be left populated
+	require.Empty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0)
+
+	if base.UnitTestUrlIsWalrus() {
+		requireAttachmentMetadataPreserved(t, ds, docID, "myatt", "sha1-Lve95gjOVATpfV8EL5X4nxwjKHE=", 12)
+		return
+	}
+	xattrs, _, err := ds.GetXattrs(ctx, docID, []string{base.GlobalXattrName})
+	require.True(t, err == nil || base.IsXattrNotFoundError(err), "unexpected error reading global xattr: %v", err)
+	require.Empty(t, attachmentMetaFromGlobalXattr(t, xattrs[base.GlobalXattrName]),
+		"tombstone import against Couchbase Server leaves the tombstone with no attachment metadata")
+}
+
+// attachmentMetaFromGlobalXattr unmarshals attachment metadata from a raw _globalSync xattr, returning nil
+// for an absent xattr.
+func attachmentMetaFromGlobalXattr(t *testing.T, rawGlobalSync []byte) AttachmentMap {
+	t.Helper()
+	if len(rawGlobalSync) == 0 {
+		return nil
+	}
+	var globalSyncData struct {
+		Attachments AttachmentMap `json:"attachments_meta"`
+	}
+	require.NoError(t, base.JSONUnmarshal(rawGlobalSync, &globalSyncData))
+	return globalSyncData.Attachments
+}
