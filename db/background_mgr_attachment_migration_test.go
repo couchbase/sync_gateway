@@ -38,20 +38,56 @@ func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
 		assert.NotNil(t, doc.Attachments())
 	}
 
-	// Move some subset of the documents attachment metadata from global sync to sync data
+	// Move some subset of the documents attachment metadata from global sync to sync data. That write is the
+	// last to touch each body, so the migration's _mou has to name it.
+	type bodyWrite struct {
+		cas      uint64
+		revSeqNo uint64
+	}
+	bodyWrites := make(map[string]bodyWrite, 5)
 	for j := range 5 {
 		key := fmt.Sprintf("%s_%d", t.Name(), j)
 		value, _, err := collection.dataStore.GetRaw(ctx, key)
 		require.NoError(t, err)
 
 		MoveAttachmentXattrFromGlobalToSync(t, collection.dataStore, key, value, true)
+
+		_, mou, cas := getSyncAndMou(t, collection, key)
+		require.Nil(t, mou, "a write of the body should not leave a metadata-only update behind")
+		revSeqNo, _, err := collection.getRevSeqNo(ctx, key)
+		require.NoError(t, err)
+		bodyWrites[key] = bodyWrite{cas: cas, revSeqNo: revSeqNo}
 	}
 
-	err := db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
+	// stamp an _mou over one of them, as mobile XDCR does, so the migration has to carry it forward
+	chainedKey := fmt.Sprintf("%s_0", t.Name())
+	chained := bodyWrites[chainedKey]
+	_, err := collection.dataStore.UpdateXattrs(ctx, chainedKey, 0, chained.cas,
+		map[string][]byte{base.MouXattrName: base.MustJSONMarshal(t, &MetadataOnlyUpdate{
+			PreviousHexCAS:   base.CasToString(chained.cas),
+			PreviousRevSeqNo: chained.revSeqNo,
+		})},
+		&sgbucket.MutateInOptions{MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
+		}})
+	require.NoError(t, err)
+
+	err = db.AttachmentMigrationManager.Start(ctx, AttachmentMigrationOptions{})
 	require.NoError(t, err)
 
 	// wait for task to complete
 	RequireBackgroundManagerState(t, db.AttachmentMigrationManager, BackgroundProcessStateCompleted)
+
+	// _mou names the migration; both previous values name the last write to the body
+	for key, write := range bodyWrites {
+		syncData, mou, cas := getSyncAndMou(t, collection, key)
+		require.Empty(t, syncData.AttachmentsPre4dot0, "document %s should have been migrated", key)
+		require.Equal(t, &MetadataOnlyUpdate{
+			HexCAS:           base.CasToString(cas),
+			PreviousHexCAS:   base.CasToString(write.cas),
+			PreviousRevSeqNo: write.revSeqNo,
+		}, mou, "document %s", key)
+	}
 
 	// assert that the subset (5) of the docs were changed, all created docs were processed (10)
 	stats := getAttachmentMigrationStats(t, db)

@@ -574,6 +574,8 @@ func TestResyncMou(t *testing.T) {
 	_, doc, err := collection.Put(ctx, "sgWrite", docBody)
 	require.NoError(t, err)
 	sgWriteCas := doc.Cas
+	sgWriteRevSeqNo, _, err := collection.getRevSeqNo(ctx, "sgWrite")
+	require.NoError(t, err)
 
 	syncData, mou, _ := getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
@@ -606,16 +608,19 @@ function sync(doc, oldDoc){
 	var cas uint64
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
-	require.NotNil(t, mou)
-	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousHexCAS)
-	require.Equal(t, base.CasToString(cas), mou.HexCAS)
+	require.Equal(t, &MetadataOnlyUpdate{
+		HexCAS:           base.CasToString(cas),
+		PreviousHexCAS:   base.CasToString(sgWriteCas),
+		PreviousRevSeqNo: sgWriteRevSeqNo,
+	}, mou, "resync has to name its own mutation, and both previous values the write that last changed the body")
 
 	syncData, mou, cas = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
-	require.NotNil(t, mou)
-	require.Equal(t, initialSDKMou.PreviousHexCAS, mou.PreviousHexCAS)
-	require.NotEqual(t, initialSDKMou.HexCAS, mou.HexCAS)
-	require.Equal(t, base.CasToString(cas), mou.HexCAS)
+	require.Equal(t, &MetadataOnlyUpdate{
+		HexCAS:           base.CasToString(cas),
+		PreviousHexCAS:   initialSDKMou.PreviousHexCAS,
+		PreviousRevSeqNo: initialSDKMou.PreviousRevSeqNo,
+	}, mou, "resync replacing the import's metadata-only update has to carry both previous values forward")
 
 	// Run resync a second time with a new sync function.  mou.cas should be updated, mou.pCas should not change.
 	syncFn = `
@@ -631,18 +636,22 @@ function sync(doc, oldDoc){
 	assert.GreaterOrEqual(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(4))
 	assert.Equal(t, int64(4), db.DbStats.Database().ResyncNumChanged.Value())
 
+	// chained: the previous values must not move on to the first resync
 	syncData, mou, cas = getSyncAndMou(t, collection, "sgWrite")
 	require.NotNil(t, syncData)
-	require.NotNil(t, mou)
-	require.Equal(t, base.CasToString(sgWriteCas), mou.PreviousHexCAS)
-	require.Equal(t, base.CasToString(cas), mou.HexCAS)
+	require.Equal(t, &MetadataOnlyUpdate{
+		HexCAS:           base.CasToString(cas),
+		PreviousHexCAS:   base.CasToString(sgWriteCas),
+		PreviousRevSeqNo: sgWriteRevSeqNo,
+	}, mou, "a second resync must not move the previous values on to the first resync")
 
 	syncData, mou, cas = getSyncAndMou(t, collection, "sdkWrite")
 	require.NotNil(t, syncData)
-	require.NotNil(t, mou)
-	require.Equal(t, initialSDKMou.PreviousHexCAS, mou.PreviousHexCAS)
-	require.NotEqual(t, initialSDKMou.HexCAS, mou.HexCAS)
-	require.Equal(t, base.CasToString(cas), mou.HexCAS)
+	require.Equal(t, &MetadataOnlyUpdate{
+		HexCAS:           base.CasToString(cas),
+		PreviousHexCAS:   initialSDKMou.PreviousHexCAS,
+		PreviousRevSeqNo: initialSDKMou.PreviousRevSeqNo,
+	}, mou, "a second resync must not move the previous values on to the first resync")
 }
 
 func runResync(t *testing.T, ctx context.Context, db *Database, collection *DatabaseCollectionWithUser, syncFn string) (stats ResyncManagerResponseDCP) {

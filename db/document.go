@@ -1481,9 +1481,13 @@ func (doc *Document) channelsForRevTreeID(revTreeID string) (base.Set, bool) {
 // computeMetadataOnlyUpdate computes a new metadataOnlyUpdate based on the existing document's CAS and metadataOnlyUpdate
 func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *MetadataOnlyUpdate) *MetadataOnlyUpdate {
 	var prevCas string
+	prevRevNo := revNo
 	currentCasString := base.CasToString(currentCas)
 	if currentMou != nil && currentCasString == currentMou.HexCAS {
+		// Replacing a metadata-only update: carry its previous values forward, so pCas and pRev keep
+		// naming the same mutation.
 		prevCas = currentMou.PreviousHexCAS
+		prevRevNo = currentMou.PreviousRevSeqNo
 	} else {
 		prevCas = currentCasString
 	}
@@ -1491,7 +1495,7 @@ func computeMetadataOnlyUpdate(currentCas uint64, revNo uint64, currentMou *Meta
 	metadataOnlyUpdate := &MetadataOnlyUpdate{
 		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
 		PreviousHexCAS:   prevCas,
-		PreviousRevSeqNo: revNo,
+		PreviousRevSeqNo: prevRevNo,
 	}
 	return metadataOnlyUpdate
 }
@@ -1621,6 +1625,13 @@ func bucketDocumentFromFeed(event sgbucket.FeedEvent) (*sgbucket.BucketDocument,
 	if err != nil {
 		return nil, err
 	}
+	// DCP carries the revision sequence number as RevNo, where a read returns it as a virtual xattr. Present
+	// it the way a read would, or a metadata-only write over this document names a made-up zero.
+	if xattrs == nil {
+		xattrs = make(map[string][]byte, 1)
+	}
+	xattrs[base.VirtualXattrRevSeqNo] = []byte(strconv.Quote(strconv.FormatUint(event.RevNo, 10)))
+
 	return &sgbucket.BucketDocument{
 		Body:        body,
 		Xattrs:      xattrs,

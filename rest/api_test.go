@@ -3996,6 +3996,43 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		assert.Less(t, len(syncDataAfter.ChannelSet), channelSetLenBefore)
 	})
 
+	t.Run("import then compaction", func(t *testing.T) {
+		// CompactDocChannelHistory imports first when the last mutation was not Sync Gateway's, so one
+		// request makes two metadata-only writes: the compaction has to carry the import's values forward.
+		version := rt.PutDoc("doc13", `{"channels": ["test"]}`)
+		version = rt.UpdateDoc("doc13", version, `{"channels": []}`)
+		_ = rt.UpdateDoc("doc13", version, `{"channels": ["test", "test2"]}`)
+
+		// an external body write, the last to the body, so _mou has to name it after both writes below
+		dataStore := rt.GetSingleDataStore()
+		_, _, cas, err := dataStore.GetWithXattrs(ctx, "doc13", []string{base.SyncXattrName})
+		require.NoError(t, err)
+		sdkCas, err := dataStore.WriteCas(ctx, "doc13", 0, cas, []byte(`{"channels": ["test", "test2"]}`), 0)
+		require.NoError(t, err)
+		xattrs, _, err := dataStore.GetXattrs(ctx, "doc13", []string{base.VirtualXattrRevSeqNo})
+		require.NoError(t, err)
+		sdkRevSeqNo := db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+
+		bodyBytes, err := base.JSONMarshal(CompactDocChannelHistoryRequest{Seq: 999999})
+		require.NoError(t, err)
+		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc13/compact", string(bodyBytes))
+		RequireStatus(t, resp, http.StatusOK)
+
+		var chanOutput map[string][]string
+		require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &chanOutput))
+		require.NotEmpty(t, chanOutput["compacted_channels"], "compaction has to have pruned something, or no write happens")
+
+		xattrs, compactedCas, err := dataStore.GetXattrs(ctx, "doc13", []string{base.MouXattrName})
+		require.NoError(t, err)
+		var mou *db.MetadataOnlyUpdate
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+		require.Equal(t, &db.MetadataOnlyUpdate{
+			HexCAS:           base.CasToString(compactedCas),
+			PreviousHexCAS:   base.CasToString(sdkCas),
+			PreviousRevSeqNo: sdkRevSeqNo,
+		}, mou, "the compaction must not move the previous values on to the import that preceded it")
+	})
+
 	t.Run("invalid doc id", func(t *testing.T) {
 		// Empty doc ID should return 400 error
 		_, err := collection.CompactDocChannelHistory(ctx, "", 1)
@@ -4090,8 +4127,27 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 
 		bodyBytes, err := base.JSONMarshal(req)
 		require.NoError(t, err)
+
+		// the last write to doc11's body, which the compaction's _mou has to name
+		dataStore := rt.GetSingleDataStore()
+		xattrs, bodyCas, err := dataStore.GetXattrs(ctx, "doc11", []string{base.MouXattrName, base.VirtualXattrRevSeqNo})
+		require.NoError(t, err)
+		require.Empty(t, xattrs[base.MouXattrName], "a write of the body should not leave a metadata-only update behind")
+		bodyRevSeqNo := db.RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+
 		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_channel_history/doc11/compact", string(bodyBytes))
 		RequireStatus(t, resp, http.StatusOK)
+
+		// _mou names the compaction; both previous values name the last write to the body
+		xattrs, compactedCas, err := dataStore.GetXattrs(ctx, "doc11", []string{base.MouXattrName})
+		require.NoError(t, err)
+		var mou *db.MetadataOnlyUpdate
+		require.NoError(t, base.JSONUnmarshal(xattrs[base.MouXattrName], &mou))
+		require.Equal(t, &db.MetadataOnlyUpdate{
+			HexCAS:           base.CasToString(compactedCas),
+			PreviousHexCAS:   base.CasToString(bodyCas),
+			PreviousRevSeqNo: bodyRevSeqNo,
+		}, mou)
 
 		var chanOutput1 map[string][]string
 		err = base.JSONUnmarshal(resp.Body.Bytes(), &chanOutput1)

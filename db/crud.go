@@ -1235,7 +1235,7 @@ func (db *DatabaseCollectionWithUser) updateHLV(ctx context.Context, d *Document
 
 // MigrateAttachmentMetadata will move any attachment metadata defined in sync data to global sync xattr
 func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Context, docID string, cas uint64, syncData *SyncData) error {
-	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName, base.VirtualXattrRevSeqNo})
+	xattrs, _, err := c.dataStore.GetXattrs(ctx, docID, []string{base.GlobalXattrName, base.MouXattrName, base.VirtualXattrRevSeqNo})
 	if err != nil && !base.IsXattrNotFoundError(err) {
 		return err
 	}
@@ -1257,16 +1257,19 @@ func (c *DatabaseCollectionWithUser) MigrateAttachmentMetadata(ctx context.Conte
 	if err != nil {
 		return base.RedactErrorf("Failed to Marshal sync data when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
 	}
-	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyCRUD, "Could not determine revSeqNo found when attempting to migrate sync data attachments to global xattr for doc %q. Assuming 0. Error: %v", base.UD(docID), err)
+	var currentMou *MetadataOnlyUpdate
+	if xattrs[base.MouXattrName] != nil {
+		if err := base.JSONUnmarshal(xattrs[base.MouXattrName], &currentMou); err != nil {
+			return base.RedactErrorf("Failed to Unmarshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)
+		}
 	}
 
-	metadataOnlyUpdate := &MetadataOnlyUpdate{
-		HexCAS:           expandMacroCASValueString, // when non-empty, this is replaced with cas macro expansion
-		PreviousHexCAS:   syncData.Cas,
-		PreviousRevSeqNo: revSeqNo,
+	revSeqNo, err := unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	if err != nil {
+		return base.RedactErrorf("Could not determine revSeqNo when attempting to migrate sync data attachments to global xattr for doc: %s. Error: %v", base.UD(docID), err)
 	}
+
+	metadataOnlyUpdate := computeMetadataOnlyUpdate(cas, revSeqNo, currentMou)
 	rawMouXattr, err := base.JSONMarshal(metadataOnlyUpdate)
 	if err != nil {
 		return base.RedactErrorf("Failed to marshal _mou when attempting to migrate sync data attachments to global xattr with id: %s. Error: %v", base.UD(docID), err)

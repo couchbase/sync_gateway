@@ -378,7 +378,7 @@ func TestHLVImport(t *testing.T) {
 				return &MetadataOnlyUpdate{
 					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
 					PreviousHexCAS:   output.preImportMou.PreviousHexCAS,
-					PreviousRevSeqNo: output.preImportRevSeqNo,
+					PreviousRevSeqNo: output.preImportMou.PreviousRevSeqNo,
 				}
 			},
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
@@ -443,7 +443,7 @@ func TestHLVImport(t *testing.T) {
 				return &MetadataOnlyUpdate{
 					HexCAS:           string(base.Uint64CASToLittleEndianHex(output.postImportCas)),
 					PreviousHexCAS:   output.preImportMou.PreviousHexCAS,
-					PreviousRevSeqNo: output.preImportRevSeqNo,
+					PreviousRevSeqNo: output.preImportMou.PreviousRevSeqNo,
 				}
 			},
 			expectedHLV: func(output *outputData) *HybridLogicalVector {
