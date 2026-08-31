@@ -584,6 +584,34 @@ func (rt *RestTester) CreateUser(username string, channels []string, roles ...st
 	RequireStatus(rt.TB(), response, http.StatusCreated)
 }
 
+// DeleteUser deletes the given user via the admin API.
+func (rt *RestTester) DeleteUser(username string) {
+	rt.TB().Helper()
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodDelete, "/{{.db}}/_user/"+username, "", base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
+	}
+	RequireStatus(rt.TB(), response, http.StatusOK)
+}
+
+// NewUserWaiter returns a db.ChangeWaiter for the given user, notified when the user document or any
+// of the user's role documents is written or deleted.  Create the waiter before making the change,
+// then call db.WaitForUserWaiterChange to wait for that change to be notified.
+func (rt *RestTester) NewUserWaiter(username string) *db.ChangeWaiter {
+	rt.TB().Helper()
+	// Catch up on the principal docs written so far, so the waiter can only be satisfied by a
+	// subsequent change
+	rt.WaitForPendingChanges()
+	user, err := rt.GetDatabase().Authenticator(rt.Context()).GetUser(username)
+	require.NoError(rt.TB(), err)
+	require.NotNil(rt.TB(), user, "user %q not found", username)
+	userDB, err := db.GetDatabase(rt.GetDatabase(), user)
+	require.NoError(rt.TB(), err)
+	return userDB.NewUserWaiter()
+}
+
 // CreateRole creates a role with channels scoped to a single test collection.
 func (rt *RestTester) CreateRole(rolename string, channels []string) {
 	var response *TestResponse
@@ -2574,6 +2602,40 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) []db.ChangeE
 
 	}
 	return changes
+}
+
+// ContinuousChangesFeed is a continuous _changes feed running in the background.  See
+// RestTester.StartContinuousChanges.
+type ContinuousChangesFeed struct {
+	rt       *RestTester
+	done     chan struct{}
+	response *TestResponse
+}
+
+// StartContinuousChanges runs a continuous _changes feed for the given user in the background.  The
+// feed is given no timeout, so only Sync Gateway terminates it and tests can assert on what ended it -
+// see ContinuousChangesFeed.RequireEnded.  rt.Context is cancelled on test cleanup, so a feed Sync
+// Gateway never ends doesn't outlive the test.
+func (rt *RestTester) StartContinuousChanges(uri, username string) *ContinuousChangesFeed {
+	rt.TB().Helper()
+	ctx := rt.Context()
+	// initialize the public handler before the goroutine sends on it
+	_ = rt.TestPublicHandler()
+	request := RequestByUser(http.MethodGet, rt.mustTemplateResource(uri), "", username).WithContext(ctx)
+	feed := &ContinuousChangesFeed{rt: rt, done: make(chan struct{})}
+	go func() {
+		defer close(feed.done)
+		feed.response = rt.Send(request)
+	}()
+	return feed
+}
+
+// RequireEnded waits for the feed to be terminated by Sync Gateway and returns the changes it sent,
+// failing the test if the feed is still running.  msgAndArgs describes what was expected to end it.
+func (f *ContinuousChangesFeed) RequireEnded(msgAndArgs ...any) []db.ChangeEntry {
+	f.rt.TB().Helper()
+	base.RequireChanClosed(f.rt.TB(), f.done, msgAndArgs...)
+	return f.rt.ReadContinuousChanges(f.response)
 }
 
 // RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is

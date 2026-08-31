@@ -132,3 +132,60 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	// Wait for user notification of updated role
 	WaitForUserWaiterChange(t, userWaiter)
 }
+
+// TestUserWaiterForUserDelete ensures that deleting a user notifies the change listener.  A deletion
+// that isn't notified leaves running feeds serving a user that no longer exists.
+func TestUserWaiterForUserDelete(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	const username = "bob"
+	authenticator := db.Authenticator(ctx)
+	user, err := authenticator.NewUser(username, "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err, "Error creating new user")
+	require.NoError(t, authenticator.Save(user), "Error saving user")
+
+	userDb, err := GetDatabase(db.DatabaseContext, user)
+	require.NoError(t, err)
+	userWaiter := userDb.NewUserWaiter()
+
+	// Wait for notify from the initial save, so the next wait can only be satisfied by the delete
+	WaitForUserWaiterChange(t, userWaiter)
+
+	require.NoError(t, authenticator.DeleteUser(user), "Error deleting user")
+	WaitForUserWaiterChange(t, userWaiter)
+}
+
+// TestUserWaiterForRolePurge ensures that a purged role notifies the change listener.  A non-purge
+// role delete writes a tombstone (a mutation), but purge is a true deletion.
+func TestUserWaiterForRolePurge(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	const roleName = "good_egg"
+	authenticator := db.Authenticator(ctx)
+	role, err := authenticator.NewRole(roleName, channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err, "Error creating new role")
+	require.NoError(t, authenticator.Save(role))
+
+	const username = "bob"
+	user, err := authenticator.NewUser(username, "letmein", nil)
+	require.NoError(t, err, "Error creating new user")
+	user.SetExplicitRoles(channels.AtSequence(base.SetOf(roleName), 1), 1)
+	require.NoError(t, authenticator.Save(user), "Error saving user")
+
+	// Reload the user so the waiter's role keys are populated
+	user, err = authenticator.GetUser(username)
+	require.NoError(t, err, "Error retrieving user")
+	require.True(t, user.RoleNames().Contains(roleName))
+
+	userDb, err := GetDatabase(db.DatabaseContext, user)
+	require.NoError(t, err)
+	userWaiter := userDb.NewUserWaiter()
+
+	// Wait for notify from the user save, so the next wait can only be satisfied by the purge
+	WaitForUserWaiterChange(t, userWaiter)
+
+	require.NoError(t, db.DeleteRole(ctx, roleName, true), "Error purging role")
+	WaitForUserWaiterChange(t, userWaiter)
+}

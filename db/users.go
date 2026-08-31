@@ -33,6 +33,8 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 		return base.ErrNotFound
 	}
 
+	// CBG-5789: a purge is a true deletion of the role document and ignores this sequence, so it is
+	// neither written nor released - leaving a permanent gap in the sequence range.
 	seq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
