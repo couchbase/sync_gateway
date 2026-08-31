@@ -479,15 +479,11 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
-	t.Skip("Requires config-based collection channel assignment (pending CBG-2551)")
 	base.TestRequiresCollections(t)
-
-	// force GSI for this one test
-	useViews := base.Ptr(false)
 
 	const (
 		username       = "alice"
-		password       = "letmein"
+		password       = RestTesterDefaultUserPassword
 		validChannel   = "valid"
 		invalidChannel = "invalid"
 
@@ -496,26 +492,18 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				UseViews: useViews,
-				Users: map[string]*auth.PrincipalConfig{
-					username: {
-						ExplicitChannels: base.SetOf(validChannel),
-						Password:         base.Ptr(password),
-					},
-				},
-			},
-		},
+		SyncFn: channels.DocChannelsSyncFunction,
 	})
 	defer rt.Close()
+
+	rt.CreateUser(username, []string{validChannel})
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+validDocID, `{"test": true, "channels": ["`+validChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+invalidDocID, `{"test": true, "channels": ["`+invalidChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs", ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs", ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 	var allDocsResponse struct {
 		TotalRows int `json:"total_rows"`
@@ -533,7 +521,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+invalidDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
+	rt.WaitForPendingChanges()
+	changes := rt.GetChanges("/{{.keyspace}}/_changes", username)
+	changes.RequireDocIDs(t, []string{"_user/" + username, validDocID})
 }
 
 func TestCollectionsPutDBInexistentCollection(t *testing.T) {
