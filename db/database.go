@@ -1991,13 +1991,17 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 
 		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		_, rawSyncXattr, _, rawMouXattr, _, err := updatedDoc.MarshalWithXattrs()
+		_, rawSyncXattr, _, rawMouXattr, rawGlobalSync, err := updatedDoc.MarshalWithXattrs()
+		xattrs := map[string][]byte{
+			base.SyncXattrName: rawSyncXattr,
+			base.MouXattrName:  rawMouXattr,
+		}
+		if rawGlobalSync != nil {
+			xattrs[base.GlobalXattrName] = rawGlobalSync
+		}
 		updatedDoc := sgbucket.UpdatedDoc{
-			Doc: nil, // Resync does not require document body update
-			Xattrs: map[string][]byte{
-				base.SyncXattrName: rawSyncXattr,
-				base.MouXattrName:  rawMouXattr,
-			},
+			Doc:    nil, // Resync does not require document body update
+			Xattrs: xattrs,
 			Expiry: updatedExpiry,
 			Spec: []sgbucket.MacroExpansionSpec{
 				sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
