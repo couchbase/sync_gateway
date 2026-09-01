@@ -3990,3 +3990,185 @@ func TestBlipPullReplicationRolePurge(t *testing.T) {
 		require.False(t, found, "document in the purged role's channel was replicated to the client")
 	})
 }
+
+func TestMissingBackupBodyWhenTombstoneBranchPromotedToWinningBranch(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyCache, base.KeySyncMsg)
+
+	const (
+		docID                = "testDoc"
+		username             = "alice"
+		localBranchGen       = 16
+		remoteBranchGen      = 9
+		expectedWinnerGen    = remoteBranchGen + 1 // 10 - minted by resolveDocLocalWins
+		expectedTombstoneGen = localBranchGen + 1  // 17 - minted by tombstoneActiveRevision
+	)
+
+	// The pulling client either opts in to replacement revs or it doesn't - the promoted tombstone
+	// reaches it by a different route in each case.
+	testCases := []struct {
+		name                string
+		sendReplacementRevs bool
+	}{
+		{name: "replacement rev off", sendReplacementRevs: false},
+		{name: "replacement rev on", sendReplacementRevs: true},
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // rev tree only test
+	btcRunner.Run(func(t *testing.T) {
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				rt := NewRestTester(t, &RestTesterConfig{
+					DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+						AutoImport: false,
+					}},
+					SyncFn: channels.DocChannelsSyncFunction,
+				})
+				defer rt.Close()
+
+				collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+				dataStore := rt.GetSingleDataStore()
+				rt.CreateUser(username, []string{"chanA"})
+				client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+					Username: username,
+				})
+				defer client.Close()
+
+				// --- the client builds the local branch and pushes it ---------------------------------------
+				version := btcRunner.AddRev(client.id, docID, EmptyDocVersion(), []byte(`{"channels": ["chanA"], "test":"doc","gen":1}`))
+				for gen := 2; gen <= localBranchGen; gen++ {
+					version = btcRunner.AddRev(client.id, docID, &version,
+						[]byte(fmt.Sprintf(`{"test":"doc","gen":%d, "channels": ["chanA"]}`, gen)))
+				}
+				btcRunner.StartPushWithOpts(client.id, BlipTesterPushOptions{Since: "0", Continuous: false})
+				rt.WaitForVersion(docID, version)
+				localGen, _ := db.ParseRevID(ctx, version.RevTreeID)
+				require.Equal(t, localBranchGen, localGen)
+
+				// --- ISGR pulls a conflicting revision, and the conflict is resolved -------------------------
+				// DefaultConflictResolver sees both sides live and picks
+				// the higher generation, which is the local branch - so resolveDocLocalWins runs
+				//
+				//  1. it rewrites the local body as a child of the REMOTE branch, making the winner at
+				//      remoteGen+1;
+				//   2. it then calls tombstoneActiveRevision, which tombstones the
+				//      original local branch and adds that tombstone to the rev tree - no Body, no BodyKey - so nothing is
+				//      ever persisted for it in the _sync xattr's history.bodymap. The generation-16 body goes to
+				//      a _sync:rev: document with an old_rev_expiry_seconds TTL.
+				//
+				//	Driving PutExistingRevWithConflictResolution directly rather than standing up a second cluster:
+				//  it is the same function an ISGR active pull calls.
+
+				history := make([]string, 0, remoteBranchGen)
+				for gen := remoteBranchGen; gen >= 1; gen-- {
+					history = append(history, fmt.Sprintf("%d-%s", gen, strings.Repeat("a", 32)))
+				}
+				remoteLeaf := history[0]
+				remoteHistory := history
+				remoteDoc := &db.Document{ID: docID, RevID: remoteLeaf}
+				remoteDoc.UpdateBody(db.Body{"branch": "remote", "channels": []string{"chanA"}})
+
+				_, rawBucketDoc, _ := collection.GetDocumentWithRaw(ctx, docID, db.DocUnmarshalSync)
+				opts := db.PutDocOptions{
+					NewDoc:                         remoteDoc,
+					RevTreeHistory:                 remoteHistory,
+					NoConflicts:                    true,
+					ConflictResolver:               db.NewConflictResolver(db.DefaultConflictResolver, nil),
+					ForceAllowConflictingTombstone: false,
+					ExistingDoc:                    rawBucketDoc,
+				}
+				_, _, err := collection.PutExistingRevWithConflictResolution(ctx, opts)
+				require.NoError(t, err, "ISGR conflict resolution should succeed")
+
+				// should have one active branch and one tombstone branch
+				doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				require.False(t, doc.IsDeleted(), "the live winner should beat the tombstone")
+				require.Len(t, doc.History.GetLeaves(), 2)
+
+				// The winner is created by SGW as a child of the remote branch, not the remote revision itself, so
+				// it is a new revID at remoteGen+1.
+				winnerRev := doc.GetRevTreeID()
+				winnerGen, _ := db.ParseRevID(ctx, winnerRev)
+				require.Equal(t, expectedWinnerGen, winnerGen)
+				require.NotEqual(t, remoteLeaf, winnerRev, "localWins mints a new revision, it does not reuse the remote one")
+				tombstoneLeaf := ""
+				for _, leaf := range doc.History.GetLeaves() {
+					if doc.History[leaf].Deleted {
+						tombstoneLeaf = leaf
+					}
+				}
+				require.NotEmpty(t, tombstoneLeaf, "expected a tombstoned leaf")
+				require.Empty(t, doc.History[tombstoneLeaf].Body, "the tombstone should hold no inline body")
+				require.Empty(t, doc.History[tombstoneLeaf].BodyKey, "the tombstone should hold no body key")
+				require.False(t, doc.History[tombstoneLeaf].HasAttachments)
+
+				tombstoneGen, _ := db.ParseRevID(ctx, tombstoneLeaf)
+				require.Equal(t, expectedTombstoneGen, tombstoneGen)
+
+				// --- old_rev_expiry_seconds elapses ---------------------------------------------------------
+				// manually delete backup revs to simulate this in interest of time
+				deleteBackupRevisionBodies(t, rt, docID)
+
+				importCountBefore := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
+
+				// --- the deletion that only a read will notice ----------------------------------------------
+				require.NoError(t, dataStore.Delete(ctx, docID))
+
+				// Evict the revision cache, so serving the document requires a read from the bucket rather than
+				// being answered from cache - the situation for any document that has not been read recently.
+				rt.GetDatabase().FlushRevisionCacheForTest()
+
+				// A second client, which has never seen this document, replicates. The changes feed offers the
+				// pre-delete revision (nothing has imported the deletion), the client asks for it, the read finds a
+				// non-SG write and imports the deletion on demand. That import tombstones the gen-10 winner, which
+				// leaves the gen-17 tombstone branch as the winner - the branch whose body is no longer available.
+				client2 := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+					Username:            username,
+					sendReplacementRevs: testCase.sendReplacementRevs,
+				})
+				defer client2.Close()
+				// Continuous, so that the tombstone written by the on-demand import is replicated once it reaches
+				// the channel cache, rather than falling outside a one-shot feed that has already caught up.
+				btcRunner.StartPull(client2.id)
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.Greater(c, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value(), importCountBefore,
+						"waiting for the on-demand import of the deletion")
+				}, 10*time.Second, 50*time.Millisecond)
+				// The import must not fail on the promoted branch's missing body - recalculateSyncFnForActiveRev
+				// can't run the sync function for it, but that leaves the revision channel-less rather than
+				// aborting the write.
+				assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportErrorCount.Value(),
+					"the on-demand import should not fail on the missing body of the promoted tombstone")
+
+				client2Collection := btcRunner.SingleCollection(client2.id)
+				tombstoneVersion := DocVersion{RevTreeID: tombstoneLeaf}
+
+				// The requested revision is gone, so the client gets a norev for it. This holds even for a
+				// client opted in to replacement revs: the replacement is the active revision, and a tombstone
+				// carries no channels, so the user is not authorized for it and the lookup fails with
+				// ErrForbidden. That is not specific to the promoted branch - an ordinary Sync Gateway delete
+				// produces the same norev for an unavailable revision.
+				client2Collection.WaitForPullNoRevMessage(docID, DocVersion{RevTreeID: winnerRev})
+				base.RequireWaitForStat(t, rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount.Value, 1)
+				assert.Equal(t, int64(0), rt.GetDatabase().DbStats.CBLReplicationPull().ReplacementRevSendCount.Value(),
+					"a channel-less tombstone is never sent as a replacement rev")
+
+				// wait for tombstone to reach client
+				client2Collection.WaitForVersion(docID, tombstoneVersion)
+				msg, ok := client2Collection.GetPullRevMessage(docID, tombstoneVersion)
+				require.True(t, ok)
+				assert.Equal(t, db.MessageRev, msg.Profile())
+				assert.Equal(t, tombstoneLeaf, msg.Properties[db.RevMessageRev])
+				assert.Empty(t, msg.Properties[db.RevMessageReplacedRev], "the tombstone is a mutation, not a replacement rev")
+				assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted])
+
+				isTombstone, err := client2Collection.IsVersionTombstone(docID, tombstoneVersion)
+				require.NoError(t, err)
+				assert.True(t, isTombstone, "the client should hold the promoted branch as a tombstone")
+			})
+		}
+	})
+}

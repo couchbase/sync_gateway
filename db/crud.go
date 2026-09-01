@@ -2480,14 +2480,17 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
 	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.GetRevTreeID())
-	if err != nil {
+	if err != nil && !base.IsDocNotFoundError(err) {
 		return
 	}
 
+	// A not-found error leaves curBodyBytes empty - the body of the newly-winning revision is no longer
+	// available. Leave curBody nil so we fall through to the handling below.
 	var curBody Body
-	err = curBody.Unmarshal(curBodyBytes)
-	if err != nil {
-		return
+	if len(curBodyBytes) > 0 {
+		if err = curBody.Unmarshal(curBodyBytes); err != nil {
+			return
+		}
 	}
 
 	if curBody != nil {
@@ -2498,12 +2501,15 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 			return
 		}
 	} else {
-		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
+		// The body of the newly-winning revision isn't available - e.g. a tombstoned branch has been
+		// promoted after its backup body expired. Continue the update without recalculating
+		// channels/access rather than failing the write.
 		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
 			"on it (err=%v)", base.UD(doc.ID), doc.GetRevTreeID(), err)
 		channelSet = nil
 		access = nil
 		roles = nil
+		err = nil
 	}
 	return
 }
