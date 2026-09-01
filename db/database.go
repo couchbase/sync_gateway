@@ -1945,6 +1945,8 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 
 		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
+				// TODO(CBG-5801): each CAS retry allocates a new sequence and drops the previous one, and the
+				// allocated sequence isn't returned to the caller for release if the write fails.
 				var unusedSequences []uint64
 				_, updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 				if err != nil {
@@ -2015,6 +2017,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 		}
 		return updatedDoc, err
 	}
+	// TODO(CBG-5801): this runs before WriteUpdateWithXattrs below, so unusedSequences is always empty here.
 	db.releaseSequences(ctx, unusedSequences)
 
 	// these values are updated by the callback function
