@@ -42,6 +42,13 @@ release/4.0.0'''
     stages {
         stage('Checkout') {
             steps {
+                // An empty BRANCH is not a checkout failure - the git plugin treats it as "any branch"
+                // and would move the tag onto an arbitrary commit - so reject it before checking out.
+                script {
+                    if (!params.BRANCH || !params.TAG) {
+                        error('BRANCH and TAG are both required.')
+                    }
+                }
                 // Checking BRANCH out here means a typo'd branch name fails immediately, rather than
                 // part-way through the tag juggling below.
                 checkout(scmGit(
