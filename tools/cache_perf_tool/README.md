@@ -55,9 +55,9 @@ ramp** — and that ramp runs to completion *before* the `-duration` timer start
 run therefore takes about 11m40s wall-clock, and the per-second CSV covers the ramp as well as the
 measured period.
 
-`docs_cached_per_sec_steady` is ramp-aware: its window never reaches back past the point the last
+`seqs_cached_per_sec_steady` is ramp-aware: its window never reaches back past the point the last
 writer started, so it is never contaminated. But that also means a short run leaves it a short window
-— check `docs_cached_per_sec_steady_window_secs`, and give `-duration` at least `5m` for a full
+— check `seqs_cached_per_sec_steady_window_secs`, and give `-duration` at least `5m` for a full
 300 s window.
 
 ### Flags
@@ -104,17 +104,20 @@ The same 10 columns as a header row plus one final row of totals, followed by la
 `name,value` lines:
 
 ```
-docs_cached_per_sec_overall,183456.123456
-docs_cached_per_sec_steady,190123.456789
-docs_cached_per_sec_steady_window_secs,300
+seqs_cached_per_sec_overall,183456.123456
+seqs_cached_per_sec_steady,190123.456789
+seqs_cached_per_sec_steady_window_secs,300
 dcp_received_count,1834561
 seqs_cached_per_event,1.000000
 ```
 
-- **`docs_cached_per_sec_steady`** is the headline throughput number: documents cached per second
-  over the last 300 s of the run, which excludes the vBucket ramp. **Use this to compare runs.**
-- `docs_cached_per_sec_overall` covers the whole run *including* ramp, so it reads low.
-- `docs_cached_per_sec_steady_window_secs` is the window actually available. It is less than 300 on a
+- **`seqs_cached_per_sec_steady`** is the headline throughput number: sequences cached per second
+  over the last 300 s of the run, which excludes the vBucket ramp. **Use this to compare runs.** It
+  counts cached *sequences*, not documents — one document contributes several whenever
+  `-rapidUpdateDocs` is on or unused sequences are released, which is what `seqs_cached_per_event`
+  below reports.
+- `seqs_cached_per_sec_overall` covers the whole run *including* ramp, so it reads low.
+- `seqs_cached_per_sec_steady_window_secs` is the window actually available. It is less than 300 on a
   short run — in which case the steady figure still includes ramp and is not comparable — and `0` if
   the run was too short to measure at all.
 - `dcp_received_count` is DCP events received; `dcp_caching_count` is sequences cached.
@@ -125,7 +128,7 @@ seqs_cached_per_event,1.000000
 To grab throughput from a script:
 
 ```sh
-awk -F, '$1=="docs_cached_per_sec_steady"{print $2}' run_summary.csv
+awk -F, '$1=="seqs_cached_per_sec_steady"{print $2}' run_summary.csv
 ```
 
 ## Caveats

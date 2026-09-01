@@ -302,7 +302,7 @@ func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseConte
 // during which throughput is still climbing and would drag the whole-run average down.
 const steadyWindowSecs = 300
 
-// throughputSample is one reading of the cumulative documents-cached counter, taken at the same
+// throughputSample is one reading of the cumulative cached-sequence counter, taken at the same
 // moment as (and carrying the same values as) a row of the per-second stderr CSV.
 type throughputSample struct {
 	unixSec int64
@@ -310,7 +310,7 @@ type throughputSample struct {
 }
 
 // runThroughput accumulates the per-second series csvStats already reads, so the end-of-run summary
-// can state documents cached per second directly instead of every consumer re-deriving it from the
+// can state sequences cached per second directly instead of every consumer re-deriving it from the
 // CSV. One sample per second, so the memory cost is negligible even for a multi-hour run.
 var runThroughput throughputSeries
 
@@ -340,7 +340,7 @@ func (s *throughputSeries) record(unixSec int64, count int64) {
 	s.samples = append(s.samples, throughputSample{unixSec: unixSec, count: count})
 }
 
-// rates returns documents cached per second over the whole sampled run, and over the steady-state
+// rates returns sequences cached per second over the whole sampled run, and over the steady-state
 // window: the last windowSecs, never reaching back past the point the generator came up to full
 // load. window is the length of that steady window as actually measured - shorter than windowSecs
 // when the run did not last that long after ramp, and 0 when the run was too short to give a steady
@@ -420,9 +420,11 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	_, _ = fmt.Fprintf(os.Stdout, "%f", avgTimeMs)
 	_, _ = fmt.Fprintf(os.Stdout, "\n")
 
-	// Documents cached per second, on their own labelled lines so this can be parsed straight out of
+	// Sequences cached per second, on their own labelled lines so this can be parsed straight out of
 	// the summary rather than re-derived from the per-second CSV. Both rates are computed from that
-	// same series, so they agree with it exactly.
+	// same series, so they agree with it exactly. This counts CACHED SEQUENCES, not documents: with
+	// -rapidUpdateDocs, or whenever unused sequences are released, one document contributes several
+	// (which is what seqs_cached_per_event below reports).
 	//
 	//   - _overall covers every sample of the run, so it INCLUDES the ~100s vBucket ramp during which
 	//     throughput is still climbing. Use it only for whole-run accounting.
@@ -432,9 +434,9 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	//     steadyWindowSecs when the run did not last that long after ramp; if it is 0 the run was too
 	//     short to give a steady window at all and _steady is 0 rather than a ramp-blended number.
 	overallRate, steadyRate, steadyWindow := runThroughput.rates(steadyWindowSecs)
-	_, _ = fmt.Fprintf(os.Stdout, "docs_cached_per_sec_overall,%f\n", overallRate)
-	_, _ = fmt.Fprintf(os.Stdout, "docs_cached_per_sec_steady,%f\n", steadyRate)
-	_, _ = fmt.Fprintf(os.Stdout, "docs_cached_per_sec_steady_window_secs,%d\n", steadyWindow)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_overall,%f\n", overallRate)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_steady,%f\n", steadyRate)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_steady_window_secs,%d\n", steadyWindow)
 
 	// B5 amplification: DCPReceivedCount = one per DCP event (DocChanged); DCPCachingCount = one per
 	// cached sequence (_addToCache). Their ratio is the RecentSequences/UnusedSequences fan-out, i.e.
