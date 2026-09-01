@@ -1244,10 +1244,11 @@ func TestBlipRevsThrottleUnblockedOnClose(t *testing.T) {
 
 	// Push more revs than there are slots. Responses are never awaited - the point of the test is
 	// what happens to the revs that don't have a slot when the connection goes away.
-	for i := range maxConcurrentRevs + numThrottledRevs {
-		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
-		bt.Send(bt.newRevMessage(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), nil))
-	}
+for i := range maxConcurrentRevs + numThrottledRevs {
+	docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+	sent := bt.Send(bt.newRevMessage(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), nil))
+	require.True(t, sent, "failed to send rev message for docID %s", docID)
+}
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, int64(maxConcurrentRevs), revsHoldingSlot.Load(), "revs holding a throttle slot")
