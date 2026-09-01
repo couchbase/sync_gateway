@@ -126,7 +126,7 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
         booleanParam(
             name: 'TLS_SKIP_VERIFY',
             defaultValue: true,
-            description: 'Do not verify certificates when talking to Couchbase Server. This only has an effect if COUCHBASE_SERVER_PROTOCOL is set to couchbases://'
+            description: 'Do not verify certificates when talking to Couchbase Server. This only has an effect if COUCHBASE_SERVER_PROTOCOL is set to couchbases.'
         )
         string(name: 'PARENT_JOB_NAME', defaultValue: '', description: 'If set, uses this in some build names as a helpful indication of what triggered this job.')
     }
