@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1611,6 +1612,26 @@ func (bt *BlipTester) newRequest() *blip.Message {
 }
 
 // addCollectionProperty will automatically add a collection. If we are running with the default collection, or a single named collection, automatically add the right value. If there are multiple collections on the database, the test will fatally exit, since the behavior is undefined.
+// newRevMessage builds an unsolicited rev message without sending it.
+func (bt *BlipTester) newRevMessage(docID, docRev string, body []byte, properties blip.Properties) *blip.Message {
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(true)
+	revRequest.SetProfile("rev")
+
+	revRequest.Properties["id"] = docID
+	revRequest.Properties["rev"] = docRev
+	revRequest.Properties["deleted"] = "false"
+	maps.Copy(revRequest.Properties, properties)
+	bt.addCollectionProperty(revRequest)
+	revRequest.SetBody(body)
+	return revRequest
+}
+
+// Send sends a message, failing the test if it can't be sent.
+func (bt *BlipTester) Send(rq *blip.Message) {
+	require.True(bt.TB(), bt.sender.Send(rq))
+}
+
 func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
 	if bt.useCollections == true {
 		require.Equal(bt.restTester.TB(), 1, len(bt.restTester.GetDatabase().CollectionByID), "Multiple collection exist on the database so we are unable to choose which collection to specify in BlipCollection property")
