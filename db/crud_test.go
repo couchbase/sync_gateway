@@ -1642,6 +1642,41 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 }
 
+// TestReleaseSequenceOnRecalculateSyncFnFailure verifies that a sequence allocated by documentUpdateFunc is
+// released when the update subsequently fails - here by rejecting the sync function recalculation performed for a
+// newly winning revision (CBG-5763).
+func TestReleaseSequenceOnRecalculateSyncFnFailure(t *testing.T) {
+	defer SuspendSequenceBatching()()
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	//    1-a
+	//   /   \
+	// 2-a   2-b
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"key1": "value1"}, []string{"1-a"}, false, ExistingVersionWithUpdateToHLV)
+	require.NoError(t, err, "add 1-a")
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{"recalculated": true}, []string{"2-a", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	require.NoError(t, err, "add 2-a")
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{"key1": "value1"}, []string{"2-b", "1-a"}, false, ExistingVersionWithUpdateToHLV)
+	require.NoError(t, err, "add 2-b")
+
+	// Reject 2-a's body, but not the tombstone written below
+	_, err = collection.UpdateSyncFun(ctx, `function(doc){if (doc.recalculated) {throw({forbidden: "rejected"})} channel("chan");}`)
+	require.NoError(t, err)
+
+	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
+
+	// Tombstoning the winning branch makes 2-a current again, so the sync function is recalculated against 2-a's
+	// body and rejects.  The update fails after a sequence has been allocated for the tombstone.
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{BodyDeleted: true}, []string{"3-b", "2-b"}, false, ExistingVersionWithUpdateToHLV)
+	require.ErrorContains(t, err, "rejected")
+
+	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
+	require.Equal(t, uint64(1), releasedSequenceCount)
+}
+
 func TestDocUpdateCorruptSequence(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyDCP)
 

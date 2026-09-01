@@ -1946,7 +1946,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
 				var unusedSequences []uint64
-				updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
+				_, updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 				if err != nil {
 					base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
 				}
