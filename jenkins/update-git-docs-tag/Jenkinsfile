@@ -1,0 +1,79 @@
+// Moves one of the *-docs tags (3.2-docs, 4.0-docs, ...) onto the tip of a release branch, so the docs
+// site picks up that branch's API specs. The tag has to exist already - this job only moves an existing
+// one, by deleting it locally and remotely and recreating it at the new commit.
+
+pipeline {
+    // Any agent will do - this is a handful of git commands, not a build.
+    agent any
+
+    options {
+        skipDefaultCheckout()
+        // Two runs racing to delete and recreate the same tag would be a bad time.
+        disableConcurrentBuilds()
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    parameters {
+        string(
+            name: 'BRANCH',
+            defaultValue: '',
+            trim: true,
+            description: '''This is the branch to tag. This is typically the latest release branch, like:
+
+release/3.2.6
+release/4.0.0'''
+        )
+        // Populated from the repository's existing tags by the git-parameter plugin, newest first.
+        gitParameter(
+            name: 'TAG',
+            type: 'PT_TAG',
+            tagFilter: '*-docs',
+            branchFilter: '.*',
+            sortMode: 'DESCENDING_SMART',
+            selectedValue: 'NONE',
+            defaultValue: '',
+            quickFilterEnabled: true,
+            listSize: '0',
+            requiredParameter: true,
+            description: 'The tag to apply. If you need a new tag, this must be done manually (for now).'
+        )
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checking BRANCH out here means a typo'd branch name fails immediately, rather than
+                // part-way through the tag juggling below.
+                checkout(scmGit(
+                    branches: [[name: params.BRANCH]],
+                    userRemoteConfigs: [[
+                        url: 'git@github.com:couchbase/sync_gateway.git',
+                        credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                    ]]
+                ))
+                script {
+                    // Which tag moved where is the only thing worth knowing when reading this job's history.
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.TAG} -> ${params.BRANCH}"
+                }
+            }
+        }
+        stage('Move tag') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    // Both deletes are load-bearing under `set -e`: if TAG doesn't already exist locally
+                    // and remotely this fails rather than creating it, which is what the TAG parameter's
+                    // description means by "this must be done manually (for now)".
+                    sh '''#!/bin/bash
+                        set -eux -o pipefail
+
+                        git fetch --tags
+                        git tag -d "${TAG}"
+                        git push --delete origin "${TAG}"
+                        git tag "${TAG}"
+                        git push origin "${TAG}"
+                    '''
+                }
+            }
+        }
+    }
+}

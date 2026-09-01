@@ -1,0 +1,160 @@
+// Runs topologytests, which exercise real XDCR and Couchbase Lite. They are slow enough that it's
+// worth splitting out from MainIntegration; this job fires after every MainIntegration build (success
+// or failure) via the upstream trigger below.
+
+// Note for whoever creates this job: its *first* build runs with no parameter values at all. Jenkins
+// registers the parameters{} block when it first evaluates this file, but only applies the defaults from the
+// second build onwards, so that first run dies in jenkins-integration-build.sh's REQUIRED_VARS check with
+// "COUCHBASE_SERVER_PROTOCOL environment variable is required to be set". Just run it again - it isn't a
+// misconfiguration.
+
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+def slackDetails(slackUtils) {
+    def details = [
+        SG_COMMIT: params.SG_COMMIT,
+        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+    ]
+    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    if (ticketLink) {
+        details['Ticket'] = ticketLink
+    }
+    return details
+}
+
+// Sends the build result to Slack. slackUtils.groovy is fetched in the Checkout stage, so it can be absent
+// if the build failed before that point - fall back to a bare message rather than throwing out of the post
+// block, which would leave the failure unreported entirely.
+// TODO(pre-merge): while the switch-to-pipeline branch is unmerged, every notification goes to a single
+// Slack DM instead of #syncgatewaybot / #syncgatewaybot-alerts, so test runs of this new job don't spam the
+// channels. Before merging, restore channel 'syncgatewaybot' for 'passed', and slackUtils.slackSendFailure()
+// (which DMs the triggering user or escalates to #syncgatewaybot-alerts) for 'unstable'/'build failure'.
+def notifySlack(String status) {
+    def channel = 'U03D1N4373N' // torcolvin, per .github/slack_usernames.yaml
+    def color = ['passed': 'good', 'aborted': 'warning'].get(status, 'danger')
+    if (!fileExists('integration-test/slackUtils.groovy')) {
+        slackSend(channel: channel, color: color, message: ":x: *TopologyTests ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
+        return
+    }
+    def slackUtils = load('integration-test/slackUtils.groovy')
+    if (status == 'aborted' && slackUtils.isSelfCancelledAdhocBuild()) {
+        echo('Build was started and cancelled by the same user - skipping Slack notification')
+        return
+    }
+    slackSend(channel: channel, color: color, message: slackUtils.slackMessage('TopologyTests', status, env.BUILD_URL, slackDetails(slackUtils)))
+}
+
+pipeline {
+    agent { label 'integration-test' }
+
+    options {
+        skipDefaultCheckout()
+        // A wedged run would otherwise hold one of the two integration-test agents indefinitely.
+        timeout(time: 3, unit: 'HOURS')
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '30'))
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    triggers {
+        // Fires after every completed MainIntegration-Pipeline build (threshold FAILURE = SUCCESS,
+        // UNSTABLE, or FAILURE), i.e. anything except ABORTED/NOT_BUILT.
+        upstream(upstreamProjects: 'MainIntegration-Pipeline', threshold: hudson.model.Result.FAILURE)
+    }
+
+    parameters {
+        string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-7.6.7', description: '')
+        booleanParam(name: 'GSI', defaultValue: true, description: '')
+        string(name: 'TARGET_TEST', defaultValue: 'ALL', description: '')
+        string(name: 'COUCHBASE_SERVER_PROTOCOL', defaultValue: 'couchbase', description: '')
+        booleanParam(name: 'TLS_SKIP_VERIFY', defaultValue: true, description: '')
+        string(name: 'SG_EDITION', defaultValue: 'EE', description: '')
+        string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: '')
+        booleanParam(name: 'SG_TEST_BUCKET_POOL_DEBUG', defaultValue: false, description: '')
+    }
+
+    environment {
+        // jenkins-integration-build.sh reads RUN_WALRUS unconditionally under `set -u`, so it has to be
+        // set even though this job never runs the Rosmar leg.
+        RUN_WALRUS = 'false'
+        // TODO(pre-merge): temporarily the auth package rather than topologytest, so this new pipeline can be
+        // smoke-tested in minutes rather than hours. Restore 'topologytest' before merging.
+        TARGET_PACKAGE = 'auth'
+        SG_TEST_TOPOLOGY_TESTS = 'true'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs(disableDeferredWipeout: false)
+                script {
+                    // The `git` step only returns GIT_COMMIT rather than populating env, so assign it
+                    // manually for the Slack commit link below. It also has no refspec option, so
+                    // SG_COMMIT must name a branch or tag - a bare SHA won't resolve. Fine for this job;
+                    // integration-test/e2e/Jenkinsfile has the checkout+refspec form if that changes.
+                    def scmVars = git(
+                        url: 'git@github.com:couchbase/sync_gateway.git',
+                        branch: "${params.SG_COMMIT}",
+                        credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                    )
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                }
+                // SG_COMMIT can be an arbitrary developer branch, whose copy of slackUtils.groovy may be
+                // stale or missing helpers the post blocks below need - always load the current one from
+                // main instead (same fix as integration-test/e2e/Jenkinsfile uses for the same reason).
+                // TODO(pre-merge): temporarily pointed at the switch-to-pipeline branch so test runs pick
+                // up its slackUtils.groovy. This MUST be reverted to main before merging: `curl -sSf` exits
+                // non-zero on a 404, so once the branch is deleted this step - and therefore every build of
+                // this job - fails in Checkout.
+                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/switch-to-pipeline/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
+            }
+        }
+        stage('Integration Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    script {
+                        // jenkins-integration-build.sh separates test failures (exit 50 -> UNSTABLE) from a
+                        // test setup failure or unrecovered panic (exit 1 -> FAILURE). A plain sh step would
+                        // collapse both into FAILURE, so the unstable post block below would never run.
+                        def exitCode = sh(script: './jenkins-integration-build.sh', returnStatus: true)
+                        if (exitCode == 50) {
+                            unstable('At least one topology test failed')
+                        } else if (exitCode != 0) {
+                            error("jenkins-integration-build.sh exited ${exitCode}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Empty archives/results are tolerated so that a failure before the tests produce any output
+            // (checkout, curl, Couchbase Server startup) doesn't throw here, skip the rest of this block,
+            // and mask the real cause.
+            archiveArtifacts artifacts: 'verbose*', allowEmptyArchive: true, fingerprint: false
+            junit testResults: 'verbose*.xml', allowEmptyResults: true
+        }
+        success {
+            script {
+                notifySlack('passed')
+            }
+        }
+        unstable {
+            script {
+                notifySlack('unstable')
+            }
+        }
+        failure {
+            script {
+                notifySlack('build failure')
+            }
+        }
+        aborted {
+            script {
+                notifySlack('aborted')
+            }
+        }
+    }
+}
