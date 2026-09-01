@@ -166,7 +166,8 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     // "<branch> for <whoever triggered it> on <server version>". PARENT_JOB_NAME is only
                     // set for an upstream-triggered build and the build user only for a manual one, so at
                     // most one of the two is present and the space between them collapses when it isn't.
-                    def buildUser = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').collect { it.userId }[0] ?: ''
+                    def userIdCauses = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                    def buildUser = userIdCauses ? (userIdCauses[0].userId ?: '') : ''
                     def parentJobName = params.PARENT_JOB_NAME ? (params.PARENT_JOB_NAME - ~/:\s*$/) : ''
                     def triggeredBy = [parentJobName, buildUser].findAll { it }.join(' ')
                     currentBuild.displayName = params.PARENT_JOB_NAME ? "#${env.BUILD_NUMBER} ${params.PARENT_JOB_NAME}" : "#${env.BUILD_NUMBER}"
