@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -285,6 +287,253 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
+}
+
+// TestSyncFnLiveBranchPromotedWithUnreadableBody tombstones the winning revision of a conflicted
+// document so that a live branch is promoted, while reads of that branch's externalised body fail
+// with a transient bucket error.
+//
+//	1-a
+//	├── 2-a                     live, body externalised to a _sync:rb: doc
+//	└── 2-fff... (winner)
+//	    └── (T) 3-fff...        tombstoned by this test, promoting 2-a
+//
+// recalculateSyncFnForActiveRev can't distinguish that failure from a body that has genuinely
+// expired, because getAvailableRev reports both as a 404. Swallowing it would run the promoted live
+// revision through updateChannels(nil), removing the document from every channel it is in and
+// dropping its access grants, so the write must fail and be retried instead.
+func TestSyncFnLiveBranchPromotedWithUnreadableBody(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
+
+	const (
+		testDocID = "testdoc"
+		branchB   = "2-ffffffffffffffffffffffffffffffff"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:      true,
+		LeakyBucketConfig: &base.LeakyBucketConfig{},
+		SyncFn:            `function(doc){ if (!doc._deleted) { channel(doc.channels); } }`,
+	})
+	defer rt.Close()
+	rt.GetDatabase().EnableAllowConflicts(rt.TB())
+
+	// Bodies need to be over db.MaximumInlineBodySize so that a non-winning body is held in a
+	// _sync:rb: document rather than inline in the rev tree, and so requires a bucket read.
+	padding := strings.Repeat("x", 500)
+	docBody := func(branch string) string {
+		return fmt.Sprintf(`{"channels":["chanA"],"branch":%q,"padding":%q}`, branch, padding)
+	}
+
+	version1a := rt.PutDoc(testDocID, docBody("base"))
+	version2a := rt.UpdateDoc(testDocID, version1a, docBody("a"))
+	// branchB beats 2-a in the revid comparison, so branch b becomes the winner and branch a's body
+	// is moved out of the document into a _sync:rb: doc.
+	version2b := rt.PutNewEditsFalse(testDocID, NewDocVersionFromFakeRev(branchB), &version1a, docBody("b"))
+
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, version2b.RevTreeID, doc.GetRevTreeID(), "branch b should be the winning revision")
+	bodyKey := doc.History[version2a.RevTreeID].BodyKey
+	require.NotEmpty(t, bodyKey, "branch a's body should have been externalised")
+
+	// Fail every backup body read for the duration of the tombstoning write.
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+	require.True(t, ok)
+	leakyDataStore.SetGetRawCallback(func(key string) error {
+		if strings.HasPrefix(key, base.RevBodyPrefix) || strings.HasPrefix(key, base.RevPrefix) {
+			return gocb.ErrTimeout
+		}
+		return nil
+	})
+
+	// Tombstone branch b, which promotes branch a to winning revision.
+	response := rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, version2b.RevTreeID), "")
+	RequireStatus(t, response, http.StatusNotFound)
+
+	leakyDataStore.SetGetRawCallback(nil)
+
+	// The refused write must have left the document, and branch a's externalised body, untouched.
+	doc, err = collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, version2b.RevTreeID, doc.GetRevTreeID(), "the refused write should not have changed the winning revision")
+	removal, inChannel := doc.Channels["chanA"]
+	assert.True(t, inChannel && removal == nil, "the live document should still be in chanA, got %+v", doc.Channels)
+	_, _, err = rt.GetSingleDataStore().GetRaw(ctx, bodyKey)
+	assert.NoError(t, err, "branch a's externalised body should not have been deleted")
+
+	// Once the bucket is healthy again the same write succeeds, and branch a keeps its channel.
+	rt.DeleteDoc(testDocID, *version2b)
+	doc, err = collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, version2a.RevTreeID, doc.GetRevTreeID(), "branch a should now be the winning revision")
+	require.False(t, doc.IsDeleted())
+	removal, inChannel = doc.Channels["chanA"]
+	assert.True(t, inChannel && removal == nil, "the promoted live revision should be in chanA, got %+v", doc.Channels)
+}
+
+// setUpPromotedTombstoneBranch builds the rev tree an ISGR pull leaves behind when conflict
+// resolution keeps the local branch: the local body is re-parented onto the remote branch as the
+// live winner, and the original local branch is tombstoned at a higher generation. That tombstone
+// holds no body of its own, so once the winner is tombstoned it is promoted and only its ancestors'
+// backup bodies can supply a body for the sync function.
+//
+//	1-a ... 6-a                     local branch
+//	└── (T) 7-a                     tombstoned by conflict resolution, no body of its own
+//	1-remote ... 3-remote
+//	└── 4-x                         live winner, minted from the local body
+//
+// The document is in chanA. Returns the live winning revision and the tombstoned leaf.
+func setUpPromotedTombstoneBranch(t *testing.T, rt *RestTester, docID string) (winnerRev, tombstoneRev string) {
+	t.Helper()
+
+	const (
+		localBranchGen  = 6
+		remoteBranchGen = 3
+	)
+
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	version := rt.PutDoc(docID, `{"channels":["chanA"],"gen":1}`)
+	for gen := 2; gen <= localBranchGen; gen++ {
+		version = rt.UpdateDoc(docID, version, fmt.Sprintf(`{"channels":["chanA"],"gen":%d}`, gen))
+	}
+
+	// Drive PutExistingRevWithConflictResolution directly rather than standing up a second cluster -
+	// it is the same function an ISGR active pull calls. The default resolver sees both sides live and
+	// picks the higher generation, which is the local branch, so resolveDocLocalWins runs.
+	remoteHistory := make([]string, 0, remoteBranchGen)
+	for gen := remoteBranchGen; gen >= 1; gen-- {
+		remoteHistory = append(remoteHistory, fmt.Sprintf("%d-%s", gen, strings.Repeat("a", 32)))
+	}
+	remoteDoc := &db.Document{ID: docID, RevID: remoteHistory[0]}
+	remoteDoc.UpdateBody(db.Body{"branch": "remote", "channels": []string{"chanA"}})
+
+	_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, docID, db.DocUnmarshalSync)
+	require.NoError(t, err)
+	_, _, err = collection.PutExistingRevWithConflictResolution(ctx, db.PutDocOptions{
+		NewDoc:           remoteDoc,
+		RevTreeHistory:   remoteHistory,
+		NoConflicts:      true,
+		ConflictResolver: db.NewConflictResolver(db.DefaultConflictResolver, nil),
+		ExistingDoc:      rawBucketDoc,
+	})
+	require.NoError(t, err, "ISGR conflict resolution should succeed")
+
+	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	require.False(t, doc.IsDeleted(), "the live winner should beat the tombstone")
+	require.Len(t, doc.History.GetLeaves(), 2)
+
+	winnerRev = doc.GetRevTreeID()
+	for _, leaf := range doc.History.GetLeaves() {
+		if doc.History[leaf].Deleted {
+			tombstoneRev = leaf
+		}
+	}
+	require.NotEmpty(t, tombstoneRev, "expected a tombstoned leaf")
+	require.Empty(t, doc.History[tombstoneRev].Body, "the tombstone should hold no inline body")
+	require.Empty(t, doc.History[tombstoneRev].BodyKey, "the tombstone should hold no body key")
+	return winnerRev, tombstoneRev
+}
+
+// TestSyncFnPromotedTombstoneWithExpiredBackupBody pins what recalculateSyncFnForActiveRev does when
+// a promoted tombstone branch has no body left anywhere: the sync function can't be run for it, so
+// the document ends up in no channels and with no access grants, rather than the write failing.
+func TestSyncFnPromotedTombstoneWithExpiredBackupBody(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
+
+	const testDocID = "testdoc"
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled: true,
+		SyncFn:       `function(doc){ channel(doc.channels); access("bob", "grantedChan"); }`,
+	})
+	defer rt.Close()
+
+	winnerRev, tombstoneRev := setUpPromotedTombstoneBranch(t, rt, testDocID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	doc, err := collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	_, bobGranted := doc.Access["bob"]
+	require.True(t, bobGranted, "the live document should have granted bob access, got %+v", doc.Access)
+
+	// Model the ancestors' backup bodies ageing out after old_rev_expiry_seconds.
+	deleteBackupRevisionBodies(t, rt, testDocID)
+
+	// Tombstoning the winner promotes the tombstone branch, whose body is now unavailable.
+	response := rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, winnerRev), "")
+	RequireStatus(t, response, http.StatusOK)
+
+	doc, err = collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, tombstoneRev, doc.GetRevTreeID(), "the tombstone branch should have been promoted")
+	require.True(t, doc.IsDeleted())
+
+	removal, inChannel := doc.Channels["chanA"]
+	require.True(t, inChannel, "chanA should still be recorded on the document")
+	require.NotNil(t, removal, "chanA should be marked as a removal, not left active")
+	assert.True(t, removal.Deleted, "the removal should be flagged as a deletion so pull replications send a tombstone")
+	assert.Empty(t, doc.Access, "the promoted tombstone's access grants should have been revoked")
+}
+
+// TestSyncFnPromotedTombstoneWithCorruptBackupBody checks that only a genuinely missing body is
+// tolerated when a tombstone branch is promoted. A backup body that is readable but unusable is an
+// error we have no answer for, so it must fail the write rather than quietly dropping the
+// document's channels and access grants.
+func TestSyncFnPromotedTombstoneWithCorruptBackupBody(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
+
+	const testDocID = "testdoc"
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled: true,
+		SyncFn:       `function(doc){ channel(doc.channels); }`,
+	})
+	defer rt.Close()
+
+	winnerRev, _ := setUpPromotedTombstoneBranch(t, rt, testDocID)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+	doc, err := collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+
+	// Rewrite every backup rev body as a JSON array. getAvailableRev hands it back without complaint,
+	// but it can't be used as a document body. The leading byte is nonJSONPrefixKindRevBody, which
+	// marks the remainder as a plain JSON body.
+	corruptBody := append([]byte{1}, []byte(`[1,2,3]`)...)
+	dataStore := rt.GetSingleDataStore()
+	corrupted := 0
+	for revID := range doc.History {
+		key := fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, testDocID, len(revID), revID)
+		if _, _, getErr := dataStore.GetRaw(ctx, key); getErr != nil {
+			require.True(t, base.IsDocNotFoundError(getErr), "unexpected error reading %s: %v", key, getErr)
+			continue
+		}
+		require.NoError(t, dataStore.SetRaw(ctx, key, 0, nil, corruptBody))
+		corrupted++
+	}
+	require.NotZero(t, corrupted, "expected at least one backup rev body to corrupt")
+
+	// Tombstoning the winner promotes the tombstone branch, which walks back to a corrupt body.
+	response := rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, winnerRev), "")
+	RequireStatus(t, response, http.StatusInternalServerError)
+
+	// The refused write must have left the document alone.
+	doc, err = collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, winnerRev, doc.GetRevTreeID(), "the refused write should not have changed the winning revision")
+	assert.False(t, doc.IsDeleted())
+	removal, inChannel := doc.Channels["chanA"]
+	assert.True(t, inChannel && removal == nil, "the live document should still be in chanA, got %+v", doc.Channels)
 }
 
 func TestSyncFunctionErrorLogging(t *testing.T) {

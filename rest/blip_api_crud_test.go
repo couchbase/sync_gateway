@@ -4143,6 +4143,17 @@ func TestMissingBackupBodyWhenTombstoneBranchPromotedToWinningBranch(t *testing.
 				assert.Equal(t, int64(0), rt.GetDatabase().DbStats.SharedBucketImport().ImportErrorCount.Value(),
 					"the on-demand import should not fail on the missing body of the promoted tombstone")
 
+				// The sync function couldn't be run for the promoted tombstone, so it holds no channels -
+				// chanA is marked as a removal, flagged as a deletion so the pull below sends a tombstone.
+				importedDoc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				require.Equal(t, tombstoneLeaf, importedDoc.GetRevTreeID(), "the tombstone branch should have been promoted")
+				require.True(t, importedDoc.IsDeleted())
+				chanARemoval, inChanA := importedDoc.Channels["chanA"]
+				require.True(t, inChanA)
+				require.NotNil(t, chanARemoval, "chanA should be marked as a removal, not left active")
+				assert.True(t, chanARemoval.Deleted)
+
 				client2Collection := btcRunner.SingleCollection(client2.id)
 				tombstoneVersion := DocVersion{RevTreeID: tombstoneLeaf}
 
