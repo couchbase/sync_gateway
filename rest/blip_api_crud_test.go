@@ -1192,6 +1192,77 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 	t.Logf("Throttled revs: %d, Throttled duration: %s", throttleCount, throttleDuration)
 }
 
+// TestBlipRevsThrottleUnblockedOnClose tests that revs waiting for a free inFlightRevsThrottle slot
+// are released when the connection is closed, instead of staying blocked for as long as the revs
+// holding the slots take to be written.
+func TestBlipRevsThrottleUnblockedOnClose(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeySync, base.KeySyncMsg)
+
+	const (
+		user1 = "user1"
+		// minimum allowed by StartupConfig validation, and the default
+		maxConcurrentRevs = db.DefaultMaxConcurrentRevs
+		// revs that can't get a slot, and so can only be unblocked by the connection closing
+		numThrottledRevs = 3
+	)
+	docIDPrefix := SafeDocumentName(t, t.Name()) + "-"
+
+	// Hold every rev that has a throttle slot inside its write until the end of the test, so that a
+	// slot is never handed back to the revs that are waiting for one.
+	var revsHoldingSlot atomic.Int64
+	releaseRevs := make(chan struct{})
+	rt := NewRestTester(t, &RestTesterConfig{
+		LeakyBucketConfig: &base.LeakyBucketConfig{
+			UpdateCallback: func(docID string) {
+				if !strings.HasPrefix(docID, docIDPrefix) {
+					return
+				}
+				revsHoldingSlot.Add(1)
+				<-releaseRevs
+			},
+		},
+		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
+	})
+	defer rt.Close()
+	// let the in-flight writes finish before the RestTester is closed
+	defer close(releaseRevs)
+
+	pushStats := rt.GetDatabase().DbStats.CBLReplicationPush()
+	// revsWaitingForSlot is incremented by processRev immediately before it blocks on the throttle
+	revsWaitingForSlot := pushStats.WriteThrottledCount
+	// revsFinished counts the revs that have returned from processRev, successfully or not - both
+	// stats are set by the same deferred function. A rev released by a terminator check returns
+	// ErrClosedBLIPSender, so in practice these all land in DocPushErrorCount, but summing keeps the
+	// assertion about the rev no longer waiting, rather than about how it was ended.
+	revsFinished := func() int64 {
+		return pushStats.DocPushCount.Value() + pushStats.DocPushErrorCount.Value()
+	}
+
+	rt.CreateUser(user1, nil)
+	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{connectingUsername: user1})
+	defer bt.Close()
+
+	// Push more revs than there are slots. Responses are never awaited - the point of the test is
+	// what happens to the revs that don't have a slot when the connection goes away.
+	for i := range maxConcurrentRevs + numThrottledRevs {
+		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+		bt.Send(bt.newRevMessage(docID, "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), nil))
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(maxConcurrentRevs), revsHoldingSlot.Load(), "revs holding a throttle slot")
+		assert.Equal(c, int64(numThrottledRevs), revsWaitingForSlot.Value(), "revs waiting for a throttle slot")
+	}, time.Second*20, time.Millisecond*50, "revs never blocked on a full inFlightRevsThrottle")
+	require.Equal(t, int64(0), revsFinished(), "no rev should have been able to finish yet")
+
+	// Closing the connection should release the revs that are waiting for a throttle slot.
+	bt.sender.Close()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(numThrottledRevs), revsFinished())
+	}, time.Second*20, time.Millisecond*50, "revs waiting for an inFlightRevsThrottle slot were not released when the connection was closed")
+}
+
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
 //
 //	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
