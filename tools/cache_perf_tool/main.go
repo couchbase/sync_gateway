@@ -53,7 +53,7 @@ func main() {
 	channelsPerClient := flag.Int("channelsPerClient", 0, "Number of channels per client to wait on. Used only for DCP mode.")
 	rapidUpdateDocs := flag.Bool("rapidUpdateDocs", false, "Have documents rapidly updated (use of recent sequences). Used only for DCP mode.")
 	numDCPWorkers := flag.Int("numDCPWorkers", 8, "Number of DCP workers to create. Default is 8. Used only for DCP mode.")
-	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets the DCP client is sized for (worker routing and metadata). Used only for DCP mode. NOTE this does not change the generator, which always starts 1024 vBucket writer goroutines - lowering it does not lower the offered load. Default is 1024.")
+	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets (1-1024). Used only for DCP mode. This sizes the DCP client AND the generator, which starts one writer goroutine per vBucket - so it is the offered write concurrency, and runs with different values are not comparable with each other. Writers are staggered by 100ms, so startup takes numVBuckets*100ms before -duration begins. Default is 1024.")
 	flag.Parse()
 
 	if *nodes < 1 {
@@ -86,6 +86,12 @@ func main() {
 	}
 	if *numDCPWorkers < 1 {
 		log.Fatalf("Invalid number of DCP workers: %d", *numDCPWorkers)
+	}
+	// Bounded rather than just >0: the value is cast to uint16 for the DCP client, so anything above
+	// 65535 wraps - and a value wrapping to 0 makes the client fall back to reading the vBucket count
+	// off the bucket, which is a zero-value struct here and panics. 1024 is the real ceiling.
+	if *numVBuckets < 1 || *numVBuckets > 1024 {
+		log.Fatalf("Invalid number of vBuckets: %d, must be in [1,1024]", *numVBuckets)
 	}
 
 	delayList, err := extractDelays(*delays, *mode)
@@ -203,7 +209,7 @@ func main() {
 		// setup dcp generator object and create fake dcp client
 		seqAlloc := newSequenceAllocator(*batchSize, seqAllocator)
 		dcpGen := &dcpDataGen{seqAlloc: seqAlloc, delays: delayList, dbCtx: dbContext, numChannelsPerDoc: *numChannelsPerDoc,
-			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs}
+			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs, numVBuckets: *numVBuckets}
 		mutationListener := dbContext.GetMutationListener(t)
 		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
 		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map, *numDCPWorkers, uint16(*numVBuckets))
@@ -214,8 +220,8 @@ func main() {
 		dcpGen.client = client
 
 		// create vBucket mutations. This blocks until every vBucket writer is running - the writers are
-		// staggered by 100ms each, so it takes ~100s for 1024 vBuckets, and only then does the -duration
-		// timer below start.
+		// staggered by 100ms each, so it takes numVBuckets*100ms (~100s at the default 1024), and only
+		// then does the -duration timer below start.
 		dcpGen.vBucketCreation(ctx)
 		runThroughput.markGeneratorReady()
 	} else if *mode == processEntry {

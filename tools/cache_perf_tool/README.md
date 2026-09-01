@@ -50,10 +50,12 @@ and channel-cache write cost.
 - **stderr** — a per-second CSV of cumulative counters, plus interleaved Sync Gateway log lines.
 - **stdout** — the end-of-run summary (see below).
 
-In `-mode dcp` the 1024 vBucket writer goroutines are started 100 ms apart, so there is a **~100 s
-ramp** — and that ramp runs to completion *before* the `-duration` timer starts. A `-duration 10m`
-run therefore takes about 11m40s wall-clock, and the per-second CSV covers the ramp as well as the
-measured period.
+In `-mode dcp` one writer goroutine is started per vBucket, 100 ms apart, so startup takes
+`-numVBuckets` × 100 ms — a **~100 s ramp** at the default 1024 — and that ramp runs to completion
+*before* the `-duration` timer starts. A default `-duration 10m` run therefore takes about 11m40s
+wall-clock, and the per-second CSV covers the ramp as well as the measured period. Lowering
+`-numVBuckets` shortens the ramp proportionally, which is useful for smoke tests (64 vBuckets ramps
+in ~6 s) — but it also lowers the offered load, so see the flag table below.
 
 `seqs_cached_per_sec_steady` is ramp-aware: its window never reaches back past the point the last
 writer started, so it is never contaminated. But that also means a short run leaves it a short window
@@ -75,7 +77,7 @@ writer started, so it is never contaminated. But that also means a short run lea
 | `-channelsPerClient` | `0` | dcp | Channels each simulated feed watches, allocated round-robin from the channel population. |
 | `-rapidUpdateDocs` | `false` | dcp | Simulate KV-side deduplication on alternating mutations in every vBucket: allocate 5 sequences, then deliver a single event carrying all of them via `RecentSequences`. |
 | `-numDCPWorkers` | `8` | dcp | DCP client worker goroutines. |
-| `-numVBuckets` | `1024` | dcp | vBuckets the DCP client is sized for (worker routing, metadata). **This does not size the generator** — it always starts 1024 vBucket writers, so lowering this does not lower the offered load. |
+| `-numVBuckets` | `1024` | dcp | Number of vBuckets, **1–1024**. Sizes both the DCP client (worker routing, metadata) and the generator, which starts **one writer goroutine per vBucket** — so this is the offered write concurrency. **Runs with different values are not comparable with each other**, and every result in `cacheTestResults.md` was taken at 1024. Startup takes `numVBuckets` × 100 ms before `-duration` begins. |
 | `-profileInterval` | `0` | both | If > 1 s, enable profiling: a whole-run CPU + fgprof profile, plus heap/mutex/block/goroutine profiles written to the working directory at this interval. Must be less than `-duration`. **Profiling perturbs throughput — do not quote numbers from a profiled run.** |
 
 ## Output
@@ -143,5 +145,8 @@ awk -F, '$1=="seqs_cached_per_sec_steady"{print $2}' run_summary.csv
   any sequence is on the skipped list, which moves throughput substantially. A run that accumulates
   skipped sequences part-way through is measuring two different regimes; check
   `num_skipped_seqs` before averaging.
+- **`-numVBuckets` is the offered write concurrency, not just a client setting.** Lowering it makes
+  runs start much faster, but it is a different workload — reduce it for smoke tests and debugging,
+  leave it at 1024 for any number you intend to compare or publish.
 - The tool exits by cancelling its context and waiting for writer goroutines to drain, so the
   summary appears a moment after `-duration` elapses.
