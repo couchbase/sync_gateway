@@ -2960,12 +2960,9 @@ func deleteBackupRevisionBodies(t *testing.T, rt *RestTester, docID string) {
 	require.NoError(t, err)
 
 	dataStore := rt.GetSingleDataStore()
-	deleted := 0
 	for revID := range doc.History {
 		key := fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docID, len(revID), revID)
-		if err := dataStore.Delete(rt.Context(), key); err == nil {
-			deleted++
-		} else {
+		if err := dataStore.Delete(ctx, key); err != nil {
 			require.True(t, base.IsDocNotFoundError(err), "unexpected error deleting %s: %v", key, err)
 		}
 	}
