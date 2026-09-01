@@ -8290,7 +8290,8 @@ func TestISGRInvalidRevTreeRepairedBeforeSend(t *testing.T) {
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		docID := rest.SafeDocumentName(t, t.Name())
 
 		activeCollection, activeCollectionCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()

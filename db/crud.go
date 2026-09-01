@@ -129,13 +129,13 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 	}
 
 	// Repair a rev tree whose generations don't increase before the document is used - see
-	// RepairInvalidRevTreeForGet. Does nothing for the overwhelming majority of documents.
+	// repairInvalidRevTreeForGet. Does nothing for the overwhelming majority of documents.
 	//
-	// Only run when we have the whole of sync data to use otherwise if particular sync datat is available we may
-	// end up writing back to the bucket missing crucial info from sync data such as channel info. DocUnmarshalHistory
-	// is the one to watch - it populates History, so detection would fire, but zeroes the rest of SyncData.
+	// Only run with the whole of sync data in hand, or the repair writes back a document missing the
+	// parts that weren't unmarshalled. DocUnmarshalHistory is the one to watch - it populates History, so
+	// detection would fire, but zeroes the rest of SyncData.
 	if unmarshalLevel == DocUnmarshalAll || unmarshalLevel == DocUnmarshalSync {
-		doc = c.RepairInvalidRevTreeForGet(ctx, doc, doc.Cas)
+		doc = c.repairInvalidRevTreeForGet(ctx, doc, doc.Cas)
 	}
 
 	return doc, rawBucketDoc, nil
@@ -3401,21 +3401,16 @@ func (db *DatabaseCollectionWithUser) restampVersionCAS(ctx context.Context, key
 	}, opts)
 }
 
-// RepairInvalidRevTreeForGet repairs a document whose revision tree contains a revision that does not
-// exceed its parent's generation - see CBG-5713 corruption details - and returns the document to use, mirroring
-// OnDemandImportForGet. It is called from GetDocumentWithRaw, so it runs once per load from the bucket
-// rather than once per revision cache hit.
+// repairInvalidRevTreeForGet repairs a document whose revision tree contains a revision that does not
+// exceed its parent's generation, and returns the document to use, mirroring OnDemandImportForGet. It is
+// called from GetDocumentWithRaw, so it runs once per load from the bucket rather than once per revision
+// cache hit.
 //
-// When a caller asks for a document with no revision specified (getting active version of the document), the caller
-// will see the repaired version in response. If asking for a particular revision that has since been renamed then the
-// caller will receive ErrMissing (404) which sendRevision will either turn into replacement rev or a norev. If client
-// gets a no rev they will get the repaired version nect changes cycle, for replacement rev client they will get the
-// repaired version as replacement rev.
+// A caller that asked for a specific revision the repair renamed gets ErrMissing (404), which
+// sendRevision turns into a replacement rev or a norev; either way the client sees the repaired revision.
 //
-// Will not fail load if repair fails, given this will result in skip of replication of this sequence to client. There is
-// possibility that splitRevisionList will still encode revisions to bve sent to client but with fabricated history.
-// Allow the no rev to show/not show from there.
-func (c *DatabaseCollection) RepairInvalidRevTreeForGet(ctx context.Context, doc *Document, cas uint64) *Document {
+// A failed repair does not fail the load - the document is served corrupt, as it was before.
+func (c *DatabaseCollection) repairInvalidRevTreeForGet(ctx context.Context, doc *Document, cas uint64) *Document {
 	if !doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()) {
 		return doc
 	}
@@ -3497,8 +3492,8 @@ func (c *DatabaseCollection) repairInvalidRevTree(ctx context.Context, doc *Docu
 // A new sequence is allocated so the repaired revision is delivered on the changes feed - without one,
 // clients that were already told about the pre-repair revision would never hear about the repair.
 //
-// _sync is re-persisted with _sync.cas macro-expanded to the new CAS, and _mou is stamped from revSeqNo
-// and mou rather than from the document, because neither is guaranteed to have been loaded onto it
+// _mou is stamped from revSeqNo and mou rather than from the document, because neither is guaranteed to
+// have been loaded onto it.
 func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *Document, cas uint64, revSeqNo uint64, mou *MetadataOnlyUpdate) error {
 	previousRev := doc.GetRevTreeID()
 
@@ -3539,6 +3534,12 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	if len(renamed) == 0 {
 		// hasNonIncreasingGenerations said otherwise, so the two disagree - fail rather than write nothing
 		return base.RedactErrorf("rev tree for doc %s was reported invalid but the repair renamed no revisions", base.UD(doc.ID))
+	}
+	// repairGenerations keeps the winner winning, so this only fires for a document whose current
+	// revision was already off the winning branch. Leaving it corrupt beats moving it onto another
+	// branch, which every other caller would read as the document changing on its own.
+	if winner, _, _ := doc.History.winningRevision(ctx); winner != newCurrentRev {
+		return rollback(base.RedactErrorf("repaired rev tree for doc %s would leave current revision %s off the winning branch, %s", base.UD(doc.ID), base.MD(newCurrentRev), base.MD(winner)))
 	}
 	doc.SetRevTreeID(newCurrentRev)
 

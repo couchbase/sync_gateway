@@ -2377,7 +2377,8 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 	t.Run("repaired revision pushed to peer is rejected until the peer is updated", func(t *testing.T) {
 		sgrRunner := rest.NewSGRTestRunner(t)
 		sgrRunner.RunSubprotocolV3(func(t *testing.T) {
-			activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+			peers := sgrRunner.SetupSGRPeers(t)
+			activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 			remoteURL, err := url.Parse(passiveDBURL)
 			require.NoError(t, err)
 			activeCtx := activeRT.Context()
@@ -2406,7 +2407,7 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 				ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
 				ChangesBatchSize:       200,
 				Continuous:             true,
-				ReplicationStatsMap:    dbReplicatorStats(t),
+				ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
 				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
 				SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
 			})
@@ -2452,7 +2453,8 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 	t.Run("new revision on peer pulled back repairs and resolves in one pass", func(t *testing.T) {
 		sgrRunner := rest.NewSGRTestRunner(t)
 		sgrRunner.RunSubprotocolV3(func(t *testing.T) {
-			activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+			peers := sgrRunner.SetupSGRPeers(t)
+			activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 			docID := rest.SafeDocumentName(t, t.Name())
 
 			plantUpgradeScenario(t, activeRT, passiveRT, docID)

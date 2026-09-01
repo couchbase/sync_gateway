@@ -408,6 +408,13 @@ func (tree RevTree) repairGenerations(currentRev string) (newCurrentRev string, 
 		return currentRev, nil, nil
 	}
 
+	// Renumbering only ever raises generations, so a losing branch carrying more violations than the
+	// winning one can be lifted past it. Raise the current revision to keep it winning, otherwise the
+	// caller persists _sync.rev as a revision winningRevision no longer selects.
+	if raised := tree.raisedCurrentRevToKeepWinning(currentRev, children, newGen); raised != "" {
+		renamed[currentRev] = raised
+	}
+
 	repaired := make(RevTree, len(tree))
 	for oldID, info := range tree {
 		newInfo := *info
@@ -442,6 +449,51 @@ func (tree RevTree) repairGenerations(currentRev string) (newCurrentRev string, 
 		tree[revid] = info
 	}
 	return newCurrentRev, renamed, nil
+}
+
+// raisedCurrentRevToKeepWinning returns the ID the current revision must take so that winningRevision
+// still selects it once the tree has been renumbered to the generations in newGen, or "" if it needs no
+// further raising.
+//
+// The current revision is only raised if it was the winner to begin with - promoting one that was
+// already losing would move the document just as silently, in the other direction.
+func (tree RevTree) raisedCurrentRevToKeepWinning(currentRev string, children map[string][]string, newGen map[string]int) string {
+	currentInfo, ok := tree[currentRev]
+	if !ok || len(children[currentRev]) > 0 {
+		// Not a leaf, so winningRevision never selected it, and raising it would push its descendants
+		// back into violation.
+		return ""
+	}
+	currentOldGen, currentDigest, err := parseRevID(currentRev)
+	if err != nil {
+		return ""
+	}
+	raiseTo := 0
+	for revid, info := range tree {
+		if revid == currentRev || len(children[revid]) > 0 {
+			continue
+		}
+		if info.Deleted != currentInfo.Deleted {
+			if !info.Deleted {
+				return "" // a live leaf always beats a tombstone, so the current revision was already losing
+			}
+			continue
+		}
+		oldGen, digest, err := parseRevID(revid)
+		if err != nil {
+			return ""
+		}
+		if oldGen > currentOldGen || (oldGen == currentOldGen && digest > currentDigest) {
+			return "" // already losing before the repair, so keep it that way
+		}
+		if gen := newGen[revid]; gen > newGen[currentRev] || (gen == newGen[currentRev] && digest > currentDigest) {
+			raiseTo = max(raiseTo, gen+1)
+		}
+	}
+	if raiseTo == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d-%s", raiseTo, currentDigest)
 }
 
 // Returns true if the RevTree has an entry for this revid.

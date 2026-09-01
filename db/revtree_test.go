@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -1570,8 +1571,8 @@ func TestRepairGenerations(t *testing.T) {
 				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc", "2-ghi": "2-def",
 				"3-xxx": "2-def",
 			},
-			currentRev:      "2-ghi",
-			expectedCurrent: "4-ghi",
+			currentRev:      "3-xxx",
+			expectedCurrent: "4-xxx",
 			expectedRenames: map[string]string{"2-def": "3-def", "2-ghi": "4-ghi", "3-xxx": "4-xxx"},
 			expectedRevTree: map[string]string{
 				"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc", "4-ghi": "3-def",
@@ -1579,17 +1580,19 @@ func TestRepairGenerations(t *testing.T) {
 			},
 		},
 		{
-			// a conflict branch that doesn't descend from a renamed revision must not move
+			// a conflict branch that doesn't descend from a renamed revision must not move. The winning
+			// branch starts at generation 5 so it stays the winner without being raised - see
+			// "losing branch renumbered past the winner" for what happens when it doesn't.
 			name: "branched tree, untouched branch is left alone",
 			revs: map[string]string{
-				"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc",
+				"1-abc": "", "5-abc": "1-abc", "5-def": "5-abc",
 				"2-xxx": "1-abc", "3-xxx": "2-xxx",
 			},
-			currentRev:      "2-def",
-			expectedCurrent: "3-def",
-			expectedRenames: map[string]string{"2-def": "3-def"},
+			currentRev:      "5-def",
+			expectedCurrent: "6-def",
+			expectedRenames: map[string]string{"5-def": "6-def"},
 			expectedRevTree: map[string]string{
-				"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc",
+				"1-abc": "", "5-abc": "1-abc", "6-def": "5-abc",
 				"2-xxx": "1-abc", "3-xxx": "2-xxx",
 			},
 		},
@@ -1598,14 +1601,14 @@ func TestRepairGenerations(t *testing.T) {
 			name: "corruption on a non-winning branch is repaired",
 			revs: map[string]string{
 				"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc",
-				"2-xxx": "1-abc", "2-yyy": "2-xxx",
+				"2-xxx": "1-abc", "2-aaa": "2-xxx",
 			},
 			currentRev:      "3-abc",
 			expectedCurrent: "3-abc",
-			expectedRenames: map[string]string{"2-yyy": "3-yyy"},
+			expectedRenames: map[string]string{"2-aaa": "3-aaa"},
 			expectedRevTree: map[string]string{
 				"1-abc": "", "2-abc": "1-abc", "3-abc": "2-abc",
-				"2-xxx": "1-abc", "3-yyy": "2-xxx",
+				"2-xxx": "1-abc", "3-aaa": "2-xxx",
 			},
 		},
 		{
@@ -1637,8 +1640,8 @@ func TestRepairGenerations(t *testing.T) {
 				"3-iii": "2-hhh", "2-jjj": "2-hhh",
 				"4-kkk": "2-jjj",
 			},
-			currentRev:      "3-eee",
-			expectedCurrent: "4-eee",
+			currentRev:      "4-kkk",
+			expectedCurrent: "4-kkk",
 			expectedRenames: map[string]string{
 				"2-ccc": "3-ccc", "2-jjj": "3-jjj",
 				"3-ddd": "4-ddd", "3-eee": "4-eee", "3-ggg": "4-ggg",
@@ -1651,6 +1654,31 @@ func TestRepairGenerations(t *testing.T) {
 				"4-ggg": "3-fff",
 				"3-iii": "2-hhh", "3-jjj": "2-hhh",
 				"4-kkk": "3-jjj",
+			},
+		},
+		{
+			// The losing branch carries more violations than the winning one, so renumbering lifts its
+			// leaf past the winner. The current revision has to be raised again to stay the winner:
+			//
+			//	1-aaa
+			//	├── 2-bbb
+			//	│   └── 2-zzz -> 5-zzz        current, one violation, raised past 4-ccc
+			//	└── 2-ppp
+			//	    └── 2-qqq -> 3-qqq        two violations on the losing branch
+			//	        └── 2-ccc -> 4-ccc
+			name: "losing branch renumbered past the winner does not take over",
+			revs: map[string]string{
+				"1-aaa": "",
+				"2-bbb": "1-aaa", "2-zzz": "2-bbb",
+				"2-ppp": "1-aaa", "2-qqq": "2-ppp", "2-ccc": "2-qqq",
+			},
+			currentRev:      "2-zzz",
+			expectedCurrent: "5-zzz",
+			expectedRenames: map[string]string{"2-zzz": "5-zzz", "2-qqq": "3-qqq", "2-ccc": "4-ccc"},
+			expectedRevTree: map[string]string{
+				"1-aaa": "",
+				"2-bbb": "1-aaa", "5-zzz": "2-bbb",
+				"2-ppp": "1-aaa", "3-qqq": "2-ppp", "4-ccc": "3-qqq",
 			},
 		},
 		{
@@ -1686,8 +1714,50 @@ func TestRepairGenerations(t *testing.T) {
 			// replication symptom on the winning branch
 			require.NoError(t, tree.verifyIncreasingGenerations())
 			assert.False(t, tree.hasNonIncreasingGenerations(ctx, newCurrentRev))
+
+			// renumbering must not move the document onto another branch - _sync.rev is assumed to be
+			// the tree's winner everywhere else in Sync Gateway
+			winner, _, _ := tree.winningRevision(ctx)
+			assert.Equal(t, newCurrentRev, winner, "the repair left the current revision off the winning branch")
 		})
 	}
+}
+
+// TestRepairGenerationsDoesNotPromoteALosingCurrentRev asserts the repair never raises a current
+// revision that was off the winning branch to begin with - that would move the document just as silently
+// as leaving it behind one. The caller abandons the repair instead, see
+// TestInvalidRevTreeRepairAbandonedWhenCurrentRevIsNotWinner.
+func TestRepairGenerationsDoesNotPromoteALosingCurrentRev(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tree := buildRevTree(t, map[string]string{"1-rrr": "", "2-bbb": "1-rrr", "2-aaa": "2-bbb", "3-xxx": "1-rrr"})
+
+	newCurrentRev, _, err := tree.repairGenerations("2-aaa")
+	require.NoError(t, err)
+	assert.Equal(t, "3-aaa", newCurrentRev)
+	winner, _, _ := tree.winningRevision(ctx)
+	assert.Equal(t, "3-xxx", winner, "the repair promoted a current revision that was already losing")
+}
+
+// TestRepairGenerationsIgnoresTombstonedRivals asserts a tombstone renumbered past the current revision
+// does not cause it to be raised - winningRevision prefers any live leaf, so the tombstone was never a
+// rival for the win.
+func TestRepairGenerationsIgnoresTombstonedRivals(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tree := RevTree{
+		"1-aaa": &RevInfo{ID: "1-aaa"},
+		"2-bbb": &RevInfo{ID: "2-bbb", Parent: "1-aaa"},
+		"2-zzz": &RevInfo{ID: "2-zzz", Parent: "2-bbb"},
+		"2-ppp": &RevInfo{ID: "2-ppp", Parent: "1-aaa"},
+		"2-qqq": &RevInfo{ID: "2-qqq", Parent: "2-ppp"},
+		"2-ccc": &RevInfo{ID: "2-ccc", Parent: "2-qqq", Deleted: true},
+	}
+
+	// the tombstone renumbers to 4-ccc, which outranks 3-zzz on generation but not on being alive
+	newCurrentRev, _, err := tree.repairGenerations("2-zzz")
+	require.NoError(t, err)
+	assert.Equal(t, "3-zzz", newCurrentRev, "the current revision was raised past a tombstone that could never win")
+	winner, _, _ := tree.winningRevision(ctx)
+	assert.Equal(t, newCurrentRev, winner)
 }
 
 // TestRepairGenerationsPreservesRevInfo asserts the repair only rewrites IDs and parent pointers - a
@@ -2270,4 +2340,148 @@ func TestRepairFailureDoesNotReturnPhantomRev(t *testing.T) {
 	// read still detects it and can try again
 	assert.True(t, doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()),
 		"the returned document should still be detected as invalid, so a later read retries the repair")
+}
+
+// TestInvalidRevTreeRepairKeepsWinningBranch covers a conflicted document whose losing branch carries
+// more violations than the winning one. Renumbering raises every branch, so the losing leaf can be
+// lifted past the winner - and if the repair let that happen, _sync.rev would name a revision the tree
+// no longer selects, and the next write would silently move the document onto the losing branch.
+func TestInvalidRevTreeRepairKeepsWinningBranch(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	// winning branch 1-aaa, 2-bbb, 2-zzz - one violation; losing branch 1-aaa, 2-ppp, 2-qqq, 2-ccc - two
+	const docID = "conflictedCorruptDoc"
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"branch": "winner"}, map[string]string{
+		"1-aaa": "",
+		"2-bbb": "1-aaa", "2-zzz": "2-bbb",
+		"2-ppp": "1-aaa", "2-qqq": "2-ppp", "2-ccc": "2-qqq",
+	}, "2-zzz")
+	// the losing leaf of a conflict keeps its body in the rev tree
+	rewriteSyncDataForTest(t, ctx, collection, docID, 0, func(syncData *SyncData) {
+		syncData.History["2-ccc"].Body = []byte(`{"branch":"loser"}`)
+		syncData.History["2-ccc"].Channels = syncData.getCurrentChannels()
+	})
+	dbCtx.FlushRevisionCacheForTest()
+
+	bodyBefore, err := collection.Get1xRevBody(ctx, docID, "", false, nil)
+	require.NoError(t, err)
+	require.Equal(t, "winner", bodyBefore["branch"], "precondition: the document is on the winning branch")
+
+	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	// 2-zzz renumbers to 3-zzz, but the losing branch reaches 4-ccc, so it is raised again to stay ahead
+	assert.Equal(t, "5-zzz", repaired.GetRevTreeID())
+	winner, _, _ := repaired.History.winningRevision(ctx)
+	assert.Equal(t, repaired.GetRevTreeID(), winner, "the repair left the current revision off the winning branch")
+	assert.Equal(t, map[string]string{
+		"1-aaa": "",
+		"2-bbb": "1-aaa", "5-zzz": "2-bbb",
+		"2-ppp": "1-aaa", "3-qqq": "2-ppp", "4-ccc": "3-qqq",
+	}, revTreeParents(repaired.History))
+	require.NoError(t, repaired.History.verifyIncreasingGenerations())
+
+	// the winner is what was committed, not just what was returned
+	dbCtx.FlushRevisionCacheForTest()
+	currentRev, tree := revTreeState(t, ctx, collection, docID)
+	assert.Equal(t, "5-zzz", currentRev)
+	assert.Equal(t, revTreeParents(repaired.History), tree)
+
+	// the next write extends the winning branch, and the document stays on it
+	newRev, _, err := collection.Put(ctx, docID, Body{BodyRev: currentRev, "branch": "winner", "n": 2})
+	require.NoError(t, err)
+	assert.Equal(t, 6, genOfRevID(ctx, newRev))
+
+	dbCtx.FlushRevisionCacheForTest()
+	bodyAfter, err := collection.Get1xRevBody(ctx, docID, "", false, nil)
+	require.NoError(t, err)
+	assert.Equal(t, newRev, bodyAfter[BodyRev].(string))
+	assert.Equal(t, "winner", bodyAfter["branch"], "the document was moved onto the losing branch")
+}
+
+// TestInvalidRevTreeRepairAbandonedWhenCurrentRevIsNotWinner covers the guard behind the branch-raising:
+// a document whose current revision is already off the winning branch is left corrupt rather than being
+// renumbered onto a branch of the repair's choosing.
+func TestInvalidRevTreeRepairAbandonedWhenCurrentRevIsNotWinner(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	// 3-xxx outranks the current revision before anything is renumbered, and still does after
+	const docID = "currentRevIsNotWinnerDoc"
+	plantedTree := map[string]string{"1-rrr": "", "2-bbb": "1-rrr", "2-aaa": "2-bbb", "3-xxx": "1-rrr"}
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true}, plantedTree, "2-aaa")
+	dbCtx.FlushRevisionCacheForTest()
+
+	invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
+	syncDataBefore, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+
+	base.AssertLogContains(t, "the repair failed", func() {
+		doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+		require.NoError(t, err)
+		assert.Equal(t, "2-aaa", doc.GetRevTreeID(), "the abandoned repair should not have moved the current revision")
+		assert.Equal(t, plantedTree, revTreeParents(doc.History))
+		assert.Equal(t, syncDataBefore.Sequence, doc.Sequence, "the abandoned repair should not have consumed a sequence")
+	})
+	require.Equal(t, int64(1), invalidRevTreeCount.Value(), "corrupt rev tree was not reported")
+
+	// nothing reached the bucket either
+	currentRev, tree := revTreeState(t, ctx, collection, docID)
+	assert.Equal(t, "2-aaa", currentRev)
+	assert.Equal(t, plantedTree, tree)
+}
+
+// TestInvalidRevTreeRepairOfTombstonedDoc pins that a tombstone is repaired in place and stays one - the
+// repair is a metadata-only xattr write, so it has to reach a document with no body.
+func TestInvalidRevTreeRepairOfTombstonedDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	const docID = "tombstonedCorruptDoc"
+	rev, _, err := collection.Put(ctx, docID, Body{"planted": true})
+	require.NoError(t, err)
+	_, _, err = collection.DeleteDoc(ctx, docID, DocVersion{RevTreeID: rev})
+	require.NoError(t, err)
+
+	// plant the corrupt tree through the datastore, so the document stays a tombstone
+	xattrs, cas, err := collection.dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+	var syncData SyncData
+	require.NoError(t, base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	syncData.History = RevTree{
+		"1-abc": &RevInfo{ID: "1-abc"},
+		"2-abc": &RevInfo{ID: "2-abc", Parent: "1-abc"},
+		"2-def": &RevInfo{ID: "2-def", Parent: "2-abc", Deleted: true, Channels: syncData.getCurrentChannels()},
+	}
+	syncData.SetRevTreeID("2-def")
+	raw, err := base.JSONMarshal(syncData)
+	require.NoError(t, err)
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.SyncXattrName: raw},
+		&sgbucket.MutateInOptions{MacroExpansion: []sgbucket.MacroExpansionSpec{
+			sgbucket.NewMacroExpansionSpec(xattrCasPath(base.SyncXattrName), sgbucket.MacroCas)}})
+	require.NoError(t, err)
+	dbCtx.FlushRevisionCacheForTest()
+
+	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, "3-def", repaired.GetRevTreeID())
+	assert.True(t, repaired.IsDeleted(), "the repaired document is no longer a tombstone")
+	repairedLeaf, err := repaired.History.getInfo("3-def")
+	require.NoError(t, err)
+	assert.True(t, repairedLeaf.Deleted, "the renumbered revision lost its tombstone flag")
+
+	// the repair reached the tombstone in the bucket, and left it a tombstone
+	dbCtx.FlushRevisionCacheForTest()
+	currentRev, tree := revTreeState(t, ctx, collection, docID)
+	assert.Equal(t, "3-def", currentRev)
+	assert.Equal(t, map[string]string{"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc"}, tree)
+	var body []byte
+	_, err = collection.dataStore.Get(ctx, docID, &body)
+	assert.True(t, base.IsDocNotFoundError(err), "the repair resurrected the document body, got %v", err)
 }
