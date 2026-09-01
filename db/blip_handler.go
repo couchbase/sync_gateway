@@ -631,7 +631,11 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]a
 			return ErrClosedBLIPSender
 		}
 
-		bh.inFlightChangesThrottle <- struct{}{}
+		select {
+		case bh.inFlightChangesThrottle <- struct{}{}:
+		case <-bh.terminator:
+			return ErrClosedBLIPSender
+		}
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
@@ -825,7 +829,11 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	// we don't know whether this batch of changes has completed because they look like unsolicited revs to us,
 	// but we can stop clients swarming us with these causing CheckProposedRev work
-	bh.inFlightChangesThrottle <- struct{}{}
+	select {
+	case bh.inFlightChangesThrottle <- struct{}{}:
+	case <-bh.terminator:
+		return ErrClosedBLIPSender
+	}
 	defer func() { <-bh.inFlightChangesThrottle }()
 
 	includeConflictRev := false
@@ -1056,7 +1064,11 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		default:
 			stats.throttledRevs.Add(1)
 			throttleStart := time.Now()
-			bh.inFlightRevsThrottle <- struct{}{}
+			select {
+			case bh.inFlightRevsThrottle <- struct{}{}:
+			case <-bh.terminator:
+				return ErrClosedBLIPSender
+			}
 			stats.throttledRevTime.Add(time.Since(throttleStart).Nanoseconds())
 		}
 		defer func() { <-bh.inFlightRevsThrottle }()
