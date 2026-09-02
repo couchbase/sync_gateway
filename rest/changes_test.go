@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -390,4 +391,118 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes", "", true)
 	changes.RequireDocIDs(t, []string{"doc1", "doc"})
 	changes.RequireRevID(t, []string{docVrs.RevID, doc1Vrs.RevID})
+}
+
+// TestContinuousChangesUserDeleted ensures that deleting a user terminates a continuous _changes feed
+// running for that user.
+func TestContinuousChangesUserDeleted(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const (
+		username = "alice"
+		channel  = "chan1"
+	)
+	rt.CreateUser(username, []string{channel})
+	rt.PutDoc("beforeDelete", `{"channels":["`+channel+`"]}`)
+
+	rt.WaitForPendingChanges()
+
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	feed := rt.StartContinuousChanges("/{{.keyspace}}/_changes?feed=continuous&since=0", username)
+
+	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+
+	rt.DeleteUser(username)
+	RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes", "", username), http.StatusUnauthorized)
+
+	changes := feed.RequireEnded()
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value, 0)
+
+	require.Len(t, changes, 2)
+	require.Equal(t, "_user/"+username, changes[0].ID)
+	require.Equal(t, "beforeDelete", changes[1].ID)
+}
+
+// TestLongpollChangesUserDeleted is the longpoll counterpart to TestContinuousChangesUserDeleted.
+func TestLongpollChangesUserDeleted(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const (
+		username = "alice"
+		channel  = "chan1"
+	)
+	rt.CreateUser(username, []string{channel})
+
+	rt.WaitForPendingChanges()
+	since := rt.GetChanges("/{{.keyspace}}/_changes", username).Last_Seq
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+
+	var changes ChangesResults
+	feedDone := make(chan struct{})
+	go func() {
+		defer close(feedDone)
+		changes = rt.PostChanges("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":"%s", "feed":"longpoll"}`, since), username)
+	}()
+
+	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+
+	rt.DeleteUser(username)
+
+	select {
+	case <-feedDone:
+	case <-time.After(30 * time.Second):
+		require.Fail(t, "longpoll changes feed still running after user delete")
+	}
+
+	require.Empty(t, changes.Results)
+}
+
+// TestContinuousChangesRolePurge ensures that purging a role revokes the role's channels from a
+// continuous _changes feed already running for a user who holds that role.  limit=1 terminates the feed
+// after the next change it sends, so the test can assert on which document that was.
+func TestContinuousChangesRolePurge(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const (
+		username = "alice"
+		roleName = "chan1-role"
+		// roleChannel is granted only via the role, userChannel is granted directly
+		roleChannel = "chan1"
+		userChannel = "chan2"
+	)
+	rt.CreateRole(roleName, []string{roleChannel})
+	rt.CreateUser(username, []string{userChannel}, roleName)
+
+	// Prove the role grant is in effect before the purge
+	rt.PutDoc("beforePurge", `{"channels":["`+roleChannel+`"]}`)
+	changes := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", username, false)
+	require.Equal(t, "beforePurge", changes.Results[len(changes.Results)-1].ID)
+
+	// Start the feed at the current sequence, so the only entry it can send is one of the documents
+	// written after the purge below
+	rt.WaitForPendingChanges()
+	since := rt.GetChanges("/{{.keyspace}}/_changes", username).Last_Seq
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	feed := rt.StartContinuousChanges(fmt.Sprintf("/{{.keyspace}}/_changes?feed=continuous&limit=1&since=%s", since), username)
+
+	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+
+	// The purge has to be notified before the writes below, otherwise the feed wakes on the document
+	// notification alone and is still holding the stale channel set.
+	userWaiter := rt.NewUserWaiter(username)
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
+	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+
+	// The feed sends in sequence order, so a feed still serving the revoked channel would send
+	// afterPurgeRevoked first.  The purge leaks a sequence (CBG-5789), so afterPurgeRevoked isn't
+	// visible until CachePendingSeqMaxWait elapses.
+	rt.PutDoc("afterPurgeRevoked", `{"channels":["`+roleChannel+`"]}`)
+	rt.PutDoc("afterPurgeAllowed", `{"channels":["`+userChannel+`"]}`)
+
+	feedChanges := feed.RequireEnded()
+	require.Len(t, feedChanges, 1)
+	require.Equal(t, "afterPurgeAllowed", feedChanges[0].ID)
 }
