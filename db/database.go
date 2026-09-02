@@ -1802,7 +1802,9 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 
 		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
-				updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
+				// TODO(CBG-5801): each CAS retry allocates a new sequence and drops the previous one, and the
+				// allocated sequence isn't returned to the caller for release if the write fails.
+				_, updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 				if err != nil {
 					base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
 				}
