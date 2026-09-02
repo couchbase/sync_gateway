@@ -27,7 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import List, Literal, NoReturn, Optional, Union
+from typing import Literal, NoReturn
 
 import password_remover
 from tasks import (
@@ -90,11 +90,11 @@ def delete_zip(filename):
     """
     try:
         os.remove(filename)
-        print("Zipfile deleted: {0}".format(filename))
+        print(f"Zipfile deleted: {filename}")
     except FileNotFoundError:
         pass
-    except Exception as e:
-        print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
+    except Exception as e:  # noqa: BLE001
+        print(f"Zipfile ({filename}) deletion failed: {e}")
 
 
 def sync_gateway_option_callback(
@@ -116,8 +116,8 @@ class HelpFormatter(optparse.IndentedHelpFormatter):
         self,
         indent_increment: int = 2,
         max_help_position: int = 24,
-        width: Optional[int] = None,
-        short_first: Union[bool, Literal[0, 1]] = 1,
+        width: int | None = None,
+        short_first: bool | Literal[0, 1] = 1,
     ):
         # match width from argparse implementation
         width = shutil.get_terminal_size().columns - 2
@@ -244,7 +244,7 @@ def create_option_parser():
 
 
 def expvar_url(sg_url):
-    return "{0}/_expvar".format(sg_url)
+    return f"{sg_url}/_expvar"
 
 
 def make_http_client_pprof_tasks(
@@ -262,16 +262,16 @@ def make_http_client_pprof_tasks(
         "mutex",
     ]
 
-    base_pprof_url = "{0}/_debug/pprof".format(sg_url)
+    base_pprof_url = f"{sg_url}/_debug/pprof"
 
     pprof_tasks = []
     for profile_type in profile_types:
-        sg_pprof_url = "{0}/{1}".format(base_pprof_url, profile_type)
+        sg_pprof_url = f"{base_pprof_url}/{profile_type}"
         clean_task = make_curl_task(
-            name="Collect {0} pprof via http client".format(profile_type),
+            name=f"Collect {profile_type} pprof via http client",
             auth_headers=auth_headers,
             url=sg_pprof_url,
-            log_file="pprof_{0}.pb.gz".format(profile_type),
+            log_file=f"pprof_{profile_type}.pb.gz",
         )
         clean_task.no_header = True
         pprof_tasks.append(clean_task)
@@ -357,9 +357,9 @@ def get_unique_filename(filenames: set[str], original_filename: str) -> str:
 
 def make_collect_logs_tasks(
     sg_url: str,
-    sg_config_file_path: Optional[str],
+    sg_config_file_path: str | None,
     auth_headers: dict[str, str],
-) -> List[PythonTask]:
+) -> list[PythonTask]:
     sg_log_files = {
         "sg_error.log": "sg_error.log",
         "sg_warn.log": "sg_warn.log",
@@ -382,7 +382,7 @@ def make_collect_logs_tasks(
     ]
     # Try to find user-specified log path
     if sg_url:
-        config_url = "{0}/_config?include_runtime=true".format(sg_url)
+        config_url = f"{sg_url}/_config?include_runtime=true"
         try:
             response = urlopen(config_url, auth_headers)
         except urllib.error.URLError:
@@ -403,8 +403,8 @@ def make_collect_logs_tasks(
             with open(sg_config_file_path) as fd:
                 print("Loading SG config from path on disk.")
                 config_str = fd.read()
-        except Exception as e:
-            print("Failed to load SG config from disk: {0}".format(e))
+        except Exception as e:  # noqa: BLE001
+            print(f"Failed to load SG config from disk: {e}")
 
     # Find log file path from old style top level config
     guessed_log_path = extract_element_from_config("LogFilePath", config_str)
@@ -425,7 +425,7 @@ def make_collect_logs_tasks(
     sg_log_file_paths: set[pathlib.Path] = set()
     output_basenames: set[str] = set()
 
-    sg_tasks: List[PythonTask] = []
+    sg_tasks: list[PythonTask] = []
 
     def add_file_collection_task(filename: str):
         canonical_filename = pathlib.Path(filename)
@@ -444,12 +444,12 @@ def make_collect_logs_tasks(
             for file in files:
                 name, ext = os.path.splitext(file)
                 # Collect active and rotated log files from the default log locations.
-                pattern_rotated = os.path.join(dir, "{0}*{1}".format(name, ext))
+                pattern_rotated = os.path.join(dir, f"{name}*{ext}")
                 for std_log_file in glob.glob(pattern_rotated):
                     add_file_collection_task(std_log_file)
 
                 # Collect archived log files from the default log locations.
-                pattern_archived = os.path.join(dir, "{0}*{1}.gz".format(name, ext))
+                pattern_archived = os.path.join(dir, f"{name}*{ext}.gz")
                 for std_log_file in glob.glob(pattern_archived):
                     add_file_collection_task(std_log_file)
 
@@ -474,9 +474,7 @@ def make_collect_logs_tasks(
         name, ext = os.path.splitext(log_file_name)
 
         # Lookup SG log files inside the parent directory, including rotated log files.
-        rotated_logs_pattern = os.path.join(
-            log_file_parent_dir, "{0}*{1}".format(name, ext)
-        )
+        rotated_logs_pattern = os.path.join(log_file_parent_dir, f"{name}*{ext}")
         for log_file_item_name in glob.iglob(rotated_logs_pattern):
             log_file_item_path = os.path.join(log_file_parent_dir, log_file_item_name)
             add_file_collection_task(log_file_item_path)
@@ -495,7 +493,7 @@ def make_collect_logs_tasks(
             # iterate over all log files, including those with a rotation timestamp
             # e.g: sg_info-2018-12-31T13-33-41.055.log
             name, ext = os.path.splitext(log_file_name)
-            log_file_pattern = "{0}*{1}".format(name, ext)
+            log_file_pattern = f"{name}*{ext}"
             rotated_logs_pattern = os.path.join(log_file_path, log_file_pattern)
 
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
@@ -504,7 +502,7 @@ def make_collect_logs_tasks(
 
             # try gzipped logs too
             # e.g: sg_info-2018-12-31T13-33-41.055.log.gz
-            log_file_pattern = "{0}*{1}.gz".format(name, ext)
+            log_file_pattern = f"{name}*{ext}.gz"
             rotated_logs_pattern = os.path.join(log_file_path, log_file_pattern)
 
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
@@ -516,7 +514,7 @@ def make_collect_logs_tasks(
 
 def get_db_list(sg_url: str, auth_headers: dict[str, str]) -> list[str]:
     # build url to _all_dbs
-    all_dbs_url = "{0}/_all_dbs".format(sg_url)
+    all_dbs_url = f"{sg_url}/_all_dbs"
     data: list[str] = []
 
     # get content and parse into json
@@ -537,11 +535,11 @@ def get_db_list(sg_url: str, auth_headers: dict[str, str]) -> list[str]:
 #   Server config
 #   Each DB config
 def make_config_tasks(
-    sg_config_path: Optional[str],
+    sg_config_path: str | None,
     sg_url: str,
     auth_headers: dict[str, str],
     should_redact: bool,
-) -> List[PythonTask]:
+) -> list[PythonTask]:
     """
     Return a list of tasks suitable for collecting configuration information.
 
@@ -557,8 +555,8 @@ def make_config_tasks(
     sg_config_files = [
         "/home/sync_gateway/sync_gateway.json",  # linux sync gateway
         "/opt/sync_gateway/etc/sync_gateway.json",  # amazon linux AMI sync gateway
-        "/Users/sync_gateway/sync_gateway.json"  # OSX sync gateway
-        R"C:\Program Files (x86)\Couchbase\serviceconfig.json"  # Windows (Pre-2.0) sync gateway
+        "/Users/sync_gateway/sync_gateway.json",  # OSX sync gateway
+        R"C:\Program Files (x86)\Couchbase\serviceconfig.json",  # Windows (Pre-2.0) sync gateway
         R"C:\Program Files\Couchbase\Sync Gateway\serviceconfig.json",  # Windows (Post-2.0) sync gateway
     ]
     sg_config_files = [x for x in sg_config_files if os.path.exists(x)]
@@ -587,7 +585,7 @@ def make_config_tasks(
         collect_config_tasks.append(task)
 
     # Get server config
-    server_config_url = "{0}/_config".format(sg_url)
+    server_config_url = f"{sg_url}/_config"
 
     config_task = make_curl_task(
         name="Collect server config",
@@ -599,7 +597,7 @@ def make_config_tasks(
     collect_config_tasks.append(config_task)
 
     # Get server config with runtime defaults and runtime dbconfigs
-    server_runtime_config_url = "{0}/_config?include_runtime=true".format(sg_url)
+    server_runtime_config_url = f"{sg_url}/_config?include_runtime=true"
     runtime_config_task = make_curl_task(
         name="Collect runtime config",
         auth_headers=auth_headers,
@@ -612,9 +610,9 @@ def make_config_tasks(
     # Get persisted dbconfigs
     dbs = get_db_list(sg_url, auth_headers)
     for db in dbs:
-        db_config_url = "{0}/{1}/_config".format(sg_url, db)
+        db_config_url = f"{sg_url}/{db}/_config"
         db_config_task = make_curl_task(
-            name="Collect {0} database config".format(db),
+            name=f"Collect {db} database config",
             auth_headers=auth_headers,
             url=db_config_url,
             log_file="sync_gateway.log",
@@ -623,7 +621,7 @@ def make_config_tasks(
         collect_config_tasks.append(db_config_task)
 
     # Get cluster information
-    cluster_info_url = "{0}/_cluster_info".format(sg_url)
+    cluster_info_url = f"{sg_url}/_cluster_info"
     cluster_info_task = make_curl_task(
         name="Collect SG cluster info",
         auth_headers=auth_headers,
@@ -636,7 +634,7 @@ def make_config_tasks(
     return collect_config_tasks
 
 
-def get_config_path_from_cmdline(cmdline_args: list[str]) -> Optional[str]:
+def get_config_path_from_cmdline(cmdline_args: list[str]) -> str | None:
     """
     Parse command line arguments to find the configuration file path and return an absolute path. May return None if the path doesn't exist.
 
@@ -656,7 +654,7 @@ def get_config_path_from_cmdline(cmdline_args: list[str]) -> Optional[str]:
 
 def get_paths_from_expvars(
     sg_url: str, auth_headers: dict[str, str]
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """
     Get the Sync Gateway binary and configuration file path from /_expvar endpoint.
     """
@@ -707,19 +705,17 @@ def make_sg_tasks(
     *,
     sg_url: str,
     auth_headers: dict[str, str],
-    sync_gateway_config_path_option: Optional[str],
-    sync_gateway_executable_path: Optional[str],
+    sync_gateway_config_path_option: str | None,
+    sync_gateway_executable_path: str | None,
     should_redact: bool,
-) -> List[PythonTask]:
+) -> list[PythonTask]:
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(
         sg_url,
         auth_headers=auth_headers,
     )
     print(
-        "Discovered from expvars: sg_binary_path={0} sg_config_path={1}".format(
-            sg_binary_path, sg_config_path
-        )
+        f"Discovered from expvars: sg_binary_path={sg_binary_path} sg_config_path={sg_config_path}"
     )
 
     # If user passed in a specific path to the SG binary, then use it
@@ -728,10 +724,8 @@ def make_sg_tasks(
         and len(sync_gateway_executable_path) > 0
     ):
         if not os.path.exists(sync_gateway_executable_path):
-            raise Exception(
-                "Path to sync gateway executable passed in does not exist: {0}".format(
-                    sync_gateway_executable_path
-                )
+            raise Exception(  # noqa: TRY002
+                f"Path to sync gateway executable passed in does not exist: {sync_gateway_executable_path}"
             )
         sg_binary_path = sync_gateway_executable_path
 
@@ -770,7 +764,7 @@ def make_sg_tasks(
     status_tasks = make_curl_task(
         name="Collect server status",
         auth_headers=auth_headers,
-        url="{0}/_status".format(sg_url),
+        url=f"{sg_url}/_status",
         log_file="sync_gateway.log",
         content_postprocessors=[password_remover.pretty_print_json],
     )
@@ -791,7 +785,7 @@ def make_sg_tasks(
 
 def discover_sg_binary_path(
     options: optparse.Values,
-    sg_url: Optional[str],
+    sg_url: str | None,
     auth_headers: dict[str, str],
 ) -> str:
     """
@@ -803,10 +797,8 @@ def discover_sg_binary_path(
     """
     if options.sync_gateway_executable:
         if not os.path.exists(options.sync_gateway_executable):
-            raise Exception(
-                "Path to sync gateway executable passed in does not exist: {0}".format(
-                    options.sync_gateway_executable
-                )
+            raise Exception(  # noqa: TRY002
+                f"Path to sync gateway executable passed in does not exist: {options.sync_gateway_executable}"
             )
         return options.sync_gateway_executable
     if sg_url:
@@ -855,7 +847,7 @@ def main() -> NoReturn:
         zip_filename = zip_filename + ".zip"
     zip_dir = os.path.dirname(os.path.abspath(zip_filename))
     if not os.access(zip_dir, os.W_OK | os.X_OK):
-        print("do not have write access to the directory %s" % (zip_dir))
+        print(f"do not have write access to the directory {zip_dir}")
         sys.exit(1)
 
     if options.redact_level != "none" and options.redact_level != "partial":
@@ -913,7 +905,7 @@ def main() -> NoReturn:
 
         # Output the Python version if verbosity was enabled
         if options.verbosity:
-            log("Python version: %s" % sys.version)
+            log(f"Python version: {sys.version}")
 
         # Find path to sg binary
         sg_binary_path = discover_sg_binary_path(options, sg_url, auth_headers)
@@ -945,7 +937,7 @@ def main() -> NoReturn:
 
         # Build redacted zip file
         if should_redact:
-            log("Redacting log files to level: %s" % options.redact_level)
+            log(f"Redacting log files to level: {options.redact_level}")
             runner.redact_and_zip(
                 redact_zip_file, "sgcollect_info", options.salt_value, platform.node()
             )
@@ -955,9 +947,9 @@ def main() -> NoReturn:
             runner.zip(zip_filename, "sgcollect_info", platform.node())
 
             if options.redact_level != "none":
-                print("Zipfile built: {0}".format(redact_zip_file))
+                print(f"Zipfile built: {redact_zip_file}")
 
-            print("Zipfile built: {0}".format(zip_filename))
+            print(f"Zipfile built: {zip_filename}")
 
             if not upload_url:
                 sys.exit(0)
@@ -976,11 +968,11 @@ def main() -> NoReturn:
 def ud(value, should_redact=True):
     if not should_redact:
         return value
-    return "<ud>{0}</ud>".format(value)
+    return f"<ud>{value}</ud>"
 
 
 def get_sgcollect_info_options_task(
-    options: optparse.Values, args: List[str]
+    options: optparse.Values, args: list[str]
 ) -> AllOsTask:
     """
     Create a task that returns all the options used to run sgcollect_info.
@@ -988,7 +980,7 @@ def get_sgcollect_info_options_task(
     should_redact = should_redact_from_options(options)
     return AllOsTask(
         "Echo sgcollect_info cmd line args",
-        "echo options: {0} args: {1}".format(
+        "echo options: {} args: {}".format(
             {
                 k: ud(v, should_redact)
                 for k, v in list(options.__dict__.items())
@@ -1017,7 +1009,7 @@ def get_sg_url(options: optparse.Values, auth_headers: dict[str, str]) -> str:
     2. http://127.0.0.1:4985
     3. https://127.0.0.1:4985
     """
-    possible_urls: List[str] = []
+    possible_urls: list[str] = []
     if options.sync_gateway_url:
         if "://" in options.sync_gateway_url:
             possible_urls.append(options.sync_gateway_url)
@@ -1045,7 +1037,7 @@ def can_connect_to_sg_url(sg_url: str, auth_headers: dict[str, str]) -> bool:
     try:
         response = urlopen(url=sg_url, auth_headers=auth_headers)
         json.load(response)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Failed to communicate with: {sg_url} {e}")
         return False
     return True
@@ -1076,7 +1068,5 @@ def get_basic_authorization_header(username: str, password: str) -> str:
     """
     Return the value for the Authorization header for basic auth.
     """
-    base64string = base64.b64encode((f"{username}:{password}").encode("utf-8")).decode(
-        "utf-8"
-    )
+    base64string = base64.b64encode((f"{username}:{password}").encode()).decode("utf-8")
     return f"Basic {base64string}"

@@ -235,5 +235,6 @@ def test_log_redact_file(tmp_path):
     ]
     updated_text = os.linesep.join(output_log_lines).encode("utf-8")
 
-    redacted_text = gzip.open(redacted_file).read()
+    with gzip.open(redacted_file) as f:
+        redacted_text = f.read()
     assert redacted_text == updated_text

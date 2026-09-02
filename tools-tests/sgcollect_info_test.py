@@ -11,7 +11,6 @@ import os
 import pathlib
 import unittest.mock
 import urllib.error
-from typing import Optional
 
 import pytest
 import sgcollect
@@ -54,9 +53,7 @@ def test_make_collect_logs_heap_profile(tmpdir):
     with unittest.mock.patch(
         "sgcollect.urlopen",
         return_value=io.BytesIO(
-            '{{"logfilepath": "{logpath}"}}'.format(
-                logpath=normalize_path_for_json(tmpdir),
-            ).encode("utf-8")
+            f'{{"logfilepath": "{normalize_path_for_json(tmpdir)}"}}'.encode()
         ),
     ):
         pprof_file = tmpdir.join("pprof_heap_high_01.pb.gz")
@@ -100,8 +97,8 @@ def test_make_collect_logs_tasks_duplicate_files(should_redact, tmp_path):
             auth_headers={},
         )
         # assert all tasks have unique log_file names
-        assert len(set(t.log_file for t in tasks)) == len(tasks)
-        assert set(t.log_file for t in tasks) == {
+        assert len({t.log_file for t in tasks}) == len(tasks)
+        assert {t.log_file for t in tasks} == {
             "sg_info.log",
             "sg_info.log.1",
             "sg_info-01.log.gz",
@@ -154,8 +151,8 @@ def test_get_paths_from_expvars_no_url() -> None:
 )
 def test_get_paths_from_expvars(
     expvar_output: bytes,
-    expected_sg_path: Optional[str],
-    expected_config_path: Optional[str],
+    expected_sg_path: str | None,
+    expected_config_path: str | None,
     tmpdir: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -350,17 +347,19 @@ def test_get_auth_headers() -> None:
         }
         # Is the right behavior to ignore empty username, in the case that admin auth is disabled?
         assert sgcollect.get_auth_headers(username="") == {}
-    with unittest.mock.patch.dict("os.environ", {"SG_USERNAME": "envusername"}):
-        with unittest.mock.patch(
+    with (
+        unittest.mock.patch.dict("os.environ", {"SG_USERNAME": "envusername"}),
+        unittest.mock.patch(
             "getpass.getpass", return_value="stdinpassword", autospec=True
-        ):
-            assert sgcollect.get_auth_headers(username="") == {
-                "Authorization": sgcollect.get_basic_authorization_header(
-                    "envusername", "stdinpassword"
-                )
-            }
-            assert sgcollect.get_auth_headers(username="cmdlineusername") == {
-                "Authorization": sgcollect.get_basic_authorization_header(
-                    "cmdlineusername", "stdinpassword"
-                )
-            }
+        ),
+    ):
+        assert sgcollect.get_auth_headers(username="") == {
+            "Authorization": sgcollect.get_basic_authorization_header(
+                "envusername", "stdinpassword"
+            )
+        }
+        assert sgcollect.get_auth_headers(username="cmdlineusername") == {
+            "Authorization": sgcollect.get_basic_authorization_header(
+                "cmdlineusername", "stdinpassword"
+            )
+        }

@@ -35,14 +35,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'release/')}}
 
+env:
+  # Pinned action versions, referenced by the steps below through their YAML anchors.
+  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+
 jobs:
   scripts:
     runs-on: ubuntu-latest
     name: Verify service script installation.
     steps:
-      - uses: actions/checkout@v4
+      - uses: *actions_checkout_version
       # build sync gateway since the executable is needed for service installation
-      - uses: actions/setup-go@v5
+      - uses: *actions_setup_go_version
         with:
           go-version: 1.23.3
       - name: "Build Sync Gateway"
