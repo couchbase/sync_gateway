@@ -2004,14 +2004,11 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 
 		peers := sgrRunner.SetupSGRPeers(t)
-		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
-		remoteURL, err := url.Parse(remoteURLString)
-		require.NoError(t, err)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		const (
-			// test url encoding of username/password with these
-			username = "AL_1c.e-@"
-		)
+		// Replicating as this user below is what exercises URL encoding of the credentials
+		const username = "AL_1c.e-@"
+		rt2.CreateUser(username, []string{username})
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
@@ -2026,7 +2023,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
-			RemoteDBURL: remoteURL,
+			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
 				DatabaseContext: rt1.GetDatabase(),
 			},
