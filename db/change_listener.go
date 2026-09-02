@@ -181,16 +181,17 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 		return true
 	}
 
-	if event.Opcode != sgbucket.FeedOpMutation {
-		// nothing more to handle and this point if the event is not a mutation
-		return true
-	}
-
+	// Notify for principal mutations *and* deletions to wake changes feeds.
 	docType := listener.DocumentType(event.Key)
 	if docType == DocTypeUser || docType == DocTypeRole {
 		// defer to notify after callback completion
 		key := channels.NewID(string(event.Key), principalDocCollectionIDForChannelID)
 		defer listener.notifyKey(listener.ctx, key)
+	}
+
+	if event.Opcode != sgbucket.FeedOpMutation {
+		// nothing more to handle at this point if the event is not a mutation
+		return true
 	}
 
 	listener.OnDocChanged(event, docType)

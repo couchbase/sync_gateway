@@ -3053,21 +3053,11 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	})
 }
 
-// TestBlipRefreshUser makes sure there is no panic if a user gets deleted during a replication
-func TestBlipRefreshUser(t *testing.T) {
-
-	t.Skip("CBG-3512 known test flake")
-	/*
-		This probably happens because:
-
-		1. The unsubChanges comes in before the delete mutation arrives over the caching DCP feed. This fails the test (doesn’t return 503)
-
-		2. The delete mutation arrives over the caching feed, notifies the changes feed, and the changes feed errors out before the unsubChanges call is made. The test passes in this case
-
-		3. The delete mutation arrives over the caching feed, and the unsubChanges call is made before the changes feed is notified/errors out. The test also passes in this case
-
-			The problem is that adding a doc after the DELETE happens means that it might be guaranteed to hit (2) and never hit (3). I don't see how to make the test as is guarantee to catch this panic.
-	*/
+// TestBlipMessageAfterUserDelete ensures a blip message on a connection whose user has since been
+// deleted fails with CBLReconnectErrorCode, CBL's cue to reconnect and re-authenticate.  Uses a
+// one-shot pull so no continuous changes feed is running, which would tear down the connection and
+// race with the message below - TestBlipPullReplicationUserDeleted covers that teardown.
+func TestBlipMessageAfterUserDelete(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
@@ -3079,38 +3069,31 @@ func TestBlipRefreshUser(t *testing.T) {
 		defer rt.Close()
 
 		const username = "bernard"
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+		rt.CreateUser(username, []string{"chan1"})
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			Username: username,
 		})
-		defer btc.Close()
+		defer client.Close()
 
 		version := rt.PutDoc(docID, `{"channels": ["chan1"]}`)
 
-		// Start a regular one-shot pull
-		btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Continuous: true, Since: "0"})
-
-		_ = btcRunner.WaitForDoc(btc.id, docID)
-
-		_, ok := btcRunner.GetVersion(btc.id, docID, version)
-		require.True(t, ok)
-
-		// delete user with an active blip connection
-		response := rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username, "")
-		RequireStatus(t, response, http.StatusOK)
-
+		// A one-shot pull only sends what the cache has already seen
 		rt.WaitForPendingChanges()
 
-		// further requests will 500, but shouldn't panic
+		btcRunner.StartOneshotPull(client.id)
+		btcRunner.WaitForVersion(client.id, docID, version)
+
+		// refreshUser only reloads once the deletion has been notified over the caching feed
+		userWaiter := rt.NewUserWaiter(username)
+		rt.DeleteUser(username)
+		db.WaitForUserWaiterChange(t, userWaiter)
+
 		unsubChangesRequest := blip.NewRequest()
 		unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
-		btc.addCollectionProperty(unsubChangesRequest)
-		btc.pullReplication.sendMsg(unsubChangesRequest)
+		btcRunner.SingleCollection(client.id).sendPullMsg(unsubChangesRequest)
 
-		testResponse := unsubChangesRequest.Response()
-		require.Equal(t, strconv.Itoa(db.CBLReconnectErrorCode), testResponse.Properties[db.BlipErrorCode])
-		body, err := testResponse.Body()
-		require.NoError(t, err)
-		require.NotContains(t, string(body), "Panic:")
+		response := unsubChangesRequest.Response()
+		require.Equal(t, strconv.Itoa(db.CBLReconnectErrorCode), response.Properties[db.BlipErrorCode])
 	})
 }
 
@@ -3915,5 +3898,95 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 			"2-abc", "exampleChannelName[11]",
 			"chanexampleChannelName[10]",
 		)
+	})
+}
+
+// TestBlipPullReplicationUserDeleted ensures that deleting a user terminates a running BLIP pull
+// replication for that user.  Unlike the HTTP _changes tests, a changes feed error here tears down the
+// whole websocket connection.
+func TestBlipPullReplicationUserDeleted(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+		defer rt.Close()
+
+		const (
+			username = "alice"
+			channel  = "chan1"
+		)
+		rt.CreateUser(username, []string{channel})
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+
+		pullStats := rt.GetDatabase().DbStats.CBLReplicationPull()
+		dbStats := rt.GetDatabase().DbStats.Database()
+
+		// Replicate a doc to the client, so we know the continuous changes feed is running
+		beforeDelete := rt.PutDoc("beforeDelete", `{"channels":["`+channel+`"]}`)
+		btcRunner.WaitForVersion(client.id, "beforeDelete", beforeDelete)
+		require.Equal(t, int64(1), pullStats.NumPullReplActiveContinuous.Value())
+
+		// BlipTesterClient opens separate websockets for pull and push, so only one is torn down here
+		replicationsBeforeDelete := dbStats.NumReplicationsActive.Value()
+
+		rt.DeleteUser(username)
+
+		// The changes feed ends...
+		base.RequireWaitForStat(t, pullStats.NumPullReplActiveContinuous.Value, 0)
+		// ...and takes the whole blip connection with it
+		base.RequireWaitForStat(t, dbStats.NumReplicationsActive.Value, replicationsBeforeDelete-1)
+
+		// A doc written in the deleted user's channel afterwards isn't replicated, and no new
+		// subChanges is started
+		rt.PutDoc("afterDelete", `{"channels":["`+channel+`"]}`)
+		rt.WaitForPendingChanges()
+		require.Equal(t, int64(0), pullStats.NumPullReplActiveContinuous.Value())
+		require.Equal(t, int64(1), pullStats.NumPullReplTotalContinuous.Value())
+	})
+}
+
+// TestBlipPullReplicationRolePurge ensures that purging a role revokes the role's channels from a
+// running BLIP pull replication for a user who holds that role.
+func TestBlipPullReplicationRolePurge(t *testing.T) {
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+		defer rt.Close()
+
+		const (
+			username = "alice"
+			roleName = "chan1-role"
+			// roleChannel is granted only via the role, userChannel is granted directly
+			roleChannel = "chan1"
+			userChannel = "chan2"
+		)
+		rt.CreateRole(roleName, []string{roleChannel})
+		rt.CreateUser(username, []string{userChannel}, roleName)
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{Username: username})
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+
+		// Prove the role grant is in effect before the purge
+		beforePurge := rt.PutDoc("beforePurge", `{"channels":["`+roleChannel+`"]}`)
+		btcRunner.WaitForVersion(client.id, "beforePurge", beforePurge)
+
+		// The purge has to be notified before the writes below, otherwise the replication wakes on the
+		// document notification alone and is still holding the stale channel set.
+		userWaiter := rt.NewUserWaiter(username)
+		RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
+		db.WaitForUserWaiterChange(t, userWaiter)
+
+		// Changes are sent in sequence order, so once afterPurgeAllowed arrives, afterPurgeRevoked would
+		// already have arrived if the revoked channel were still being served.  The purge leaks a
+		// sequence (CBG-5789), so afterPurgeRevoked isn't visible until CachePendingSeqMaxWait elapses.
+		revoked := rt.PutDoc("afterPurgeRevoked", `{"channels":["`+roleChannel+`"]}`)
+		allowed := rt.PutDoc("afterPurgeAllowed", `{"channels":["`+userChannel+`"]}`)
+		btcRunner.WaitForVersion(client.id, "afterPurgeAllowed", allowed)
+
+		_, found := btcRunner.GetVersion(client.id, "afterPurgeRevoked", revoked)
+		require.False(t, found, "document in the purged role's channel was replicated to the client")
 	})
 }
