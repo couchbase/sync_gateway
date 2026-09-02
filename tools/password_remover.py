@@ -13,7 +13,6 @@ Redacts sensitive data in config files
 import json
 import re
 import traceback
-from typing import Union
 from urllib.parse import urlparse
 
 
@@ -39,11 +38,9 @@ def tag_userdata_in_server_config(json_text):
         formatted_json_string = json.dumps(parsed_json, indent=4)
         return formatted_json_string
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(
-            "Exception trying to tag config user data in {0}.  Exception: {1}".format(
-                json_text, e
-            )
+            f"Exception trying to tag config user data in {json_text}.  Exception: {e}"
         )
         traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag config user data.  See logs for details"}'
@@ -76,11 +73,9 @@ def tag_userdata_in_db_config(json_text):
         formatted_json_string = json.dumps(parsed_json, indent=4)
         return formatted_json_string
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(
-            "Exception trying to tag db config user data in {0}.  Exception: {1}".format(
-                json_text, e
-            )
+            f"Exception trying to tag db config user data in {json_text}.  Exception: {e}"
         )
         traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag db config user data.  See logs for details"}'
@@ -130,7 +125,7 @@ def UD(value):
     """
     Tags the given value with User Data tags.
     """
-    return "<ud>{0}</ud>".format(value)
+    return f"<ud>{value}</ud>"
 
 
 def remove_passwords_from_config(config_fragment):
@@ -167,12 +162,8 @@ def remove_passwords(json_text):
         formatted_json_string = json.dumps(parsed_json, indent=4) + "\n"
         return formatted_json_string
 
-    except Exception as e:
-        print(
-            "Exception trying to remove passwords from {0}.  Exception: {1}".format(
-                json_text, e
-            )
-        )
+    except Exception as e:  # noqa: BLE001
+        print(f"Exception trying to remove passwords from {json_text}.  Exception: {e}")
         traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
@@ -189,7 +180,7 @@ def lower_keys_dict(json_text):
         return k.lower() if isinstance(k, str) else k
 
     def lower_level(kv):
-        return dict((lower(k), iterate(v)) for k, v in kv.items())
+        return {lower(k): iterate(v) for k, v in kv.items()}
 
     json_dict = json.loads(json_text)
     return lower_level(json_dict)
@@ -202,10 +193,8 @@ def pretty_print_json(json_text):
     """
     try:
         json_text = json.dumps(json.loads(json_text), indent=4)
-    except Exception as e:
-        print(
-            "Exception trying to parse JSON {0}.  Exception: {1}".format(json_text, e)
-        )
+    except Exception as e:  # noqa: BLE001
+        print(f"Exception trying to parse JSON {json_text}.  Exception: {e}")
     return json_text + "\n"
 
 
@@ -225,13 +214,7 @@ def strip_password_from_url(url_string):
     if parsed_url.username is None and parsed_url.password is None:
         return url_string
 
-    new_url = "{0}://{1}:*****@{2}:{3}/{4}".format(
-        parsed_url.scheme,
-        parsed_url.username,
-        parsed_url.hostname,
-        parsed_url.port,
-        parsed_url.query,
-    )
+    new_url = f"{parsed_url.scheme}://{parsed_url.username}:*****@{parsed_url.hostname}:{parsed_url.port}/{parsed_url.query}"
     return new_url
 
 
@@ -267,7 +250,7 @@ def replace_backticks_with_double_quotes(match):
     return expr
 
 
-def convert_to_valid_json(invalid_json: Union[bytes, str]) -> str:
+def convert_to_valid_json(invalid_json: bytes | str) -> str:
     """
     Converts json text from a sync gateway config file to valid json by replacing backticks with double quotes and escaping invalid json characters inside the backquotes.
     """
