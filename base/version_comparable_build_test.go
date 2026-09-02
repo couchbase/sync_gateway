@@ -260,7 +260,7 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 
 func TestAtLeastReleaseVersion(t *testing.T) {
 	// Feature shipped across three release trains at different patch levels.
-	minVersions := []string{"7.6.12", "8.0.3", "8.1.0"}
+	minVersions := []string{"7.6.12", "8.0.3", "8.5.0"}
 	testCases := []struct {
 		version   string
 		qualifies bool
@@ -271,9 +271,9 @@ func TestAtLeastReleaseVersion(t *testing.T) {
 		{version: "8.0.2", qualifies: false},
 		{version: "8.0.3", qualifies: true},
 		{version: "8.0.4", qualifies: true},
-		{version: "8.1.0", qualifies: true},
-		{version: "8.1.5", qualifies: true},
-		{version: "8.2.0", qualifies: true},
+		{version: "8.5.0", qualifies: true},
+		{version: "8.5.5", qualifies: true},
+		{version: "8.6.0", qualifies: true},
 		{version: "9.0.0", qualifies: true},
 		{version: "7.6.0", qualifies: false},
 		{version: "7.2.0", qualifies: false},

@@ -171,11 +171,11 @@ func (pv *ComparableBuildVersion) AtLeastMinorVersion(major, minor uint8) bool {
 // AtLeastReleaseVersion reports whether pv is at least the minimum version applicable to its
 // release train, given one minimum version per train. This is for features shipped (or backported)
 // across several release trains at different patch levels - e.g. a feature available in 7.6.12,
-// 8.0.3, and 8.1.0. The rule per train (matched on major.minor):
+// 8.0.3, and 8.5.0. The rule per train (matched on major.minor):
 //   - 7.6.x qualifies only if >= 7.6.12
 //   - 8.0.x qualifies only if >= 8.0.3
-//   - 8.1.x qualifies (>= 8.1.0, i.e. any 8.1 build)
-//   - anything newer than every listed minimum (e.g. 8.2.0) qualifies
+//   - 8.5.x qualifies (>= 8.5.0, i.e. any 8.5 build)
+//   - anything newer than every listed minimum (e.g. 8.6.0) qualifies
 //   - anything in an older, unlisted train does not qualify
 //
 // Returns false if pv is nil or no minimum versions are provided.

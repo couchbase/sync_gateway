@@ -200,7 +200,7 @@ def main() -> None:
         services = ", ".join(s.strip() for s in opts.services.split(",") if s.strip())
 
         # A version containing '/' is a full docker image reference (e.g.
-        # ghcr.io/cb-vanilla/server:8.1.0), not a plain version string - pull it directly via
+        # ghcr.io/cb-vanilla/server:8.5.0), not a plain version string - pull it directly via
         # docker.image instead of letting cbdinocluster resolve 'version' against its registries.
         # 'version' is still set to the same raw string in this case: cbdinocluster's node
         # deployment (getImagesForNodeGrps) skips version resolution entirely whenever

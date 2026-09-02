@@ -316,7 +316,7 @@ func TestClusterVersion(t testing.TB) *ComparableBuildVersion {
 
 // RequireServerVersionForTest skips the test unless the Couchbase Server backing the test bucket pool
 // is at least the minimum version required for its release train. Pass one minimum version per release
-// train the feature shipped in, e.g. RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.1.0"). This
+// train the feature shipped in, e.g. RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.5.0"). This
 // is a no-op when not running against Couchbase Server, since those tests are gated separately.
 func RequireServerVersionForTest(t testing.TB, minReleaseVersions ...string) {
 	if !sgtest.TestUseCouchbaseServer() {
