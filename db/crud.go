@@ -1028,7 +1028,11 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
 func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if bodyBytes, attachments, _, _ := db.getRevision(ctx, doc, revid); bodyBytes != nil {
+		bodyBytes, attachments, _, err := db.getRevision(ctx, doc, revid)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return nil, "", nil, err
+		}
+		if bodyBytes != nil {
 			return bodyBytes, revid, attachments, nil
 		}
 	}
@@ -2481,48 +2485,27 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	// channels & access, for purposes of updating the doc:
 	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.GetRevTreeID())
 	if err != nil {
-		// A promoted tombstone branch may have no body left anywhere - the tombstone revision never had
-		// one of its own, and its ancestors' backup bodies expire after old_rev_expiry_seconds. A
-		// tombstone needs no channels or access, so continue rather than failing the write.
-		//
-		// Any other unavailable body means a read that should have succeeded. getAvailableRev discards
-		// the underlying error and reports every failure as a 404, so a promoted live revision here may
-		// be hiding a transient bucket error rather than a genuinely missing body - fail the write and
-		// let it be retried, instead of stripping the channels and access of a live document.
+		// Only a tombstone is safe to leave without channels - fail the write for a live revision
+		// rather than stripping its channels and access.
 		winner := doc.History[doc.GetRevTreeID()]
 		if winner == nil || !winner.Deleted || !base.IsDocNotFoundError(err) {
 			return
 		}
+		// A promoted tombstone can have no body left anywhere - it never had one of its own, and its
+		// ancestors' backups expire after old_rev_expiry_seconds. It needs no channels or access, so
+		// leave it with none rather than failing the write.
+		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q body unavailable, leaving promoted tombstone in no channels: %v", base.UD(doc.ID), doc.GetRevTreeID(), err)
+		return nil, nil, nil, nil, "", nil
 	}
 
-	// curBodyBytes is empty when the promoted tombstone's body is no longer available. Leave curBody
-	// nil so we fall through to the handling below.
 	var curBody Body
-	if len(curBodyBytes) > 0 {
-		if err = curBody.Unmarshal(curBodyBytes); err != nil {
-			return
-		}
+	if err = curBody.Unmarshal(curBodyBytes); err != nil {
+		return
 	}
 
-	if curBody != nil {
-		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
-			base.UD(doc.ID), newRevID, doc.GetRevTreeID())
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.GetRevTreeID())
-		if err != nil {
-			return
-		}
-	} else {
-		// A tombstoned branch has been promoted and its body is no longer available, so the sync
-		// function can't be run for it. The doc is a tombstone, so leave it in no channels and with no
-		// access grants rather than failing the write.
-		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-			"on it (err=%v)", base.UD(doc.ID), doc.GetRevTreeID(), err)
-		channelSet = nil
-		access = nil
-		roles = nil
-		err = nil
-	}
-	return
+	base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
+		base.UD(doc.ID), newRevID, doc.GetRevTreeID())
+	return db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.GetRevTreeID())
 }
 
 func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments updatedAttachments) error {

@@ -352,7 +352,7 @@ func TestSyncFnLiveBranchPromotedWithUnreadableBody(t *testing.T) {
 	// Tombstone branch b, which promotes branch a to winning revision.
 	response := rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, version2b.RevTreeID), "")
-	RequireStatus(t, response, http.StatusNotFound)
+	RequireStatus(t, response, http.StatusServiceUnavailable)
 
 	leakyDataStore.SetGetRawCallback(nil)
 
@@ -438,6 +438,98 @@ func setUpPromotedTombstoneBranch(t *testing.T, rt *RestTester, docID string) (w
 	require.Empty(t, doc.History[tombstoneRev].Body, "the tombstone should hold no inline body")
 	require.Empty(t, doc.History[tombstoneRev].BodyKey, "the tombstone should hold no body key")
 	return winnerRev, tombstoneRev
+}
+
+// TestSyncFnPromotedTombstoneWithUnreadableBackupBody is the tombstone twin of
+// TestSyncFnLiveBranchPromotedWithUnreadableBody: the promoted branch's backup bodies are still in the
+// bucket, and the only reason the read fails is a transient bucket error.
+//
+// getAvailableRev discards getRevision's error and reports every failure as a 404, so
+// recalculateSyncFnForActiveRev cannot tell that apart from a body that has genuinely expired. The
+// document's channels and access grants must not be dropped on the strength of an error that says
+// nothing about whether the body exists - the write has to fail and be retried instead.
+func TestSyncFnPromotedTombstoneWithUnreadableBackupBody(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD)
+
+	const testDocID = "testdoc"
+
+	testCases := []struct {
+		name             string
+		failBackupReads  bool
+		expectedStatus   int
+		expectTombstoned bool
+	}{
+		{
+			// The backup body is readable, so the sync function runs for the promoted tombstone and its
+			// grants are recalculated as normal.
+			name:             "readable backup body",
+			failBackupReads:  false,
+			expectedStatus:   http.StatusOK,
+			expectTombstoned: true,
+		},
+		{
+			// The backup body is present but unreadable, so there is no basis for stripping the grants.
+			name:             "transient backup body read error",
+			failBackupReads:  true,
+			expectedStatus:   http.StatusServiceUnavailable,
+			expectTombstoned: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				GuestEnabled:      true,
+				LeakyBucketConfig: &base.LeakyBucketConfig{},
+				SyncFn:            `function(doc){ channel(doc.channels); access("bob", "grantedChan"); }`,
+			})
+			defer rt.Close()
+
+			winnerRev, tombstoneRev := setUpPromotedTombstoneBranch(t, rt, testDocID)
+			collection, ctx := rt.GetSingleTestDatabaseCollection()
+
+			doc, err := collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			_, bobGranted := doc.Access["bob"]
+			require.True(t, bobGranted, "the live document should have granted bob access, got %+v", doc.Access)
+
+			// Unlike TestSyncFnPromotedTombstoneWithExpiredBackupBody the backup bodies are left in place -
+			// a transient bucket error is the only thing standing between the write and the body.
+			if testCase.failBackupReads {
+				leakyDataStore, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+				require.True(t, ok)
+				leakyDataStore.SetGetRawCallback(func(key string) error {
+					if strings.HasPrefix(key, base.RevBodyPrefix) || strings.HasPrefix(key, base.RevPrefix) {
+						return gocb.ErrTimeout
+					}
+					return nil
+				})
+				defer leakyDataStore.SetGetRawCallback(nil)
+			}
+
+			// Tombstoning the winner promotes the tombstone branch, whose body only its ancestors' backups
+			// can supply.
+			response := rt.SendAdminRequest(http.MethodDelete,
+				fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, winnerRev), "")
+			AssertStatus(t, response, testCase.expectedStatus)
+
+			doc, err = collection.GetDocument(ctx, testDocID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			if testCase.expectTombstoned {
+				assert.Equal(t, tombstoneRev, doc.GetRevTreeID(), "the tombstone branch should have been promoted")
+				assert.True(t, doc.IsDeleted())
+			} else {
+				assert.Equal(t, winnerRev, doc.GetRevTreeID(), "the refused write should not have changed the winning revision")
+				assert.False(t, doc.IsDeleted())
+			}
+
+			// Either way the sync function's output for the promoted branch is intact - it either ran, or the
+			// write was refused before anything was recalculated.
+			_, bobGranted = doc.Access["bob"]
+			assert.True(t, bobGranted, "bob's access grant should not have been revoked, got %+v", doc.Access)
+		})
+	}
 }
 
 // TestSyncFnPromotedTombstoneWithExpiredBackupBody pins what recalculateSyncFnForActiveRev does when
