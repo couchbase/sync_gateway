@@ -538,7 +538,7 @@ func (m *sgReplicateManager) StartReplications(ctx context.Context) error {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
-				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", replicationID, err)
+				base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", base.UD(replicationID), err)
 				m.saveInitializationError(replicationCfg, err)
 				continue
 			}
