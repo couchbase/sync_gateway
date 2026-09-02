@@ -1619,7 +1619,7 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 						return nil, nil, false, nil, err
 					}
 
-					_, err = doc.addNewerRevisionsToRevTreeHistory(ctx, opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
+					err = doc.addNewerRevisionsToRevTreeHistory(ctx, opts.NewDoc, currentRevIndex, parent, opts.RevTreeHistory)
 					if err != nil {
 						return nil, nil, false, nil, err
 					}
@@ -4080,20 +4080,16 @@ func (doc *Document) alignRevTreeHistoryForHLVWrite(ctx context.Context, db *Dat
 		}
 	}
 
-	newRev, err := doc.addNewerRevisionsToRevTreeHistory(ctx, newDoc, currentRevIndex, parent, revTreeHistory)
-	if err != nil {
-		return err
-	}
-	// If we are skipping history check we are either allowing conflicting tombstones or we are aligning a rev tree post
-	// conflict resolution. In both cases we do not want to update the current rev here on the document.
-	if !skipHistoryCheck {
-		doc.SetRevTreeID(newRev)
-	}
-	return nil
+	// Note that the document's current rev is deliberately not set here. documentUpdateFunc calls
+	// updateWinningRevAndSetDocFlags once this callback returns, which selects the winning revision of the
+	// rev tree - including the incoming revisions added below - and makes it the document's current rev.
+	// Setting the current rev here as well makes the pre-update rev captured by documentUpdateFunc identical
+	// to the new rev, which suppresses the channel and access update for the incoming revision.
+	return doc.addNewerRevisionsToRevTreeHistory(ctx, newDoc, currentRevIndex, parent, revTreeHistory)
 }
 
 // addNewerRevisionsToRevTreeHistory will add any newer rev tree id's to the local document history
-func (doc *Document) addNewerRevisionsToRevTreeHistory(ctx context.Context, newDoc *Document, currentRevIndex int, parent string, docHistory []string) (string, error) {
+func (doc *Document) addNewerRevisionsToRevTreeHistory(ctx context.Context, newDoc *Document, currentRevIndex int, parent string, docHistory []string) error {
 	// currentRevIndex here is the index of the incoming rev tree list to start from.
 	for i := currentRevIndex - 1; i >= 0; i-- {
 		err := doc.History.addRevision(ctx, newDoc.ID,
@@ -4103,12 +4099,11 @@ func (doc *Document) addNewerRevisionsToRevTreeHistory(ctx context.Context, newD
 				Deleted: i == 0 && newDoc.Deleted})
 
 		if err != nil {
-			return "", err
+			return err
 		}
 		parent = docHistory[i]
 	}
-	// return last element added from docHistory, this will be the doc's new current rev for writes that are aligning rev tree
-	return parent, nil
+	return nil
 }
 
 const (
