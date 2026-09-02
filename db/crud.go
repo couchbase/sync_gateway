@@ -3544,7 +3544,9 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	doc.SetRevTreeID(newCurrentRev)
 
 	collectionWithUser := &DatabaseCollectionWithUser{DatabaseCollection: c}
-	if _, err = collectionWithUser.assignSequence(ctx, 0, doc, nil); err != nil {
+	// No unused sequences to release alongside the allocated one - assignSequence only returns those for
+	// a caller that came in holding a sequence, and this one always allocates fresh.
+	if _, _, err = collectionWithUser.assignSequence(ctx, 0, doc, nil); err != nil {
 		return rollback(err)
 	}
 	doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(cas, revSeqNo, mou)
