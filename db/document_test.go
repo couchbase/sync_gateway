@@ -767,8 +767,7 @@ func TestAlignRevTreeHistory(t *testing.T) {
 			base.RequireKeysEqual(t, tc.expectedRevTree, doc.History)
 
 			// alignRevTreeHistoryForHLVWrite doesn't set the current rev - documentUpdateFunc calls
-			// updateWinningRevAndSetDocFlags after the update callback, and the incoming revision must be the
-			// winning revision of the aligned tree.
+			// updateWinningRevAndSetDocFlags after the update callback
 			doc.updateWinningRevAndSetDocFlags(ctx)
 			assert.Equal(t, tc.expectedActive, doc.GetRevTreeID())
 			if tc.expectedTombstone != "" {
