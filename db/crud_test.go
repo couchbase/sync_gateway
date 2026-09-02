@@ -2711,3 +2711,69 @@ func TestPutExistingCurrentVersionISGRLegacyDocChannels(t *testing.T) {
 	_, inB := doc.Channels["chanB"]
 	require.True(t, inB, "chanB not persisted on ISGR write to legacy doc, channels=%v", doc.Channels)
 }
+
+// TestPutExistingCurrentVersionISGROldRevBackup verifies an ISGR write backs up the superseded revision body in the
+// same way a local write does.
+//
+// documentUpdateFunc captures the document's pre-update rev after the update callback has run, and that one value
+// drives both the channel/access update and storeOldBodyInRevTreeAndUpdateCurrent. A callback that sets the current
+// rev itself makes the captured rev identical to the incoming rev, which silently disables both - so this asserts the
+// second consequence alongside the channel coverage above. See https://www.couchbase.com/forums/t/41307
+//
+// Note the backup is only written when delta sync is off and legacy rev tree data is stored - with delta sync enabled
+// postWriteUpdateHLV writes a CV-keyed backup instead. Both are the defaults for a test database.
+func TestPutExistingCurrentVersionISGROldRevBackup(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
+	require.False(t, collection.deltaSyncEnabled(), "precondition: delta sync off, so the rev tree ID keyed backup is used")
+	require.True(t, collection.storeLegacyRevTreeData(), "precondition: legacy rev tree data is stored")
+
+	const (
+		rev1Body = `{"channels":["chanA"],"value":"one"}`
+		rev2Body = `{"channels":["chanB"],"value":"two"}`
+	)
+
+	// a locally updated document, for comparison - every write path other than ISGR backs the superseded body up
+	localRev1, _, err := collection.Put(ctx, "localDoc", unmarshalBody(t, rev1Body))
+	require.NoError(t, err)
+	localRev2Body := unmarshalBody(t, rev2Body)
+	localRev2Body[BodyRev] = localRev1
+	_, _, err = collection.Put(ctx, "localDoc", localRev2Body)
+	require.NoError(t, err)
+
+	// the same update arriving over ISGR
+	isgrRev1, _, err := collection.Put(ctx, "isgrDoc", unmarshalBody(t, rev1Body))
+	require.NoError(t, err)
+	localDoc, err := collection.GetDocument(ctx, "isgrDoc", DocUnmarshalAll)
+	require.NoError(t, err)
+
+	incomingHLV := localDoc.HLV.Copy()
+	incomingHLV.PreviousVersions = HLVVersions{incomingHLV.SourceID: incomingHLV.Version}
+	incomingHLV.SourceID = "remote"
+	incomingHLV.Version = localDoc.HLV.Version + 1000
+
+	_, _, _, err = collection.PutExistingCurrentVersion(ctx, PutDocOptions{
+		NewDoc:         CreateTestDocument("isgrDoc", "", unmarshalBody(t, rev2Body), false, 0),
+		NewDocHLV:      incomingHLV,
+		RevTreeHistory: []string{"2-def", isgrRev1},
+		ISGRWrite:      true,
+	})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		docID         string
+		supersededRev string
+	}{
+		{docID: "localDoc", supersededRev: localRev1},
+		{docID: "isgrDoc", supersededRev: isgrRev1},
+	} {
+		t.Run(tc.docID, func(t *testing.T) {
+			backup, _, _, err := collection.getOldRevisionJSON(ctx, tc.docID, tc.supersededRev)
+			require.NoError(t, err, "superseded revision %s of %s was not backed up", tc.supersededRev, tc.docID)
+			require.JSONEq(t, rev1Body, string(backup))
+		})
+	}
+}
