@@ -259,40 +259,83 @@ func TestAtLeastMinorDowngradeVersion(t *testing.T) {
 }
 
 func TestAtLeastReleaseVersion(t *testing.T) {
-	// Feature shipped across three release trains at different patch levels.
-	minVersions := []string{"7.6.12", "8.0.3", "8.5.0"}
-	testCases := []struct {
-		version   string
-		qualifies bool
+	tests := []struct {
+		name        string
+		minVersions []string
+		versions    map[string]bool
 	}{
-		{version: "7.6.11", qualifies: false},
-		{version: "7.6.12", qualifies: true},
-		{version: "7.6.13", qualifies: true},
-		{version: "8.0.2", qualifies: false},
-		{version: "8.0.3", qualifies: true},
-		{version: "8.0.4", qualifies: true},
-		{version: "8.5.0", qualifies: true},
-		{version: "8.5.5", qualifies: true},
-		{version: "8.6.0", qualifies: true},
-		{version: "9.0.0", qualifies: true},
-		{version: "7.6.0", qualifies: false},
-		{version: "7.2.0", qualifies: false},
+		{
+			name:        "backported to two trains",
+			minVersions: []string{"7.6.12", "8.0.3"},
+			versions: map[string]bool{
+				"7.2.0":  false,
+				"7.6.0":  false,
+				"7.6.11": false,
+				"7.6.12": true,
+				"7.6.13": true,
+				"8.0.2":  false,
+				"8.0.3":  true,
+				"8.0.4":  true,
+				// unlisted trains newer than every minimum qualify without being listed
+				"8.1.0": true,
+				"8.5.0": true,
+				"9.0.0": true,
+			},
+		},
+		{
+			name: "newest train listed, holding unlisted trains to its floor",
+			// listing 8.5.0 raises the bar for unlisted trains, so 8.1.x no longer qualifies
+			minVersions: []string{"7.6.12", "8.0.3", "8.5.0"},
+			versions: map[string]bool{
+				"8.0.3": true,
+				"8.1.0": false,
+				"8.5.0": true,
+				"8.5.5": true,
+				"8.6.0": true,
+			},
+		},
+		{
+			name:        "build-numbered minimum",
+			minVersions: []string{"7.6.0", "8.0.4", "8.1.0@2674"},
+			versions: map[string]bool{
+				"7.6.0":      true,
+				"8.0.3":      false,
+				"8.0.4":      true,
+				"8.1.0@2673": false,
+				"8.1.0@2674": true,
+				"8.1.1":      true,
+				"8.5.0":      true,
+			},
+		},
 	}
 
-	mins := make([]*ComparableBuildVersion, 0, len(minVersions))
-	for _, v := range minVersions {
-		parsed, err := NewComparableBuildVersionFromString(v)
-		require.NoError(t, err)
-		mins = append(mins, parsed)
-	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mins := make([]*ComparableBuildVersion, 0, len(test.minVersions))
+			for _, v := range test.minVersions {
+				parsed, err := NewComparableBuildVersionFromString(v)
+				require.NoError(t, err)
+				mins = append(mins, parsed)
+			}
 
-	for _, test := range testCases {
-		t.Run(test.version, func(t *testing.T) {
-			version, err := NewComparableBuildVersionFromString(test.version)
-			require.NoError(t, err)
-			require.Equal(t, test.qualifies, version.AtLeastReleaseVersion(mins...))
+			for versionStr, qualifies := range test.versions {
+				t.Run(versionStr, func(t *testing.T) {
+					version, err := NewComparableBuildVersionFromString(versionStr)
+					require.NoError(t, err)
+					require.Equal(t, qualifies, version.AtLeastReleaseVersion(mins...))
+				})
+			}
 		})
 	}
+}
+
+func TestAtLeastReleaseVersionNoMinimums(t *testing.T) {
+	version, err := NewComparableBuildVersionFromString("8.5.0")
+	require.NoError(t, err)
+	require.False(t, version.AtLeastReleaseVersion())
+
+	var nilVersion *ComparableBuildVersion
+	require.False(t, nilVersion.AtLeastReleaseVersion(version))
 }
 
 func BenchmarkComparableBuildVersion(b *testing.B) {

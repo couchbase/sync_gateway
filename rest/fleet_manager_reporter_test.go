@@ -29,7 +29,7 @@ func TestSendingMetricsToNsServerCollector(t *testing.T) {
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
-	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.5.0")
+	base.RequireAtLeastServerVersionForTest(t, "7.6.12", "8.0.3")
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -60,7 +60,7 @@ func TestSendingMetricsToNsServerCollectorAsMobileSyncGatewayRole(t *testing.T) 
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
-	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.5.0")
+	base.RequireAtLeastServerVersionForTest(t, "7.6.12", "8.0.3")
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -89,7 +89,7 @@ func TestSendingMetricsWhenCollectorDisabled(t *testing.T) {
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
-	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.5.0")
+	base.RequireAtLeastServerVersionForTest(t, "7.6.12", "8.0.3")
 
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
@@ -131,7 +131,7 @@ func TestNoContentResponseForCollector(t *testing.T) {
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
-	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.5.0")
+	base.RequireAtLeastServerVersionForTest(t, "7.6.12", "8.0.3")
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 
@@ -154,7 +154,7 @@ func TestGetCollectorSettings(t *testing.T) {
 	if !sgtest.TestUseCouchbaseServer() {
 		t.Skip("Fleet Manager Collector only works on CBS")
 	}
-	base.RequireServerVersionForTest(t, "7.6.12", "8.0.3", "8.5.0")
+	base.RequireAtLeastServerVersionForTest(t, "7.6.12", "8.0.3")
 	rt := NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 	ctx := rt.Context()
