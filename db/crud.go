@@ -371,9 +371,17 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 	opts.PreserveExpiry = true // if doc has expiry, we should preserve this
 
+	rawGlobalSync, err := doc.marshalGlobalXattr()
+	if err != nil {
+		return nil, base.RedactErrorf("failed to marshal global sync data when trying to compact channel history for doc:%s. Error: %v", base.UD(docid), err)
+	}
+
 	updatedXattr := map[string][]byte{
 		base.SyncXattrName: rawSyncXattr,
 		base.MouXattrName:  rawMouXattr,
+	}
+	if rawGlobalSync != nil {
+		updatedXattr[base.GlobalXattrName] = rawGlobalSync
 	}
 	_, err = c.dataStore.UpdateXattrs(ctx, key, 0, cas, updatedXattr, opts)
 	compactedChannelArray := compactedChannels.ToArray()
