@@ -172,7 +172,7 @@ func getMultiBranchTestRevtree1(ctx context.Context, unconflictedBranchNumRevs, 
 					Parent:  parentRevId,
 					Deleted: true,
 				}
-				err := revTree.addRevision("testdoc", revInfo)
+				err := revTree.addRevision(ctx, "testdoc", revInfo)
 				if err != nil {
 					panic(fmt.Sprintf("Error: %v", err))
 				}
@@ -255,7 +255,7 @@ func TestRevTreeUnmarshalOldFormatNonWinningRev(t *testing.T) {
 	ri.Channels = nil
 
 	// non-winning revisions do retain channel information, so populate this for the expected expected
-	err = expected.addRevision("", RevInfo{
+	err = expected.addRevision(base.TestCtx(t), "", RevInfo{
 		ID:       "3-drei",
 		Parent:   "2-two",
 		Body:     []byte(`{"foo":"buzz"}`),
@@ -341,7 +341,7 @@ func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.Equal(t, testmap, tempmap)
 
-	err := tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	err := tempmap.addRevision(base.TestCtx(t), "testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	require.NoError(t, err)
 	assert.Equal(t, "3-three", tempmap.getParent("4-four"))
 }
@@ -350,7 +350,7 @@ func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.Equal(t, testmap, tempmap)
 
-	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
+	err := tempmap.addRevision(base.TestCtx(t), "testdoc", RevInfo{Parent: "3-three"})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc"), err.Error())
 }
 
@@ -358,7 +358,7 @@ func TestRevTreeAddDuplicateRevID(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.Equal(t, testmap, tempmap)
 
-	err := tempmap.addRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
+	err := tempmap.addRevision(base.TestCtx(t), "testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two"), err.Error())
 }
 
@@ -366,7 +366,7 @@ func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 	tempmap := testmap.copy()
 	assert.Equal(t, testmap, tempmap)
 
-	err := tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
+	err := tempmap.addRevision(base.TestCtx(t), "testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four"), err.Error())
 }
 
@@ -398,7 +398,7 @@ func TestRevTreeChannelMapLeafOnly(t *testing.T) {
 	// but let's force it to ensure we're not storing old revs in ChannelsMap
 	ri.Channels = base.SetOf("EN")
 
-	err = tree.addRevision(t.Name(), RevInfo{
+	err = tree.addRevision(base.TestCtx(t), t.Name(), RevInfo{
 		ID:       "4-four",
 		Parent:   "3-three",
 		Channels: nil, // we don't store channels for winning revs
@@ -435,13 +435,13 @@ func TestRevTreeWinningRev(t *testing.T) {
 	assert.Equal(t, "3-three", winner)
 	assert.True(t, branched)
 	assert.True(t, conflict)
-	err := tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	err := tempmap.addRevision(ctx, "testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	require.NoError(t, err)
 	winner, branched, conflict = tempmap.winningRevision(ctx)
 	assert.Equal(t, "4-four", winner)
 	assert.True(t, branched)
 	assert.True(t, conflict)
-	err = tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	err = tempmap.addRevision(ctx, "testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
 	require.NoError(t, err)
 	winner, branched, conflict = tempmap.winningRevision(ctx)
 	assert.Equal(t, "3-drei", winner)
@@ -1073,7 +1073,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 func addAndGet(t *testing.T, revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
 
 	revBody := []byte(`{"foo":"bar"}`)
-	err := revTree.addRevision("foobar", RevInfo{
+	err := revTree.addRevision(base.TestCtx(t), "foobar", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
@@ -1124,7 +1124,7 @@ func TestPruneRevisionsWithDisconnected(t *testing.T) {
 }
 
 func addPruneAndGet(ctx context.Context, revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
-	_ = revTree.addRevision("doc", RevInfo{
+	_ = revTree.addRevision(ctx, "doc", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
@@ -1251,7 +1251,7 @@ func addRevs(ctx context.Context, revTree RevTree, startingParentRevId string, n
 			Deleted:  false,
 			Channels: channels,
 		}
-		_ = revTree.addRevision("testdoc", revInfo)
+		_ = revTree.addRevision(ctx, "testdoc", revInfo)
 
 		generation += 1
 
