@@ -710,6 +710,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 
 	writeSeq := func(seq uint64) {
 		WriteDirect(t, collection, []string{"ABC"}, seq)
+		require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, seq))
 		drainBoth()
 	}
 
