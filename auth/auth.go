@@ -736,10 +736,13 @@ func (auth *Authenticator) DeleteUser(user User) error {
 	return auth.datastore.Delete(user.DocID())
 }
 
-func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) error {
-	if purge {
-		return auth.datastore.Delete(role.DocID())
-	}
+// PurgeRole removes the role document from the bucket.
+func (auth *Authenticator) PurgeRole(role Role) error {
+	return auth.datastore.Delete(role.DocID())
+}
+
+// DeleteRole deletes the role. This invalidates the role at deleteSeq
+func (auth *Authenticator) DeleteRole(role Role, deleteSeq uint64) error {
 	return auth.casUpdatePrincipal(role, func(p Principal) (updatedPrincipal Principal, err error) {
 		if p == nil || p.IsDeleted() {
 			return p, base.ErrUpdateCancel
