@@ -89,6 +89,22 @@ func NoCloseClone(b Bucket) *LeakyBucket {
 	return NewLeakyBucket(b, LeakyBucketConfig{IgnoreClose: true})
 }
 
+// NoCloseLeakyClone returns a new test bucket referencing the same underlying bucket and
+// bucketspec, wrapped in a LeakyBucket with the given config, and a no-op close function.  Used
+// when multiple references to the same bucket are needed and the leaky bucket callbacks are wanted
+// on one of them, e.g. a node of a multi-node RestTesterCluster.  IgnoreClose is forced on, since
+// one reference closing must not close the bucket the others still share - unlike
+// LeakyBucketClone, whose close closes the bucket it was cloned from.
+func (tb *TestBucket) NoCloseLeakyClone(c LeakyBucketConfig) *TestBucket {
+	c.IgnoreClose = true
+	return &TestBucket{
+		Bucket:     NewLeakyBucket(tb.Bucket, c),
+		BucketSpec: tb.BucketSpec,
+		closeFn:    func(context.Context) {},
+		t:          tb.t,
+	}
+}
+
 // NoCloseClone returns a new test bucket referencing the same underlying bucket and bucketspec, but
 // with an IgnoreClose leaky bucket, and a no-op close function.  Used when multiple references to the same bucket are needed.
 func (tb *TestBucket) NoCloseClone() *TestBucket {

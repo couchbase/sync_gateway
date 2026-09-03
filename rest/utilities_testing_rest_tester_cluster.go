@@ -30,6 +30,20 @@ type RestTesterCluster struct {
 	groupID         string
 }
 
+// nodeTestBucket returns the per-node handle on the cluster's shared bucket. It never closes the
+// shared bucket, so any one node closing leaves the others usable; RestTesterCluster.Close closes
+// it once at the end.
+//
+// The handle cannot be made leaky by setting LeakyBucketConfig on the node's RestTesterConfig,
+// because NewRestTester rejects that combined with a CustomTestBucket (see RestTester.Bucket) - so
+// a pre-wrapped leaky bucket is passed in instead, which RestTester detects via AsLeakyBucket.
+func nodeTestBucket(tb *base.TestBucket, config *RestTesterClusterConfig) *base.TestBucket {
+	if config.LeakyBucketConfig == nil {
+		return tb.NoCloseClone()
+	}
+	return tb.NoCloseLeakyClone(*config.LeakyBucketConfig)
+}
+
 func (rtc *RestTesterCluster) nodes() []*RestTester {
 	rtc.restTestersLock.RLock()
 	defer rtc.restTestersLock.RUnlock()
@@ -81,7 +95,7 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 	rtConfig := &RestTesterConfig{
 		GroupID:             &rtc.groupID,
 		PersistentConfig:    true,
-		CustomTestBucket:    rtc.testBucket.NoCloseClone(),
+		CustomTestBucket:    nodeTestBucket(rtc.testBucket, rtc.config),
 		MutateStartupConfig: rtc.config.MutateStartupConfig,
 	}
 	rt := NewRestTester(rtc.t, rtConfig)
@@ -107,8 +121,9 @@ func (rtc *RestTesterCluster) Close(ctx context.Context) {
 
 // RestTesterClusterConfig are options to create multiple RestTester objects backed by the same bucket.
 type RestTesterClusterConfig struct {
-	NumNodes            uint8                // Number of RestTester objects to create
-	MutateStartupConfig func(*StartupConfig) // Passes this option to the RestTesterConfig for each RestTester
+	NumNodes            uint8                   // Number of RestTester objects to create
+	MutateStartupConfig func(*StartupConfig)    // Passes this option to the RestTesterConfig for each RestTester
+	LeakyBucketConfig   *base.LeakyBucketConfig // If set, every node's bucket handle is a LeakyBucket with this config, for tests that need its callbacks
 }
 
 func defaultRestTesterClusterConfig() *RestTesterClusterConfig {
@@ -137,7 +152,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 			rtConfig := &RestTesterConfig{
 				GroupID:             &groupID,
 				PersistentConfig:    true,
-				CustomTestBucket:    tb.NoCloseClone(),
+				CustomTestBucket:    nodeTestBucket(tb, config),
 				MutateStartupConfig: config.MutateStartupConfig,
 			}
 			rt := NewRestTester(t, rtConfig)
