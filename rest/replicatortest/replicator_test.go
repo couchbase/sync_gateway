@@ -2004,15 +2004,11 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 
 		peers := sgrRunner.SetupSGRPeers(t)
-		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
-		remoteURL, err := url.Parse(remoteURLString)
-		require.NoError(t, err)
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		const (
-			// test url encoding of username/password with these
-			username = "AL_1c.e-@"
-			password = rest.RestTesterDefaultUserPassword
-		)
+		// Replicating as this user below is what exercises URL encoding of the credentials
+		const username = "AL_1c.e-@"
+		rt2.CreateUser(username, []string{username})
 
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
@@ -2027,7 +2023,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
-			RemoteDBURL: remoteURL,
+			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
 				DatabaseContext: rt1.GetDatabase(),
 			},
@@ -2055,6 +2051,11 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		body, err := doc.GetDeepMutableBody()
 		require.NoError(t, err)
 		assert.Equal(t, "rt2", body["source"])
+
+		// the receiving peer must run its own sync function and persist the resulting channels - ChannelMap values
+		// are nil for channels the doc is currently in, so check for key presence
+		_, inChannel := doc.Channels[username]
+		assert.True(t, inChannel, "channels not persisted on pulled doc, channels=%v", doc.Channels)
 
 		// replication status updates just after the document has been written in a blip handler callback, so the
 		// document can exist before stat is updated
@@ -3184,6 +3185,11 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		body, err := doc.GetDeepMutableBody()
 		require.NoError(t, err)
 		assert.Equal(t, "rt1", body["source"])
+
+		// the receiving peer must run its own sync function and persist the resulting channels - ChannelMap values
+		// are nil for channels the doc is currently in, so check for key presence
+		_, inChannel := doc.Channels[username]
+		assert.True(t, inChannel, "channels not persisted on pushed doc, channels=%v", doc.Channels)
 
 		assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPush)
 	})
@@ -8052,4 +8058,180 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 
 	resp := passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
 	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed with invalid run_as user")
+}
+
+// TestActiveReplicatorPullNewDocChannels reproduces a new document pulled over ISGR being written without its
+// channels (channel_set: null), leaving it absent from the authenticated changes feed on the receiving Sync Gateway.
+// See https://www.couchbase.com/forums/t/41307
+func TestActiveReplicatorPullNewDocChannels(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	const (
+		username = "bob"
+		chanName = "event-123"
+	)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
+		remoteURL, err := url.Parse(remoteURLString)
+		require.NoError(t, err)
+
+		// user on the receiving (active) side with access to the channel the sync function will assign
+		activeRT.CreateUser(username, []string{chanName})
+
+		ctx1 := activeRT.Context()
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePull,
+			RemoteDBURL: remoteURL,
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+		require.NoError(t, ar.Start(ctx1))
+
+		// brand new document created on the remote, assigned to chanName by the sync function
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		version := passiveRT.PutDoc(docID, `{"source":"rt2","channels":["`+chanName+`"]}`)
+
+		sgrRunner.WaitForVersion(docID, activeRT, version)
+
+		rt1collection, rt1ctx := activeRT.GetSingleTestDatabaseCollection()
+		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		require.NotZero(t, doc.Sequence)
+		// ChannelMap values are nil for channels the doc is currently in, so check for key presence
+		_, inChannel := doc.Channels[chanName]
+		require.True(t, inChannel, "channel not persisted on pulled doc, channels=%v", doc.Channels)
+
+		// _user/bob doc is also in the feed, hence 2
+		changes := activeRT.WaitForChanges(2, "/{{.keyspace}}/_changes", username, false)
+		require.Equal(t, docID, changes.Results[1].ID)
+	})
+}
+
+// TestActiveReplicatorPushNewDocChannels is the push equivalent of TestActiveReplicatorPullNewDocChannels - a new
+// document pushed over ISGR must have its channels persisted on the receiving (passive) peer.
+func TestActiveReplicatorPushNewDocChannels(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	const (
+		username = "alice"
+		chanName = "event-123"
+	)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{chanName},
+		})
+		activeRT, passiveRT, _ := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
+		ctx1 := activeRT.Context()
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePush,
+			RemoteDBURL: userDBURL(passiveRT, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+		require.NoError(t, ar.Start(ctx1))
+
+		// brand new document created on the active peer, assigned to chanName by the sync function
+		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		version := activeRT.PutDoc(docID, `{"source":"rt1","channels":["`+chanName+`"]}`)
+
+		sgrRunner.WaitForVersion(docID, passiveRT, version)
+
+		passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
+		doc, err := passiveRTCollection.GetDocument(passiveRTCtx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		require.NotZero(t, doc.Sequence)
+		// ChannelMap values are nil for channels the doc is currently in, so check for key presence
+		_, inChannel := doc.Channels[chanName]
+		require.True(t, inChannel, "channel not persisted on pushed doc, channels=%v", doc.Channels)
+
+		// _user/alice doc is also in the feed, hence 2
+		changes := passiveRT.WaitForChanges(2, "/{{.keyspace}}/_changes", username, false)
+		require.Equal(t, docID, changes.Results[1].ID)
+	})
+}
+
+// TestActiveReplicatorPullUpdatedDocChannels verifies that an ISGR update which changes a document's channels is
+// reflected in the receiving peer's channel metadata - the doc must be added to the new channel and removed from the
+// old one, rather than retaining a stale channel set.
+func TestActiveReplicatorPullUpdatedDocChannels(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	const (
+		username = "alice"
+		chanA    = "chanA"
+		chanB    = "chanB"
+	)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			UserChannelAccess: []string{chanA, chanB},
+		})
+		activeRT, passiveRT, _ := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
+		ctx1 := activeRT.Context()
+
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:          rest.SafeDocumentName(t, t.Name()),
+			Direction:   db.ActiveReplicatorTypePushAndPull,
+			RemoteDBURL: userDBURL(passiveRT, username),
+			ActiveDB: &db.Database{
+				DatabaseContext: activeRT.GetDatabase(),
+			},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			ReplicationStatsMap:    dbReplicatorStats(t, activeRT.GetDatabase()),
+			CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+		require.NoError(t, ar.Start(ctx1))
+
+		// doc originates LOCALLY on active, so active's channel metadata starts out correct
+		docID := rest.SafeDocumentName(t, t.Name()) + "doc1"
+		v1 := activeRT.PutDoc(docID, `{"channels":["`+chanA+`"]}`)
+		activeRTCollection, activeRTCtx := activeRT.GetSingleTestDatabaseCollection()
+		localDoc, err := activeRTCollection.GetDocument(activeRTCtx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		_, hasA := localDoc.Channels[chanA]
+		require.True(t, hasA, "precondition: local write should set chanA, channels=%v", localDoc.Channels)
+
+		sgrRunner.WaitForVersion(docID, passiveRT, v1)
+
+		// now update the doc on rt2, moving it from chanA to chanB, and let it replicate back to rt1
+		v2 := passiveRT.UpdateDoc(docID, v1, `{"channels":["`+chanB+`"]}`)
+		sgrRunner.WaitForVersion(docID, activeRT, v2)
+
+		doc, err := activeRTCollection.GetDocument(activeRTCtx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		t.Logf("active channels after ISGR update: %+v", doc.Channels)
+		_, inB := doc.Channels[chanB]
+		assert.True(t, inB, "chanB (added by the ISGR update) not persisted, channels=%v", doc.Channels)
+		removalA := doc.Channels[chanA]
+		assert.NotNil(t, removalA, "chanA should be marked removed after the ISGR update, channels=%v", doc.Channels)
+	})
 }
