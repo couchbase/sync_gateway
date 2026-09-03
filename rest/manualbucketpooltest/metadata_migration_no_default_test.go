@@ -328,8 +328,8 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 	base.TestRequiresCollections(t)
 
 	// MB-73113: a deferred index build never finishes on any collection once _default._default has been dropped.
-	// Fixed in 8.1.0@2674. There is no 8.0.x backport yet, so the 8.0 minimum stays at a build no release will reach.
-	base.RequireServerVersionForTest(t, "7.6.0", "8.0.99", "8.1.0@2674")
+	// Fixed in 8.0.4, 8.1.0@2674, and all 8.5.0+ builds. 7.6.x is unaffected, hence the 7.6.0 minimum.
+	base.RequireAtLeastServerVersionForTest(t, "7.6.0", "8.0.4", "8.1.0@2674")
 
 	ctx := base.TestCtx(t)
 
