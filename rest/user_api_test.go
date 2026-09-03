@@ -1616,7 +1616,7 @@ func TestDeletedRoleChanHistory(t *testing.T) {
 			assert.True(t, channels.Contains("channel"))
 
 			// Delete role
-			err = a.DeleteRole(role, false, 2)
+			err = a.DeleteRole(role, 2)
 			assert.NoError(t, err)
 
 			// get deleted role and assert channel is in channel history
