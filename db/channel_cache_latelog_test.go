@@ -27,6 +27,8 @@ import (
 // drainUntilWait reads events from a continuous _changes feed until MultiChangesFeed sends its nil
 // "caught up, waiting" marker, returning the sequences delivered in this drain. Callers that only need
 // the barrier behaviour can ignore the return value.
+//
+// The nil marker means the feed had nothing sendable that iteration, not that it saw the caller's last write.
 func drainUntilWait(t *testing.T, feed <-chan *ChangeEntry) (drained []uint64) {
 	t.Helper()
 	for {
@@ -94,6 +96,10 @@ func shortWaitCacheWithLateLogMax(lateLogMax int) CacheOptions {
 // by ChannelCacheMaxLength instead of growing forever. Without the length cap this same scenario grows the
 // count unbounded with the cycle count (the behaviour the reproduction test used to assert); with the
 // cap, _purgeLateLogEntries force-drops the stalled feed's pinned lastSequence and the queue plateaus.
+//
+// The assertions use listeners registered against the cache, not feed2: an un-drained feed isn't reliably
+// parked (buffered output channel, waitForCacheUpdate's 100ms poll), so it may return after the cap pruned it
+// and be rolled back - correctly - which is why the rollback count is logged rather than asserted on.
 func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
@@ -133,6 +139,12 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	drainUntilWait(t, feed1)
 	drainUntilWait(t, feed2)
 
+	// stalledSince never advances, standing in for the hung client's pin; healthySince reads every cycle.
+	stalledSince := abcCache.RegisterLateSequenceClient()
+	healthySince := abcCache.RegisterLateSequenceClient()
+	require.Equal(t, uint64(0), stalledSince)
+	require.Equal(t, uint64(0), healthySince)
+
 	// A skip/late cycle so both feeds register a late-sequence listener, then abandon feed2.
 	writeSeq(1)
 	drainUntilWait(t, feed2)
@@ -142,7 +154,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 
 	// Repeat the skip/late cycle many times with feed2 abandoned. Each late-resolution write triggers
 	// AddLateSequence -> _purgeLateLogEntries, which must keep lateLogs at or below the cap by
-	// force-dropping feed2's stuck lastSequence - even though feed2's goroutine never advances it.
+	// force-dropping the stalled listener's pinned entry - even though it is never released.
 	const numCycles = 40
 	seq := uint64(3)
 	for range numCycles {
@@ -151,18 +163,21 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 		writeSeq(seq - 1) // resolves seq-1 late -> AddLateSequence -> force-prune
 
 		require.LessOrEqualf(t, abcCache.lateLogCount(), int64(lateLogMax),
-			"ABC's lateLogs must stay bounded by ChannelCacheMaxLength (%d) even though feed2 is abandoned - "+
-				"the length cap should force-prune its stuck lastSequence", lateLogMax)
+			"ABC's lateLogs must stay bounded by ChannelCacheMaxLength (%d) even though the stalled listener "+
+				"still pins the front of the queue", lateLogMax)
+
+		_, healthySince, err = abcCache.GetLateSequencesSince(healthySince)
+		require.NoErrorf(t, err, "a listener that reads every cycle must not be force-pruned (pinned at #%d)", healthySince)
 	}
 
-	// The abandoned feed never returns to read, so it never observes that its lastSequence was pruned -
-	// no rollback is ever counted. The memory is reclaimed by the force-prune alone. (A returning feed
-	// would increment this - see TestLateLogsForcedRollbackResetsSlowFeed.)
-	require.Equal(t, int64(0), forcedRollbacks(),
-		"an abandoned feed's lateLogs are reclaimed by the force-prune without any rollback being counted")
+	// The stalled pin is what the cap reclaimed: reading from it must now fail. The probe is itself a rollback.
+	feedRollbacks := forcedRollbacks()
+	_, _, err = abcCache.GetLateSequencesSince(stalledSince)
+	require.ErrorContains(t, err, "Missing previous sequence",
+		"the stalled listener's pinned entry (#%d) should have been force-pruned from lateLogs", stalledSince)
 
-	t.Logf("ABC late entries after %d cycles with feed2 abandoned: %d (cap %d); total num_entries_in_late_feed: %d",
-		numCycles, abcCache.lateLogCount(), lateLogMax, numEntriesInLateFeed())
+	t.Logf("ABC late entries after %d cycles with feed2 abandoned: %d (cap %d); total num_entries_in_late_feed: %d; feed rollbacks: %d",
+		numCycles, abcCache.lateLogCount(), lateLogMax, numEntriesInLateFeed(), feedRollbacks)
 }
 
 // TestLateLogsForcedRollbackResetsSlowFeed shows the safety-net side of the cap: when a slow (but not
