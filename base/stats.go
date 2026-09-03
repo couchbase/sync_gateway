@@ -93,6 +93,7 @@ const (
 	StatAddedVersion3dot3dot0     = "3.3.0"
 	StatAddedVersion4dot0dot0     = "4.0.0"
 	StatAddedVersion4dot0dot6     = "4.0.6"
+	StatAddedVersion4dot0dot8     = "4.0.8"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
@@ -452,6 +453,11 @@ type CacheStats struct {
 	ChannelCacheChannelsEvictedInactive *SgwIntStat `json:"chan_cache_channels_evicted_inactive"`
 	// The total number of active channel cache channels evicted, based on ‘not recently used’ criteria.
 	ChannelCacheChannelsEvictedNRU *SgwIntStat `json:"chan_cache_channels_evicted_nru"`
+	// The total number of entries currently held across all channels' late-arriving-sequence queues (lateLogs).
+	NumEntriesInLateFeed *SgwIntStat `json:"num_entries_in_late_feed"`
+	// The total number of times a continuous _changes feed was forced to roll back to its low sequence because
+	// its lastSequence was pruned from a channel's lateLogs (length/age cap firing on a lagging feed).
+	LateFeedForcedRollbacks *SgwIntStat `json:"late_feed_forced_rollbacks"`
 	// The total number of channel cache compaction runs.
 	ChannelCacheCompactCount *SgwIntStat `json:"chan_cache_compact_count"`
 	// The total amount of time taken by channel cache compaction across all compaction runs.
@@ -1358,6 +1364,14 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.NumEntriesInLateFeed, err = NewIntStat(SubsystemCacheKey, "num_entries_in_late_feed", StatUnitNoUnits, NumEntriesInLateFeedDesc, StatAddedVersion4dot0dot8, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.LateFeedForcedRollbacks, err = NewIntStat(SubsystemCacheKey, "late_feed_forced_rollbacks", StatUnitNoUnits, LateFeedForcedRollbacksDesc, StatAddedVersion4dot0dot8, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ChannelCacheCompactCount, err = NewIntStat(SubsystemCacheKey, "chan_cache_compact_count", StatUnitNoUnits, ChanCacheCompactCountDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1470,6 +1484,8 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsAdded)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedInactive)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedNRU)
+	prometheus.Unregister(d.CacheStats.NumEntriesInLateFeed)
+	prometheus.Unregister(d.CacheStats.LateFeedForcedRollbacks)
 	prometheus.Unregister(d.CacheStats.ChannelCacheCompactCount)
 	prometheus.Unregister(d.CacheStats.ChannelCacheCompactTime)
 	prometheus.Unregister(d.CacheStats.ChannelCacheHits)
