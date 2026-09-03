@@ -1647,6 +1647,93 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 }
 
+// TestReleaseSequenceOnRecalculateSyncFnFailure verifies that a sequence allocated by documentUpdateFunc is
+// released when the update subsequently fails - here by rejecting the sync function recalculation performed for a
+// newly winning revision (CBG-5763).
+func TestReleaseSequenceOnRecalculateSyncFnFailure(t *testing.T) {
+	defer SuspendSequenceBatching()()
+
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	//    1-a
+	//   /   \
+	// 2-a   2-b
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", Body{"key1": "value1"}, []string{"1-a"}, false)
+	require.NoError(t, err, "add 1-a")
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{"recalculated": true}, []string{"2-a", "1-a"}, false)
+	require.NoError(t, err, "add 2-a")
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{"key1": "value1"}, []string{"2-b", "1-a"}, false)
+	require.NoError(t, err, "add 2-b")
+
+	// Reject 2-a's body, but not the tombstone written below
+	_, err = collection.UpdateSyncFun(ctx, `function(doc){if (doc.recalculated) {throw({forbidden: "rejected"})} channel("chan");}`)
+	require.NoError(t, err)
+
+	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
+
+	// Tombstoning the winning branch makes 2-a current again, so the sync function is recalculated against 2-a's
+	// body and rejects.  The update fails after a sequence has been allocated for the tombstone.
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", Body{BodyDeleted: true}, []string{"3-b", "2-b"}, false)
+	require.ErrorContains(t, err, "rejected")
+
+	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
+	require.Equal(t, int64(1), releasedSequenceCount)
+}
+
+// TestReleaseSequencesAcrossCASRetries verifies that sequences allocated on earlier CAS retries are still
+// released when a later attempt fails before allocating a sequence of its own.
+func TestReleaseSequencesAcrossCASRetries(t *testing.T) {
+	defer SuspendSequenceBatching()()
+
+	const docID = "doc1"
+	var collection *DatabaseCollectionWithUser
+	var collectionCtx context.Context
+
+	// Competing writes to force two CAS retries of the 3-a write below.  The first only bumps the doc's sequence,
+	// the second moves the winning revision away from 2-a so the third attempt is rejected as a conflict.
+	forceCASRetries := false
+	casRetries := 0
+	updateCallback := func(key string) {
+		if key != docID || !forceCASRetries || casRetries >= 2 {
+			return
+		}
+		forceCASRetries = false
+		defer func() { forceCASRetries = true }()
+		casRetries++
+
+		history := []string{"2-0", "1-a"} // loses to 2-a, so 2-a remains the parent of the pending 3-a write
+		if casRetries == 2 {
+			history = []string{"3-z", "2-a", "1-a"} // beats 3-a, leaving 2-a as a non-winning parent
+		}
+		_, _, err := collection.PutExistingRevWithBody(collectionCtx, docID, Body{"competing": casRetries}, history, false)
+		require.NoError(t, err)
+	}
+
+	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{UpdateCallback: updateCallback})
+	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	defer db.Close(ctx)
+	collection, collectionCtx = GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	_, _, err := collection.PutExistingRevWithBody(collectionCtx, docID, Body{"key1": "value1"}, []string{"1-a"}, false)
+	require.NoError(t, err, "add 1-a")
+	_, _, err = collection.PutExistingRevWithBody(collectionCtx, docID, Body{"key1": "value1"}, []string{"2-a", "1-a"}, false)
+	require.NoError(t, err, "add 2-a")
+
+	startReleasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value()
+
+	// The first two attempts each allocate a sequence, the third is rejected before it reaches assignSequence -
+	// both the sequence accumulated in unusedSequences and the one held by the failing attempt must be released.
+	forceCASRetries = true
+	_, _, err = collection.PutExistingRevWithBody(collectionCtx, docID, Body{"key1": "value2"}, []string{"3-a", "2-a", "1-a"}, true)
+	require.ErrorContains(t, err, "conflict")
+	require.Equal(t, 2, casRetries)
+
+	releasedSequenceCount := db.DbStats.Database().SequenceReleasedCount.Value() - startReleasedSequenceCount
+	require.Equal(t, int64(2), releasedSequenceCount)
+}
+
 func TestDocUpdateCorruptSequence(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
