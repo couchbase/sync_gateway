@@ -849,6 +849,10 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		var err error
 		revTreeHistory, err = toHistory(docRev.History, knownRevs, maxHistory)
 		if err != nil {
+			// The only way toHistory fails is an encoded history splitRevisionList rejects, which means
+			// the document's rev tree could not be expressed on the wire - a metadata problem with the
+			// document rather than a replication problem.
+			handleChangesResponseCollection.dbStats().Database().InvalidRevTreeCount.Add(1)
 			err := base.RedactErrorf("Could not get rev tree history for %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
 			base.WarnfCtx(ctx, "%s", err)
 			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)

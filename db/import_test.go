@@ -1576,6 +1576,94 @@ func getBucketDocument(t *testing.T, collection *DatabaseCollection, docID strin
 	}
 }
 
+// TestWritePathRepairForcesCasRetryAfterImport:
+// Tests that repair is committed against post import version of the doc on write
+func TestWritePathRepairForcesCasRetryAfterImport(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	const docID = "corruptThenSDKWriteThenPut"
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	require.NoError(t, collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"sdk":true}`)))
+	dbCtx.FlushRevisionCacheForTest()
+
+	// the write callback imports, then the repair must see a stale doc.Cas and force a retry rather than
+	// repairing against the pre-import document
+	base.AssertLogContains(t, "Repaired invalid rev tree for doc <ud>"+docID+"</ud>", func() {
+		_, _, err := collection.Put(ctx, docID, Body{"fromSG": true})
+		require.Error(t, err, "a Put with no matching rev against an existing document is a conflict")
+	})
+
+	// whatever happened to the caller's write, the repair itself committed against the post-import
+	// document - so the tree left behind is valid and internally consistent
+	currentRev, tree := revTreeState(t, ctx, collection, docID)
+	t.Logf("after the write: currentRev=%q tree=%v", currentRev, tree)
+
+	// the import added its revision under 2-def at generation 3; the repair then renumbered 2-def to
+	// 3-def and re-pointed the import's revision onto its renamed parent at generation 4
+	gen, digest := ParseRevID(ctx, currentRev)
+	require.Equal(t, 4, gen, "import created generation 3, the repair should have renumbered it to 4")
+	assert.Equal(t, map[string]string{
+		"1-abc":       "",
+		"2-abc":       "1-abc",
+		"3-def":       "2-abc",
+		"4-" + digest: "3-def",
+	}, tree, "unexpected rev tree after import + repair")
+
+	syncData, _, _ := getSyncAndMou(t, collection, docID)
+	require.NoError(t, syncData.History.verifyIncreasingGenerations(),
+		"the write path left the document with a non-increasing generation")
+	_, inTree := syncData.History[currentRev]
+	assert.True(t, inTree, "current revision %q is not in the rev tree", currentRev)
+	_, renamedStillPresent := tree["2-def"]
+	assert.False(t, renamedStillPresent, "the renamed revision 2-def should be gone from the tree")
+}
+
+// TestGetPathDoesNotRepairJustImportedDoc:
+// Asserts that on demand import triggered in get path and repair is done in one pass of Get
+func TestGetPathDoesNotRepairJustImportedDoc(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	const docID = "corruptThenSDKWriteRepairOnRead"
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	require.NoError(t, collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"sdk":true}`)))
+	dbCtx.FlushRevisionCacheForTest()
+
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	// the import committed, so the document the repair was handed carries the post-import CAS
+	require.NotZero(t, doc.Cas)
+
+	currentRev, tree := revTreeState(t, ctx, collection, docID)
+	t.Logf("after one read: bucket currentRev=%q tree=%v", currentRev, tree)
+
+	// one read did both: the import added its revision under 2-def at generation 3, then the repair
+	// renumbered 2-def to 3-def and re-pointed the import's revision onto it at generation 4
+	gen, digest := ParseRevID(ctx, currentRev)
+	require.Equal(t, 4, gen, "import created generation 3, the repair should have renumbered it to 4")
+	assert.Equal(t, map[string]string{
+		"1-abc":       "",
+		"2-abc":       "1-abc",
+		"3-def":       "2-abc",
+		"4-" + digest: "3-def",
+	}, tree, "unexpected rev tree after import + repair")
+	_, renamedStillPresent := tree["2-def"]
+	assert.False(t, renamedStillPresent, "the renamed revision 2-def should be gone from the tree")
+
+	// the document the caller was handed matches what was committed, tree and all
+	assert.Equal(t, currentRev, doc.GetRevTreeID(), "the returned document disagrees with the bucket")
+	assert.Equal(t, tree, revTreeParents(doc.History), "the returned document's tree disagrees with the bucket")
+	assert.NoError(t, doc.History.verifyIncreasingGenerations(),
+		"the read left the document unrepaired in the bucket")
+}
+
 // TestImportTombstoneAttachmentMetadata records the attachment metadata an import leaves on a tombstone,
 // which is not what a Sync Gateway delete leaves.
 //
