@@ -33,14 +33,17 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 		return base.ErrNotFound
 	}
 
-	// CBG-5789: a purge is a true deletion of the role document and ignores this sequence, so it is
-	// neither written nor released - leaving a permanent gap in the sequence range.
+	// A purge deletes the role document outright, so there is no tombstone to write a sequence to.
+	if purge {
+		return authenticator.PurgeRole(role)
+	}
+
 	seq, err := db.sequences.nextSequence(ctx)
 	if err != nil {
 		return err
 	}
 
-	return authenticator.DeleteRole(role, purge, seq)
+	return authenticator.DeleteRole(role, seq)
 }
 
 // UpdatePrincipal updates or creates a principal from a PrincipalConfig structure.

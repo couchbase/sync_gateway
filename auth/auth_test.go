@@ -2674,11 +2674,11 @@ func TestRoleSoftDelete(t *testing.T) {
 	assert.True(t, role.Channels().Contains("channel"))
 
 	// Delete role
-	err = auth.DeleteRole(role, false, 2)
+	err = auth.DeleteRole(role, 2)
 	assert.NoError(t, err)
 
 	// Delete again
-	err = auth.DeleteRole(role, false, 2)
+	err = auth.DeleteRole(role, 2)
 	assert.NoError(t, err)
 
 	expectedChannelHistory := GrantHistorySequencePair{StartSeq: 1, EndSeq: 2}
@@ -2732,7 +2732,7 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Role deleted
-			err = auth.DeleteRole(role, true, 2)
+			err = auth.PurgeRole(role)
 			assert.NoError(t, err)
 
 			// Successfully able to get inherited channels even though role is missing
@@ -2745,7 +2745,7 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 			"DeleteThenGetUser",
 			func(auth *Authenticator, role Role, t *testing.T) {
 				// Role deleted
-				err := auth.DeleteRole(role, true, 2)
+				err := auth.PurgeRole(role)
 				assert.NoError(t, err)
 
 				// Get user
