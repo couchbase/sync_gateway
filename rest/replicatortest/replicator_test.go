@@ -8247,7 +8247,7 @@ var quietCaseTree = map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": 
 var repairedTreeAtSource = map[string]string{"1-abc": "", "10-abc": "1-abc", "11-def": "10-abc"}
 
 // repairedWireTreeOnPeer is what a peer builds from the repaired document, and it is deliberately not
-// equal to repairedTreeAtSource. SGW encodes revisions as deconding run so 1-abc -> 10-abc gap is sent
+// equal to repairedTreeAtSource. SGW encodes revisions as a descending run so 1-abc -> 10-abc gap is sent
 // as 9-abc -> 10-abc.
 var repairedWireTreeOnPeer = map[string]string{"9-abc": "", "10-abc": "9-abc", "11-def": "10-abc"}
 

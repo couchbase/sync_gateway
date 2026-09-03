@@ -3522,13 +3522,13 @@ func TestRevisionCacheInvalidRevisionError(t *testing.T) {
 //
 //   - a pre-repair CV-keyed entry left by an earlier write must be evicted. This is the dangerous one:
 //     the repair deliberately does not change cv, so the key stays exactly the one a 4.0+ client asks
-//     for while the revID and history it holds go stale. Only reachable with InsertOnWrite, which is the
-//     only path that populates the cache ahead of a read.
+//     for while the revID and history it holds go stale. TestInvalidRevTreeCVEntryCachedByFailedRepair
+//     covers the other way that entry gets there.
 //   - a corrupt revision must never be cached. The load that would have cached it repairs the document
 //     first, so the revision asked for no longer exists and the load fails - and a failed load is
 //     discarded (removeValueForFailedLoad).
 //   - loading the active revision must cache the repaired one. GetActive keys on the rev tree ID of the
-//     document it just loaded, which is post-repair. So must ensure post repair hsitory is cached.
+//     document it just loaded, which is post-repair. So must ensure post-repair history is cached.
 func TestInvalidRevTreeRevisionCacheHandling(t *testing.T) {
 	if base.TestDisableRevCache() {
 		t.Skip("Test asserts on revision cache contents")
@@ -3665,4 +3665,88 @@ func TestInvalidRevTreeRevisionCacheHandling(t *testing.T) {
 		assert.Equal(t, "3-def", currentRev)
 		assert.Equal(t, map[string]string{"1-abc": "", "2-abc": "1-abc", "3-def": "2-abc"}, tree)
 	})
+}
+
+// TestInvalidRevTreeCVEntryCachedByFailedRepair covers a stale CV entry that no write put there. A CV
+// load caches the document even when its history cannot be encoded, so a read whose repair loses a CAS
+// race leaves a pre-repair entry under the CV key - with no InsertOnWrite involved. The repair that
+// eventually succeeds has to evict it, otherwise every later CV lookup keeps serving the pre-repair
+// revision and its unencodable history, and a pre-4.0 pull keeps getting a norev.
+func TestInvalidRevTreeCVEntryCachedByFailedRepair(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("Test asserts on revision cache contents")
+	}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+
+	const docID = "cvCachedCorruptDoc"
+	tb := base.GetTestBucket(t)
+	var raceOnce sync.Once
+	lb := base.NewLeakyBucket(tb, base.LeakyBucketConfig{
+		// fires before the real UpdateXattrs, so the first repair's CAS is stale by the time it lands.
+		// Written through the underlying bucket to avoid re-entering this callback.
+		UpdateXattrsCallback: func(key string) {
+			if key != docID {
+				return
+			}
+			raceOnce.Do(func() {
+				ctx := base.TestCtx(t)
+				var body []byte
+				_, err := tb.GetSingleDataStore().Get(ctx, key, &body)
+				require.NoError(t, err)
+				require.NoError(t, tb.GetSingleDataStore().Set(ctx, key, 0, nil, body))
+			})
+		},
+		IgnoreClose: true,
+	})
+	defer tb.Close(base.TestCtx(t)) // IgnoreClose means dbCtx.Close leaves the underlying bucket open
+
+	dbCtx, ctx := SetupTestDBForBucketWithOptions(t, lb, DatabaseContextOptions{
+		CacheOptions: base.Ptr(DefaultCacheOptions()),
+		RevisionCacheOptions: &RevisionCacheOptions{
+			// MaxItemCount must be set - a zero value silently selects the bypass cache, which stores
+			// nothing. InsertOnWrite is deliberately off: the entry under test comes from a read.
+			MaxItemCount: DefaultRevisionCacheSize,
+			ShardCount:   DefaultRevisionCacheShardCount,
+		},
+	})
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	dbCtx.FlushRevisionCacheForTest()
+
+	syncData, hlv, err := collection.GetDocSyncDataNoImport(ctx, docID, DocUnmarshalSync)
+	require.NoError(t, err)
+	require.Equal(t, "2-def", syncData.GetRevTreeID(), "the document must still be corrupt at this point")
+	cvString := hlv.GetCurrentVersionString()
+
+	// a CV lookup whose repair loses the injected CAS race - the corrupt revision gets cached
+	first, err := collection.GetRev(ctx, docID, cvString, true, nil)
+	require.NoError(t, err)
+	require.Equal(t, "2-def", first.RevID, "precondition: the first repair should have lost the race")
+	cached, found := collection.revisionCache.Peek(ctx, docID, cvString)
+	require.True(t, found, "precondition: the failed repair should have left a CV entry behind")
+	require.Equal(t, "2-def", cached.RevID)
+	_, err = toHistory(cached.History, map[string]bool{}, 0)
+	require.Error(t, err, "precondition: the cached history should be the unencodable corrupt one")
+
+	// the next read repairs the document for real
+	repaired, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, "3-def", repaired.GetRevTreeID())
+	require.Equal(t, cvString, repaired.HLV.GetCurrentVersionString(), "the repair must not change cv")
+	bucketRev, _ := revTreeState(t, ctx, collection, docID)
+	require.Equal(t, "3-def", bucketRev)
+
+	_, found = collection.revisionCache.Peek(ctx, docID, cvString)
+	assert.False(t, found, "the repair should have evicted the pre-repair CV entry")
+
+	// the same CV lookup now reloads, and serves the repaired revision with encodable history
+	second, err := collection.GetRev(ctx, docID, cvString, true, nil)
+	require.NoError(t, err)
+	assert.Equal(t, bucketRev, second.RevID, "the CV lookup should serve the repaired revision")
+	history, err := toHistory(second.History, map[string]bool{}, 0)
+	require.NoError(t, err, "the repaired history must encode, so a pre-4.0 pull gets the revision")
+	assert.Equal(t, []string{"2-abc", "1-abc"}, history, "history is the repaired branch, minus the revision itself")
 }

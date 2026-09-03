@@ -26,7 +26,7 @@ import (
 
 // RequireRevTreeConvergence waits for two or more peers to agree on a document's current revision, then will
 // assert that any other leaf revision(s) are tombstone revisions. Uses GetDocSyncData to avoid read side
-// repair of corrupt metadat through GetDocumentWithRaw. It will return the converged revID and the per peer sync data
+// repair of corrupt metadata through GetDocumentWithRaw. It will return the converged revID and the per peer sync data
 // for callers to assert on.
 func RequireRevTreeConvergence(t *testing.T, docID string, peers ...*RestTester) (convergedRev string, perPeer []db.SyncData) {
 	t.Helper()

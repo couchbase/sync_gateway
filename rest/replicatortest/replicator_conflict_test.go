@@ -2329,7 +2329,7 @@ func getRevTreeID(t *testing.T, parentRevID string, body []byte) string {
 // 9-abc and 8-abc never existed anywhere, they are what encodeRevisions produced for 10-abc and 1-abc because it
 // only expresses a contiguous descending run from start. Repairing the active side renames 10-def to 11-def,
 // and that is what turns a difference into a real conflict: the peer already has a 10-def of its own, so when 11-def
-// arrives as a branch off of 9-abc, its identified as a conflict.
+// arrives as a branch off of 9-abc, it's identified as a conflict.
 var (
 	// activeCorruptTree is the CBG-5713 corruption at the source: 10-def does not exceed its parent 10-abc.
 	activeCorruptTree = map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}

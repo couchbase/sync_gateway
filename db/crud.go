@@ -3585,14 +3585,13 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 		doc.MetadataOnlyUpdate.HexCAS = base.CasToString(casOut)
 	}
 
-	// The read that got us here failed to load, so it cached nothing. Only a prior write can have left a
-	// pre-repair entry behind, and only when the database is configured to insert on write - so that is
-	// the only case that needs invalidating.
-	if c.dbCtx.Options.RevisionCacheOptions != nil && c.dbCtx.Options.RevisionCacheOptions.InsertOnWrite {
-		c.revisionCache.Remove(ctx, doc.ID, previousRev)
-		if doc.HLV != nil {
-			c.revisionCache.Remove(ctx, doc.ID, doc.HLV.GetCurrentVersionString())
-		}
+	// Drop any pre-repair entries. A write with insert-on-write can have cached one, and so can an
+	// earlier CV read whose own repair failed - a CV load caches the document even when its history
+	// can't be encoded. The repair leaves the HLV alone, so the CV key is unchanged and this removes
+	// the entry rather than orphaning it.
+	c.revisionCache.Remove(ctx, doc.ID, previousRev)
+	if doc.HLV != nil {
+		c.revisionCache.Remove(ctx, doc.ID, doc.HLV.GetCurrentVersionString())
 	}
 
 	return nil
