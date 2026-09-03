@@ -82,6 +82,13 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options Attachmen
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || options.Reset {
+			// resetDCPMetadataIfNeeded cannot do this: by the time Run calls it, a.MigrationID is
+			// already the new ID, so the previous run's ID is only available here.
+			if statusDoc.MigrationID != "" {
+				if purgeErr := a.purgeCheckpoints(ctx, a.databaseCtx, statusDoc.MigrationID); purgeErr != nil {
+					base.WarnfCtx(ctx, "Failed to delete checkpoints for previous migration ID %q: %v, these will be abandoned and unused", statusDoc.MigrationID, purgeErr)
+				}
+			}
 			return backgroundManagerInitReset, newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID
@@ -333,6 +340,11 @@ type AttachmentMigrationMeta struct {
 type AttachmentMigrationManagerStatusDoc struct {
 	AttachmentMigrationManagerResponse `json:"status"`
 	AttachmentMigrationMeta            `json:"meta"`
+}
+
+// purgeCompletedCheckpoints implements dcpCheckpointPurger.
+func (a *AttachmentMigrationManager) purgeCompletedCheckpoints(ctx context.Context) error {
+	return a.purgeCheckpoints(ctx, a.databaseCtx, a.MigrationID)
 }
 
 // purgeCheckpoints will remove the checkpoints for a specific migration ID.

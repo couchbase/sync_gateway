@@ -1232,3 +1232,176 @@ func TestNewResyncManagerDCPUpdateDatabaseState(t *testing.T) {
 	require.NotNil(t, state.ResyncRunning)
 	require.False(t, *state.ResyncRunning)
 }
+
+// TestResyncResetPurgesStoppedRunCheckpoints demonstrates CBG-5041 for resync.
+//
+// Resync looks like the one manager that already cleans up after a previous run - Init calls
+// purgeCheckpoints using statusDoc.ResyncID. But the guard chain in Init checks options.Reset at
+// position two, *before* the JSONUnmarshal at position three:
+//
+//	} else if options.Reset {
+//	        resetMsg = "reset option requested"
+//	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
+//
+// On an explicit reset the chain short-circuits there, so statusDoc is never populated,
+// statusDoc.ResyncID is "", and the purge below the chain is skipped entirely. The purge therefore
+// fires on every path except the one CBG-5041 actually names.
+//
+// Only Reset:true is covered here. Restarting a stopped run without Reset resumes it, keeping the
+// same ResyncID and legitimately reusing the checkpoints - that path is covered by
+// TestResyncManagerDCPResumeStoppedProcess.
+func TestResyncResetPurgesStoppedRunCheckpoints(t *testing.T) {
+	docsToCreate := 1000
+	if base.UnitTestUrlIsWalrus() || usingShardedResync(t) {
+		// rosmar runs too quickly, increase doc count
+		docsToCreate *= 5
+	}
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+		docsToCreate:                 docsToCreate,
+		updateSyncFuncAfterDocsAdded: true,
+		resyncPartitions:             base.Ptr(uint16(1)),
+	})
+	defer db.Close(ctx)
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+	feedMode := db.distributedDCPFeedMode()
+	options := ResyncOptions{Collections: base.NewCollectionNames()}
+
+	// stop the first run part way through, so it keeps its checkpoints on every backend - a cleanly
+	// completed gocb feed would purge its own in deactivateVbucket
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
+	wg := sync.WaitGroup{}
+	defer base.WaitWithTimeout(t, &wg, 30*time.Second)
+	wg.Go(func() {
+		waitForResyncDocsProcessed(t, db, 1)
+		require.NoError(t, db.ResyncManager.Stop(ctx))
+	})
+	stopped := waitForResyncState(t, db, BackgroundProcessStateStopped)
+	require.NotEmpty(t, stopped.ResyncID)
+
+	stoppedPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, stopped.ResyncID, process.Distributed)
+	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, stoppedPrefix, feedMode),
+		"precondition: a stopped resync should have persisted checkpoints")
+
+	// reset - this abandons the stopped run's ID rather than resuming it
+	resetOptions := options
+	resetOptions.Reset = true
+	require.NoError(t, db.ResyncManager.Start(ctx, resetOptions))
+	completed := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+	require.NotEqual(t, stopped.ResyncID, completed.ResyncID,
+		"reset should have started a new resync run")
+
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, stoppedPrefix, feedMode),
+		"reset left behind the checkpoints for abandoned resync run %q", stopped.ResyncID)
+}
+
+// TestResyncCheckpointsRemovedOnCompletion covers the other half of CBG-5041 for resync: nothing
+// purges checkpoints when a run finishes successfully. BackgroundManager's terminal transition
+// persists the final status and deletes the heartbeat doc but never touches checkpoints, so the only
+// cleanup is the gocb client's implicit purge in deactivateVbucket. Rosmar has no equivalent, and
+// neither does the cbgt/sharded path used by distributed resync.
+func TestResyncCheckpointsRemovedOnCompletion(t *testing.T) {
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{docsToCreate: 1000})
+	defer db.Close(ctx)
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+
+	require.NoError(t, db.ResyncManager.Start(ctx, ResyncOptions{Collections: base.NewCollectionNames()}))
+	completed := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+	require.NotEmpty(t, completed.ResyncID)
+
+	prefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, completed.ResyncID, process.Distributed)
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, prefix, db.distributedDCPFeedMode()),
+		"completed resync run %q left its DCP checkpoints behind", completed.ResyncID)
+}
+
+// TestResyncInitPurgesCompletedRunCheckpoints locks in behaviour that is correct *today* and which the
+// CBG-5041 fix must not break: when Init starts a new run because the previous one completed, it purges
+// that previous run's checkpoints.
+//
+// This is the one reset-adjacent path that is not redundant with the stopped-run test, because resync's
+// guard chain treats the two differently - "previous run completed" reaches the JSONUnmarshal and so
+// populates statusDoc.ResyncID, whereas an explicit Reset short-circuits before it and leaves the ID
+// empty (see TestResyncResetPurgesStoppedRunCheckpoints). Any fix that rearranges that chain could
+// silently lose this purge, and nothing else would catch it.
+//
+// Init is driven directly with a crafted status document rather than by running resync twice, so the
+// precondition does not depend on a completed run leaving checkpoints behind. That keeps the test valid
+// once purge-on-completion lands, and it still models a real state: checkpoints written by a completed
+// run on an older build, cleaned up on the next run after upgrade.
+func TestResyncInitPurgesCompletedRunCheckpoints(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	defer func() {
+		_ = db.ResyncManager.Stop(ctx)
+		// Start would normally do this; needed here because Init is called directly
+		db.ResyncManager.resetStatus()
+	}()
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+	feedMode := db.distributedDCPFeedMode()
+
+	previousResyncID := uuid.NewString()
+	previousPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, previousResyncID, process.Distributed)
+	writeDCPCheckpoint(t, ctx, db.DatabaseContext, previousPrefix, feedMode)
+
+	clusterData, err := json.Marshal(ResyncManagerStatusDocDCP{
+		ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+			BackgroundManagerStatus: BackgroundManagerStatus{State: BackgroundProcessStateCompleted},
+			ResyncID:                previousResyncID,
+		},
+		ResyncManagerMeta: ResyncManagerMeta{
+			CollectionIDs: slices.Collect(maps.Keys(db.CollectionByID)),
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = process.Init(ctx, ResyncOptions{Collections: base.NewCollectionNames()}, clusterData)
+	require.NoError(t, err)
+
+	require.NotEqual(t, previousResyncID, getResyncStats(t, db).ResyncID,
+		"Init should have started a new resync run after a completed previous run")
+
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, previousPrefix, feedMode),
+		"Init did not purge the completed previous run %q's checkpoints", previousResyncID)
+}
+
+// TestResyncInitDoesNotPurgeRunningRunOnJoin guards against a joining node purging an in-flight run's
+// checkpoints.
+//
+// ResyncManagerMeta.Options persists the ResyncOptions a run was started with so Join can reconstruct
+// them. A run started with Reset:true therefore hands Reset:true back to every node that joins it -
+// while the run is still going. Init must not treat that as a request to abandon the running run.
+func TestResyncInitDoesNotPurgeRunningRunOnJoin(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	defer func() {
+		_ = db.ResyncManager.Stop(ctx)
+		db.ResyncManager.resetStatus()
+	}()
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+	feedMode := db.distributedDCPFeedMode()
+
+	runningResyncID := uuid.NewString()
+	prefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, runningResyncID, process.Distributed)
+	writeDCPCheckpoint(t, ctx, db.DatabaseContext, prefix, feedMode)
+
+	clusterData, err := json.Marshal(ResyncManagerStatusDocDCP{
+		ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+			BackgroundManagerStatus: BackgroundManagerStatus{State: BackgroundProcessStateRunning},
+			ResyncID:                runningResyncID,
+		},
+		ResyncManagerMeta: ResyncManagerMeta{
+			CollectionIDs: slices.Collect(maps.Keys(db.CollectionByID)),
+		},
+	})
+	require.NoError(t, err)
+
+	// what Join passes: the persisted options (Reset:true) plus a status doc that is still Running
+	_, err = process.Init(ctx, ResyncOptions{Collections: base.NewCollectionNames(), Reset: true}, clusterData)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, prefix, feedMode),
+		"Init purged the checkpoints of the still-running resync run %q", runningResyncID)
+}
