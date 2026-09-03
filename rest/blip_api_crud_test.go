@@ -3980,8 +3980,7 @@ func TestBlipPullReplicationRolePurge(t *testing.T) {
 		db.WaitForUserWaiterChange(t, userWaiter)
 
 		// Changes are sent in sequence order, so once afterPurgeAllowed arrives, afterPurgeRevoked would
-		// already have arrived if the revoked channel were still being served.  The purge leaks a
-		// sequence (CBG-5789), so afterPurgeRevoked isn't visible until CachePendingSeqMaxWait elapses.
+		// already have arrived if the revoked channel were still being served.
 		revoked := rt.PutDoc("afterPurgeRevoked", `{"channels":["`+roleChannel+`"]}`)
 		allowed := rt.PutDoc("afterPurgeAllowed", `{"channels":["`+userChannel+`"]}`)
 		btcRunner.WaitForVersion(client.id, "afterPurgeAllowed", allowed)
