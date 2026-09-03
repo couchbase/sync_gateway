@@ -2555,15 +2555,17 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 }
 
 // assignSequence assigns a global sequence number from database.
-func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) (uint64, []uint64, error) {
 	return c.dbCtx.assignSequence(ctx, docSequence, doc, unusedSequences)
 }
 
 // Sequence processing :
-// Assigns provided sequence to the document
+// Assigns provided sequence to the document, and returns it so the caller can release it if the write doesn't
+// complete.  Returns zero if no sequence is held by the caller - on error, any incoming sequence has already been
+// moved to unusedSequences.
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) (uint64, []uint64, error) {
 
 	// Assign the next sequence number, for _changes feed.
 	// Be careful not to request a second sequence # on a retry if we don't need one.
@@ -2579,7 +2581,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 
 		var err error
 		if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
-			return unusedSequences, err
+			return 0, unusedSequences, err
 		}
 		firstAllocatedSequence := docSequence
 
@@ -2592,7 +2594,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			var releasedSequenceCount uint64
 			docSequence, releasedSequenceCount, err = db.sequences.nextSequenceGreaterThan(ctx, doc.Sequence)
 			if err != nil {
-				return unusedSequences, err
+				return 0, unusedSequences, err
 			}
 			if releasedSequenceCount > unusedSequenceWarningThreshold {
 				base.WarnfCtx(ctx, "Doc %s / %s had an existing sequence %d that is higher than the next db sequence value %d, resulting in the release of %d unused sequences. This may indicate documents being migrated between databases by an external process.", base.UD(doc.ID), doc.GetRevTreeID(), doc.Sequence, firstAllocatedSequence, releasedSequenceCount)
@@ -2649,7 +2651,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		base.SortedUint64Slice(doc.RecentSequences).Sort()
 	}
 
-	return unusedSequences, nil
+	return docSequence, unusedSequences, nil
 }
 
 func (doc *Document) updateExpiry(syncExpiry, updatedExpiry *uint32, expiry *uint32) (finalExp *uint32) {
@@ -2739,11 +2741,19 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	retNewRevID string,
 	retStoredDoc *Document,
 	retOldBodyJSON string,
+	retDocSequence uint64,
 	retUnusedSequences []uint64,
 	changedAccessPrincipals []string,
 	changedRoleAccessUsers []string,
 	createNewRevIDSkipped bool,
 	err error) {
+
+	// Seed the sequences held by this write attempt, so that every path (including the naked early returns below)
+	// hands them back for the caller to release if the write doesn't complete.  assignSequence overwrites both -
+	// with the newly allocated sequence, or with zero if allocation failed, in which case it has already moved the
+	// incoming sequence to unusedSequences.
+	retDocSequence = previousDocSequenceIn
+	retUnusedSequences = unusedSequences
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -2829,7 +2839,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 
 	col.backupAncestorRevs(ctx, doc, newDoc.RevID, oldChannels)
 
-	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
+	retDocSequence, retUnusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, retUnusedSequences)
 	if err != nil {
 		if errors.Is(err, base.ErrMaxSequenceReleasedExceeded) {
 			base.ErrorfCtx(ctx, "Doc %s / %s had a much larger sequence (%d) than the current sequence number. Document update will be cancelled, since we don't want to allocate sequences to fill a gap this large. This may indicate document metadata being migrated between databases where it should've been stripped and re-imported.", base.UD(newDoc.ID), prevCurrentRev, doc.Sequence)
@@ -2880,7 +2890,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 
 	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
+	return updatedExpiry, newRevID, newDoc, oldBodyJSON, retDocSequence, retUnusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -2952,7 +2962,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			isNewDocCreation = currentValue == nil
-			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
+			updatedDoc.Expiry, newRevID, storedDoc, oldBodyJSON, docSequence, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(ctx, !isNewDocCreation, doc, allowImport, docSequence, unusedSequences, callback, expiry, docUpdateEvent)
 			if err != nil {
 				return
 			}
@@ -2960,7 +2970,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) && updatedDoc.Expiry != nil {
 				opts.PreserveExpiry = false
 			}
-			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
 			currentRevFromHistory, ok := doc.History[doc.GetRevTreeID()]
 			if !ok {
@@ -3059,16 +3068,9 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		// For timeout errors, the write may or may not have succeeded so we cannot release the sequence as unused
 		if !base.IsTimeoutError(err) {
 			if docSequence > 0 {
-				if seqErr := db.sequences().releaseSequence(ctx, docSequence); seqErr != nil {
-					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
-				}
-
+				unusedSequences = append(unusedSequences, docSequence)
 			}
-			for _, sequence := range unusedSequences {
-				if seqErr := db.sequences().releaseSequence(ctx, sequence); seqErr != nil {
-					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
-				}
-			}
+			db.releaseSequences(ctx, unusedSequences)
 		}
 	}
 
