@@ -779,8 +779,7 @@ func TestContinuousChangesRolePurge(t *testing.T) {
 	require.True(t, db.WaitForUserWaiterChange(userWaiter))
 
 	// The feed sends in sequence order, so a feed still serving the revoked channel would send
-	// afterPurgeRevoked first.  The purge leaks a sequence (CBG-5789), so afterPurgeRevoked isn't
-	// visible until CachePendingSeqMaxWait elapses.
+	// afterPurgeRevoked first.
 	rt.PutDoc("afterPurgeRevoked", `{"channels":["`+roleChannel+`"]}`)
 	rt.PutDoc("afterPurgeAllowed", `{"channels":["`+userChannel+`"]}`)
 
