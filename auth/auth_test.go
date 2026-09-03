@@ -29,6 +29,24 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// fakeSequenceAllocator hands out sequences from a counter and records releases, so tests can assert
+// both the sequence written and that nothing was allocated without being written or released.
+type fakeSequenceAllocator struct {
+	allocated []uint64
+	released  []uint64
+}
+
+func (f *fakeSequenceAllocator) NextSequence(context.Context) (uint64, error) {
+	seq := uint64(len(f.allocated) + 1)
+	f.allocated = append(f.allocated, seq)
+	return seq, nil
+}
+
+func (f *fakeSequenceAllocator) ReleaseSequence(_ context.Context, seq uint64) error {
+	f.released = append(f.released, seq)
+	return nil
+}
+
 func NewTestAuthenticator(t testing.TB, dataStore sgbucket.DataStore, channelComputer ChannelComputer, opts AuthenticatorOptions) *Authenticator {
 	opts.BcryptCost = bcrypt.MinCost // lower cost for testing speedup
 	return NewAuthenticator(dataStore, channelComputer, opts)
@@ -3110,6 +3128,7 @@ func TestInvalidateChannelsIdempotent(t *testing.T) {
 	})
 
 	t.Run("UpdateSequenceNumberForResync", func(t *testing.T) {
+		seqs := &fakeSequenceAllocator{}
 		auth := NewTestAuthenticator(t, bucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
 
 		t.Run("Empty resyncID error", func(t *testing.T) {
@@ -3117,9 +3136,11 @@ func TestInvalidateChannelsIdempotent(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, auth.Save(user))
 
-			err = auth.UpdateSequenceNumberForResync(user, 10, "")
+			allocatedBefore := len(seqs.allocated)
+			err = auth.UpdateSequenceNumberForResync(user, "", seqs)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "resyncID must not be empty")
+			assert.Len(t, seqs.allocated, allocatedBefore, "no sequence should be allocated for an invalid resyncID")
 		})
 
 		t.Run("Matching resyncID (CAS should NOT update)", func(t *testing.T) {
@@ -3128,19 +3149,24 @@ func TestInvalidateChannelsIdempotent(t *testing.T) {
 			require.NoError(t, auth.Save(user))
 
 			// First call with "resync-1" - updates CAS
-			require.NoError(t, auth.UpdateSequenceNumberForResync(user, 10, "resync-1"))
+			require.NoError(t, auth.UpdateSequenceNumberForResync(user, "resync-1", seqs))
+			resyncSeq := user.Sequence()
 
 			dbUser, err := auth.GetUser("resync_user_match")
 			require.NoError(t, err)
 			initialCas := dbUser.Cas()
 
-			// Second call with "resync-1" - should be skipped, CAS must not update
-			require.NoError(t, auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-1"))
+			// Second call with "resync-1" - should be skipped, CAS must not update.  No sequence should
+			// be allocated for the skipped write, as it would never be written or released.
+			allocatedBefore := len(seqs.allocated)
+			require.NoError(t, auth.UpdateSequenceNumberForResync(dbUser, "resync-1", seqs))
+			assert.Len(t, seqs.allocated, allocatedBefore, "no sequence should be allocated when the resync is a no-op")
+			assert.Empty(t, seqs.released, "no sequence should need releasing")
 
 			finalUser, err := auth.GetUser("resync_user_match")
 			require.NoError(t, err)
 			assert.Equal(t, initialCas, finalUser.Cas(), "CAS should not have changed")
-			assert.Equal(t, uint64(10), finalUser.Sequence(), "Sequence should remain unchanged")
+			assert.Equal(t, resyncSeq, finalUser.Sequence(), "Sequence should remain unchanged")
 		})
 
 		t.Run("Mismatching resyncID (CAS should update)", func(t *testing.T) {
@@ -3149,19 +3175,20 @@ func TestInvalidateChannelsIdempotent(t *testing.T) {
 			require.NoError(t, auth.Save(user))
 
 			// First call with "resync-1"
-			require.NoError(t, auth.UpdateSequenceNumberForResync(user, 10, "resync-1"))
+			require.NoError(t, auth.UpdateSequenceNumberForResync(user, "resync-1", seqs))
+			firstResyncSeq := user.Sequence()
 
 			dbUser, err := auth.GetUser("resync_user_mismatch")
 			require.NoError(t, err)
 			casAfterFirst := dbUser.Cas()
 
 			// Second call with "resync-2" - mismatch, should update CAS
-			require.NoError(t, auth.UpdateSequenceNumberForResync(dbUser, 20, "resync-2"))
+			require.NoError(t, auth.UpdateSequenceNumberForResync(dbUser, "resync-2", seqs))
 
 			finalUser, err := auth.GetUser("resync_user_mismatch")
 			require.NoError(t, err)
 			assert.NotEqual(t, casAfterFirst, finalUser.Cas(), "CAS must be updated")
-			assert.Equal(t, uint64(20), finalUser.Sequence(), "Sequence should be updated to 20")
+			assert.Greater(t, finalUser.Sequence(), firstResyncSeq, "Sequence should be updated by the second resync")
 			assert.Equal(t, "resync-2", finalUser.ResyncID(), "ResyncID should be updated to resync-2")
 		})
 	})

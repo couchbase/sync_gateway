@@ -1091,7 +1091,7 @@ func (db *Database) ReloadUser(ctx context.Context) error {
 
 // NextSequence returns the new sequence number.
 func (db *DatabaseContext) NextSequence(ctx context.Context) (uint64, error) {
-	return db.sequences.nextSequence(ctx)
+	return db.sequences.NextSequence(ctx)
 }
 
 // ////// ALL DOCUMENTS:
@@ -1878,29 +1878,17 @@ func (db *DatabaseContext) updateAllPrincipalsSequences(ctx context.Context, res
 }
 
 func (db *DatabaseContext) regeneratePrincipalSequences(ctx context.Context, authr *auth.Authenticator, princ auth.Principal, resyncID string) error {
-	nextSeq, err := db.sequences.nextSequence(ctx)
-	if err != nil {
-		return err
+	err := authr.UpdateSequenceNumberForResync(princ, resyncID, db.sequences)
+	if base.IsCasMismatch(err) {
+		base.DebugfCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s during resync %s.  Assuming sequence updated by another node.", base.UD(princ.Name()), base.UD(resyncID))
+		return nil
 	}
-
-	err = authr.UpdateSequenceNumberForResync(princ, nextSeq, resyncID)
-	if err != nil {
-		if base.IsCasMismatch(err) {
-			base.DebugfCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s to sequence %d during resync %s.  Assuming sequence updated by another node - releasing seq as unused.", base.UD(princ.Name()), nextSeq, base.UD(resyncID))
-			if releaseErr := db.sequences.releaseSequence(ctx, nextSeq); releaseErr != nil {
-				base.WarnfCtx(ctx, "Error when releasing sequence %d after a cas mismatch updating the resync principal. Falling back to skipped sequence handling.  Error:%v", nextSeq, releaseErr)
-			}
-		} else {
-			return err
-		}
-	}
-
-	return nil
+	return err
 }
 
 func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
 	for _, sequence := range sequences {
-		err := c.sequences().releaseSequence(ctx, sequence)
+		err := c.sequences().ReleaseSequence(ctx, sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}

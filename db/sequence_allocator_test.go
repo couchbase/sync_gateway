@@ -59,25 +59,25 @@ func TestSequenceAllocator(t *testing.T) {
 	assert.NoError(t, err, "error retrieving last sequence")
 
 	// Initial allocation should use batch size of 1
-	nextSequence, err := a.nextSequence(ctx)
+	nextSequence, err := a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
 	assertNewAllocatorStats(t, testStats, 1, 1, 1, 0, nextSequence, 1)
 
 	// Subsequent allocation should increase batch size to 2, allocate 1
-	nextSequence, err = a.nextSequence(ctx)
+	nextSequence, err = a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 0, nextSequence, 3)
 
 	// Subsequent allocation shouldn't trigger allocation
-	nextSequence, err = a.nextSequence(ctx)
+	nextSequence, err = a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSequence)
 	assertNewAllocatorStats(t, testStats, 2, 3, 3, 0, nextSequence, 3)
 
 	// Subsequent allocation should increase batch to 4, allocate 1
-	nextSequence, err = a.nextSequence(ctx)
+	nextSequence, err = a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(4), nextSequence)
 	assert.Equal(t, 4, int(a.sequenceBatchSize))
@@ -89,7 +89,7 @@ func TestSequenceAllocator(t *testing.T) {
 	assert.Equal(t, 1, int(a.sequenceBatchSize))
 
 	// Subsequent allocation should increase batch to 2, allocate 1
-	nextSequence, err = a.nextSequence(ctx)
+	nextSequence, err = a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(8), nextSequence)
 	assertNewAllocatorStats(t, testStats, 4, 9, 5, 3, nextSequence, 9)
@@ -118,13 +118,13 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	assert.NoError(t, err, "error creating allocator")
 
 	// Initial allocation should use batch size of 1
-	nextSequence, err := a.nextSequence(ctx)
+	nextSequence, err := a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
 	assertNewAllocatorStats(t, testStats, 1, 1, 1, 0, nextSequence, 1)
 
 	// Subsequent allocation should increase batch size to 2, allocate 1
-	nextSequence, err = a.nextSequence(ctx)
+	nextSequence, err = a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 0, nextSequence, 3)
@@ -169,7 +169,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 			for range 500 {
 				wg.Add(1)
 				go func(a *sequenceAllocator) {
-					_, err := a.nextSequence(ctx)
+					_, err := a.NextSequence(ctx)
 					assert.NoError(t, err)
 					wg.Done()
 				}(a)
@@ -195,11 +195,11 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
 
-	nextSequence, err := a.nextSequence(ctx)
+	nextSequence, err := a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSequence)
 
-	nextSequence, err = a.nextSequence(ctx)
+	nextSequence, err = a.NextSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2), nextSequence)
 
@@ -403,10 +403,10 @@ func TestNextSequenceGreaterThanMultiNode(t *testing.T) {
 
 // TestSingleNodeSyncSeqRollback:
 //   - Test rollback of _sync:seq doc in bucket for a single node
-//   - Use nextSequence to allocate sequences and trigger the rollback handling code
+//   - Use NextSequence to allocate sequences and trigger the rollback handling code
 //   - Between each sequence allocation alter the _sync:seq doc to some value in the bucket + alter a.last to mock
 //     allocator allocating sequences to end of current batch
-//   - Asserts that handling using nextSequence function is correct
+//   - Asserts that handling using NextSequence function is correct
 func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bucket := base.GetTestBucket(t)
@@ -427,7 +427,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 		metaKeys:          base.DefaultMetadataKeys,
 	}
 
-	nxtSeq, err := a.nextSequence(ctx)
+	nxtSeq, err := a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), nxtSeq)
 
@@ -439,7 +439,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	a.last = 10
 
 	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
-	nxtSeq, err = a.nextSequence(ctx)
+	nxtSeq, err = a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(521), nxtSeq)
 	assert.Equal(t, uint64(530), a.max)
@@ -451,7 +451,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	// alter s.last to mock sequences being allocated
 	a.last = 530
 
-	nxtSeq, err = a.nextSequence(ctx)
+	nxtSeq, err = a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1041), nxtSeq)
 	assert.Equal(t, uint64(1050), a.max)
@@ -464,7 +464,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	a.last = 1050
 
 	// triggers correction value increase to 10 (sequence batch value) thus nextSeq is higher than you would expect
-	nxtSeq, err = a.nextSequence(ctx)
+	nxtSeq, err = a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1561), nxtSeq)
 	assert.Equal(t, uint64(1570), a.max)
@@ -476,7 +476,7 @@ func TestSingleNodeSyncSeqRollback(t *testing.T) {
 	// alter s.last to mock sequences being allocated
 	a.last = 1570
 
-	nxtSeq, err = a.nextSequence(ctx)
+	nxtSeq, err = a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2081), nxtSeq)
 	assert.Equal(t, uint64(2090), a.max)
@@ -509,7 +509,7 @@ func TestSingleNodeNextSeqGreaterThanRollbackHandling(t *testing.T) {
 	}
 
 	// allocate something
-	nxtSeq, err := a.nextSequence(ctx)
+	nxtSeq, err := a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), nxtSeq)
 
@@ -744,7 +744,7 @@ func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
 
 	// trigger new batch allocation for node c, should correct the rollback by the minimum the node expect
 	// sync:seq to be + 500
-	nxtSeq, err := c.nextSequence(ctx)
+	nxtSeq, err := c.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(541), nxtSeq)
 	assert.Equal(t, uint64(541), c.last)
@@ -752,7 +752,7 @@ func TestFiveNodeRollbackMiddleNodesDetects(t *testing.T) {
 
 	// mock a getting to end of batch and trigger new batch allocation, assert it continues from corrected value
 	a.last = 10
-	nxtSeq, err = a.nextSequence(ctx)
+	nxtSeq, err = a.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(551), nxtSeq)
 	assert.Equal(t, uint64(551), a.last)
@@ -854,12 +854,12 @@ func TestVariableRateAllocators(t *testing.T) {
 // multiNodeUpdate obtains an initial sequence from an import allocator (import node), then performs repeated updates to the doc using random pool of iterators (random SG node).
 // Performs sequenceGreaterThan, then ensures that allocator doesn't release more than the sequence batch size
 func multiNodeUpdate(t *testing.T, ctx context.Context, importAllocator *sequenceAllocator, clientAllocators []*sequenceAllocator, updateCount int, interval time.Duration) (releasedCount uint64) {
-	currentSequence, _ := importAllocator.nextSequence(ctx)
+	currentSequence, _ := importAllocator.NextSequence(ctx)
 
 	for range updateCount {
 		allocatorIndex := rand.Intn(len(clientAllocators))
 		clientAllocator := clientAllocators[allocatorIndex]
-		nextSequence, err := clientAllocator.nextSequence(ctx)
+		nextSequence, err := clientAllocator.NextSequence(ctx)
 		require.NoError(t, err, "nextSequence error: %v", err)
 		if nextSequence < currentSequence {
 			prevNext := nextSequence
@@ -885,7 +885,7 @@ func runAllocator(ctx context.Context, a *sequenceAllocator, frequency time.Dura
 	for {
 		select {
 		case <-ticker.C:
-			_, _ = a.nextSequence(ctx)
+			_, _ = a.NextSequence(ctx)
 			allocationCount++
 		case <-ctx.Done():
 			ticker.Stop()

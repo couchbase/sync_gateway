@@ -35,7 +35,7 @@ func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bo
 
 	// CBG-5789: a purge is a true deletion of the role document and ignores this sequence, so it is
 	// neither written nor released - leaving a permanent gap in the sequence range.
-	seq, err := db.sequences.nextSequence(ctx)
+	seq, err := db.sequences.NextSequence(ctx)
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
 		nextSeq := uint64(0)
 
-		nextSeq, err = dbc.sequences.nextSequence(ctx)
+		nextSeq, err = dbc.sequences.NextSequence(ctx)
 		if err != nil {
 			return replaced, princ, err
 		}
@@ -223,7 +223,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if base.IsCasMismatch(err) {
 			base.InfofCtx(ctx, base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
 			// release the sequence number we allocated in the failed update to avoid an abandoned sequence
-			if err := dbc.sequences.releaseSequence(ctx, nextSeq); err != nil {
+			if err := dbc.sequences.ReleaseSequence(ctx, nextSeq); err != nil {
 				base.InfofCtx(ctx, base.KeyAuth, "Error releasing unused sequence %d after CAS retry for principal %s: %v", nextSeq, base.UD(princ.Name()), err)
 			}
 		} else {

@@ -1951,7 +1951,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
-	nextSeq, err := db.sequences.nextSequence(ctx)
+	nextSeq, err := db.sequences.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSeq)
 
@@ -1962,7 +1962,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	_, _, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
-	nextSeq, err = db.sequences.nextSequence(ctx)
+	nextSeq, err = db.sequences.NextSequence(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSeq)
 }
@@ -3993,6 +3993,58 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	}
 }
 
+// Test_updateAllPrincipalsSequencesResumed asserts that re-running a resync with the same resyncID
+// (what a resumed resync does) allocates no sequences for principals it already regenerated.  An
+// allocated-but-unwritten sequence leaves a permanent gap in the sequence range.
+func Test_updateAllPrincipalsSequencesResumed(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	const resyncID = "resyncID"
+	auth := db.Authenticator(ctx)
+
+	for i := range 3 {
+		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
+		require.NoError(t, err)
+		require.NoError(t, auth.Save(role))
+
+		user, err := auth.NewUser(fmt.Sprintf("user%d", i), "letmein", base.SetOf("ABC"))
+		require.NoError(t, err)
+		require.NoError(t, auth.Save(user))
+	}
+
+	require.NoError(t, db.updateAllPrincipalsSequences(ctx, resyncID))
+
+	// Capture the regenerated sequences, then re-run with the same resyncID
+	roleSequences := make(map[string]uint64, 3)
+	userSequences := make(map[string]uint64, 3)
+	for i := range 3 {
+		role, err := auth.GetRole(fmt.Sprintf("role%d", i))
+		require.NoError(t, err)
+		roleSequences[role.Name()] = role.Sequence()
+
+		user, err := auth.GetUser(fmt.Sprintf("user%d", i))
+		require.NoError(t, err)
+		userSequences[user.Name()] = user.Sequence()
+	}
+
+	assignedBefore := db.DbStats.Database().SequenceAssignedCount.Value()
+	require.NoError(t, db.updateAllPrincipalsSequences(ctx, resyncID))
+	require.Equal(t, assignedBefore, db.DbStats.Database().SequenceAssignedCount.Value(),
+		"resumed resync allocated sequences for principals it had already regenerated")
+
+	// Sequences are unchanged, confirming the second run was a no-op rather than a rewrite
+	for i := range 3 {
+		role, err := auth.GetRole(fmt.Sprintf("role%d", i))
+		require.NoError(t, err)
+		require.Equal(t, roleSequences[role.Name()], role.Sequence())
+
+		user, err := auth.GetUser(fmt.Sprintf("user%d", i))
+		require.NoError(t, err)
+		require.Equal(t, userSequences[user.Name()], user.Sequence())
+	}
+}
+
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -4011,7 +4063,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		assert.NoError(t, err)
 		assert.NotEmpty(t, role)
-		seq, err := db.sequences.nextSequence(ctx)
+		seq, err := db.sequences.NextSequence(ctx)
 		assert.NoError(t, err)
 		role.SetSequence(seq)
 		err = auth.Save(role)
@@ -4020,7 +4072,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 		user, err := auth.NewUser(fmt.Sprintf("user%d", i), "letmein", base.SetOf("ABC"))
 		assert.NoError(t, err)
 		assert.NotEmpty(t, user)
-		seq, err = db.sequences.nextSequence(ctx)
+		seq, err = db.sequences.NextSequence(ctx)
 		assert.NoError(t, err)
 		user.SetSequence(seq)
 		err = auth.Save(user)

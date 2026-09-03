@@ -702,7 +702,7 @@ func AllocateTestSequence(ctx context.Context, database *DatabaseContext) (uint6
 
 // ReleaseTestSequence releases a sequence via the sequenceAllocator.  For use by non-db tests
 func ReleaseTestSequence(ctx context.Context, database *DatabaseContext, sequence uint64) error {
-	return database.sequences.releaseSequence(ctx, sequence)
+	return database.sequences.ReleaseSequence(ctx, sequence)
 }
 
 func (a *ActiveReplicator) GetActiveReplicatorConfig() *ActiveReplicatorConfig {

@@ -2547,7 +2547,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		}
 
 		var err error
-		if docSequence, err = db.sequences.nextSequence(ctx); err != nil {
+		if docSequence, err = db.sequences.NextSequence(ctx); err != nil {
 			return 0, unusedSequences, err
 		}
 		firstAllocatedSequence := docSequence
@@ -2555,7 +2555,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		// If the assigned sequence is less than or equal to the previous sequence on the document, release
 		// the assigned sequence and acquire one using nextSequenceGreaterThan
 		if docSequence <= doc.Sequence {
-			if err = db.sequences.releaseSequence(ctx, docSequence); err != nil {
+			if err = db.sequences.ReleaseSequence(ctx, docSequence); err != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 			}
 			var releasedSequenceCount uint64

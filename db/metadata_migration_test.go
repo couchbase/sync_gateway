@@ -892,7 +892,7 @@ func TestMigrateMetadataUnusedSeqMoves(t *testing.T) {
 	ms := newMigrationTestStore(t, bucket)
 
 	// Both forms are written as binary docs (8-/16-byte little-endian uint64 payloads).
-	// AddRaw mirrors what sequenceAllocator.releaseSequence/releaseSequenceRange do in
+	// AddRaw mirrors what sequenceAllocator.ReleaseSequence/releaseSequenceRange do in
 	// production — datatype matters for the round-trip assertions below.
 	singletonKey := keys.UnusedSeqKey(42)
 	singletonBody := make([]byte, 8)

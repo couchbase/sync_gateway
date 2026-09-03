@@ -309,7 +309,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		isOurs(keys.UnusedSeqPrefix()),
 		isOurs(keys.UnusedSeqRangePrefix()):
 		// Binary-bodied metadata (8/16-byte little-endian uint64 payload written by
-		// sequenceAllocator.releaseSequence / releaseSequenceRange). Must preserve
+		// sequenceAllocator.ReleaseSequence / releaseSequenceRange). Must preserve
 		// the Binary datatype flag — change_listener.go relies on these docs.
 		return moveFallbackDoc(ctx, ms, key, true, stats)
 

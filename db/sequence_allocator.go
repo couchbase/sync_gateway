@@ -182,7 +182,7 @@ func (s *sequenceAllocator) lastSequence(ctx context.Context) (uint64, error) {
 // If previously reserved sequences are available (s.last < s.max), returns one
 // and increments s.last.
 // If no previously reserved sequences are available, reserves new batch.
-func (s *sequenceAllocator) nextSequence(ctx context.Context) (sequence uint64, err error) {
+func (s *sequenceAllocator) NextSequence(ctx context.Context) (sequence uint64, err error) {
 	s.mutex.Lock()
 	sequence, sequencesReserved, err := s._nextSequence(ctx)
 	s.mutex.Unlock()
@@ -406,7 +406,7 @@ func (s *sequenceAllocator) _incrementSequence(ctx context.Context, numToReserve
 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
 // Sequence is stored as the document body to avoid null doc issues.
-func (s *sequenceAllocator) releaseSequence(ctx context.Context, sequence uint64) error {
+func (s *sequenceAllocator) ReleaseSequence(ctx context.Context, sequence uint64) error {
 	key := fmt.Sprintf("%s%d", s.metaKeys.UnusedSeqPrefix(), sequence)
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
