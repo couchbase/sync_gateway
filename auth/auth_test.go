@@ -3224,3 +3224,48 @@ func requireExpandWildCardChannel(t *testing.T, user User, expectedChannels, cha
 	require.NoError(t, err)
 	assert.Equal(t, base.SetFromArray(expectedChannels), expandedChannels, "Expected channels %v to expand to %v", expectedChannels, channelsToExpand)
 }
+
+// TestRoleSoftDeleteCasRetryCollectionAccess reproduces loss of non-default collection channel history
+// and invalidation when the DeleteRole write hits a CAS mismatch and retries.
+func TestRoleSoftDeleteCasRetryCollectionAccess(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+
+	const (
+		roleName   = "role"
+		scope      = "scope1"
+		collection = "collection1"
+		deleteSeq  = uint64(5)
+	)
+
+	role, err := auth.NewRole(roleName, nil)
+	require.NoError(t, err)
+	role.SetCollectionExplicitChannels(scope, collection, ch.AtSequence(ch.BaseSetOf(t, "ch1"), 1), 0)
+	role.(*roleImpl).setCollectionChannels(scope, collection, ch.AtSequence(ch.BaseSetOf(t, "ch1"), 1))
+	require.NoError(t, auth.Save(role))
+
+	// Load two copies of the role, and write one of them, so the other holds a stale cas.
+	staleRole, err := auth.GetRole(roleName)
+	require.NoError(t, err)
+	currentRole, err := auth.GetRole(roleName)
+	require.NoError(t, err)
+	require.NoError(t, auth.Save(currentRole))
+
+	require.NoError(t, auth.DeleteRole(staleRole, deleteSeq))
+
+	raw, _, err := dataStore.GetRaw(ctx, role.DocID())
+	require.NoError(t, err)
+	var persisted roleImpl
+	require.NoError(t, base.JSONUnmarshal(raw, &persisted))
+	t.Logf("persisted role: %s", raw)
+
+	collectionAccess, ok := persisted.CollectionsAccess[scope][collection]
+	require.True(t, ok)
+	require.Equal(t, deleteSeq, collectionAccess.ChannelInvalSeq)
+	_, hasHistory := collectionAccess.ChannelHistory_["ch1"]
+	require.True(t, hasHistory, "expected ch1 channel history, got %v", collectionAccess.ChannelHistory_)
+}

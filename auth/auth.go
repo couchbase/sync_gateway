@@ -767,7 +767,7 @@ func (auth *Authenticator) DeleteRole(role Role, deleteSeq uint64) error {
 		p.SetChannelInvalSeq(deleteSeq)
 
 		// Update channel history for non-default collections
-		roleCollectionAccess := role.GetCollectionsAccess()
+		roleCollectionAccess := p.GetCollectionsAccess()
 		for _, scope := range roleCollectionAccess {
 			for _, collectionAccess := range scope {
 				collectionChannelHistory := auth.calculateHistory(p.Name(), deleteSeq, collectionAccess.Channels(), nil, collectionAccess.ChannelHistory())
