@@ -147,6 +147,9 @@ type LeakyBucketConfig struct {
 
 	SetXattrCallback func(key string) error
 
+	// UpdateXattrsCallback is called before UpdateXattrs. Useful for injecting delays or errors per-key.
+	UpdateXattrsCallback func(key string)
+
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
 

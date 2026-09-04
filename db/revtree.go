@@ -267,6 +267,235 @@ func (node RevInfo) ParentGenGTENodeGen(ctx context.Context) bool {
 	return genOfRevID(ctx, node.Parent) >= genOfRevID(ctx, node.ID)
 }
 
+// hasNonIncreasingGenerations reports whether the branch ending at currentRev contains a revision whose
+// generation does not exceed its parent's.
+//
+// That invariant has two distinct failure modes on the wire, and this checks for the underlying cause
+// rather than either symptom:
+//
+//   - If the branch is long relative to its leaf generation, encodeRevisions produces a _revisions list
+//     that splitRevisionList rejects (it requires start >= len(ids)), so the document is unreplicatable
+//     to pre-4.0 (BLIP v3) clients and gets skipped with a noRev. This is the loud case.
+//   - Otherwise the list encodes, but since _revisions can only express start, start-1, start-2 ...,
+//     every ancestor after the duplicate is sent under the wrong rev ID. This is the quiet case, and it
+//     is what a corrupt document looks like once pruning has shortened the branch.
+//
+// It would be cheaper to test the loud case alone - gen(leaf) < len(branch) is exactly the noRev
+// condition, and len(tree) bounds any single branch, so gen(leaf) >= len(tree) would rule it out.
+// That test is sound but not complete: a generation gap that inflates gen(leaf) enough to hide a backwards step (1-abc -> 11-abc -> 10-abc passes it
+// while being plainly invalid).
+func (tree RevTree) hasNonIncreasingGenerations(ctx context.Context, currentRev string) bool {
+	childGen, _, err := parseRevID(currentRev)
+	if err != nil {
+		return false
+	}
+	// The walk is self-terminating even on a cyclic tree: it only continues while the generation
+	// strictly decreases, so a revision can never be reached twice.
+	revid := currentRev
+	for {
+		info, ok := tree[revid]
+		if !ok || info.Parent == "" {
+			return false
+		}
+		parentGen, _, err := parseRevID(info.Parent)
+		if err != nil {
+			return false
+		}
+		if childGen <= parentGen {
+			base.DebugfCtx(ctx, base.KeyCRUD, "revision %q does not exceed the generation of its parent %q", revid, info.Parent)
+			return true
+		}
+		// Step up to the parent and keep walking.
+		childGen = parentGen
+		revid = info.Parent
+	}
+}
+
+// verifyIncreasingGenerations returns an error if any revision in the tree fails to exceed its parent's
+// generation. Unlike hasNonIncreasingGenerations this covers every branch, and is used to check the
+// result of a repair rather than to detect the replication symptom.
+func (tree RevTree) verifyIncreasingGenerations() error {
+	for revid, info := range tree {
+		if info.Parent == "" {
+			continue
+		}
+		if _, ok := tree[info.Parent]; !ok {
+			// Dangling parent - serialized as a root, see MarshalJSON and SG issue #2847.
+			continue
+		}
+		gen, _, err := parseRevID(revid)
+		if err != nil {
+			return err
+		}
+		parentGen, _, err := parseRevID(info.Parent)
+		if err != nil {
+			return err
+		}
+		if gen <= parentGen {
+			return fmt.Errorf("revision %q does not exceed the generation of its parent %q", revid, info.Parent)
+		}
+	}
+	return nil
+}
+
+// repairGenerations renumbers every revision whose generation does not exceed its parent's, keeping the
+// revision's digest so the repaired revision remains recognisable:
+//
+//	1-abc, 2-abc, 2-def, 2-ghi  ->  1-abc, 2-abc, 3-def, 4-ghi
+//
+// It returns the current revision's ID after repair and a map of old ID -> new ID for every revision that
+// moved.
+//
+// The whole tree is renumbered, not just the winning branch. Renaming a revision raises the generation
+// its children must exceed, so a conflict branch hanging off a renamed revision can be pushed into
+// violation by the repair itself; renumbering breadth-first from the roots resolves that in one pass.
+// It also means every child of a renamed revision is re-pointed - a dangling parent would silently
+// detach the branch, since MarshalJSON writes a parent index of -1 for one (SG issue #2847).
+func (tree RevTree) repairGenerations(currentRev string) (newCurrentRev string, renamed map[string]string, err error) {
+	// Index children so the tree can be walked root -> leaf.
+	children := make(map[string][]string, len(tree))
+	roots := make([]string, 0, 1)
+	for revid, info := range tree {
+		_, parentInTree := tree[info.Parent]
+		// A revision with a dangling parent is a root as far as serialization is concerned.
+		isRoot := info.Parent == "" || !parentInTree
+		if isRoot {
+			roots = append(roots, revid)
+			continue
+		}
+		children[info.Parent] = append(children[info.Parent], revid)
+	}
+
+	// Breadth-first from the roots, so a revision's parent is always renumbered before it is.
+	newGen := make(map[string]int, len(tree))
+	queue := make([]string, 0, len(tree))
+	for _, revid := range roots {
+		gen, _, parseErr := parseRevID(revid)
+		if parseErr != nil {
+			return "", nil, fmt.Errorf("cannot repair rev tree, unparseable root revision: %w", parseErr)
+		}
+		newGen[revid] = gen
+		queue = append(queue, revid)
+	}
+	// Note the queue grows as children are appended, so this walks the whole tree, not just the roots.
+	for i := 0; i < len(queue); i++ {
+		parentID := queue[i]
+		parentGen := newGen[parentID]
+		for _, childID := range children[parentID] {
+			childGen, digest, parseErr := parseRevID(childID)
+			if parseErr != nil {
+				return "", nil, fmt.Errorf("cannot repair rev tree, unparseable revision: %w", parseErr)
+			}
+			if childGen <= parentGen {
+				childGen = parentGen + 1
+				if renamed == nil {
+					renamed = make(map[string]string)
+				}
+				renamed[childID] = fmt.Sprintf("%d-%s", childGen, digest)
+			}
+			newGen[childID] = childGen
+			queue = append(queue, childID)
+		}
+	}
+
+	// Every revision has at most one parent, so each is enqueued exactly once. Anything left over is
+	// unreachable from a root, which means the tree contains a cycle - refuse rather than repair blind.
+	if len(queue) != len(tree) {
+		return "", nil, fmt.Errorf("cannot repair rev tree, %d revisions are unreachable from any root (cycle?)", len(tree)-len(queue))
+	}
+
+	if len(renamed) == 0 {
+		return currentRev, nil, nil
+	}
+
+	// Renumbering only ever raises generations, so a losing branch carrying more violations than the
+	// winning one can be lifted past it. Raise the current revision to keep it winning, otherwise the
+	// caller persists _sync.rev as a revision winningRevision no longer selects.
+	if raised := tree.raisedCurrentRevToKeepWinning(currentRev, children, newGen); raised != "" {
+		renamed[currentRev] = raised
+	}
+
+	repaired := make(RevTree, len(tree))
+	for oldID, info := range tree {
+		newInfo := *info
+		if newID, ok := renamed[oldID]; ok {
+			newInfo.ID = newID
+		}
+		if newParent, ok := renamed[info.Parent]; ok {
+			newInfo.Parent = newParent
+		}
+		if _, collision := repaired[newInfo.ID]; collision {
+			return "", nil, fmt.Errorf("cannot repair rev tree, renumbering would produce duplicate revision %q", newInfo.ID)
+		}
+		repaired[newInfo.ID] = &newInfo
+	}
+
+	newCurrentRev = currentRev
+	if newID, ok := renamed[currentRev]; ok {
+		newCurrentRev = newID
+	}
+	if _, ok := repaired[newCurrentRev]; !ok {
+		return "", nil, fmt.Errorf("cannot repair rev tree, current revision %q is missing from the repaired tree", newCurrentRev)
+	}
+
+	// Never hand back a tree that is still invalid: that would let a caller repair, write, re-detect and
+	// repair again forever.
+	if verifyErr := repaired.verifyIncreasingGenerations(); verifyErr != nil {
+		return "", nil, fmt.Errorf("rev tree still invalid after repair: %w", verifyErr)
+	}
+
+	clear(tree)
+	for revid, info := range repaired {
+		tree[revid] = info
+	}
+	return newCurrentRev, renamed, nil
+}
+
+// raisedCurrentRevToKeepWinning returns the ID the current revision must take so that winningRevision
+// still selects it once the tree has been renumbered to the generations in newGen, or "" if it needs no
+// further raising.
+//
+// The current revision is only raised if it was the winner to begin with - promoting one that was
+// already losing would move the document just as silently, in the other direction.
+func (tree RevTree) raisedCurrentRevToKeepWinning(currentRev string, children map[string][]string, newGen map[string]int) string {
+	currentInfo, ok := tree[currentRev]
+	if !ok || len(children[currentRev]) > 0 {
+		// Not a leaf, so winningRevision never selected it, and raising it would push its descendants
+		// back into violation.
+		return ""
+	}
+	currentOldGen, currentDigest, err := parseRevID(currentRev)
+	if err != nil {
+		return ""
+	}
+	raiseTo := 0
+	for revid, info := range tree {
+		if revid == currentRev || len(children[revid]) > 0 {
+			continue
+		}
+		if info.Deleted != currentInfo.Deleted {
+			if !info.Deleted {
+				return "" // a live leaf always beats a tombstone, so the current revision was already losing
+			}
+			continue
+		}
+		oldGen, digest, err := parseRevID(revid)
+		if err != nil {
+			return ""
+		}
+		if oldGen > currentOldGen || (oldGen == currentOldGen && digest > currentDigest) {
+			return "" // already losing before the repair, so keep it that way
+		}
+		if gen := newGen[revid]; gen > newGen[currentRev] || (gen == newGen[currentRev] && digest > currentDigest) {
+			raiseTo = max(raiseTo, gen+1)
+		}
+	}
+	if raiseTo == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d-%s", raiseTo, currentDigest)
+}
+
 // Returns true if the RevTree has an entry for this revid.
 func (tree RevTree) contains(revid string) bool {
 	_, exists := tree[revid]

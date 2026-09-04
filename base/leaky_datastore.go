@@ -367,6 +367,9 @@ func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool
 }
 
 func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	if lds.config.UpdateXattrsCallback != nil {
+		lds.config.UpdateXattrsCallback(k)
+	}
 	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
 }
 
