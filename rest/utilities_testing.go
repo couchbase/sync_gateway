@@ -2932,3 +2932,20 @@ func AssertHTTPErrorReason(t testing.TB, response *TestResponse, expectedStatus 
 
 	assert.Equal(t, expectedReason, httpError.Reason)
 }
+
+// deleteBackupRevisionBodies removes the _sync:rev: backup document for every revision currently in the
+// document's rev tree, modelling their expiry after old_rev_expiry_seconds in a long-lived database.
+func deleteBackupRevisionBodies(t *testing.T, rt *RestTester, docID string) {
+	t.Helper()
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+
+	dataStore := rt.GetSingleDataStore()
+	for revID := range doc.History {
+		key := fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docID, len(revID), revID)
+		if err := dataStore.Delete(key); err != nil {
+			require.True(t, base.IsDocNotFoundError(err), "unexpected error deleting %s: %v", key, err)
+		}
+	}
+}

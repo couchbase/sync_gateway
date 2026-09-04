@@ -931,7 +931,11 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
 func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if bodyBytes, attachments, _ := db.getRevision(ctx, doc, revid); bodyBytes != nil {
+		bodyBytes, attachments, err := db.getRevision(ctx, doc, revid)
+		if err != nil && !base.IsDocNotFoundError(err) {
+			return nil, "", nil, err
+		}
+		if bodyBytes != nil {
 			return bodyBytes, revid, attachments, nil
 		}
 	}
@@ -1655,7 +1659,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 	}
 }
 
-func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) {
+func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) error {
 	if doc.HasBody() && doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes(ctx)
@@ -1717,11 +1721,14 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		doc.NewestRev = newRevID
 		doc.setFlag(channels.Hidden, true)
 		if doc.CurrentRev != prevCurrentRev {
-			doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader)
+			if err := doc.promoteNonWinningRevisionBody(ctx, doc.CurrentRev, db.RevisionBodyLoader); err != nil {
+				return err
+			}
 			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
 			doc.metadataOnlyUpdate = nil
 		}
 	}
+	return nil
 }
 
 func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]interface{}, newRevID string, err error) {
@@ -1768,31 +1775,27 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	// channels & access, for purposes of updating the doc:
 	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.CurrentRev)
 	if err != nil {
-		return
+		// Only a tombstone is safe to leave without channels - fail the write for a live revision
+		// rather than stripping its channels and access.
+		winner := doc.History[doc.CurrentRev]
+		if winner == nil || !winner.Deleted || !base.IsDocNotFoundError(err) {
+			return
+		}
+		// A promoted tombstone can have no body left anywhere - it never had one of its own, and its
+		// ancestors' backups expire after old_rev_expiry_seconds. It needs no channels or access, so
+		// leave it with none rather than failing the write.
+		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q body unavailable, leaving promoted tombstone in no channels: %v", base.UD(doc.ID), doc.CurrentRev, err)
+		return nil, nil, nil, nil, "", nil
 	}
 
 	var curBody Body
-	err = curBody.Unmarshal(curBodyBytes)
-	if err != nil {
+	if err = curBody.Unmarshal(curBodyBytes); err != nil {
 		return
 	}
 
-	if curBody != nil {
-		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
-			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev)
-		if err != nil {
-			return
-		}
-	} else {
-		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
-		base.WarnfCtx(ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-			"on it (err=%v)", base.UD(doc.ID), doc.CurrentRev, err)
-		channelSet = nil
-		access = nil
-		roles = nil
-	}
-	return
+	base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
+		base.UD(doc.ID), newRevID, doc.CurrentRev)
+	return db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev)
 }
 
 func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments updatedAttachments) error {
@@ -2008,7 +2011,10 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags(ctx)
 	newDocHasAttachments := len(newAttachments) > 0
-	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
+	err = col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
+	if err != nil {
+		return
+	}
 
 	syncExpiry, oldBodyJSON, channelSet, access, roles, err := col.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
 	if err != nil {
