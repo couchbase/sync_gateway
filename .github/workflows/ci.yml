@@ -42,7 +42,7 @@ env:
   # tag for repo at v1 is not updated
   ACTIONS_GOVULNCHECK_VERSION: &actions_govulncheck_version golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
   ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
-  GO_VERSION: &go_version 1.26.6
+  GO_VERSION: &go_version 1.26.8
   GOTESTSUM_VERSION: 1.13.0
 
 jobs:
