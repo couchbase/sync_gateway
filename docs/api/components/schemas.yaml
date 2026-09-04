@@ -419,6 +419,7 @@ User-session-information:
           additionalProperties:
             x-additionalPropertiesName: channelName
             type: integer
+            format: int64
             minimum: 1
             description: The sequence number the user was granted access.
             title: sequence number
@@ -586,9 +587,10 @@ Changes-feed:
         type: object
         properties:
           seq:
-            description: The change sequence number.
+            description: The change sequence number. This is usually a plain integer, but can be a compound (string) sequence value in some cases, such as during a channel backfill.
             oneOf:
               - type: integer
+                format: int64
               - type: string
           id:
             description: The document ID the change happened on.
@@ -2779,7 +2781,7 @@ Logging-config:
           readOnly: true
     stats:
       type: object
-      description: Trace logging configuration.
+      description: Stats logging configuration.
       properties:
         enabled:
           description: Toggle for this log output
