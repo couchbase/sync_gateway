@@ -2372,7 +2372,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags(ctx context.Context) {
 	}
 }
 
-func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) {
+func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) error {
 	if doc.HasBody() && doc.GetRevTreeID() != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes(ctx)
@@ -2434,11 +2434,14 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		doc.NewestRev = newRevID
 		doc.setFlag(channels.Hidden, true)
 		if doc.GetRevTreeID() != prevCurrentRev {
-			doc.promoteNonWinningRevisionBody(ctx, doc.GetRevTreeID(), db.RevisionBodyLoader)
+			if err := doc.promoteNonWinningRevisionBody(ctx, doc.GetRevTreeID(), db.RevisionBodyLoader); err != nil {
+				return err
+			}
 			// If the update resulted in promoting a previous non-winning revision body to winning, this isn't a metadata only update.
 			doc.MetadataOnlyUpdate = nil
 		}
 	}
+	return nil
 }
 
 func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]any, newRevID string, err error) {
@@ -2753,7 +2756,10 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 	prevCurrentRev := doc.GetRevTreeID()
 	doc.updateWinningRevAndSetDocFlags(ctx)
 	newDocHasAttachments := len(newAttachments) > 0
-	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
+	err = col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
+	if err != nil {
+		return
+	}
 
 	// For events where we need to generate a new version, generate the HLV current version now - before the
 	// (potentially slow) sync function runs - to maximise the time between generating the version and the

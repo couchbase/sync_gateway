@@ -424,23 +424,31 @@ func (tree RevTree) addRevision(ctx context.Context, docid string, info RevInfo)
 }
 
 func (tree RevTree) getRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) ([]byte, bool) {
+	bodyBytes, found, _ := tree.getRevisionBodyWithError(ctx, revid, loader)
+	return bodyBytes, found
+}
+
+// getRevisionBodyWithError is getRevisionBody, but hands back the error from a failed load of an
+// externally stored body (see RevInfo.BodyKey) instead of reporting it as a body that isn't there.
+// Callers that act destructively on an absent body need to tell those apart: unlike a _sync:rev:
+// backup, a _sync:rb: doc has no expiry and is referenced by the rev tree, so a failed read of one
+// says nothing about whether the body still exists.
+func (tree RevTree) getRevisionBodyWithError(ctx context.Context, revid string, loader RevLoaderFunc) ([]byte, bool, error) {
 	if revid == "" {
 		// TODO: CBG-1948
 		panic("Illegal empty revision ID")
 	}
 	info, found := tree[revid]
 	if !found {
-		return nil, false
+		return nil, false, nil
 	}
 
 	// If we don't have a Body in memory and there's a BodyKey present, attempt to retrieve using the loader
 	if info.Body == nil && info.BodyKey != "" {
-		if info.BodyKey != "" {
-			var err error
-			info.Body, err = loader(ctx, info.BodyKey)
-			if err != nil {
-				return nil, false
-			}
+		var err error
+		info.Body, err = loader(ctx, info.BodyKey)
+		if err != nil {
+			return nil, false, err
 		}
 	}
 
@@ -452,9 +460,9 @@ func (tree RevTree) getRevisionBody(ctx context.Context, revid string, loader Re
 	// is a much lower priority than avoiding write errors, and want to avoid introducing additional conflict scenarios.
 	// The invalid rev tree bodies will eventually be pruned through normal revision tree pruning.
 	if len(info.Body) > 0 && nonJSONPrefix(info.Body[0]) == nonJSONPrefixKindRevBody {
-		return nil, false
+		return nil, false, nil
 	}
-	return info.Body, true
+	return info.Body, true, nil
 }
 
 func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, hasAttachments bool) {
