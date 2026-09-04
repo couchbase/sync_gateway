@@ -1274,8 +1274,10 @@ Database:
                       type: boolean
                       default: false
         max_processes:
-          description: The maximum amount of concurrent event handling independent functions that can be running at the same time.
+          description: The maximum amount of concurrent event handling independent functions that can be running at the same time. Setting to 0 uses the default.
           type: integer
+          default: 500
+          minimum: 0
         wait_for_process:
           description: The maximum amount of time (in milliseconds) to wait when the event queue is full.
           type: string
@@ -1327,7 +1329,7 @@ Database:
     javascript_timeout_secs:
       description: The maximum number of seconds the sync, import filter, and custom conflict resolver JavaScript functions are allowed to run for before timing out. Set to 0 to allow the JS functions to run uncapped.
       type: integer
-      default: 60
+      default: 0
     keypath:
       description: The key path (private key) for X.509 bucket auth
       type: string
@@ -2808,7 +2810,7 @@ Logging-config:
               default: ""
             max_age:
               description: The maximum number of days to retain old log files.
-              default: 6
+              default: 90
               type: integer
         collation_buffer_size:
           description: The size of the log collation buffer
