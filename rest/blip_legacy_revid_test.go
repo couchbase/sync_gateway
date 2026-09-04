@@ -1434,3 +1434,204 @@ func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
 		}
 	})
 }
+
+func TestInvalidRevTreePullRepairsAndRedelivers(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		// 3 revisions with a leaf at generation 2: encodeRevisions produces a _revisions list that
+		// splitRevisionList rejects, which is what makes this unreplicatable over BLIP v3
+		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+			map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		rt.WaitForPendingChanges()
+
+		invalidRevTreeCount := rt.GetDatabase().DbStats.Database().InvalidRevTreeCount
+		noRevSendCount := rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount
+		require.Equal(t, int64(0), invalidRevTreeCount.Value())
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+		defer btcRunner.UnsubPullChanges(client.id)
+
+		// either way the document is repaired on load, exactly once, and 2-def is renumbered to 3-def
+		base.RequireWaitForStat(t, invalidRevTreeCount.Value, 1)
+		repaired, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		require.Equal(t, "3-def", repaired.GetRevTreeID())
+
+		// the repair leaves cv untouched, so a 4.0+ client identifies the document by the same version
+		// it always did - only a pre-4.0 client sees the rev ID change
+		repairedVersion := DocVersion{RevTreeID: "3-def"}
+		if client.UseHLV() {
+			repairedVersion = DocVersion{CV: *repaired.HLV.ExtractCurrentVersionFromHLV()}
+		}
+		btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+
+		if client.UseHLV() {
+			// no rev tree history goes on the wire and cv did not change, so there is nothing to skip
+			assert.Equal(t, int64(0), noRevSendCount.Value())
+		} else {
+			// the changes message named 2-def, which the repair renumbered out of existence, so that
+			// revision is skipped - and the repair's new sequence delivers 3-def straight after
+			base.RequireWaitForStat(t, noRevSendCount.Value, 1)
+
+			// the repaired revision carries the tree's real ancestors, not the fabricated ones a
+			// pre-repair send would have produced
+			msg, ok := btcRunner.GetPullRevMessage(client.id, docID, repairedVersion)
+			require.True(t, ok)
+			assert.Equal(t, "2-abc,1-abc", msg.Properties[db.RevMessageHistory])
+		}
+	})
+}
+
+// TestInvalidRevTreeQuietCaseRepairedBeforeSend covers the quiet case: a corrupt document whose leaf
+// generation is high enough relative to its branch length that encodeRevisions succeeds, so pre-repair
+// Sync Gateway would have sent it with no norev and no complaint, under ancestor rev IDs that have never
+// existed. The repair on load means those ancestors are never sent.
+//
+// Tree 1-abc -> 10-abc -> 10-def. Pre-repair the wire history was "9-abc,8-abc" - both fabricated, true
+// ancestors 10-abc and 1-abc. After repair the parent is truthful. The grandparent is still wrong, and
+// deliberately so: the tree has a legitimate generation gap between 1-abc and 10-abc, and _revisions can
+// only express start, start-1, start-2.
+func TestInvalidRevTreeQuietCaseRepairedBeforeSend(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // pre-4.0 clients are the ones sent rev tree history
+
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+		// gen 10 leaf on a 3 revision branch: 10 >= 3, so splitRevisionList accepts the encoding and
+		// nothing would have flagged this document before the generation invariant was checked directly
+		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+			map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}, "10-def")
+		rt.GetDatabase().FlushRevisionCacheForTest()
+		rt.WaitForPendingChanges()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+		btcRunner.StartPull(client.id)
+		defer btcRunner.UnsubPullChanges(client.id)
+
+		repairedVersion := DocVersion{RevTreeID: "11-def"}
+		btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value, 1)
+
+		msg, ok := btcRunner.GetPullRevMessage(client.id, docID, repairedVersion)
+		require.True(t, ok)
+		wireHistory := msg.Properties[db.RevMessageHistory]
+
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		require.Equal(t, "11-def", doc.GetRevTreeID())
+
+		// the parent is now a revision that really exists, which is the link a client splices onto
+		wireAncestors := strings.Split(wireHistory, ",")
+		require.NotEmpty(t, wireAncestors)
+		_, parentInTree := doc.History[wireAncestors[0]]
+		assert.True(t, parentInTree, "parent %q on the wire is not in the rev tree", wireAncestors[0])
+		assert.Equal(t, "10-abc", wireAncestors[0])
+
+		// ...whereas pre-repair not even the parent existed
+		assert.Equal(t, "10-abc,9-abc", wireHistory, "9-abc is the pre-existing generation gap lossiness, not the CBG-5713 corruption")
+	})
+}
+
+// TestInvalidRevTreePullRenamedRevReplacementOrNoRev covers what a pre-4.0 client is sent when the
+// revision it asked for is renumbered out of existence by the repair its own request triggered.
+//
+// The changes message names 2-def, taken from the channel cache without reading the document. The client
+// asks for it, sendRevision calls GetRev, that load repairs the tree and renames 2-def to 3-def, and the
+// requested revision is now genuinely missing - so getRevision returns ErrMissing and sendRevision takes
+// its existing IsDocNotFoundError branch. Which of the two things that branch can do depends entirely on
+// whether the client opted into sendReplacementRevs, so both are covered here.
+func TestInvalidRevTreePullRenamedRevReplacementOrNoRev(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
+
+	testCases := []struct {
+		name                string
+		sendReplacementRevs bool
+	}{
+		{name: "replacement revs enabled", sendReplacementRevs: true},
+		{name: "replacement revs disabled", sendReplacementRevs: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			btcRunner := NewBlipTesterClientRunner(t)
+			// a 4.0+ client is sent the cv, which the repair leaves untouched, so no revision ever goes missing
+			btcRunner.SkipSubtest[VersionVectorSubtestName] = true
+
+			btcRunner.Run(func(t *testing.T) {
+				rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+				defer rt.Close()
+
+				docID := SafeDocumentName(t, t.Name())
+				collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+				// 2-def sits at the same generation as its parent, so the repair renumbers it to 3-def
+				db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+					map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+				rt.GetDatabase().FlushRevisionCacheForTest()
+				rt.WaitForPendingChanges()
+
+				invalidRevTreeCount := rt.GetDatabase().DbStats.Database().InvalidRevTreeCount
+				noRevSendCount := rt.GetDatabase().DbStats.CBLReplicationPull().NoRevSendCount
+				require.Equal(t, int64(0), invalidRevTreeCount.Value(), "nothing has read the document yet")
+
+				client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+					sendReplacementRevs: testCase.sendReplacementRevs,
+				})
+				defer client.Close()
+				btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Continuous: false})
+
+				repairedVersion := DocVersion{RevTreeID: "3-def"}
+
+				if testCase.sendReplacementRevs {
+					// the client asked for 2-def and is sent 3-def in its place, on the same sequence
+					btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+
+					msg, ok := btcRunner.GetPullRevMessage(client.id, docID, repairedVersion)
+					require.True(t, ok)
+					assert.Equal(t, db.MessageRev, msg.Profile())
+					assert.Equal(t, "3-def", msg.Properties[db.RevMessageRev])
+					assert.Equal(t, "2-def", msg.Properties[db.RevMessageReplacedRev],
+						"3-def should have been sent as a replacement for the revision the repair renamed")
+					assert.Equal(t, int64(0), noRevSendCount.Value(), "a replacement rev was available, so nothing should have been skipped")
+				} else {
+					// no replacement is allowed, so the revision is skipped
+					base.RequireWaitForStat(t, noRevSendCount.Value, 1)
+
+					// ...and because this pull was one-shot, the client ends it holding nothing. The repair
+					// allocated a higher sequence, so the next pull delivers 3-def - which is what makes the
+					// norev a skip rather than data loss.
+					_, found := btcRunner.GetVersion(client.id, docID, repairedVersion)
+					require.False(t, found, "3-def should not have arrived on the pull that skipped 2-def")
+
+					btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Continuous: false})
+					btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+				}
+
+				// the repair was triggered by the client's request for the revision, not by any other read
+				base.RequireWaitForStat(t, invalidRevTreeCount.Value, 1)
+				doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				require.Equal(t, "3-def", doc.GetRevTreeID())
+			})
+		})
+	}
+}

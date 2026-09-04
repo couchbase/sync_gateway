@@ -18,6 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"fmt"
+	"sync"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -2890,4 +2893,124 @@ func TestPutExistingCurrentVersionISGROldRevBackup(t *testing.T) {
 			require.JSONEq(t, rev1Body, string(backup))
 		})
 	}
+}
+
+func TestRepairFailureDoesNotLeakSequence(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+
+	defer SuspendSequenceBatching()()
+
+	const docID = "corruptRacedRepairSequence"
+	tb := base.GetTestBucket(t)
+	var raceOnce sync.Once
+	lb := base.NewLeakyBucket(tb, base.LeakyBucketConfig{
+		// fires before the real UpdateXattrs, so the repair's CAS is stale by the time it lands.
+		// Written through the underlying bucket to avoid re-entering this callback.
+		UpdateXattrsCallback: func(key string) {
+			if key != docID {
+				return
+			}
+			raceOnce.Do(func() {
+				ctx := base.TestCtx(t)
+				var body []byte
+				_, err := tb.GetSingleDataStore().Get(ctx, key, &body)
+				require.NoError(t, err)
+				require.NoError(t, tb.GetSingleDataStore().Set(ctx, key, 0, nil, body))
+			})
+		},
+		IgnoreClose: true,
+	})
+
+	defer tb.Close(base.TestCtx(t)) // IgnoreClose means dbCtx.Close leaves the underlying bucket open
+	dbCtx, ctx := setupTestDBForBucket(t, lb)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	// a document whose rev tree the repair will want to renumber
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	dbCtx.FlushRevisionCacheForTest()
+
+	// before: the committed state, and how far the sequence allocator has got
+	before, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+	highSeqBefore, err := dbCtx.sequences.lastSequence(ctx)
+	require.NoError(t, err)
+	releasedBefore := dbCtx.DbStats.Database().SequenceReleasedCount.Value()
+
+	// the read that triggers the repair. The repair renumbers the tree, takes a sequence, and then its
+	// CAS-guarded write loses the injected race - so none of it reaches the bucket.
+	doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+
+	after, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+	highSeqAfter, err := dbCtx.sequences.lastSequence(ctx)
+	require.NoError(t, err)
+	releasedCount := dbCtx.DbStats.Database().SequenceReleasedCount.Value() - releasedBefore
+
+	t.Logf("sequence allocator: %d -> %d, released %d", highSeqBefore, highSeqAfter, releasedCount)
+	t.Logf("committed rev %q seq %d -> rev %q seq %d; returned doc.Sequence=%d",
+		before.GetRevTreeID(), before.Sequence, after.GetRevTreeID(), after.Sequence, doc.Sequence)
+
+	// precondition: the repair lost the race, so nothing about it was committed
+	require.Equal(t, before.GetRevTreeID(), after.GetRevTreeID(), "the repair should have written nothing")
+	require.Equal(t, before.Sequence, after.Sequence, "the repair should not have committed a sequence")
+
+	// precondition: it did take a sequence on the way, though - exactly one, batching is off
+	require.Equal(t, highSeqBefore+1, highSeqAfter, "the repair should have allocated exactly one sequence")
+	abandonedSequence := highSeqAfter
+
+	// the abandoned sequence is given back...
+	assert.Equal(t, uint64(1), releasedCount, "sequence %d was allocated and never released", abandonedSequence)
+
+	// ...as an unused-sequence document, which is what stops the change cache waiting on the gap
+	unusedSeqKey := fmt.Sprintf("%s%d", dbCtx.MetadataKeys.UnusedSeqPrefix(), abandonedSequence)
+	exists, err := dbCtx.MetadataStore.Exists(ctx, unusedSeqKey)
+	require.NoError(t, err)
+	assert.True(t, exists, "no unused-sequence document %q for abandoned sequence %d", unusedSeqKey, abandonedSequence)
+
+	// ...and the document handed back to the caller does not claim it
+	assert.Equal(t, before.Sequence, doc.Sequence, "the returned document claims uncommitted sequence %d", doc.Sequence)
+}
+
+func TestWritePathRepairMouChain(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
+	dbCtx, ctx := setupTestDB(t)
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	const docID = "corruptWritePathMouChain"
+	PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+
+	// the SDK write is the last real body mutation
+	require.NoError(t, collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"sdk":true}`)))
+	_, sdkWriteCas, err := collection.dataStore.GetRaw(ctx, docID)
+	require.NoError(t, err)
+	dbCtx.FlushRevisionCacheForTest()
+
+	// a write on top: the callback imports, bails to a CAS retry, then repairs on the retry
+	_, _, err = collection.Put(ctx, docID, Body{"fromSG": true})
+	require.Error(t, err, "a Put with no matching rev against an existing document is a conflict")
+
+	_, casAfterRepair, err := collection.dataStore.GetRaw(ctx, docID)
+	require.NoError(t, err)
+	_, mouAfterRepair, _ := getSyncAndMou(t, collection, docID)
+
+	require.Equal(t, base.CasToString(casAfterRepair), mouAfterRepair.HexCAS,
+		"precondition: the repair should be the current metadata-only update")
+
+	// this is the claim under test
+	assert.Equal(t, base.CasToString(sdkWriteCas), mouAfterRepair.PreviousHexCAS,
+		"write-path _mou.pCas should have chained back to the SDK write, not restarted at the import")
+
+	// _mou.pRev is the revSeqNo before the repair's own mutation. The repair is the last write here (the
+	// caller's write was rejected), so that is one less than the document's current revSeqNo - and never
+	// zero, which is what the write path stamped before it stopped discarding the revSeqNo it fetches.
+	revSeqNoAfterRepair, _, err := collection.getRevSeqNo(ctx, docID)
+	require.NoError(t, err)
+	require.NotZero(t, revSeqNoAfterRepair)
+	assert.Equal(t, revSeqNoAfterRepair-1, mouAfterRepair.PreviousRevSeqNo,
+		"write-path _mou.pRev should be the revSeqNo immediately before the repair (current revSeqNo %d)", revSeqNoAfterRepair)
 }
