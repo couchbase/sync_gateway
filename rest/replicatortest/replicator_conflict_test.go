@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -2227,4 +2229,191 @@ func getRevTreeID(t *testing.T, parentRevID string, body []byte) string {
 	prevGeneration, _ := db.ParseRevID(t.Context(), parentRevID)
 	require.NotEqual(t, -1, prevGeneration, "failed to parse revID %s", parentRevID)
 	return db.CreateRevIDWithBytes(prevGeneration+1, parentRevID, body)
+}
+
+// A pre-4.0.x Sync Gateway held the CBG-5713 corruption and replicated the document
+// to its ISGR peer before anyone knew the tree was invalid, so the two peers start from *different* trees
+// for the same document:
+
+//	active (the corrupt source):  1-abc -> 10-abc -> 10-def
+//	passive (what it was sent):   8-abc ->  9-abc -> 10-def
+//
+// 9-abc and 8-abc never existed anywhere, they are what encodeRevisions produced for 10-abc and 1-abc because it
+// only expresses a contiguous descending run from start. Repairing the active side renames 10-def to 11-def,
+// and that is what turns a difference into a real conflict: the peer already has a 10-def of its own, so when 11-def
+// arrives as a branch off of 9-abc, it's identified as a conflict.
+var (
+	// activeCorruptTree is the CBG-5713 corruption at the source: 10-def does not exceed its parent 10-abc.
+	activeCorruptTree = map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}
+	// passiveFabricatedTree is the same document as an older Sync Gateway delivered it to the peer.
+	passiveFabricatedTree = map[string]string{"8-abc": "", "9-abc": "8-abc", "10-def": "9-abc"}
+	// repairedActiveTree is activeCorruptTree once the repair has renumbered the leaf.
+	repairedActiveTree = map[string]string{"1-abc": "", "10-abc": "1-abc", "11-def": "10-abc"}
+)
+
+// plantUpgradeScenario puts the two divergent starting trees on the two peers and empties both revision
+// caches, so the next read of either document comes from the bucket.
+func plantUpgradeScenario(t *testing.T, activeRT, passiveRT *rest.RestTester, docID string) {
+	t.Helper()
+
+	activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()
+	db.PlantRevTreeForTest(t, activeCtx, activeCollection, docID,
+		db.Body{"peer": "active", "channels": []string{"alice"}}, activeCorruptTree, "10-def")
+	activeRT.GetDatabase().FlushRevisionCacheForTest()
+
+	passiveCollection, passiveCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
+	db.PlantRevTreeForTest(t, passiveCtx, passiveCollection, docID,
+		db.Body{"peer": "passive", "channels": []string{"alice"}}, passiveFabricatedTree, "10-def")
+	passiveRT.GetDatabase().FlushRevisionCacheForTest()
+
+	// both peers believe the current revision is the same, which is what keeps this invisible
+	activeCurrentRev, activeTree, _, err := revTreeState(activeCtx, activeCollection, docID)
+	require.NoError(t, err)
+	require.Equal(t, "10-def", activeCurrentRev)
+	require.Equal(t, activeCorruptTree, activeTree)
+	passiveCurrentRev, passiveTree, _, err := revTreeState(passiveCtx, passiveCollection, docID)
+	require.NoError(t, err)
+	require.Equal(t, "10-def", passiveCurrentRev)
+	require.Equal(t, passiveFabricatedTree, passiveTree)
+}
+
+// TestISGRRepairCausesRevTreeConflictOnPeer covers the repair colliding with a peer that already holds the
+// pre-upgrade copy of the same document.
+func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeySync, base.KeySyncMsg, base.KeyReplicate)
+
+	// Corrupt revision is sent to passive pre fix for sync data. The passive is sent with fake history so when
+	// corruption is fixed on active the documents sit in conflict. This is a new revision is made for active to pull
+	// from passive.
+	t.Run("repaired revision pushed to peer is rejected until the peer is updated", func(t *testing.T) {
+		sgrRunner := rest.NewSGRTestRunner(t)
+		sgrRunner.RunSubprotocolV3(func(t *testing.T) {
+			activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+			remoteURL, err := url.Parse(passiveDBURL)
+			require.NoError(t, err)
+			activeCtx := activeRT.Context()
+			docID := rest.SafeDocumentName(t, t.Name())
+
+			plantUpgradeScenario(t, activeRT, passiveRT, docID)
+
+			activeCollection, activeCollectionCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()
+			passiveCollection, passiveCollectionCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
+
+			// trigger repair on active
+			rest.RequireStatus(t, activeRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, ""), http.StatusOK)
+			currentRev, tree, _, err := revTreeState(activeCollectionCtx, activeCollection, docID)
+			require.NoError(t, err)
+			require.Equal(t, "11-def", currentRev)
+			require.Equal(t, repairedActiveTree, tree)
+			require.Equal(t, int64(1), activeRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
+
+			activeRT.WaitForPendingChanges()
+			passiveRT.WaitForPendingChanges()
+
+			pushOnly, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+				ID:                     rest.SafeDocumentName(t, t.Name()+"push"),
+				Direction:              db.ActiveReplicatorTypePush,
+				RemoteDBURL:            remoteURL,
+				ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
+				ChangesBatchSize:       200,
+				Continuous:             true,
+				ReplicationStatsMap:    dbReplicatorStats(t),
+				CollectionsEnabled:     !activeRT.GetDatabase().OnlyDefaultCollection(),
+				SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+			})
+			require.NoError(t, err)
+			require.NoError(t, pushOnly.Start(activeCtx))
+
+			// Conflict state. Repair ends with rev tree: 1-abc -> 10-abc -> 11-def and this is sent as
+			// 9-abc -> 10-abc -> 11-def. When peer has 8-abc -> 9-abc -> 10-def (from a roundtrip of replication of
+			// corrupt doc before fix).
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Equal(c, int64(1), pushOnly.GetStatus(activeCtx).DocWriteConflict)
+			}, 30*time.Second, 100*time.Millisecond)
+			assert.Equal(t, int64(0), pushOnly.GetStatus(activeCtx).DocsWritten)
+
+			// the peer is untouched, and the two sides now disagree about the current revision with
+			// nothing in the replication able to settle it
+			passiveCurrentRev, passiveTree, passiveLeaves, err := revTreeState(passiveCollectionCtx, passiveCollection, docID)
+			require.NoError(t, err)
+			assert.Equal(t, "10-def", passiveCurrentRev)
+			assert.Equal(t, passiveFabricatedTree, passiveTree)
+			assert.Len(t, passiveLeaves, 1)
+			require.NoError(t, pushOnly.Stop())
+
+			// A new revision on the peer will unblock the situation and will trigger conflict resolution on active
+			resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev=10-def",
+				`{"peer":"passive","update":1,"channels":["alice"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+			passiveUpdateRev := rest.DocVersionFromPutResponse(t, resp).RevTreeID
+			require.True(t, strings.HasPrefix(passiveUpdateRev, "11-"), "got %q", passiveUpdateRev)
+			passiveRT.WaitForPendingChanges()
+
+			activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+			activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
+
+			// passive version wins
+			requireRepairConvergedOnPeerBranch(t, activeRT, passiveRT, docID, passiveUpdateRev)
+		})
+	})
+
+	// Passive peer has corrupt revision replicated to it before fix is applied. When active peer pulls a new revision
+	// from passive into a corrupt local version, the write will fix the rev tree and resolve the resulting conflict.
+	// Then push result back to passive.
+	t.Run("new revision on peer pulled back repairs and resolves in one pass", func(t *testing.T) {
+		sgrRunner := rest.NewSGRTestRunner(t)
+		sgrRunner.RunSubprotocolV3(func(t *testing.T) {
+			activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+			docID := rest.SafeDocumentName(t, t.Name())
+
+			plantUpgradeScenario(t, activeRT, passiveRT, docID)
+
+			// the peer moves first, and the active is never read, so its tree is still corrupt
+			resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?rev=10-def",
+				`{"peer":"passive","update":1,"channels":["alice"]}`)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+			passiveUpdateRev := rest.DocVersionFromPutResponse(t, resp).RevTreeID
+			gen, _ := db.ParseRevID(base.TestCtx(t), passiveUpdateRev)
+			require.Equal(t, 11, gen)
+			passiveRT.WaitForPendingChanges()
+			require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
+
+			activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+			activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
+
+			// passive version wins
+			requireRepairConvergedOnPeerBranch(t, activeRT, passiveRT, docID, passiveUpdateRev)
+		})
+	})
+}
+
+func requireRepairConvergedOnPeerBranch(t *testing.T, activeRT, passiveRT *rest.RestTester, docID string, passiveUpdateRev string) {
+	t.Helper()
+	convergedRev, perPeer := rest.RequireRevTreeConvergence(t, docID, activeRT, passiveRT)
+	activeSyncData, passiveSyncData := perPeer[0], perPeer[1]
+
+	gen, _ := db.ParseRevID(base.TestCtx(t), convergedRev)
+	require.Equal(t, 12, gen)
+	assert.Equal(t, passiveUpdateRev, activeSyncData.History[convergedRev].Parent, "the winner should extend the peer's update")
+
+	// the repaired branch is closed off with a new tombstone revision rather than left live
+	leaves := activeSyncData.History.GetLeaves()
+	require.Len(t, leaves, 2, "expected the winner plus the tombstoned losing branch, got %v", leaves)
+	var tombstone string
+	for _, leaf := range leaves {
+		if leaf != convergedRev {
+			tombstone = leaf
+		}
+	}
+	require.NotEmpty(t, tombstone)
+	assert.Equal(t, "11-def", activeSyncData.History[tombstone].Parent, "the tombstone should close the repaired branch")
+	assert.True(t, strings.HasPrefix(tombstone, "12-"), "the tombstone should be a new revision, got %q", tombstone)
+
+	// the peer is only ever sent the winner, so it has no losing branch of its own to close
+	assert.Len(t, passiveSyncData.History.GetLeaves(), 1)
+
+	// the corruption was repaired once, on the peer that held it, not once per write that touched it
+	assert.Equal(t, int64(1), activeRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
+	assert.Equal(t, int64(0), passiveRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
 }

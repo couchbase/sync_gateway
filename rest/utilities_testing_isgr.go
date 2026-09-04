@@ -9,14 +9,17 @@
 package rest
 
 import (
+	"context"
 	"net/http/httptest"
 	"net/url"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -275,4 +278,59 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 		PassiveRT:    passiveRT,
 		PassiveDBURL: passiveDBURL.String(),
 	}
+}
+
+// RequireRevTreeConvergence waits for two or more peers to agree on a document's current revision, then will
+// assert that any other leaf revision(s) are tombstone revisions. Uses GetDocSyncData to avoid read side
+// repair of corrupt metadata through GetDocumentWithRaw. It will return the converged revID and the per peer sync data
+// for callers to assert on.
+func RequireRevTreeConvergence(t *testing.T, docID string, peers ...*RestTester) (convergedRev string, perPeer []db.SyncData) {
+	t.Helper()
+	require.GreaterOrEqual(t, len(peers), 2, "convergence needs at least two peers")
+
+	collections := make([]*db.DatabaseCollectionWithUser, len(peers))
+	ctxs := make([]context.Context, len(peers))
+	for i, peer := range peers {
+		collections[i], ctxs[i] = peer.GetSingleTestDatabaseCollectionWithUser()
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var first string
+		for i := range peers {
+			syncData, err := collections[i].GetDocSyncData(ctxs[i], docID)
+			if !assert.NoError(c, err, "peer %d does not have doc %q yet", i, docID) {
+				return
+			}
+			if i == 0 {
+				first = syncData.GetRevTreeID()
+				continue
+			}
+			assert.Equal(c, first, syncData.GetRevTreeID(), "peer %d has not converged with peer 0", i)
+		}
+	}, 20*time.Second, 100*time.Millisecond)
+
+	perPeer = make([]db.SyncData, len(peers))
+	for i := range peers {
+		syncData, err := collections[i].GetDocSyncData(ctxs[i], docID)
+		require.NoError(t, err)
+		perPeer[i] = syncData
+
+		if i == 0 {
+			convergedRev = syncData.GetRevTreeID()
+		}
+		require.Equal(t, convergedRev, syncData.GetRevTreeID(), "peer %d disagrees on the current revision", i)
+
+		current, ok := syncData.History[convergedRev]
+		require.True(t, ok, "peer %d names %q as current but does not have it in its rev tree", i, convergedRev)
+		assert.False(t, current.Deleted, "peer %d converged on a tombstone, %q", i, convergedRev)
+
+		for _, leaf := range syncData.History.GetLeaves() {
+			if leaf == convergedRev {
+				continue
+			}
+			assert.True(t, syncData.History[leaf].Deleted,
+				"peer %d still holds live conflicting leaf %q alongside converged revision %q", i, leaf, convergedRev)
+		}
+	}
+	return convergedRev, perPeer
 }

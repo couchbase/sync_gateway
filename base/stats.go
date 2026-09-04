@@ -95,6 +95,7 @@ const (
 	StatAddedVersion3dot3dot0     = "3.3.0"
 	StatAddedVersion4dot0dot0     = "4.0.0"
 	StatAddedVersion4dot1dot0     = "4.1.0"
+	StatAddedVersion4dot1dot2     = "4.1.2"
 
 	StatDeprecatedVersionNotDeprecated = ""
 	StatDeprecatedVersion3dot2dot0     = "3.2.0"
@@ -644,6 +645,8 @@ type DatabaseStats struct {
 	HighSeqFeed *SgwUint64Stat `json:"high_seq_feed"`
 	// The total number of document writes where the Sync Gateway-generated HLV version exceeded the document CAS and required a corrective re-stamp. A non-zero value indicates clock skew between Sync Gateway and Couchbase Server.
 	HLVVersionCASRetryCount *SgwIntStat `json:"hlv_version_cas_retry_count"`
+	// The total number of times a document's revision tree was found to be invalid.
+	InvalidRevTreeCount *SgwIntStat `json:"invalid_rev_tree_count"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -1890,6 +1893,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.InvalidRevTreeCount, err = NewIntStat(SubsystemDatabaseKey, "invalid_rev_tree_count", StatUnitNoUnits, InvalidRevTreeCountDesc, StatAddedVersion4dot1dot2, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.PublicRestBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", StatUnitBytes, PublicRestBytesWrittenDesc, StatAddedVersion3dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityVolatile, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -2070,6 +2077,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
 	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
 	prometheus.Unregister(d.DatabaseStats.HLVVersionCASRetryCount)
+	prometheus.Unregister(d.DatabaseStats.InvalidRevTreeCount)
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
 	prometheus.Unregister(d.DatabaseStats.NumAttachmentsCompacted)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)

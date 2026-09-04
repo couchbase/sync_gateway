@@ -4471,3 +4471,55 @@ func TestGetDocChannelHistory(t *testing.T) {
 		assert.Equal(t, expected, apiResult)
 	})
 }
+
+// TestInvalidRevTreeRestGetRepairsAndRenames covers same read-path contract through
+// REST GET handler - the user-visible half.
+// A plain GET repairs the document and returns the renumbered current revision; a GET naming the
+// revision the repair renumbered away gets a 404, because that revision genuinely no longer exists.
+func TestInvalidRevTreeRestGetRepairsAndRenames(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyHTTP)
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	docID := SafeDocumentName(t, t.Name())
+	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
+
+	// 2-def sits at the same generation as its parent, so the repair renumbers it to 3-def
+	db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+		map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	invalidRevTreeCount := rt.GetDatabase().DbStats.Database().InvalidRevTreeCount
+	require.Equal(t, int64(0), invalidRevTreeCount.Value())
+
+	// a GET naming the pre-repair revision repairs the document, and then cannot find the revision it
+	// was asked for - the repair renumbered it out of existence
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev=2-def", "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	require.Equal(t, int64(1), invalidRevTreeCount.Value(), "the GET should have repaired the document")
+
+	// a plain GET returns the repaired current revision
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+	RequireStatus(t, resp, http.StatusOK)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+	assert.Equal(t, "3-def", body[db.BodyRev])
+
+	// ...as does a GET naming it explicitly, with a revision history that exists in the tree
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev=3-def&revs=true", "")
+	RequireStatus(t, resp, http.StatusOK)
+	body = db.Body{}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+	assert.Equal(t, "3-def", body[db.BodyRev])
+	revisions, ok := body[db.BodyRevisions].(map[string]any)
+	require.True(t, ok, "expected _revisions in %v", body)
+	assert.Equal(t, float64(3), revisions[db.RevisionsStart].(float64))
+	assert.Equal(t, []any{"def", "abc", "abc"}, revisions[db.RevisionsIds].([]any))
+
+	// the repair is not applied a second time
+	rt.GetDatabase().FlushRevisionCacheForTest()
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+	RequireStatus(t, resp, http.StatusOK)
+	assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "a repaired document should not be reported again")
+}
