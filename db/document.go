@@ -776,19 +776,24 @@ func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
 }
 
 // Retrieves a non-winning revision body.  If not already loaded in the document (either because inline,
-// or was previously requested), loader function is used to retrieve from the bucket.
-func (doc *Document) getNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) Body {
+// or was previously requested), loader function is used to retrieve from the bucket.  A nil body with no
+// error means the body isn't there - a failed read of an externally stored body is returned as an error,
+// because it doesn't tell us whether the body exists.
+func (doc *Document) getNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) (Body, error) {
 	var body Body
-	bodyBytes, found := doc.History.getRevisionBody(revid, loader)
+	bodyBytes, found, err := doc.History.getRevisionBodyWithError(revid, loader)
+	if err != nil && !base.IsDocNotFoundError(err) {
+		return nil, err
+	}
 	if !found || len(bodyBytes) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if err := body.Unmarshal(bodyBytes); err != nil {
 		base.WarnfCtx(ctx, "Unexpected error parsing body of rev %q: %v", revid, err)
-		return nil
+		return nil, nil
 	}
-	return body
+	return body, nil
 }
 
 // Fetches the body of a revision as JSON, or nil if it's not available.
@@ -817,11 +822,20 @@ func (doc *Document) removeRevisionBody(ctx context.Context, revID string) {
 }
 
 // makeBodyActive moves a previously non-winning revision body from the rev tree to the document body
-func (doc *Document) promoteNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) {
+func (doc *Document) promoteNonWinningRevisionBody(ctx context.Context, revid string, loader RevLoaderFunc) error {
 	// If the new revision is not current, transfer the current revision's
 	// body to the top level doc._body:
-	doc.UpdateBody(doc.getNonWinningRevisionBody(ctx, revid, loader))
+	body, err := doc.getNonWinningRevisionBody(ctx, revid, loader)
+	if err != nil {
+		// The body is in the bucket but couldn't be read.  Clearing it from the rev tree here would
+		// delete the only copy of it once the write commits, and the write would go on to recalculate
+		// the document's channels without it, so fail the write instead - it can be retried.
+		base.WarnfCtx(ctx, "Unable to read the body of rev %q, being promoted to current for doc %q: %v", revid, base.UD(doc.ID), err)
+		return err
+	}
+	doc.UpdateBody(body)
 	doc.removeRevisionBody(ctx, revid)
+	return nil
 }
 
 func (doc *Document) pruneRevisions(ctx context.Context, maxDepth uint32, keepRev string) int {
