@@ -27,7 +27,7 @@ require (
 	github.com/kardianos/service v1.2.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.70.0
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
@@ -106,7 +106,7 @@ require (
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260727163830-6c54dddc4772 // indirect
 	google.golang.org/grpc v1.83.1 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gotest.tools/gotestsum v1.13.0 // indirect
 )
