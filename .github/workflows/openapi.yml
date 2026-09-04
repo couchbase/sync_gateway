@@ -32,9 +32,14 @@ on:
       - 'ci-*'
       - 'api-ci-*'
   pull_request:
-    # Only run when we change an API spec
+    # Also run on linter/config changes, so a version bump is validated before merge
     paths:
       - 'docs/api/**'
+      - '.redocly.yaml'
+      - '.yamllint.yml'
+      - '.github/workflows/openapi.yml'
+      - 'package.json'
+      - 'package-lock.json'
     branches:
       - 'master'
       - 'main'
@@ -66,7 +71,7 @@ jobs:
       - uses: *actions_redocly_problem_matchers_version
       - name: redocly lint
         run: |-
-          npx redocly lint --config=.redocly.yaml --format=stylish
+          npm run lint:openapi
 
   yamllint:
     name: 'yamllint'

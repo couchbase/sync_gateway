@@ -2507,8 +2507,7 @@ Runtime-config:
   type: object
   properties:
     logging:
-      allOf:
-        - $ref: "#/Logging-config"
+      $ref: "#/Logging-config"
     max_concurrent_replications:
       description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
       type: integer
@@ -2532,8 +2531,7 @@ Logging-config:
         - unset
       readOnly: true
     console:
-      allOf:
-        - $ref: '#/Console-logging-config'
+      $ref: '#/Console-logging-config'
     error:
       type: object
       description: Error logging configuration.
@@ -3011,7 +3009,8 @@ Status:
             description: Indicates whether the database requires resync before it can be brought online.
             type: boolean
           state:
-            allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+            description: The current state of the database.
+            allOf:
               - $ref: '#/DatabaseState'
           replication_status:
             type: array
@@ -3062,8 +3061,7 @@ Status:
         Blank if `api.hide_product_version=true` in the startup configuration.
       type: string
     vendor:
-      allOf:
-        - $ref: '#/Vendor'
+      $ref: '#/Vendor'
     runtime:
       description: |-
         Runtime environment information for this Sync Gateway node. Includes Go runtime
@@ -3116,8 +3114,7 @@ NodeInfo:
       type: string
       example: Welcome
     vendor:
-      allOf:
-        - $ref: '#/Vendor'
+      $ref: '#/Vendor'
     version:
       description: |-
         Product version, including the build number and edition (i.e. `EE` or `CE`)
@@ -3148,8 +3145,7 @@ ResyncScopesMap:
   description: 'scope name with one or more collection names for which resync will be triggered'
   type: object
   additionalProperties:
-    allOf:
-      - $ref: '#/CollectionNames'
+    $ref: '#/CollectionNames'
   example: {"scopeName": ["collection1", "collection2"]}
 CollectionNames:
   description: 'List of collection names'
@@ -3197,7 +3193,8 @@ CollectionNames:
         type: string
         description: The Couchbase Server backing bucket for the database.
       state:
-        allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+        description: The current state of the database.
+        allOf:
           - $ref: '#/DatabaseState'
       require_resync:
         description: Indicates whether the database requires resync before it can be brought online.
@@ -3377,8 +3374,7 @@ IndexInitStatus:
             "ready": All indexes were created.
             "error": The index creation operation has failed.
     settings:
-      allOf:
-        - $ref: '#/IndexSettings'
+      $ref: '#/IndexSettings'
   required:
     - status
     - start_time
