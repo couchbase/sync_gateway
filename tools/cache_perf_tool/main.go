@@ -21,6 +21,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -52,7 +53,7 @@ func main() {
 	channelsPerClient := flag.Int("channelsPerClient", 0, "Number of channels per client to wait on. Used only for DCP mode.")
 	rapidUpdateDocs := flag.Bool("rapidUpdateDocs", false, "Have documents rapidly updated (use of recent sequences). Used only for DCP mode.")
 	numDCPWorkers := flag.Int("numDCPWorkers", 8, "Number of DCP workers to create. Default is 8. Used only for DCP mode.")
-	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets to create. Used only for DCP mode. Default is 1024.")
+	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets (1-1024). Used only for DCP mode. This sizes the DCP client AND the generator, which starts one writer goroutine per vBucket - so it is the offered write concurrency, and runs with different values are not comparable with each other. Writers are staggered by 100ms, so startup takes numVBuckets*100ms before -duration begins. Default is 1024.")
 	flag.Parse()
 
 	if *nodes < 1 {
@@ -67,20 +68,30 @@ func main() {
 	if *timeToRun < 1 {
 		log.Fatalf("Invalid duration: %d", *timeToRun)
 	}
-	if *numChannelsPerDoc < 1 {
+	if *numChannelsPerDoc < 0 {
 		log.Fatalf("Invalid number of channels: %d", *numChannelsPerDoc)
 	}
 	if profileInterval.Seconds() != 0 && *profileInterval >= *timeToRun {
 		log.Fatalf("Invalid profile interval: %d, must be less than the duration of test: %d", *profileInterval, *timeToRun)
 	}
-	if *totalNumberOfChans < 1 && *totalNumberOfChans <= *numChannelsPerDoc {
-		log.Fatalf("Invalid total number of channels: %d", *totalNumberOfChans)
+	// 0 is allowed for both channel flags: it gives a no-channel-cache baseline (documents cached with
+	// no channel population to write into), which isolates the rest of the write path. The check that
+	// matters is that the system has at least as many channels as each document is assigned to,
+	// otherwise the generator wraps and silently assigns fewer channels per document than requested.
+	if *totalNumberOfChans < 0 || (*numChannelsPerDoc > 0 && *totalNumberOfChans < *numChannelsPerDoc) {
+		log.Fatalf("Invalid total number of channels: %d (must be >= 0, and >= numChannels=%d)", *totalNumberOfChans, *numChannelsPerDoc)
 	}
 	if *channelsPerClient < 0 {
 		log.Fatalf("Invalid number of channels per client: %d", *channelsPerClient)
 	}
 	if *numDCPWorkers < 1 {
 		log.Fatalf("Invalid number of DCP workers: %d", *numDCPWorkers)
+	}
+	// Bounded rather than just >0: the value is cast to uint16 for the DCP client, so anything above
+	// 65535 wraps - and a value wrapping to 0 makes the client fall back to reading the vBucket count
+	// off the bucket, which is a zero-value struct here and panics. 1024 is the real ceiling.
+	if *numVBuckets < 1 || *numVBuckets > 1024 {
+		log.Fatalf("Invalid number of vBuckets: %d, must be in [1,1024]", *numVBuckets)
 	}
 
 	delayList, err := extractDelays(*delays, *mode)
@@ -198,7 +209,7 @@ func main() {
 		// setup dcp generator object and create fake dcp client
 		seqAlloc := newSequenceAllocator(*batchSize, seqAllocator)
 		dcpGen := &dcpDataGen{seqAlloc: seqAlloc, delays: delayList, dbCtx: dbContext, numChannelsPerDoc: *numChannelsPerDoc,
-			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs}
+			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs, numVBuckets: *numVBuckets}
 		mutationListener := dbContext.GetMutationListener(t)
 		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
 		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map, *numDCPWorkers, uint16(*numVBuckets))
@@ -208,13 +219,17 @@ func main() {
 		}
 		dcpGen.client = client
 
-		// create vBucket mutations
+		// create vBucket mutations. This blocks until every vBucket writer is running - the writers are
+		// staggered by 100ms each, so it takes numVBuckets*100ms (~100s at the default 1024), and only
+		// then does the -duration timer below start.
 		dcpGen.vBucketCreation(ctx)
+		runThroughput.markGeneratorReady()
 	} else if *mode == processEntry {
 		p := &processEntryGen{t: t, dbCtx: dbContext, delays: delayList, seqAlloc: seqAllocator, numNodes: *nodes,
 			batchSize: *batchSize, numChansPerDoc: *numChannelsPerDoc, totalChans: *totalNumberOfChans}
 		// create new sgw node abstraction and spawn write goroutines
 		p.spawnDocCreationGoroutine(ctx)
+		runThroughput.markGeneratorReady()
 	} else {
 		log.Printf("Invalid mode: %s", *mode)
 		return
@@ -260,6 +275,9 @@ func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseConte
 		go func(ctx context.Context, wait *db.ChangeWaiter, chanMap channels.Set) {
 			numGoroutines.Add(1)
 			defer numGoroutines.Add(-1)
+			// Per-feed cursor: remember the last sequence each watched channel has been read up to, so each
+			// wake reads only the delta (like a real changes feed passing `since`), not the whole channel log.
+			sinceByChan := make(map[channels.ID]uint64, len(chanMap))
 			for {
 				if ctx.Err() != nil {
 					return
@@ -270,16 +288,107 @@ func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseConte
 				} else if num == db.WaiterHasChanges {
 					// get cached changes for map, simulating changes feeds actually using the channel cache
 					for id := range chanMap {
-						_, err := dbContext.GetCachedChanges(t, ctx, id)
+						changes, err := dbContext.GetCachedChangesSince(t, ctx, id, sinceByChan[id])
 						if err != nil {
 							log.Printf("Error getting cached changes: %v", err)
 							return
+						}
+						if n := len(changes); n > 0 {
+							sinceByChan[id] = changes[n-1].Sequence
 						}
 					}
 				}
 			}
 		}(ctx, waiter, chans)
 	}
+}
+
+// steadyWindowSecs is the trailing window the steady-state throughput figure is taken over. 300s is
+// long enough to average out the notify cadence and short enough to exclude the ~100s vBucket ramp,
+// during which throughput is still climbing and would drag the whole-run average down.
+const steadyWindowSecs = 300
+
+// throughputSample is one reading of the cumulative cached-sequence counter, taken at the same
+// moment as (and carrying the same values as) a row of the per-second stderr CSV.
+type throughputSample struct {
+	unixSec int64
+	count   int64
+}
+
+// runThroughput accumulates the per-second series csvStats already reads, so the end-of-run summary
+// can state sequences cached per second directly instead of every consumer re-deriving it from the
+// CSV. One sample per second, so the memory cost is negligible even for a multi-hour run.
+var runThroughput throughputSeries
+
+type throughputSeries struct {
+	lock sync.Mutex
+	// samples is the per-second series, oldest first.
+	samples []throughputSample
+	// readyUnixSec is when the write generator reached full offered load; samples before it are
+	// excluded from the steady-state window. In DCP mode the 1024 vBucket writers are started 100ms
+	// apart, so the run spends its first ~100s ramping - and that ramp happens BEFORE the -duration
+	// timer starts, which is exactly the trap this guards: without it, a run given a -duration shorter
+	// than the steady window would report a steady figure that silently averages in the ramp.
+	readyUnixSec int64
+}
+
+// markGeneratorReady records that every writer is now running, so the steady-state window can start
+// from here rather than from the first sample.
+func (s *throughputSeries) markGeneratorReady() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.readyUnixSec = time.Now().Unix()
+}
+
+func (s *throughputSeries) record(unixSec int64, count int64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.samples = append(s.samples, throughputSample{unixSec: unixSec, count: count})
+}
+
+// rates returns sequences cached per second over the whole sampled run, and over the steady-state
+// window: the last windowSecs, never reaching back past the point the generator came up to full
+// load. window is the length of that steady window as actually measured - shorter than windowSecs
+// when the run did not last that long after ramp, and 0 when the run was too short to give a steady
+// window at all, in which case steady is 0 too rather than a ramp-contaminated number.
+func (s *throughputSeries) rates(windowSecs int64) (overall, steady float64, window int64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	n := len(s.samples)
+	if n < 2 {
+		return 0, 0, 0
+	}
+	first, last := s.samples[0], s.samples[n-1]
+	if last.unixSec > first.unixSec {
+		overall = float64(last.count-first.count) / float64(last.unixSec-first.unixSec)
+	}
+
+	cutoff := last.unixSec - windowSecs
+	if s.readyUnixSec > cutoff {
+		cutoff = s.readyUnixSec
+	}
+	// Walk back to the earliest sample still inside the window.
+	var start throughputSample
+	found := false
+	for i := n - 1; i >= 0 && s.samples[i].unixSec >= cutoff; i-- {
+		start = s.samples[i]
+		found = true
+	}
+	if found && last.unixSec > start.unixSec {
+		window = last.unixSec - start.unixSec
+		steady = float64(last.count-start.count) / float64(window)
+	}
+	return overall, steady, window
+}
+
+// avgCachingTimeMs is the running mean time to cache one sequence, in ms. Guarded so a run that has
+// not cached anything yet reports 0 rather than NaN, which would otherwise land in the CSV.
+func avgCachingTimeMs(timeNano, count int64) float64 {
+	if count <= 0 {
+		return 0
+	}
+	return (float64(timeNano) / float64(count)) / 1e6
 }
 
 func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext) {
@@ -289,8 +398,7 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	// calculate here avg time to cache seq in ms
 	count := dbStats.Database().DCPCachingCount.Value()
 	timeNano := dbStats.Database().DCPCachingTime.Value()
-	avgTimeNano := float64(timeNano) / float64(count)
-	avgTimeMs := avgTimeNano / 1e6
+	avgTimeMs := avgCachingTimeMs(timeNano, count)
 	timeMS := timeNano / 1e6
 
 	_, _ = fmt.Fprintf(os.Stdout, "timestamp,")
@@ -317,6 +425,36 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	_, _ = fmt.Fprintf(os.Stdout, "%d,", timeMS)
 	_, _ = fmt.Fprintf(os.Stdout, "%f", avgTimeMs)
 	_, _ = fmt.Fprintf(os.Stdout, "\n")
+
+	// Sequences cached per second, on their own labelled lines so this can be parsed straight out of
+	// the summary rather than re-derived from the per-second CSV. Both rates are computed from that
+	// same series, so they agree with it exactly. This counts CACHED SEQUENCES, not documents: with
+	// -rapidUpdateDocs, or whenever unused sequences are released, one document contributes several
+	// (which is what seqs_cached_per_event below reports).
+	//
+	//   - _overall covers every sample of the run, so it INCLUDES the ~100s vBucket ramp during which
+	//     throughput is still climbing. Use it only for whole-run accounting.
+	//   - _steady covers the last steadyWindowSecs of post-ramp run and is the figure to compare
+	//     between runs.
+	//   - _steady_window_secs is the window that was actually measured. It is less than
+	//     steadyWindowSecs when the run did not last that long after ramp; if it is 0 the run was too
+	//     short to give a steady window at all and _steady is 0 rather than a ramp-blended number.
+	overallRate, steadyRate, steadyWindow := runThroughput.rates(steadyWindowSecs)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_overall,%f\n", overallRate)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_steady,%f\n", steadyRate)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_steady_window_secs,%d\n", steadyWindow)
+
+	// B5 amplification: DCPReceivedCount = one per DCP event (DocChanged); DCPCachingCount = one per
+	// cached sequence (_addToCache). Their ratio is the RecentSequences/UnusedSequences fan-out, i.e.
+	// how many processEntry calls each DCP event costs. Labelled lines again, so the positional
+	// per-second CSV recipe is undisturbed.
+	received := dbStats.Database().DCPReceivedCount.Value()
+	var seqsPerEvent float64
+	if received > 0 {
+		seqsPerEvent = float64(count) / float64(received)
+	}
+	_, _ = fmt.Fprintf(os.Stdout, "dcp_received_count,%d\n", received)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_event,%f\n", seqsPerEvent)
 }
 
 func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
@@ -330,7 +468,7 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 	_, _ = fmt.Fprintf(os.Stderr, "high_seq_stable,")
 	_, _ = fmt.Fprintf(os.Stderr, "current_skipped_seq_count,")
 	_, _ = fmt.Fprintf(os.Stderr, "num_skipped_seqs,")
-	_, _ = fmt.Fprintf(os.Stdout, "skipped_sequence_skip_list_nodes,")
+	_, _ = fmt.Fprintf(os.Stderr, "skipped_sequence_skip_list_nodes,")
 	_, _ = fmt.Fprintf(os.Stderr, "dcp_caching_count,")
 	_, _ = fmt.Fprintf(os.Stderr, "dcp_caching_time,")
 	_, _ = fmt.Fprintf(os.Stderr, "avg_time_per_seq_ms")
@@ -346,16 +484,19 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 			// calculate here avg time to cache seq in ms
 			count := dbStats.Database().DCPCachingCount.Value()
 			timeNano := dbStats.Database().DCPCachingTime.Value()
-			avgTimeNano := float64(timeNano) / float64(count)
-			avgTimeMs := avgTimeNano / 1e6
+			avgTimeMs := avgCachingTimeMs(timeNano, count)
 			timeMS := timeNano / 1e6
-			_, _ = fmt.Fprintf(os.Stderr, "%d,", time.Now().Unix())
+			now := time.Now().Unix()
+			// Keep the series for the end-of-run docs-cached-per-second lines, using the same timestamp
+			// and counter value printed below so the summary and the CSV cannot disagree.
+			runThroughput.record(now, count)
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", now)
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Database().HighSeqFeed.Value())
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().PendingSeqLen.Value())
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().HighSeqStable.Value())
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().NumCurrentSeqsSkipped.Value())
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().NumSkippedSeqs.Value())
-			_, _ = fmt.Fprintf(os.Stdout, "%d,", dbStats.Cache().SkippedSequenceSkiplistNodes.Value())
+			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().SkippedSequenceSkiplistNodes.Value())
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", count)
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", timeMS)
 			_, _ = fmt.Fprintf(os.Stderr, "%f", avgTimeMs)

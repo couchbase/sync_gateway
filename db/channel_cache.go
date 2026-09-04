@@ -315,6 +315,21 @@ func (c *channelCacheImpl) GetCachedChanges(ctx context.Context, channel channel
 	return changes, nil
 }
 
+// getCachedChangesSince is a cache-only read (never falls back to a view/query) of a channel's
+// changes after `since`. Unlike the diagnostic GetCachedChanges above (which uses since=0 and so
+// copies the whole channel log), this copies only the delta after `since` - the way a real changes
+// feed reads, passing its last-read sequence. Used by cache_perf_tool to model per-feed cursors so
+// the read-path copy/allocation cost reflects production rather than a whole-log copy per wake.
+func (c *channelCacheImpl) getCachedChangesSince(ctx context.Context, channel channels.ID, since uint64) ([]*LogEntry, error) {
+	options := ChangesOptions{Since: SequenceID{Seq: since}}
+	cache, err := c.getChannelCache(ctx, channel)
+	if err != nil {
+		return nil, err
+	}
+	_, changes := cache.GetCachedChanges(options)
+	return changes, nil
+}
+
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
 func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 
