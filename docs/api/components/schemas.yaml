@@ -1435,7 +1435,7 @@ Database:
                     description: >
                       The domain of the role for which audit logging is disabled.
                     enum: [cbs, sgw]
-                    x-enumDescription:
+                    x-enumDescriptions:
                       cbs: Couchbase Server RBAC
                       sgw: Sync Gateway Role
                     type: string
@@ -1453,7 +1453,7 @@ Database:
                       The domain of the user for which audit logging is disabled.
                     type: string
                     enum: [cbs, sgw]
-                    x-enumDescription:
+                    x-enumDescriptions:
                       cbs: Couchbase Server User
                       sgw: Sync Gateway User
                   name:
@@ -1742,6 +1742,11 @@ Database:
             - "Lax"
             - "None"
             - "Strict"
+          x-enumDescriptions:
+            Default: Omit the SameSite attribute entirely.
+            Lax: Blocked on cross-site requests, but allowed when a user navigates to the site directly.
+            None: Allowed on all requests, including cross-site. Requires the cookie to be marked `Secure`.
+            Strict: Only sent on same-site requests.
         sgr_tls_skip_verify:
           description: Enable self-signed certificates for SG-replicate testing.
           type: boolean
@@ -1891,7 +1896,7 @@ Database-audit:
             description: >
               The domain of the role for which audit logging is disabled.
             enum: [cbs, sgw]
-            x-enumDescription:
+            x-enumDescriptions:
               cbs: Couchbase Server User
               sgw: Sync Gateway User
             type: string
@@ -1908,7 +1913,7 @@ Database-audit:
             description: >
               The domain of the role for which audit logging is disabled.
             enum: [cbs, sgw]
-            x-enumDescription:
+            x-enumDescriptions:
               cbs: Couchbase Server RBAC
               sgw: Sync Gateway Role
             type: string
@@ -1938,7 +1943,7 @@ Database-audit-verbose:
             description: >
               The domain of the role for which audit logging is disabled.
             enum: [cbs, sgw]
-            x-enumDescription:
+            x-enumDescriptions:
               cbs: Couchbase Server User
               sgw: Sync Gateway User
             type: string
@@ -1955,7 +1960,7 @@ Database-audit-verbose:
             description: >
               The domain of the role for which audit logging is disabled.
             enum: [cbs, sgw]
-            x-enumDescription:
+            x-enumDescriptions:
               cbs: Couchbase Server RBAC
               sgw: Sync Gateway Role
             type: string
@@ -2013,6 +2018,12 @@ Resync-status:
         - stopping
         - stopped
         - error
+      x-enumDescriptions:
+        running: Currently running.
+        completed: Finished successfully.
+        stopping: In the process of stopping.
+        stopped: Stopped before completion.
+        error: Failed with an error.
     start_time:
       description: The ISO-8601 date and time the resync operation was started.
       type: string
@@ -2055,6 +2066,12 @@ Attachment-Migration-status:
         - stopping
         - stopped
         - error
+      x-enumDescriptions:
+        running: Currently running.
+        completed: Finished successfully.
+        stopping: In the process of stopping.
+        stopped: Stopped before completion.
+        error: Failed with an error.
     start_time:
       description: The ISO-8601 date and time the attachment migration operation was started.
       type: string
@@ -2093,6 +2110,12 @@ Metadata-Migration-status:
         - stopping
         - stopped
         - error
+      x-enumDescriptions:
+        running: Currently running.
+        completed: Finished successfully.
+        stopping: In the process of stopping.
+        stopped: Stopped before completion.
+        error: Failed with an error.
     start_time:
       description: The ISO-8601 date and time the metadata migration operation was started.
       type: string
@@ -2532,6 +2555,11 @@ Logging-config:
         - partial
         - full
         - unset
+      x-enumDescriptions:
+        none: No redaction; logs may contain sensitive data.
+        partial: Redacts sensitive data from logs. Default.
+        full: Not implemented separately; behaves the same as `partial`.
+        unset: Not explicitly configured; behaves the same as `partial`.
       readOnly: true
     console:
       allOf:

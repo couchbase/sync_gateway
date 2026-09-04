@@ -63,6 +63,10 @@ put:
           - start
           - stop
           - reset
+        x-enumDescriptions:
+          start: Start a stopped replication.
+          stop: Stop an active replication.
+          reset: Reset replication checkpoints. The replication must be stopped first.
   responses:
     '200':
       description: Successfully changed target state of replicator
