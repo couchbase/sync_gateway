@@ -55,7 +55,7 @@ func (h *handler) handleGooglePOST() error {
 func verifyGoogle(idToken string, allowedAppID []string) (*GoogleResponse, error) {
 	destUrl := googleTokenInfoURL + idToken
 
-	res, err := http.Get(destUrl)
+	res, err := base.GetHttpClient(false).Get(destUrl)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusGatewayTimeout, "Unable to send request to Google API: %v", err)
 	}
