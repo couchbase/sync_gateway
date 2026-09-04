@@ -28,15 +28,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/KimMachineGun/automemlimit/memlimit"
-	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/db/functions"
-	"github.com/shirou/gopsutil/mem"
-
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 )
 
 const kDefaultSlowQueryWarningThreshold uint32 = 500 // ms
@@ -73,6 +70,12 @@ type ServerContext struct {
 	_dbConfigs          map[string]*RuntimeDatabaseConfig // _dbConfigs is a map of db name to the RuntimeDatabaseConfig
 	_databases          map[string]*db.DatabaseContext    // _databases is a map of dbname to db.DatabaseContext
 	_databasesLock      sync.RWMutex                      // Lock for _databases and other db-specific maps above
+
+	// serverCtx is cancelled by Close() to broadcast server shutdown to background goroutines
+	// that outlive a single request. Currently the fleet manager metrics reporter is its only
+	// consumer.
+	serverCtx       context.Context
+	serverCtxCancel context.CancelCauseFunc
 
 	statsContext      *statsContext
 	BootstrapContext  *bootstrapContext
@@ -157,7 +160,7 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) (filename string
 }
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
-
+	serverCtx, serverCtxCancel := context.WithCancelCause(context.Background())
 	sc := &ServerContext{
 		Config:              config,
 		persistentConfig:    persistentConfig,
@@ -172,6 +175,8 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		hasStarted:          make(chan struct{}),
 		_httpServers:        map[serverType]*serverInfo{},
 		SGCollect:           newSGCollect(ctx),
+		serverCtx:           serverCtx,
+		serverCtxCancel:     serverCtxCancel,
 	}
 	sc.invalidDatabaseConfigTracking = invalidDatabaseConfigs{
 		dbNames: map[string]*invalidConfigInfo{},
@@ -192,7 +197,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 	if config.HeapProfileCollectionThreshold != nil {
 		sc.statsContext.heapProfileCollectionThreshold = *config.HeapProfileCollectionThreshold
 	} else {
-		memoryTotal := getTotalMemory(ctx)
+		memoryTotal := base.GetTotalMemory(ctx, true)
 		if memoryTotal != 0 {
 			sc.statsContext.heapProfileCollectionThreshold = uint64(float64(memoryTotal) * 0.85)
 		} else {
@@ -262,6 +267,10 @@ func (sc *ServerContext) PostStartup() {
 const serverContextStopMaxWait = 30 * time.Second
 
 func (sc *ServerContext) Close(ctx context.Context) {
+	// Cancel the server's lifetime context first so background goroutines watching
+	// serverCtx.Done() stop promptly rather than working against a server tearing down.
+	sc.serverCtxCancel(errors.New("server context is closing"))
+
 	// stop HTTP servers - prevents any further requests from coming in before we continue with tearing down everything else
 	sc.stopHTTPServers(ctx)
 
@@ -2033,7 +2042,7 @@ func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *ht
 func CheckPermissions(ctx context.Context, httpClient *http.Client, managementEndpoints []string, bucketName, username, password string, accessPermissions []Permission, responsePermissions []Permission) (statusCode int, permissionResults map[string]bool, err error) {
 	combinedPermissions := append(accessPermissions, responsePermissions...)
 	body := []byte(strings.Join(FormatPermissionNames(combinedPermissions, bucketName), ","))
-	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
+	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "POST", "/pools/default/checkPermissions", "", managementEndpoints, body)
 	if err != nil {
 		return http.StatusInternalServerError, nil, err
 	}
@@ -2087,7 +2096,7 @@ type WhoAmIResponse struct {
 }
 
 func cbRBACWhoAmI(ctx context.Context, httpClient *http.Client, managementEndpoints []string, username, password string) (response *WhoAmIResponse, statusCode int, err error) {
-	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
+	statusCode, bodyResponse, err := doHTTPAuthRequest(ctx, httpClient, username, password, "GET", "/whoami", "", managementEndpoints, nil)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -2128,12 +2137,12 @@ func CheckRoles(ctx context.Context, httpClient *http.Client, managementEndpoint
 	return http.StatusForbidden, nil
 }
 
-func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
+func doHTTPAuthRequest(ctx context.Context, httpClient *http.Client, username, password, method, path, contentType string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
 	retryCount := 0
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		endpointIdx := retryCount % len(endpoints)
-		responseBody, statusCode, err = base.MgmtRequest(httpClient, endpoints[endpointIdx], method, path, "", username, password, bytes.NewBuffer(requestBody))
+		responseBody, statusCode, err = base.MgmtRequest(ctx, httpClient, endpoints[endpointIdx], method, path, contentType, username, password, bytes.NewBuffer(requestBody))
 
 		if err, ok := err.(net.Error); ok && err.Timeout() {
 			retryCount++
@@ -2255,21 +2264,6 @@ func (sc *ServerContext) SetContextLogID(parent context.Context, id string) cont
 	return parent
 }
 
-// getTotalMemory returns the total memory available on the system. If a cgroup is detected, it will use the cgroup memory max.
-func getTotalMemory(ctx context.Context) uint64 {
-	memoryTotal, err := memlimit.FromCgroup()
-	if err == nil {
-		return memoryTotal
-	}
-	base.TracefCtx(ctx, base.KeyAll, "Did not detect a cgroup for a memory limit")
-	memory, err := mem.VirtualMemory()
-	if err != nil {
-		base.WarnfCtx(ctx, "Error getting total memory from gopsutil: %v", err)
-		return 0
-	}
-	return memory.Total
-}
-
 // getClusterUUID returns the cluster UUID. rosmar does not have a ClusterUUID, so this will return an empty cluster UUID and no error in this case.
 func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 	allDbNames := sc.AllDatabaseNames()
@@ -2289,7 +2283,7 @@ func (sc *ServerContext) getClusterUUID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	statusCode, output, err := doHTTPAuthRequest(ctx, client, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodGet, "/pools", eps, nil)
+	statusCode, output, err := doHTTPAuthRequest(ctx, client, sc.Config.Bootstrap.Username, sc.Config.Bootstrap.Password, http.MethodGet, "/pools", "", eps, nil)
 	if err != nil {
 		return "", err
 	}

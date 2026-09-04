@@ -1633,6 +1633,15 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 		return nil, err
 	}
 
+	// Fleet manager metrics are reported to the Couchbase Server management API, which isn't
+	// available when running against Walrus/Rosmar. Whether the connected server actually supports
+	// the collector endpoint is not gated here: reportFleetManagerMetrics attempts the report each
+	// interval and treats an unavailable endpoint as a benign skip, so reporting starts automatically
+	// once the server is upgraded to a supporting version.
+	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
+		sc.reportFleetManagerMetrics(sc.serverCtx)
+	}
+
 	// On successful server context creation, generate startup audit event
 	base.Audit(ctx, base.AuditIDSyncGatewayStartup, sc.StartupAuditFields())
 

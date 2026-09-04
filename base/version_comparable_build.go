@@ -137,6 +137,38 @@ func (a *ComparableBuildVersion) Less(b *ComparableBuildVersion) bool {
 	return false
 }
 
+// AtLeastReleaseVersion reports whether pv is at least the minimum version applicable to its
+// release train, given one minimum version per train. This is for features shipped (or backported)
+// across several release trains at different patch levels - e.g. a feature available in 7.6.12,
+// 8.0.3, and 8.1.0. The rule per train (matched on major.minor):
+//   - 7.6.x qualifies only if >= 7.6.12
+//   - 8.0.x qualifies only if >= 8.0.3
+//   - 8.1.x qualifies (>= 8.1.0, i.e. any 8.1 build)
+//   - anything newer than every listed minimum (e.g. 8.2.0) qualifies
+//   - anything in an older, unlisted train does not qualify
+//
+// Returns false if pv is nil or no minimum versions are provided.
+func (pv *ComparableBuildVersion) AtLeastReleaseVersion(minVersions ...*ComparableBuildVersion) bool {
+	if pv == nil {
+		return false
+	}
+	var newest *ComparableBuildVersion
+	for _, min := range minVersions {
+		if min == nil {
+			continue
+		}
+		if newest == nil || newest.Less(min) {
+			newest = min
+		}
+		// Same release train as this minimum (matched on major.minor): pv must meet it.
+		if pv.major == min.major && pv.minor == min.minor {
+			return !pv.Less(min)
+		}
+	}
+	// pv isn't in any listed train: it only qualifies if it's newer than all of them.
+	return newest != nil && !pv.Less(newest)
+}
+
 // AtLeastMinorDowngrade returns true there is a major or minor downgrade from a to b.
 func (a *ComparableBuildVersion) AtLeastMinorDowngrade(b *ComparableBuildVersion) bool {
 	if a.epoch != b.epoch {
@@ -152,6 +184,25 @@ func (a *ComparableBuildVersion) AtLeastMinorDowngrade(b *ComparableBuildVersion
 // e.g. "1:22-3-25@33-EE"
 func (pv ComparableBuildVersion) String() string {
 	return pv.str
+}
+
+// ReleaseVersionString returns the major.minor.patch[.other] release version, omitting epoch,
+// build number, and edition. The optional 4th (other) component is included only when non-zero.
+// e.g. "4.1.0", "4.0.6", or "4.1.0.1"
+func (pv *ComparableBuildVersion) ReleaseVersionString() string {
+	if pv == nil {
+		return "0.0.0"
+	}
+	releaseStr := strconv.FormatUint(uint64(pv.major), 10) +
+		string(comparableBuildVersionSep) +
+		strconv.FormatUint(uint64(pv.minor), 10) +
+		string(comparableBuildVersionSep) +
+		strconv.FormatUint(uint64(pv.patch), 10)
+	if pv.other > 0 {
+		releaseStr += string(comparableBuildVersionSep) +
+			strconv.FormatUint(uint64(pv.other), 10)
+	}
+	return releaseStr
 }
 
 // MarshalJSON implements json.Marshaler for ComparableBuildVersion. The JSON representation is the version string.
