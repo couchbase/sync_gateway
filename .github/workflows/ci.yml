@@ -47,7 +47,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: go-build
         run: go build "./..."
 
@@ -58,7 +58,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - run: go install github.com/google/addlicense@latest
       - run: addlicense -check -f licenses/addlicense.tmpl .
 
@@ -69,7 +69,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: golangci-lint
         uses: *actions_golangci_lint_version
         with:
@@ -96,7 +96,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
@@ -116,7 +116,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: Run Tests
         run: go test -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
@@ -135,7 +135,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: Run Tests
         run: go test -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
@@ -186,7 +186,7 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
       - name: Run Tests
@@ -199,6 +199,6 @@ jobs:
       - uses: *actions_checkout_version
       - uses: *actions_setup_go_version
         with:
-          go-version: 1.25.13
+          go-version: 1.25.14
       - name: Build
         run: go build "./tools/cache_perf_tool"
