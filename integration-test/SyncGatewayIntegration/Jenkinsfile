@@ -1,0 +1,247 @@
+// Intended to be run adhoc by developers against arbitrary commits/branches. Coverage is recorded but is
+// not especially meaningful here, unlike MainIntegration which combines Rosmar + Couchbase Server runs.
+
+// Note for whoever creates this job: its *first* build runs with no parameter values at all. Jenkins
+// registers the parameters{} block when it first evaluates this file, but only applies the defaults from the
+// second build onwards, so that first run dies in jenkins-integration-build.sh's REQUIRED_VARS check with
+// "COUCHBASE_SERVER_PROTOCOL environment variable is required to be set". Just run it again - it isn't a
+// misconfiguration.
+
+// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+def slackDetails(slackUtils) {
+    def details = [
+        SG_COMMIT: params.SG_COMMIT,
+        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+    ]
+    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    if (ticketLink) {
+        details['Ticket'] = ticketLink
+    }
+    return details
+}
+
+// Sends the build result to Slack. slackUtils.groovy is fetched in the Checkout stage, so it can be absent
+// if the build failed before that point - fall back to a bare message rather than throwing out of the post
+// block, which would leave the failure unreported entirely.
+// TODO(pre-merge): while the switch-to-pipeline branch is unmerged, every notification goes to a single
+// Slack DM instead of #syncgatewaybot / #syncgatewaybot-alerts, so test runs of this new job don't spam the
+// channels. Before merging, restore channel 'syncgatewaybot' for 'passed', and slackUtils.slackSendFailure()
+// (which DMs the triggering user or escalates to #syncgatewaybot-alerts) for 'unstable'/'build failure'.
+def notifySlack(String status) {
+    def channel = 'U03D1N4373N' // torcolvin, per .github/slack_usernames.yaml
+    def color = ['passed': 'good', 'aborted': 'warning'].get(status, 'danger')
+    if (!fileExists('integration-test/slackUtils.groovy')) {
+        slackSend(channel: channel, color: color, message: ":x: *SyncGatewayIntegration ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
+        return
+    }
+    def slackUtils = load('integration-test/slackUtils.groovy')
+    if (status == 'aborted' && slackUtils.isSelfCancelledAdhocBuild()) {
+        echo('Build was started and cancelled by the same user - skipping Slack notification')
+        return
+    }
+    slackSend(channel: channel, color: color, message: slackUtils.slackMessage('SyncGatewayIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
+}
+
+// Posts the sgw-jenkins-integration-test status that shows up on PRs: PENDING once the commit is known,
+// then SUCCESS, FAILURE for unstable, or ERROR. An aborted run reports ERROR too - GitHub has no cancelled
+// state, and staying quiet would strand the pending status on that commit forever. Account, repo and sha
+// are passed explicitly because githubNotify can't reliably infer them from an explicit checkout.
+def notifyGitHub(String status) {
+    if (!env.GIT_COMMIT) {
+        echo('No GIT_COMMIT captured (checkout failed) - skipping GitHub commit status')
+        return
+    }
+    githubNotify(
+        credentialsId: 'github_cb-robot-sg_access_token',
+        account: 'couchbase',
+        repo: 'sync_gateway',
+        sha: env.GIT_COMMIT,
+        context: 'sgw-jenkins-integration-test',
+        description: "Integration tests ${status}",
+        status: ['running': 'PENDING', 'passed': 'SUCCESS', 'unstable': 'FAILURE'].get(status, 'ERROR')
+    )
+}
+
+pipeline {
+    agent { label 'integration-test' }
+
+    options {
+        skipDefaultCheckout()
+        // A wedged run would otherwise hold one of the two integration-test agents indefinitely.
+        timeout(time: 3, unit: 'HOURS')
+        // Deliberately asymmetric with MainIntegration/TopologyTests: this job caps build records and keeps
+        // artifacts by age, they cap artifacts and keep records. Not an oversight.
+        buildDiscarder(logRotator(daysToKeepStr: '-1', numToKeepStr: '30', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    parameters {
+        string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        // TODO(pre-merge): default restricted to the auth package so this new pipeline can be smoke-tested
+        // in minutes rather than hours. Restore defaultValue: '...' (all packages) before merging.
+        string(name: 'TARGET_PACKAGE', defaultValue: 'auth', description: '')
+        string(
+            name: 'COUCHBASE_SERVER_VERSION',
+            defaultValue: 'enterprise-8.0.2',
+            description: '''Version of couchbase server to run with. This is docker images:
+enterprise-7.6.7 : couchbase/server:enterprise-7.6.7
+community-7.6.7 : couchbase/server:community-7.6.7
+To use pre-release versions, find the number on https://github.com/orgs/cb-vanilla/packages/container/package/server and use ghcr.io/cb-vanilla/server:enterprise-8.1.0'''
+        )
+        choice(
+            name: 'COUCHBASE_SERVER_PROTOCOL',
+            choices: ['couchbase', 'couchbases'],
+            description: 'Use couchbase to connect to Couchbase Server without TLS and couchbases to connect with TLS.'
+        )
+        booleanParam(name: 'FAIL_FAST', defaultValue: false, description: 'If checked, run go test with -failfast to fail as soon as a test fails.')
+        booleanParam(name: 'GSI', defaultValue: true, description: 'Run tests with GSI. Uncheck this box to run tests with views.')
+        booleanParam(name: 'DISABLE_REV_CACHE', defaultValue: false, description: 'If set integration test will run without rev cache enabled. ')
+        choice(
+            name: 'SG_EDITION',
+            choices: ['EE', 'CE'],
+            description: 'Version of Sync Gateway to run. EE - Enterprise Edition CE - Community Edition'
+        )
+        string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets to create in by the test harness.')
+        string(name: 'RUN_COUNT', defaultValue: '', description: 'Adds -count <n> parameter to test runs. Default is not specified.')
+        // jenkins-integration-build.sh reads RUN_WALRUS unconditionally under `set -u`, so it has to be set.
+        // Declaring it here is enough: Jenkins exposes parameters as environment variables.
+        booleanParam(name: 'RUN_WALRUS', defaultValue: false, description: 'Run rosmar tests in addition to the Couchbase Server tests.')
+        booleanParam(name: 'SG_TEST_BUCKET_POOL_DEBUG', defaultValue: false, description: 'This will log the test bucket pool creation and cleanup.')
+        booleanParam(
+            name: 'SG_TEST_SKIP_SERVER_VERSION_CHECK',
+            defaultValue: false,
+            description: 'allows tests to run against a server version that is not presumed compatible with version of Couchbase Server running'
+        )
+        string(
+            name: 'TARGET_TEST',
+            defaultValue: 'ALL',
+            description: 'This should be ALL to run all tests but can be any expression used by the go test -run option to run specific tests.'
+        )
+        booleanParam(
+            name: 'TEST_DEBUG',
+            defaultValue: false,
+            description: 'If true, sets SG_TEST_LOG_LEVEL=debug and SG_TEST_BUCKET_POOL_DEBUG=true. This can be used to force all tests to use debug logging and overwrite SetUpTestLogging as well as debug bucket pool issues.'
+        )
+        booleanParam(
+            name: 'TLS_SKIP_VERIFY',
+            defaultValue: true,
+            description: 'Do not verify certificates when talking to Couchbase Server. This only has an effect if COUCHBASE_SERVER_PROTOCOL is set to couchbases.'
+        )
+        string(name: 'PARENT_JOB_NAME', defaultValue: '', description: 'If set, uses this in some build names as a helpful indication of what triggered this job.')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs(disableDeferredWipeout: true)
+                script {
+                    // checkout only returns GIT_COMMIT/GIT_BRANCH rather than populating env, so assign
+                    // them manually for later stages and post blocks. SG_COMMIT is frequently a bare SHA
+                    // for this job, and the build chooser only resolves a branch spec against existing
+                    // remote-tracking refs - hence the refspec, which fetches it into a ref of that name.
+                    def scmVars = checkout(scmGit(
+                        branches: [[name: params.SG_COMMIT]],
+                        extensions: [cleanBeforeCheckout(deleteUntrackedNestedRepositories: false)],
+                        userRemoteConfigs: [[
+                            url: 'git@github.com:couchbase/sync_gateway.git',
+                            credentialsId: 'CB_SG_Robot_Github_SSH_Key',
+                            refspec: "+${params.SG_COMMIT}:refs/remotes/origin/${params.SG_COMMIT}"
+                        ]]
+                    ))
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                    env.GIT_BRANCH = scmVars.GIT_BRANCH
+                    // Posted here rather than before the checkout, since the commit status needs a SHA.
+                    notifyGitHub('running')
+                }
+                // SG_COMMIT can be an arbitrary developer branch, whose copy of slackUtils.groovy may be
+                // stale or missing helpers the post blocks below need - always load the current one from
+                // main instead (same fix as integration-test/e2e/Jenkinsfile uses for the same reason).
+                // TODO(pre-merge): temporarily pointed at the switch-to-pipeline branch so test runs pick
+                // up its slackUtils.groovy. This MUST be reverted to main before merging: `curl -sSf` exits
+                // non-zero on a 404, so once the branch is deleted this step - and therefore every build of
+                // this job - fails in Checkout.
+                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/switch-to-pipeline/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
+                script {
+                    // "<branch> for <whoever triggered it> on <server version>". PARENT_JOB_NAME is only
+                    // set for an upstream-triggered build and the build user only for a manual one, so at
+                    // most one of the two is present and the space between them collapses when it isn't.
+                    def userIdCauses = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                    def buildUser = userIdCauses ? (userIdCauses[0].userId ?: '') : ''
+                    def parentJobName = params.PARENT_JOB_NAME ? (params.PARENT_JOB_NAME - ~/:\s*$/) : ''
+                    def triggeredBy = [parentJobName, buildUser].findAll { it }.join(' ')
+                    currentBuild.displayName = params.PARENT_JOB_NAME ? "#${env.BUILD_NUMBER} ${params.PARENT_JOB_NAME}" : "#${env.BUILD_NUMBER}"
+                    currentBuild.description = "${env.GIT_BRANCH} for ${triggeredBy} on ${params.COUCHBASE_SERVER_VERSION}"
+                }
+            }
+        }
+        stage('Integration Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+                        script {
+                            // `set -e` propagates jenkins-integration-build.sh's exit status, which separates
+                            // test failures (50 -> UNSTABLE) from a test setup failure or unrecovered panic
+                            // (1 -> FAILURE). A plain sh step would collapse both into FAILURE, so the
+                            // unstable post block below would never run.
+                            def exitCode = sh(returnStatus: true, script: '''#!/bin/bash
+                                set -eu
+                                echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+                                # ensure any image tag being used is up to date before running
+                                IMAGE=${COUCHBASE_SERVER_VERSION}
+                                if [[ ! "${COUCHBASE_SERVER_VERSION}" =~ ^ghcr\\.io/ ]]; then
+                                    IMAGE="couchbase/server:${COUCHBASE_SERVER_VERSION}"
+                                fi
+                                docker pull "$IMAGE"
+                                ./jenkins-integration-build.sh
+                            ''')
+                            if (exitCode == 50) {
+                                unstable('At least one integration test failed')
+                            } else if (exitCode != 0) {
+                                error("Integration test run exited ${exitCode}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Empty archives/results are tolerated so that a failure before the tests produce any output
+            // (checkout, curl, docker login/pull, Couchbase Server startup) doesn't throw here, skip the
+            // rest of this block, and mask the real cause.
+            archiveArtifacts artifacts: 'verbose*.out', allowEmptyArchive: true, fingerprint: false
+            junit testResults: 'verbose*.xml', allowEmptyResults: true, checksName: 'sgw-jenkins-integration-test-junit'
+            // Gives the coverage report a baseline to diff against. Must come before recordCoverage, as
+            // in the top-level Jenkinsfile.
+            discoverGitReferenceBuild(referenceJob: 'MainIntegration-Pipeline', maxCommits: 50)
+            recordCoverage(tools: [[parser: 'GO_COV', pattern: 'coverage*.out']])
+        }
+        success {
+            script {
+                notifyGitHub('passed')
+                notifySlack('passed')
+            }
+        }
+        unstable {
+            script {
+                notifyGitHub('unstable')
+                notifySlack('unstable')
+            }
+        }
+        failure {
+            script {
+                notifyGitHub('build failure')
+                notifySlack('build failure')
+            }
+        }
+        aborted {
+            script {
+                notifyGitHub('aborted')
+                notifySlack('aborted')
+            }
+        }
+    }
+}
