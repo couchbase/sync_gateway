@@ -1617,6 +1617,12 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 
 	sc := NewServerContext(ctx, config, persistentConfig)
 
+	nodeUID, err := base.GenerateNodeUID(ctx, sc.Config.API.PublicInterface, sc.Config.API.AdminInterface)
+	if err != nil {
+		return nil, err
+	}
+	sc.NodeUID = nodeUID
+
 	if !base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
 		err := sc.initializeGocbAdminConnection(ctx)
 		if err != nil {
