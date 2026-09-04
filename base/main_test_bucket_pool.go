@@ -521,7 +521,9 @@ func (tbp *TestBucketPool) createTestBuckets(ctx context.Context, numBuckets, bu
 			}
 
 			bucket, err := tbp.cluster.openTestBucket(ctx, tbpBucketName(bucketName), waitForReadyBucketTimeout)
-			if err != nil {
+			if ctx.Err() != nil {
+				return
+			} else if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
 
@@ -596,11 +598,11 @@ loop:
 
 				start := time.Now()
 				b, err := tbp.cluster.openTestBucket(ctx, testBucketName, waitForReadyBucketTimeout)
-				ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return
 				}
+				ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 
 				err, _ = RetryLoop(ctx, b.GetName()+"bucketReadierRetry", func() (bool, error, interface{}) {
 					tbp.Logf(ctx, "Running bucket through readier function")

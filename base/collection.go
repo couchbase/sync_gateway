@@ -509,7 +509,7 @@ func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType
 		username, password, _ = b.Spec.Auth.GetCredentials()
 	}
 
-	respBytes, statusCode, err := MgmtRequest(b.HttpClient(ctx), mgmtEp, method, uri, contentType, username, password, body)
+	respBytes, statusCode, err := MgmtRequest(ctx, b.HttpClient(ctx), mgmtEp, method, uri, contentType, username, password, body)
 	if err != nil {
 		return nil, statusCode, err
 	}
