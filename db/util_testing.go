@@ -1021,3 +1021,99 @@ func SafeDocumentName(t *testing.T, name string) string {
 	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
 	return docName
 }
+
+// PlantRevTreeForTest writes docID, then rewrites its _sync xattr so the document's revision tree is
+// exactly the supplied one, with currentRev as the current revision. revs maps each revision ID to its
+// parent's ID, with "" for a root, so any shape can be planted - a single non-increasing generation, a
+// branched tree, or corruption confined to a losing branch.
+//
+// The rest of the metadata is made to look like a document that really was written len(revs) times: one
+// sequence is allocated per revision, doc.Sequence is the last of them, and recent_sequences holds them
+// all. Only the tree itself is fabricated.
+func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, body Body, revs map[string]string, currentRev string) {
+	t.Helper()
+	require.Contains(t, slices.Collect(maps.Keys(revs)), currentRev, "currentRev is not in the tree being planted")
+	require.LessOrEqual(t, len(revs), kMaxRecentSequences, "a tree this large would have had its recent_sequences pruned, which this helper does not model")
+
+	// the write allocates the first sequence, so this stands in for the first revision
+	_, _, err := collection.Put(ctx, docID, body)
+	require.NoError(t, err)
+
+	// one sequence per remaining revision, so the document's sequence history is as long as its tree
+	rewriteSyncDataForTest(t, ctx, collection, docID, len(revs)-1, func(syncData *SyncData) {
+		planted := make(RevTree, len(revs))
+		for revID, parentID := range revs {
+			planted[revID] = &RevInfo{ID: revID, Parent: parentID}
+		}
+		// the current revision keeps the document's channels, so the planted document stays readable
+		planted[currentRev].Channels = syncData.getCurrentChannels()
+		syncData.History = planted
+		syncData.SetRevTreeID(currentRev)
+	})
+}
+
+// rewriteSyncDataForTest rewrites a document's _sync xattr, allocating sequenceCount new sequences first
+// and appending them to recent_sequences with the last becoming the document's sequence - so the write
+// leaves the sequence metadata looking like sequenceCount real revisions. mutate is applied to the
+// document's SyncData in between. The document body is left untouched.
+func rewriteSyncDataForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, sequenceCount int, mutate func(syncData *SyncData)) {
+	t.Helper()
+
+	sequences := make([]uint64, 0, sequenceCount)
+	for range sequenceCount {
+		sequence, seqErr := collection.dbCtx.sequences.nextSequence(ctx)
+		require.NoError(t, seqErr)
+		sequences = append(sequences, sequence)
+	}
+
+	_, err := collection.dataStore.WriteUpdateWithXattrs(ctx, docID, []string{base.SyncXattrName}, 0, nil, nil,
+		func(rawBody []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+			var syncData SyncData
+			if unmarshalErr := base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData); unmarshalErr != nil {
+				return sgbucket.UpdatedDoc{}, unmarshalErr
+			}
+
+			mutate(&syncData)
+
+			// append the new sequences and make the highest current, exactly as updateAndReturnDoc would
+			// have left it. Sorted for the same reason assignSequence sorts (db/crud.go) - production
+			// never leaves recent_sequences out of order, so a fixture must not either.
+			syncData.RecentSequences = append(syncData.RecentSequences, sequences...)
+			if len(syncData.RecentSequences) > 1 {
+				base.SortedUint64Slice(syncData.RecentSequences).Sort()
+			}
+			syncData.Sequence = syncData.RecentSequences[len(syncData.RecentSequences)-1]
+
+			updatedXattr, marshalErr := base.JSONMarshal(syncData)
+			if marshalErr != nil {
+				return sgbucket.UpdatedDoc{}, marshalErr
+			}
+			return sgbucket.UpdatedDoc{
+				Doc:    rawBody,
+				Xattrs: map[string][]byte{base.SyncXattrName: updatedXattr},
+			}, nil
+		})
+	require.NoError(t, err)
+}
+
+// revTreeState reads a document's current revision and rev tree as revID -> parent.
+//
+// It reads through GetDocSyncData rather than GetDocument deliberately: GetDocument goes through
+// GetDocumentWithRaw, which repairs an invalid rev tree on load, so observing a corrupt document that
+// way would repair the very thing being observed. GetDocSyncData unmarshals the xattr directly.
+func revTreeState(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (currentRev string, tree map[string]string) {
+	t.Helper()
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	require.NoError(t, err)
+	return syncData.GetRevTreeID(), revTreeParents(syncData.History)
+}
+
+// revTreeParents renders a rev tree as revID -> parent, for asserting a tree's whole shape in one
+// comparison rather than probing individual revisions.
+func revTreeParents(tree RevTree) map[string]string {
+	parents := make(map[string]string, len(tree))
+	for revID, info := range tree {
+		parents[revID] = info.Parent
+	}
+	return parents
+}

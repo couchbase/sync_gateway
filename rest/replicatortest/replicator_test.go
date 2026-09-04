@@ -8418,3 +8418,98 @@ func TestActiveReplicatorPullUpdatedDocChannels(t *testing.T) {
 		assert.NotNil(t, removalA, "chanA should be marked removed after the ISGR update, channels=%v", doc.Channels)
 	})
 }
+
+// quietCaseTree is the CBG-5713 corruption in its quiet form: 10-def does not exceed the generation of
+// its parent 10-abc, but the leaf generation is high enough relative to the branch length that
+// encodeRevisions still produces a _revisions list splitRevisionList accepts. Sync Gateway therefore
+// replicated it without complaint, under ancestor rev IDs that never existed - encodeRevisions can only
+// express start, start-1, start-2, so 1-abc went on the wire as 8-abc.
+var quietCaseTree = map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}
+
+// repairedTreeAtSource is quietCaseTree after repair.
+var repairedTreeAtSource = map[string]string{"1-abc": "", "10-abc": "1-abc", "11-def": "10-abc"}
+
+// repairedWireTreeOnPeer is what a peer builds from the repaired document, and it is deliberately not
+// equal to repairedTreeAtSource. SGW encodes revisions as a descending run so 1-abc -> 10-abc gap is sent
+// as 9-abc -> 10-abc.
+var repairedWireTreeOnPeer = map[string]string{"9-abc": "", "10-abc": "9-abc", "11-def": "10-abc"}
+
+// revTreeState reads a document's current revision, rev tree and leaves without repairing it.
+func revTreeState(ctx context.Context, collection *db.DatabaseCollectionWithUser, docID string) (currentRev string, tree map[string]string, leaves []string, err error) {
+	syncData, err := collection.GetDocSyncData(ctx, docID)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	tree = make(map[string]string, len(syncData.History))
+	for revID, info := range syncData.History {
+		tree[revID] = info.Parent
+	}
+	return syncData.GetRevTreeID(), tree, syncData.History.GetLeaves(), nil
+}
+
+// requirePostRepairRevTreeState waits for a document to reach an exact rev tree shape on a peer, then asserts it is
+// a single unconflicted branch. Not to be used when conflicts are generated.
+func requirePostRepairRevTreeState(t *testing.T, collection *db.DatabaseCollectionWithUser, ctx context.Context, docID string, expectedCurrentRev string, expectedTree map[string]string) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		currentRev, tree, _, err := revTreeState(ctx, collection, docID)
+		if !assert.NoError(c, err) {
+			return
+		}
+		assert.Equal(c, expectedCurrentRev, currentRev)
+		assert.Equal(c, expectedTree, tree)
+	}, 20*time.Second, 100*time.Millisecond)
+
+	_, _, leaves, err := revTreeState(ctx, collection, docID)
+	require.NoError(t, err)
+	require.Len(t, leaves, 1, "repair must not leave a conflicting branch behind")
+}
+
+// TestISGRInvalidRevTreeRepairedBeforeSend asserts a corrupt document is repaired on load and never
+// replicated to another Sync Gateway in its corrupt form.
+func TestISGRInvalidRevTreeRepairedBeforeSend(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeers(t)
+		docID := rest.SafeDocumentName(t, t.Name())
+
+		activeCollection, activeCollectionCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()
+		db.PlantRevTreeForTest(t, activeCollectionCtx, activeCollection, docID,
+			db.Body{"planted": true, "channels": []string{"alice"}}, quietCaseTree, "10-def")
+		activeRT.WaitForPendingChanges()
+		activeRT.GetDatabase().FlushRevisionCacheForTest()
+
+		// assert active side has corrupt tree
+		invalidRevTreeCount := activeRT.GetDatabase().DbStats.Database().InvalidRevTreeCount
+		currentRev, tree, _, err := revTreeState(activeCollectionCtx, activeCollection, docID)
+		require.NoError(t, err)
+		require.Equal(t, "10-def", currentRev)
+		require.Equal(t, quietCaseTree, tree)
+		require.Equal(t, int64(0), invalidRevTreeCount.Value())
+
+		activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
+
+		// passive get repaired version of doc
+		passiveCollection, passiveCollectionCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()
+		requirePostRepairRevTreeState(t, passiveCollection, passiveCollectionCtx, docID, "11-def", repairedWireTreeOnPeer)
+
+		// active also has repaired version (from reading the doc to send)
+		requirePostRepairRevTreeState(t, activeCollection, activeCollectionCtx, docID, "11-def", repairedTreeAtSource)
+		assert.Equal(t, int64(1), invalidRevTreeCount.Value())
+
+		if sgrRunner.IsV4Protocol() {
+			activeDoc, err := activeCollection.GetDocument(activeCollectionCtx, docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			passiveDoc, err := passiveCollection.GetDocument(passiveCollectionCtx, docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			assert.Equal(t, activeDoc.HLV.GetCurrentVersionString(), passiveDoc.HLV.GetCurrentVersionString())
+		}
+
+		// the passive peer never saw a corrupt tree, so it had nothing to repair
+		assert.Equal(t, int64(0), passiveRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
+	})
+}

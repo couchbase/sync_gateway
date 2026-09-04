@@ -269,6 +269,8 @@ const (
 
 	HLVVersionCASRetryCountDesc = "The total number of document writes where the Sync Gateway-generated HLV version exceeded the document CAS and required a corrective re-stamp. A non-zero value indicates clock skew between Sync Gateway and Couchbase Server."
 
+	InvalidRevTreeCountDesc = "The total number of times a document's revision tree was found to be invalid at read or write time."
+
 	NumAttachmentsCompactedDesc = "The number of attachments compacted import_feed"
 
 	ImportFeedDesc = "Contains low level dcp stats: (a). dcp_backfill_expected - the expected number of sequences in backfill (b). dcp_backfill_completed - the number of backfill items processed (c). dcp_rollback_count - the number of DCP rollbacks"

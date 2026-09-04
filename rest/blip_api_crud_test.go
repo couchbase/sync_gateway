@@ -3784,8 +3784,8 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		rt.WaitForPendingChanges()
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, DocVersion{RevTreeID: expectedVersion.RevTreeID})
 
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
@@ -3889,8 +3889,8 @@ func TestBlipNoRevOnCorruptHistoryDelta(t *testing.T) {
 		)
 		require.NoError(t, err)
 
+		rt.WaitForPendingChanges()
 		expectedVersion := DocVersion{RevTreeID: "3-c"}
-		rt.WaitForVersion(docID, expectedVersion)
 
 		btcRunner.StartOneshotPull(btc.id)
 		msg := btcRunner.WaitForPullRevMessage(btc.id, docID, expectedVersion)
