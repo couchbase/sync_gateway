@@ -77,8 +77,11 @@ func NewStallingListener(t testing.TB) *StallingListener {
 
 	l := &StallingListener{listener: listener}
 
-	var wg sync.WaitGroup
-	wg.Go(func() {
+	// the accept loop is waited on separately from the drains: cleanup has to know the connection list is
+	// final before it closes them, or a connection accepted as cleanup runs is never closed and its drain
+	// never returns
+	var acceptLoop, drains sync.WaitGroup
+	acceptLoop.Go(func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
@@ -88,7 +91,7 @@ func NewStallingListener(t testing.TB) *StallingListener {
 			l.conns = append(l.conns, conn)
 			l.accepted++
 			l.mutex.Unlock()
-			wg.Go(func() {
+			drains.Go(func() {
 				// drain without ever responding, so this only returns once the peer hangs up - or once
 				// cleanup closes the connection from this side
 				_, _ = io.Copy(io.Discard, conn)
@@ -101,12 +104,13 @@ func NewStallingListener(t testing.TB) *StallingListener {
 
 	t.Cleanup(func() {
 		assert.NoError(t, listener.Close())
+		acceptLoop.Wait()
 		l.mutex.Lock()
 		for _, conn := range l.conns {
 			_ = conn.Close()
 		}
 		l.mutex.Unlock()
-		wg.Wait()
+		drains.Wait()
 	})
 	return l
 }
