@@ -32,7 +32,7 @@ get:
       content:
         application/json:
           schema:
-            oneOf:
+            anyOf:
               - $ref: ../../components/schemas.yaml#/Database-audit
               - $ref: ../../components/schemas.yaml#/Database-audit-verbose
     '403':
@@ -55,7 +55,7 @@ put:
     content:
       application/json:
         schema:
-          oneOf:
+          anyOf:
             - $ref: ../../components/schemas.yaml#/Database-audit
             - $ref: ../../components/schemas.yaml#/Database-audit-verbose
   responses:
@@ -90,7 +90,7 @@ post:
     content:
       application/json:
         schema:
-          oneOf:
+          anyOf:
             - $ref: ../../components/schemas.yaml#/Database-audit
             - $ref: ../../components/schemas.yaml#/Database-audit-verbose
   responses:
