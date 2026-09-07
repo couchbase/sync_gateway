@@ -33,6 +33,9 @@ get:
         enum:
           - main_only
           - all_docs
+        x-enumDescriptions:
+          main_only: Return only the current winning revision.
+          all_docs: Return all leaf revisions, including conflicts and deleted conflicts.
     - name: active_only
       in: query
       description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
@@ -53,9 +56,12 @@ get:
         enum:
           - sync_gateway/bychannel
           - _doc_ids
+        x-enumDescriptions:
+          sync_gateway/bychannel: Filter by channel, using the `channels` parameter.
+          _doc_ids: Filter by document ID, using the `doc_ids` parameter. Requires `feed=normal`.
     - name: channels
       in: query
-      description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+      description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannel`.'
       schema:
         type: string
     - name: doc_ids
@@ -95,6 +101,11 @@ get:
           - longpoll
           - continuous
           - websocket
+        x-enumDescriptions:
+          normal: Return all current changes at once, then close the connection.
+          longpoll: As `normal`, but if there are no changes yet, waits for the next change (or the heartbeat/timeout) before sending its single response.
+          continuous: Stream each change as it happens, over a single long-lived connection.
+          websocket: Stream changes over a WebSocket connection.
     - name: request_plus
       in: query
       description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
@@ -159,7 +170,7 @@ post:
               description: Set a filter to either filter by channels or document IDs.
               type: string
             channels:
-              description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+              description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannel`.'
               type: string
             doc_ids:
               description: 'An array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`.'

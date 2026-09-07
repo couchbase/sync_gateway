@@ -51,6 +51,9 @@ compact-type:
     enum:
       - attachment
       - tombstone
+    x-enumDescriptions:
+      attachment: Clean up legacy (pre-3.0) attachments.
+      tombstone: Purge the JSON bodies of old, non-current revisions.
   description: |-
     This is the type of compaction to use. The type must be either:
     * `attachment` for cleaning up legacy (pre-3.0) attachments
