@@ -197,8 +197,8 @@ limit-result-rows:
   in: query
   required: false
   schema:
-    type: number
-  description: This limits the number of result rows returned. Using a value of `0` has the same effect as the value `1`.
+    type: integer
+  description: This limits the number of result rows returned. Using a value of `0` means no limit (equivalent to omitting `limit`).
 log-level:
   name: logLevel
   in: query
