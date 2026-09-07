@@ -16,7 +16,7 @@ Validates every API root defined in `.redocly.yaml`:
 
 ```sh
 $ npm ci
-$ npx redocly lint --config=.redocly.yaml --format=stylish
+$ npm run lint:openapi
 ```
 
 Redocly is pinned in `package.json` and `package-lock.json`. `npm ci` installs that exact version.
@@ -29,5 +29,5 @@ over this directory in both places.
 ## Preview
 
 ```sh
-$ npx redocly preview-docs --config=.redocly.yaml
+$ npm run preview:openapi
 ```

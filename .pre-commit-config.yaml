@@ -62,8 +62,8 @@ repos:
         # stale node_modules after a version bump
         entry: >-
           bash -c 'npm ci --no-audit --no-fund --silent &&
-          ./node_modules/.bin/redocly lint --config=.redocly.yaml --format=stylish'
-        files: ^(docs/api/|\.redocly\.yaml$)
+          npm run --silent lint:openapi'
+        files: ^(docs/api/|\.redocly\.yaml$|package(-lock)?\.json$)
         pass_filenames: false
 
       - id: yamllint

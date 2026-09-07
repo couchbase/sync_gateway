@@ -39,8 +39,7 @@ post:
     content:
       application/json:
         schema:
-          allOf:
-            - $ref: ../../components/schemas.yaml#/IndexSettings
+          $ref: ../../components/schemas.yaml#/IndexSettings
   responses:
     '200':
       description: successfully changed the status of the index initialization operation

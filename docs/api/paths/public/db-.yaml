@@ -52,7 +52,8 @@ get:
                 type: number
                 default: 0
               state:
-                allOf: # use allOf to prevent DatabaseState from showing as the type in the display
+                description: The current state of the database.
+                allOf:
                   - $ref: ../../components/schemas.yaml#/DatabaseState
               server_uuid:
                 description: Unique server identifier.
