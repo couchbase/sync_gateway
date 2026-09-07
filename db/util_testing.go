@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1311,4 +1312,202 @@ func revTreeParents(tree RevTree) map[string]string {
 		parents[revID] = info.Parent
 	}
 	return parents
+}
+
+// getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
+func GetChangesForTest(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
+	require.NotNil(t, options.ChangesCtx)
+	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
+
+	require.NoError(t, err)
+	require.NotNil(t, feed)
+	var changes = make([]*ChangeEntry, 0, 50)
+	for entry := range feed {
+		changes = append(changes, entry)
+	}
+	return changes
+}
+
+// Makes changes options starting at sequence 0, with a new changes context
+func GetChangesOptionsWithZeroSeq(t testing.TB) ChangesOptions {
+	return ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
+}
+
+// Makes changes options a new changes context
+func GetChangesOptionsWithCtxOnly(t *testing.T) ChangesOptions {
+	return ChangesOptions{ChangesCtx: base.TestCtx(t)}
+}
+
+// Makes changes options with a since value of seq and a new changes context
+func GetChangesOptionsWithSeq(t *testing.T, seq SequenceID) ChangesOptions {
+	return ChangesOptions{Since: seq, ChangesCtx: base.TestCtx(t)}
+}
+
+// Note: It is important to call db.Close() on the returned database.
+func SetupTestDB(t testing.TB) (*Database, context.Context) {
+	return SetupTestDBWithCacheOptions(t, DefaultCacheOptions())
+}
+
+func SetupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, context.Context) {
+
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	return SetupTestDBWithOptions(t, dbcOptions)
+}
+
+func SetupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+		CacheOptions: &cacheOptions,
+	}
+	return SetupTestDBWithOptions(t, dbcOptions)
+}
+
+func SetupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
+	testBucket := base.GetTestBucket(t)
+	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	return SetupTestDBForBucketWithOptions(t, leakyBucket, dbcOptions)
+}
+
+func SetupDBWithChannelCacheSettings(t *testing.T, cacheOptions CacheOptions) (context.Context, *Database, *DatabaseCollectionWithUser) {
+	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
+	t.Cleanup(func() { db.Close(ctx) })
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
+	return ctx, db, collection
+}
+
+func ShortWaitCache() CacheOptions {
+
+	// cacheOptions := DefaultCacheOptions()
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CachePendingSeqMaxNum = 50
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	return cacheOptions
+}
+
+func MakeLogEntry(seq uint64, docid string, revid string, channelNames []string, collectionID uint32) *LogEntry {
+	entry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		CollectionID: collectionID,
+	}
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+	entry.Channels = channelMap
+	return entry
+}
+
+func MakeTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
+	return &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+}
+
+// Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
+func MakeTestLogEntryForChannels(seq int, channelNames []string) *LogEntry {
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+
+	return &LogEntry{
+		Sequence:     uint64(seq),
+		DocID:        fmt.Sprintf("doc_%d", seq),
+		RevID:        "1-abc",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		Channels:     channelMap,
+	}
+}
+
+func MakeTestLogEntryWithCV(seq uint64, docid string, revid string, channelNames []string, collectionID uint32, sourceID string, version uint64) *LogEntry {
+	entry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		CollectionID: collectionID,
+		SourceID:     sourceID,
+		Version:      version,
+	}
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+	entry.Channels = channelMap
+	return entry
+}
+
+// QueryHandlerForTest is a ChannelQueryHandler test double serving entries from a seeded,
+// in-memory list instead of a real GSI or view query. It lives here rather than in a test
+// file because ChannelQueryHandler's only method is unexported: Go will not let a type
+// outside package db implement it, so out-of-package test packages cannot write their own.
+type QueryHandlerForTest struct {
+	entries    LogEntries
+	queryCount int
+	lock       sync.RWMutex
+}
+
+// QueryHandlerFactoryForTest is a ChannelQueryHandlerFactory returning a fresh, empty handler.
+func QueryHandlerFactoryForTest(collectionID uint32) (ChannelQueryHandler, error) {
+	return &QueryHandlerForTest{}, nil
+}
+
+// AsFactory adapts this handler to ChannelQueryHandlerFactory, so a single handler instance is
+// shared across every collection.
+func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandler, error) {
+	return qh, nil
+}
+
+func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+	queryEntries := make(LogEntries, 0)
+	qh.lock.RLock()
+	for _, entry := range qh.entries {
+		_, ok := entry.Channels[channel]
+		if ok {
+			if activeOnly && !entry.IsActive() {
+				continue
+			}
+			queryEntries = append(queryEntries, entry)
+			if limit > 0 && len(queryEntries) >= limit {
+				break
+			}
+		}
+	}
+	qh.lock.RUnlock()
+
+	qh.lock.Lock()
+	qh.queryCount++
+	qh.lock.Unlock()
+	return queryEntries, nil
+}
+
+// SeedEntries appends entries for the handler to serve.
+func (qh *QueryHandlerForTest) SeedEntries(seededEntries LogEntries) {
+	qh.lock.Lock()
+	qh.entries = append(qh.entries, seededEntries...)
+	qh.lock.Unlock()
+}
+
+// QueryCount reports how many queries the handler has served. Unlike the field read it
+// replaces, this takes the read lock: callers that have not synchronised with the querying
+// goroutines still get a consistent value.
+func (qh *QueryHandlerForTest) QueryCount() int {
+	qh.lock.RLock()
+	defer qh.lock.RUnlock()
+	return qh.queryCount
 }

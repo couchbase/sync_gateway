@@ -181,19 +181,22 @@ func getLastSeq(changes []*ChangeEntry) SequenceID {
 	return SequenceID{}
 }
 
-// Makes changes options starting at sequence 0, with a new changes context
+// getChangesOptionsWithZeroSeq delegates to GetChangesOptionsWithZeroSeq; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer GetChangesOptionsWithZeroSeq in new code.
 func getChangesOptionsWithZeroSeq(t testing.TB) ChangesOptions {
-	return ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
+	return GetChangesOptionsWithZeroSeq(t)
 }
 
-// Makes changes options with a since value of seq and a new changes context
+// getChangesOptionsWithSeq delegates to GetChangesOptionsWithSeq; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer GetChangesOptionsWithSeq in new code.
 func getChangesOptionsWithSeq(t *testing.T, seq SequenceID) ChangesOptions {
-	return ChangesOptions{Since: seq, ChangesCtx: base.TestCtx(t)}
+	return GetChangesOptionsWithSeq(t, seq)
 }
 
-// Makes changes options a new changes context
+// getChangesOptionsWithCtxOnly delegates to GetChangesOptionsWithCtxOnly; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer GetChangesOptionsWithCtxOnly in new code.
 func getChangesOptionsWithCtxOnly(t *testing.T) ChangesOptions {
-	return ChangesOptions{ChangesCtx: base.TestCtx(t)}
+	return GetChangesOptionsWithCtxOnly(t)
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {

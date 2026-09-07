@@ -695,11 +695,11 @@ func TestBypassSingleChannelCache(t *testing.T) {
 	defer close(terminator)
 
 	// Seed the query handler with 100 docs across 10 channels
-	queryHandler := &testQueryHandler{}
+	queryHandler := &QueryHandlerForTest{}
 	for seq := 1; seq <= 100; seq++ {
 		channelName := fmt.Sprintf("chan_%d", seq%10)
 		queryEntry := testLogEntryForChannels(seq, []string{channelName})
-		queryHandler.seedEntries(LogEntries{queryEntry})
+		queryHandler.SeedEntries(LogEntries{queryEntry})
 	}
 
 	bypassCache := &bypassChannelCache{

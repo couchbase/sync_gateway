@@ -408,7 +408,7 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
 	ctx := base.TestCtx(t)
-	cache, err := newChannelCache(ctx, "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
+	cache, err := newChannelCache(ctx, "testDb", options, QueryHandlerFactoryForTest, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop(ctx)
 
@@ -965,7 +965,7 @@ func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
 	ctx := base.TestCtx(t)
-	cache, err := newChannelCache(ctx, "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
+	cache, err := newChannelCache(ctx, "testDb", options, QueryHandlerFactoryForTest, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop(ctx)
 

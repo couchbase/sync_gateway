@@ -40,9 +40,10 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-// Note: It is important to call db.Close() on the returned database.
+// setupTestDB delegates to SetupTestDB; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer SetupTestDB in new code.
 func setupTestDB(t testing.TB) (*Database, context.Context) {
-	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
+	return SetupTestDB(t)
 }
 
 func setupTestDBAllowConflicts(t testing.TB) (*Database, context.Context) {
@@ -97,12 +98,10 @@ func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbc
 	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
+// setupTestDBWithCacheOptions delegates to SetupTestDBWithCacheOptions; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer SetupTestDBWithCacheOptions in new code.
 func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, context.Context) {
-
-	dbcOptions := DatabaseContextOptions{
-		CacheOptions: &options,
-	}
-	return SetupTestDBWithOptions(t, dbcOptions)
+	return SetupTestDBWithCacheOptions(t, options)
 }
 
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
@@ -152,22 +151,16 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
+// setupTestLeakyDBWithCacheOptions delegates to SetupTestLeakyDBWithCacheOptions; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer SetupTestLeakyDBWithCacheOptions in new code.
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
-	testBucket := base.GetTestBucket(t)
-	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
-	dbcOptions := DatabaseContextOptions{
-		CacheOptions: &options,
-	}
-	return SetupTestDBForBucketWithOptions(t, leakyBucket, dbcOptions)
+	return SetupTestLeakyDBWithCacheOptions(t, options, leakyOptions)
 }
 
+// setupTestDBDefaultCollection delegates to SetupTestDBDefaultCollection; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer SetupTestDBDefaultCollection in new code.
 func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
-	cacheOptions := DefaultCacheOptions()
-	dbcOptions := DatabaseContextOptions{
-		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
-		CacheOptions: &cacheOptions,
-	}
-	return SetupTestDBWithOptions(t, dbcOptions)
+	return SetupTestDBDefaultCollection(t)
 }
 
 func assertHTTPError(t *testing.T, err error, status int) bool {

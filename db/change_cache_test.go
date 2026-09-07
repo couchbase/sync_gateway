@@ -27,29 +27,16 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
+// testLogEntry delegates to MakeTestLogEntry; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer MakeTestLogEntry in new code.
 func testLogEntry(seq uint64, docid string, revid string) *LogEntry {
-	return &LogEntry{
-		Sequence:     seq,
-		DocID:        docid,
-		RevID:        revid,
-		TimeReceived: channels.NewFeedTimestampFromNow(),
-	}
+	return MakeTestLogEntry(seq, docid, revid)
 }
 
-// Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
+// testLogEntryForChannels delegates to MakeTestLogEntryForChannels; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer MakeTestLogEntryForChannels in new code.
 func testLogEntryForChannels(seq int, channelNames []string) *LogEntry {
-	channelMap := make(channels.ChannelMap)
-	for _, channelName := range channelNames {
-		channelMap[channelName] = nil
-	}
-
-	return &LogEntry{
-		Sequence:     uint64(seq),
-		DocID:        fmt.Sprintf("doc_%d", seq),
-		RevID:        "1-abc",
-		TimeReceived: channels.NewFeedTimestampFromNow(),
-		Channels:     channelMap,
-	}
+	return MakeTestLogEntryForChannels(seq, channelNames)
 }
 
 // Tombstoned entry
@@ -59,38 +46,16 @@ func et(seq uint64, docid string, revid string) *LogEntry {
 	return entry
 }
 
+// logEntry delegates to MakeLogEntry; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer MakeLogEntry in new code.
 func logEntry(seq uint64, docid string, revid string, channelNames []string, collectionID uint32) *LogEntry {
-	entry := &LogEntry{
-		Sequence:     seq,
-		DocID:        docid,
-		RevID:        revid,
-		TimeReceived: channels.NewFeedTimestampFromNow(),
-		CollectionID: collectionID,
-	}
-	channelMap := make(channels.ChannelMap)
-	for _, channelName := range channelNames {
-		channelMap[channelName] = nil
-	}
-	entry.Channels = channelMap
-	return entry
+	return MakeLogEntry(seq, docid, revid, channelNames, collectionID)
 }
 
+// testLogEntryWithCV delegates to MakeTestLogEntryWithCV; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer MakeTestLogEntryWithCV in new code.
 func testLogEntryWithCV(seq uint64, docid string, revid string, channelNames []string, collectionID uint32, sourceID string, version uint64) *LogEntry {
-	entry := &LogEntry{
-		Sequence:     seq,
-		DocID:        docid,
-		RevID:        revid,
-		TimeReceived: channels.NewFeedTimestampFromNow(),
-		CollectionID: collectionID,
-		SourceID:     sourceID,
-		Version:      version,
-	}
-	channelMap := make(channels.ChannelMap)
-	for _, channelName := range channelNames {
-		channelMap[channelName] = nil
-	}
-	entry.Channels = channelMap
-	return entry
+	return MakeTestLogEntryWithCV(seq, docid, revid, channelNames, collectionID, sourceID, version)
 }
 
 func TestLateSequenceHandling(t *testing.T) {
@@ -1210,14 +1175,10 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Len(t, abcCache.(*singleChannelCacheImpl).logs, 600)
 }
 
+// shortWaitCache delegates to ShortWaitCache; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer ShortWaitCache in new code.
 func shortWaitCache() CacheOptions {
-
-	// cacheOptions := DefaultCacheOptions()
-	cacheOptions := DefaultCacheOptions()
-	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
-	cacheOptions.CachePendingSeqMaxNum = 50
-	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
-	return cacheOptions
+	return ShortWaitCache()
 }
 
 // verifyCacheSequences asserts a full match on the sequences stored in singleCache's log.
@@ -2845,18 +2806,10 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	}, time.Second*10, time.Millisecond*100)
 }
 
-// getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
+// getChanges delegates to GetChangesForTest; the implementation moved to util_testing.go so
+// out-of-package test packages can use it. Prefer GetChangesForTest in new code.
 func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
-	require.NotNil(t, options.ChangesCtx)
-	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
-
-	require.NoError(t, err)
-	require.NotNil(t, feed)
-	var changes = make([]*ChangeEntry, 0, 50)
-	for entry := range feed {
-		changes = append(changes, entry)
-	}
-	return changes
+	return GetChangesForTest(t, collection, channels, options)
 }
 
 func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
