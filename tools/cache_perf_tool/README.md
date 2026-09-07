@@ -98,7 +98,9 @@ grep -aE '^[0-9]{10},' run.csv | awk -F, 'NF==10' > run_data.csv
 ```
 
 `avg_time_per_seq_ms` (column 10) is a *running mean over the whole run*, so it lags: a value still
-climbing at the end means the run had not settled.
+climbing at the end means the run had not settled. It is `dcp_caching_time / dcp_caching_count`; both
+counters are accumulated at the same point, so it covers exactly the sequences `dcp_caching_count`
+counts (see below).
 
 ### stdout: end-of-run summary
 
@@ -110,22 +112,29 @@ seqs_cached_per_sec_overall,183456.123456
 seqs_cached_per_sec_steady,190123.456789
 seqs_cached_per_sec_steady_window_secs,300
 dcp_received_count,1834561
+seqs_per_event,3.000000
 seqs_cached_per_event,1.000000
 ```
 
 - **`seqs_cached_per_sec_steady`** is the headline throughput number: sequences cached per second
-  over the last 300 s of the run, which excludes the vBucket ramp. **Use this to compare runs.** It
-  counts cached *sequences*, not documents — one document contributes several whenever
-  `-rapidUpdateDocs` is on or unused sequences are released, which is what `seqs_cached_per_event`
-  below reports.
+  over the last 300 s of the run, which excludes the vBucket ramp. **Use this to compare runs.**
 - `seqs_cached_per_sec_overall` covers the whole run *including* ramp, so it reads low.
 - `seqs_cached_per_sec_steady_window_secs` is the window actually available. It is less than 300 on a
   short run — in which case the steady figure still includes ramp and is not comparable — and `0` if
   the run was too short to measure at all.
-- `dcp_received_count` is DCP events received; `dcp_caching_count` is sequences cached.
-  `seqs_cached_per_event` is their ratio, i.e. how many `processEntry` calls each DCP event costs
-  (> 1 when `-rapidUpdateDocs` is on, or when unused sequences are being released). It is 0 in
-  `processEntry` mode, which bypasses DCP delivery.
+- `dcp_received_count` is DCP events received (one per `DocChanged`).
+- **`seqs_per_event`** is the `processEntry` fan-out: sequences carried by the feed per DCP event,
+  `high_seq_feed / dcp_received_count`. `1.0` normally, `~3.0` with `-rapidUpdateDocs` (half the
+  events carry 5 sequences). This is the amplification number.
+- **`seqs_cached_per_event`** is `dcp_caching_count / dcp_received_count` — the sequences that were
+  actually *cached*, per event. It stays at `1.0` even with `-rapidUpdateDocs`, and **the gap between
+  it and `seqs_per_event` is the point**: `DCPCachingCount` is incremented at the end of
+  `_addToCache`, *after* the `UnusedSequence` and `IsPrincipal` early returns, and the deduplicated
+  sequences a rapid-update event replays via `RecentSequences` are marked `UnusedSequence` unless
+  they are channel removals. Those sequences are ordered but never cached, so the amplified
+  `processEntry` calls are cheap ordering ops that skip the channel dispatch entirely. **Read
+  `dcp_caching_count` as sequences cached, not sequences processed.**
+- Both ratios are `0` in `processEntry` mode, which bypasses DCP delivery.
 
 To grab throughput from a script:
 

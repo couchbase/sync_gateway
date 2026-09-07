@@ -382,8 +382,10 @@ func (s *throughputSeries) rates(windowSecs int64) (overall, steady float64, win
 	return overall, steady, window
 }
 
-// avgCachingTimeMs is the running mean time to cache one sequence, in ms. Guarded so a run that has
-// not cached anything yet reports 0 rather than NaN, which would otherwise land in the CSV.
+// avgCachingTimeMs is the running mean time to cache one sequence, in ms - DCPCachingTime and
+// DCPCachingCount are both accumulated at the same point in _addToCache, so they cover the same
+// entries. Guarded so a run that has not cached anything yet reports 0 rather than NaN, which would
+// otherwise land in the CSV.
 func avgCachingTimeMs(timeNano, count int64) float64 {
 	if count <= 0 {
 		return 0
@@ -428,9 +430,14 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 
 	// Sequences cached per second, on their own labelled lines so this can be parsed straight out of
 	// the summary rather than re-derived from the per-second CSV. Both rates are computed from that
-	// same series, so they agree with it exactly. This counts CACHED SEQUENCES, not documents: with
-	// -rapidUpdateDocs, or whenever unused sequences are released, one document contributes several
-	// (which is what seqs_cached_per_event below reports).
+	// same series, so they agree with it exactly.
+	//
+	// These count sequences that were CACHED, which is narrower than sequences processed:
+	// DCPCachingCount is incremented at the end of _addToCache (db/change_cache.go), after the
+	// UnusedSequence and IsPrincipal early returns, so a sequence only lands here if it reached the
+	// channel dispatch. The deduplicated sequences a -rapidUpdateDocs event replays via
+	// RecentSequences are marked UnusedSequence unless they are channel removals, so they are ordered
+	// but never cached, and do not appear in these rates. seqs_per_event below reports that fan-out.
 	//
 	//   - _overall covers every sample of the run, so it INCLUDES the ~100s vBucket ramp during which
 	//     throughput is still climbing. Use it only for whole-run accounting.
@@ -444,17 +451,29 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_steady,%f\n", steadyRate)
 	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_sec_steady_window_secs,%d\n", steadyWindow)
 
-	// B5 amplification: DCPReceivedCount = one per DCP event (DocChanged); DCPCachingCount = one per
-	// cached sequence (_addToCache). Their ratio is the RecentSequences/UnusedSequences fan-out, i.e.
-	// how many processEntry calls each DCP event costs. Labelled lines again, so the positional
-	// per-second CSV recipe is undisturbed.
+	// B5 amplification, as two ratios against DCPReceivedCount (one per DCP event delivered to
+	// DocChanged). Labelled lines again, so the positional per-second CSV recipe is undisturbed.
+	//
+	//   - seqs_per_event is the processEntry fan-out per event, taken from HighSeqFeed: the highest
+	//     sequence processEntry has seen. The generator allocates sequences contiguously from 1 and
+	//     every allocated sequence is delivered - as a document's own sequence, or in its
+	//     RecentSequences - so that high-water mark is the number of sequences the feed carried.
+	//     Expect 1.0 without -rapidUpdateDocs and ~3.0 with it (half the events carry 5 sequences).
+	//   - seqs_cached_per_event uses DCPCachingCount, so it counts only the sequences that became
+	//     real channel-cache entries, and stays at 1.0 under -rapidUpdateDocs. The gap between the two
+	//     ratios is the point: the amplified calls are cheap unused-sequence ordering ops that skip
+	//     the channel dispatch entirely.
+	//
+	// Both are 0 in processEntry mode, which bypasses DCP delivery so DCPReceivedCount stays 0.
 	received := dbStats.Database().DCPReceivedCount.Value()
-	var seqsPerEvent float64
+	var seqsPerEvent, seqsCachedPerEvent float64
 	if received > 0 {
-		seqsPerEvent = float64(count) / float64(received)
+		seqsPerEvent = float64(dbStats.Database().HighSeqFeed.Value()) / float64(received)
+		seqsCachedPerEvent = float64(count) / float64(received)
 	}
 	_, _ = fmt.Fprintf(os.Stdout, "dcp_received_count,%d\n", received)
-	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_event,%f\n", seqsPerEvent)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_per_event,%f\n", seqsPerEvent)
+	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_event,%f\n", seqsCachedPerEvent)
 }
 
 func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
@@ -487,7 +506,7 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 			avgTimeMs := avgCachingTimeMs(timeNano, count)
 			timeMS := timeNano / 1e6
 			now := time.Now().Unix()
-			// Keep the series for the end-of-run docs-cached-per-second lines, using the same timestamp
+			// Keep the series for the end-of-run seqs-cached-per-second lines, using the same timestamp
 			// and counter value printed below so the summary and the CSV cannot disagree.
 			runThroughput.record(now, count)
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", now)
