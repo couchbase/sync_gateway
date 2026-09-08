@@ -112,10 +112,16 @@ func (db *DatabaseContext) CallProcessEntry(t *testing.T, ctx context.Context, l
 	db.changeCache.processEntry(ctx, log)
 }
 
-// GetCachedChanges will grab cached changes form channel cache for caching tool, not to be used outside test code.
-func (db *DatabaseContext) GetCachedChanges(t *testing.T, ctx context.Context, chanID channels.ID) ([]*LogEntry, error) {
-	logs, err := db.changeCache.getChannelCache().GetCachedChanges(ctx, chanID)
-	return logs, err
+// GetCachedChangesSince reads only the entries cached for a channel after `since` (cache-only, never
+// falls back to a view/query), so tools can model realistic per-feed cursors instead of copying the
+// whole channel log on every read. Not to be used outside test code.
+func (db *DatabaseContext) GetCachedChangesSince(t *testing.T, ctx context.Context, chanID channels.ID, since uint64) ([]*LogEntry, error) {
+	cc, ok := db.changeCache.getChannelCache().(*channelCacheImpl)
+	if !ok {
+		// Bypass/disabled-cache mode: fall back to the whole-log read.
+		return db.changeCache.getChannelCache().GetCachedChanges(ctx, chanID)
+	}
+	return cc.getCachedChangesSince(ctx, chanID, since)
 }
 
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {

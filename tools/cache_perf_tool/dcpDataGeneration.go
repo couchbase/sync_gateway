@@ -26,6 +26,12 @@ import (
 
 var hlc = sgbucket.NewHybridLogicalClock()
 
+// syncSeqVBucket is the vBucket the generator treats as the hot _sync:seq vBucket. It is given a long
+// write delay and its own goroutine, so it behaves like the single frequently-updated sequence
+// document rather than a normal data vBucket. Clamped into range when running with fewer vBuckets -
+// see vBucketCreation.
+const syncSeqVBucket = 520
+
 type dcpDataGen struct {
 	seqAlloc          *sequenceAllocator
 	delays            []time.Duration
@@ -34,14 +40,31 @@ type dcpDataGen struct {
 	numChannelsPerDoc int
 	numTotalChannels  int
 	simRapidUpdate    bool
+	numVBuckets       int // number of vBucket writer goroutines to create; also the DCP client's vBucket count
 }
 
+// vBucketCreation starts one writer goroutine per vBucket and returns once they are all running.
+//
+// Writers are staggered by 100ms, so this BLOCKS for numVBuckets*100ms before the caller's -duration
+// timer starts: ~100s at the default 1024 vBuckets, proportionally less below that.
+//
+// numVBuckets is the offered write concurrency, so lowering it lowers the load the run applies. Runs
+// with different vBucket counts are not comparable with each other.
 func (dcp *dcpDataGen) vBucketCreation(ctx context.Context) {
 	delayIndex := 0
+	// The hot sync-seq vBucket has a fixed ID, so with fewer vBuckets than that ID it is clamped to the
+	// last one rather than silently not being created at all. At numVBuckets == 1 it is dropped
+	// entirely (-1 never matches below) so the single vBucket is a data writer - otherwise a 1-vBucket
+	// run would generate almost nothing. At the default 1024 this leaves it exactly where it has
+	// always been.
+	syncSeqVb := -1
+	if dcp.numVBuckets > 1 {
+		syncSeqVb = min(syncSeqVBucket, dcp.numVBuckets-1)
+	}
 	// vBucket creation logic
-	for i := range 1024 {
+	for i := range dcp.numVBuckets {
 		time.Sleep(100 * time.Millisecond) // we need a slight delay each iteration otherwise many vBuckets end up writing at the same times
-		if i == 520 {
+		if i == syncSeqVb {
 			go dcp.syncSeqVBucketCreation(ctx, uint16(i), 2*time.Second) // sync seq hot vBucket so high delay
 		} else {
 			// iterate through provided delays and assign to vBucket, when we get to end of delay list reset index and
