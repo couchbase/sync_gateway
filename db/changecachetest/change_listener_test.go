@@ -8,11 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package changecachetest
 
 import (
 	"log"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -25,22 +27,20 @@ func TestUserWaiter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	// Create user
 	username := "bob"
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
 	user, err := authenticator.NewUser(username, "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 
 	// Create the user waiter (note: user hasn't been saved yet)
 	log.Printf("Saved user")
-	userDb := &Database{
-		user:            user,
-		DatabaseContext: db.DatabaseContext,
-	}
+	userDb := &db.Database{DatabaseContext: database.DatabaseContext}
+	userDb.SetUserForTest(user)
 	userWaiter := userDb.NewUserWaiter()
 	assert.False(t, userWaiter.RefreshUserCount())
 
@@ -49,30 +49,30 @@ func TestUserWaiter(t *testing.T) {
 	require.NoError(t, err, "Error saving user")
 
 	// Wait for notify from initial save
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the user to grant new channel
 	updatedUser := auth.PrincipalConfig{
 		Name:             &username,
 		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
-	_, _, err = db.UpdatePrincipal(ctx, &updatedUser, true, true)
+	_, _, err = database.UpdatePrincipal(ctx, &updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notification from grant
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 }
 
 func TestUserWaiterForRoleChange(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	// Create role
 	roleName := "good_egg"
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
 	role, err := authenticator.NewRole(roleName, channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new role")
@@ -85,10 +85,8 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error creating new user")
 
 	// Create the user waiter (note: user hasn't been saved yet)
-	userDb := &Database{
-		user:            user,
-		DatabaseContext: db.DatabaseContext,
-	}
+	userDb := &db.Database{DatabaseContext: database.DatabaseContext}
+	userDb.SetUserForTest(user)
 	userWaiter := userDb.NewUserWaiter()
 	isChanged := userWaiter.RefreshUserCount()
 	assert.False(t, isChanged)
@@ -98,75 +96,75 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error saving user")
 
 	// Wait for notify from initial save
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the user to grant role
 	updatedUser := auth.PrincipalConfig{
 		Name:              &username,
 		ExplicitRoleNames: base.SetOf(roleName),
 	}
-	_, _, err = db.UpdatePrincipal(ctx, &updatedUser, true, true)
+	_, _, err = database.UpdatePrincipal(ctx, &updatedUser, true, true)
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notify from updated user
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Retrieve the user.  This will trigger a user update to move ExplicitRoles->roles
 	userRefresh, err := authenticator.GetUser(username)
 	require.NoError(t, err, "Error retrieving user")
 
 	// Wait for notify from retrieval
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the waiter with the current user (adds role to waiter.UserKeys)
-	userWaiter.RefreshUserKeys(userRefresh, db.MetadataKeys)
+	userWaiter.RefreshUserKeys(userRefresh, database.MetadataKeys)
 
 	// Update the role to grant a new channel
 	updatedRole := auth.PrincipalConfig{
 		Name:             &roleName,
 		ExplicitChannels: base.SetFromArray([]string{"ABC", "DEF"}),
 	}
-	_, _, err = db.UpdatePrincipal(ctx, &updatedRole, false, true)
+	_, _, err = database.UpdatePrincipal(ctx, &updatedRole, false, true)
 	require.NoError(t, err, "Error updating role")
 
 	// Wait for user notification of updated role
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 }
 
 // TestUserWaiterForUserDelete ensures that deleting a user notifies the change listener.  A deletion
 // that isn't notified leaves running feeds serving a user that no longer exists.
 func TestUserWaiterForUserDelete(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	const username = "bob"
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser(username, "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 
 	// Create the waiter before the save, so the save's notification can't land before the waiter
 	// takes its baseline count
-	userDb, err := GetDatabase(db.DatabaseContext, user)
+	userDb, err := db.GetDatabase(database.DatabaseContext, user)
 	require.NoError(t, err)
 	userWaiter := userDb.NewUserWaiter()
 
 	require.NoError(t, authenticator.Save(user), "Error saving user")
 
 	// Wait for notify from the save, so the next wait can only be satisfied by the delete
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	require.NoError(t, authenticator.DeleteUser(user), "Error deleting user")
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 }
 
 // TestUserWaiterForRolePurge ensures that a purged role notifies the change listener.  A non-purge
 // role delete writes a tombstone (a mutation), but purge is a true deletion.
 func TestUserWaiterForRolePurge(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	const roleName = "good_egg"
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	role, err := authenticator.NewRole(roleName, channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new role")
 	require.NoError(t, authenticator.Save(role))
@@ -178,23 +176,23 @@ func TestUserWaiterForRolePurge(t *testing.T) {
 
 	// Create the waiter before the save, so the save's notification can't land before the waiter
 	// takes its baseline count
-	userDb, err := GetDatabase(db.DatabaseContext, user)
+	userDb, err := db.GetDatabase(database.DatabaseContext, user)
 	require.NoError(t, err)
 	userWaiter := userDb.NewUserWaiter()
 
 	require.NoError(t, authenticator.Save(user), "Error saving user")
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Retrieving the user moves ExplicitRoles->roles, which is another user write to wait out
 	user, err = authenticator.GetUser(username)
 	require.NoError(t, err, "Error retrieving user")
 	require.True(t, user.RoleNames().Contains(roleName))
-	WaitForUserWaiterChange(t, userWaiter)
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Add the role to the waiter's keys.  RefreshUserKeys re-baselines the count, so the next wait
 	// can only be satisfied by the purge.
-	userWaiter.RefreshUserKeys(user, db.MetadataKeys)
+	userWaiter.RefreshUserKeys(user, database.MetadataKeys)
 
-	require.NoError(t, db.DeleteRole(ctx, roleName, true), "Error purging role")
-	WaitForUserWaiterChange(t, userWaiter)
+	require.NoError(t, database.DeleteRole(ctx, roleName, true), "Error purging role")
+	db.WaitForUserWaiterChange(t, userWaiter)
 }
