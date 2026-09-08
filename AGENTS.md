@@ -72,7 +72,7 @@ When touching an existing `UseXattrs` check, prefer simplifying toward the xattr
 
 Be mindful of performance implications, such as mutex contention, race conditions, and other concurrency-related issues.
 
-Pair every `Lock()` or `RLock()` with a `defer` unlock taken immediately after the lock. A manual `Unlock()` is skipped on an early return or a panic. If the critical section must end before the function does, move it into its own function or a closure so that the `defer` still covers it.
+Pair every `Lock()` with a `defer Unlock()` and every `RLock()` with a `defer RUnlock()`, taken immediately after the lock. A manual `Unlock()`/`RUnlock()` is skipped on an early return or a panic. If the critical section must end before the function does, move it into its own function or a closure so that the `defer` still covers it.
 
 ### Comments
 
