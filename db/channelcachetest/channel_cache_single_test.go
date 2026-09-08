@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package channelcachetest
 
 import (
 	"fmt"
@@ -17,6 +17,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -28,10 +30,10 @@ func TestDuplicateDocID(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -39,39 +41,39 @@ func TestDuplicateDocID(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(1, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(2, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(3, "doc5", "5-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc5", "5-a"), false)
 
-	entries, err := cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
 	assert.True(t, err == nil)
 
 	// Add a new revision matching mid-list
-	cache.addToCache(ctx, MakeTestLogEntry(4, "doc3", "3-b"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(4, "doc3", "3-b"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 4}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc5", "doc3"}))
 	assert.True(t, err == nil)
 
 	// Add a new revision matching first
-	cache.addToCache(ctx, MakeTestLogEntry(5, "doc1", "1-b"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc1", "1-b"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 5}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc5", "doc3", "doc1"}))
 	assert.True(t, err == nil)
 
 	// Add a new revision matching last
-	cache.addToCache(ctx, MakeTestLogEntry(6, "doc1", "1-c"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(6, "doc1", "1-c"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 6}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc5", "doc3", "doc1"}))
@@ -83,8 +85,8 @@ func TestLateArrivingSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -92,26 +94,26 @@ func TestLateArrivingSequence(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(1, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(3, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(5, "doc5", "5-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc5", "5-a"), false)
 
-	entries, err := cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 5}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence
-	cache.AddLateSequence(MakeTestLogEntry(2, "doc2", "2-a"))
-	cache.addToCache(ctx, MakeTestLogEntry(2, "doc2", "2-a"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(2, "doc2", "2-a"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc2", "2-a"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3, 5}))
@@ -124,8 +126,8 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -133,26 +135,26 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(5, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(10, "doc2", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(15, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc2", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(15, "doc3", "3-a"), false)
 
-	entries, err := cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{5, 10, 15}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3"}))
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence
-	cache.AddLateSequence(MakeTestLogEntry(3, "doc0", "0-a"))
-	cache.addToCache(ctx, MakeTestLogEntry(3, "doc0", "0-a"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(3, "doc0", "0-a"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc0", "0-a"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{3, 5, 10, 15}))
@@ -165,8 +167,8 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -174,27 +176,27 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(10, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(20, "doc2", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(30, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(40, "doc4", "4-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(20, "doc2", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(30, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(40, "doc4", "4-a"), false)
 
-	entries, err := cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	assert.True(t, verifyChannelSequences(entries, []uint64{10, 20, 30, 40}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3", "doc4"}))
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence that should replace earlier sequence
-	cache.AddLateSequence(MakeTestLogEntry(25, "doc1", "1-c"))
-	cache.addToCache(ctx, MakeTestLogEntry(25, "doc1", "1-c"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(25, "doc1", "1-c"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(25, "doc1", "1-c"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{20, 25, 30, 40}))
@@ -202,9 +204,9 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence that should be ignored (later sequence exists for that docID)
-	cache.AddLateSequence(MakeTestLogEntry(15, "doc1", "1-b"))
-	cache.addToCache(ctx, MakeTestLogEntry(15, "doc1", "1-b"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(15, "doc1", "1-b"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(15, "doc1", "1-b"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{20, 25, 30, 40}))
@@ -212,9 +214,9 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence adjacent to same ID (cache inserts differently)
-	cache.AddLateSequence(MakeTestLogEntry(27, "doc1", "1-d"))
-	cache.addToCache(ctx, MakeTestLogEntry(27, "doc1", "1-d"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(27, "doc1", "1-d"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(27, "doc1", "1-d"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{20, 27, 30, 40}))
@@ -222,9 +224,9 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add a late-arriving sequence adjacent to same ID (cache inserts differently)
-	cache.AddLateSequence(MakeTestLogEntry(41, "doc4", "4-b"))
-	cache.addToCache(ctx, MakeTestLogEntry(41, "doc4", "4-b"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(41, "doc4", "4-b"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(41, "doc4", "4-b"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{20, 27, 30, 41}))
@@ -232,9 +234,9 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Add late arriving that's duplicate of oldest in cache
-	cache.AddLateSequence(MakeTestLogEntry(45, "doc2", "2-b"))
-	cache.addToCache(ctx, MakeTestLogEntry(45, "doc2", "2-b"), false)
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	cache.AddLateSequence(db.MakeTestLogEntry(45, "doc2", "2-b"))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(45, "doc2", "2-b"), false)
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 4)
 	writeEntries(entries)
 	assert.True(t, verifyChannelSequences(entries, []uint64{27, 30, 41, 45}))
@@ -247,8 +249,8 @@ func TestPrependChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	// 1. Test prepend to empty cache
 	stats, err := base.NewSyncGatewayStats()
@@ -257,22 +259,22 @@ func TestPrependChanges(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("PrependEmptyCache", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("PrependEmptyCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
-	changesToPrepend := LogEntries{
-		MakeTestLogEntry(10, "doc3", "2-a"),
-		MakeTestLogEntry(12, "doc2", "2-a"),
-		MakeTestLogEntry(14, "doc1", "2-a"),
+	changesToPrepend := db.LogEntries{
+		db.MakeTestLogEntry(10, "doc3", "2-a"),
+		db.MakeTestLogEntry(12, "doc2", "2-a"),
+		db.MakeTestLogEntry(14, "doc1", "2-a"),
 	}
 
-	numPrepended := cache.prependChanges(ctx, changesToPrepend, 5, 14)
+	numPrepended := cache.PrependChangesForTest(t, ctx, changesToPrepend, 5, 14)
 	assert.Equal(t, 3, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges := cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	validFrom, cachedChanges := cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(5), validFrom)
 	require.Len(t, cachedChanges, 3)
 
@@ -281,24 +283,24 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(collection, channels.NewID("PrependPopulatedCache", collection.GetCollectionID()), 0, dbstats.Cache())
-	cache.validFrom = 13
-	cache.addToCache(ctx, MakeTestLogEntry(14, "doc1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(20, "doc2", "3-a"), false)
+	cache = db.NewSingleChannelCacheForTest(t, collection, channels.NewID("PrependPopulatedCache", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache.SetValidFromForTest(t, 13)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(14, "doc1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(20, "doc2", "3-a"), false)
 
 	// Prepend
-	changesToPrepend = LogEntries{
-		MakeTestLogEntry(10, "doc3", "2-a"),
-		MakeTestLogEntry(11, "doc5", "2-a"),
-		MakeTestLogEntry(12, "doc2", "2-a"),
-		MakeTestLogEntry(14, "doc1", "2-a"),
+	changesToPrepend = db.LogEntries{
+		db.MakeTestLogEntry(10, "doc3", "2-a"),
+		db.MakeTestLogEntry(11, "doc5", "2-a"),
+		db.MakeTestLogEntry(12, "doc2", "2-a"),
+		db.MakeTestLogEntry(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(ctx, changesToPrepend, 5, 14)
+	numPrepended = cache.PrependChangesForTest(t, ctx, changesToPrepend, 5, 14)
 	assert.Equal(t, 2, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges = cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	validFrom, cachedChanges = cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(5), validFrom)
 	require.Len(t, cachedChanges, 4)
 	if len(cachedChanges) == 4 {
@@ -313,8 +315,8 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// Write a new revision for a prepended doc to the cache, validate that old entry is removed
-	cache.addToCache(ctx, MakeTestLogEntry(24, "doc3", "3-a"), false)
-	validFrom, cachedChanges = cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(24, "doc3", "3-a"), false)
+	validFrom, cachedChanges = cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(5), validFrom)
 	require.Len(t, cachedChanges, 4)
 	if len(cachedChanges) == 4 {
@@ -329,8 +331,8 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// Prepend empty set, validate validFrom update
-	cache.prependChanges(ctx, LogEntries{}, 5, 14)
-	validFrom, cachedChanges = cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	cache.PrependChangesForTest(t, ctx, db.LogEntries{}, 5, 14)
+	validFrom, cachedChanges = cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(5), validFrom)
 	require.Len(t, cachedChanges, 4)
 
@@ -339,27 +341,27 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(collection, channels.NewID("PrependToFillCache", collection.GetCollectionID()), 0, dbstats.Cache())
-	cache.options.ChannelCacheMaxLength = 5
-	cache.validFrom = 13
-	cache.addToCache(ctx, MakeTestLogEntry(14, "doc1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(20, "doc2", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(22, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(23, "doc4", "3-a"), false)
+	cache = db.NewSingleChannelCacheForTest(t, collection, channels.NewID("PrependToFillCache", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache.OptionsForTest(t).ChannelCacheMaxLength = 5
+	cache.SetValidFromForTest(t, 13)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(14, "doc1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(20, "doc2", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(22, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(23, "doc4", "3-a"), false)
 
 	// Prepend changes.  Only room for one more in cache.  doc1 and doc2 should be ignored (already in cache), doc 6 should get cached, doc 5 should be discarded.  validFrom should be doc6 (10)
-	changesToPrepend = LogEntries{
-		MakeTestLogEntry(8, "doc5", "2-a"),
-		MakeTestLogEntry(10, "doc6", "2-a"),
-		MakeTestLogEntry(12, "doc2", "2-a"),
-		MakeTestLogEntry(14, "doc1", "2-a"),
+	changesToPrepend = db.LogEntries{
+		db.MakeTestLogEntry(8, "doc5", "2-a"),
+		db.MakeTestLogEntry(10, "doc6", "2-a"),
+		db.MakeTestLogEntry(12, "doc2", "2-a"),
+		db.MakeTestLogEntry(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(ctx, changesToPrepend, 5, 14)
+	numPrepended = cache.PrependChangesForTest(t, ctx, changesToPrepend, 5, 14)
 	assert.Equal(t, 1, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges = cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	validFrom, cachedChanges = cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(10), validFrom)
 	require.Len(t, cachedChanges, 5)
 	if len(cachedChanges) == 5 {
@@ -380,22 +382,22 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(collection, channels.NewID("PrependDuplicatesOnly", collection.GetCollectionID()), 0, dbstats.Cache())
-	cache.validFrom = 13
-	cache.addToCache(ctx, MakeTestLogEntry(14, "doc1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(20, "doc2", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(22, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(23, "doc4", "3-a"), false)
+	cache = db.NewSingleChannelCacheForTest(t, collection, channels.NewID("PrependDuplicatesOnly", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache.SetValidFromForTest(t, 13)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(14, "doc1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(20, "doc2", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(22, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(23, "doc4", "3-a"), false)
 
-	changesToPrepend = LogEntries{
-		MakeTestLogEntry(8, "doc2", "2-a"),
-		MakeTestLogEntry(10, "doc3", "2-a"),
-		MakeTestLogEntry(12, "doc4", "2-a"),
-		MakeTestLogEntry(14, "doc1", "2-a"),
+	changesToPrepend = db.LogEntries{
+		db.MakeTestLogEntry(8, "doc2", "2-a"),
+		db.MakeTestLogEntry(10, "doc3", "2-a"),
+		db.MakeTestLogEntry(12, "doc4", "2-a"),
+		db.MakeTestLogEntry(14, "doc1", "2-a"),
 	}
-	numPrepended = cache.prependChanges(ctx, changesToPrepend, 5, 14)
+	numPrepended = cache.PrependChangesForTest(t, ctx, changesToPrepend, 5, 14)
 	assert.Equal(t, 0, numPrepended)
-	validFrom, cachedChanges = cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	validFrom, cachedChanges = cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(5), validFrom)
 	require.Len(t, cachedChanges, 4)
 	if len(cachedChanges) == 5 {
@@ -414,28 +416,28 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(collection, channels.NewID("PrependFullCache", collection.GetCollectionID()), 0, dbstats.Cache())
-	cache.options.ChannelCacheMaxLength = 5
-	cache.validFrom = 13
-	cache.addToCache(ctx, MakeTestLogEntry(14, "doc1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(20, "doc2", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(22, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(23, "doc4", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(25, "doc5", "3-a"), false)
+	cache = db.NewSingleChannelCacheForTest(t, collection, channels.NewID("PrependFullCache", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache.OptionsForTest(t).ChannelCacheMaxLength = 5
+	cache.SetValidFromForTest(t, 13)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(14, "doc1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(20, "doc2", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(22, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(23, "doc4", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(25, "doc5", "3-a"), false)
 
 	// Prepend changes, no room for in cache.
-	changesToPrepend = LogEntries{
-		MakeTestLogEntry(8, "doc5", "2-a"),
-		MakeTestLogEntry(10, "doc6", "2-a"),
-		MakeTestLogEntry(12, "doc2", "2-a"),
-		MakeTestLogEntry(14, "doc1", "2-a"),
+	changesToPrepend = db.LogEntries{
+		db.MakeTestLogEntry(8, "doc5", "2-a"),
+		db.MakeTestLogEntry(10, "doc6", "2-a"),
+		db.MakeTestLogEntry(12, "doc2", "2-a"),
+		db.MakeTestLogEntry(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(ctx, changesToPrepend, 6, 14)
+	numPrepended = cache.PrependChangesForTest(t, ctx, changesToPrepend, 6, 14)
 	assert.Equal(t, 0, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges = cache.GetCachedChanges(GetChangesOptionsWithCtxOnly(t))
+	validFrom, cachedChanges = cache.GetCachedChanges(db.GetChangesOptionsWithCtxOnly(t))
 	assert.Equal(t, uint64(13), validFrom)
 	require.Len(t, cachedChanges, 5)
 	if len(cachedChanges) == 5 {
@@ -456,8 +458,8 @@ func TestChannelCacheRemove(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -465,17 +467,17 @@ func TestChannelCacheRemove(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
 
 	// Add some entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(1, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(2, "doc3", "3-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(3, "doc5", "5-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc3", "3-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc5", "5-a"), false)
 
-	entries, err := cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 3)
 	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
@@ -483,7 +485,7 @@ func TestChannelCacheRemove(t *testing.T) {
 
 	// Now remove doc1
 	cache.Remove(ctx, collectionID, []string{"doc1"}, time.Now())
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
@@ -493,7 +495,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	// This will print a debug level log:
 	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
 	cache.Remove(ctx, collectionID, []string{"doc5"}, time.Now().Add(-time.Second*5))
-	entries, err = cache.GetChanges(ctx, GetChangesOptionsWithZeroSeq(t))
+	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
@@ -504,8 +506,8 @@ func TestChannelCacheStats(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -513,16 +515,16 @@ func TestChannelCacheStats(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
 	testStats := dbstats.Cache()
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, testStats)
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collectionID), 0, testStats)
 
 	// Add some entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(1, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(2, "doc2", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(3, "doc3", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc2", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc3", "1-a"), false)
 
 	active, tombstones, removals := getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
@@ -530,49 +532,49 @@ func TestChannelCacheStats(t *testing.T) {
 	assert.Equal(t, 0, removals)
 
 	// Update keys already present in the cache, shouldn't modify utilization
-	cache.addToCache(ctx, MakeTestLogEntry(4, "doc1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(5, "doc2", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(4, "doc1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc2", "2-a"), false)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 0, removals)
 
 	// Add a removal rev for a doc not previously in the cache
-	cache.addToCache(ctx, MakeTestLogEntry(6, "doc4", "2-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(6, "doc4", "2-a"), true)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 1, removals)
 
 	// Add a removal rev for a doc previously in the cache
-	cache.addToCache(ctx, MakeTestLogEntry(7, "doc1", "3-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(7, "doc1", "3-a"), true)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 2, removals)
 
 	// Add a new tombstone to the cache
-	tombstone := MakeTestLogEntry(8, "doc5", "2-a")
+	tombstone := db.MakeTestLogEntry(8, "doc5", "2-a")
 	tombstone.SetDeleted()
-	cache.addToCache(ctx, tombstone, false)
+	cache.AddToCacheForTest(t, ctx, tombstone, false)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 1, tombstones)
 	assert.Equal(t, 2, removals)
 
 	// Add a tombstone that's also a removal.  Should only be tracked as removal
-	tombstone = MakeTestLogEntry(9, "doc6", "2-a")
+	tombstone = db.MakeTestLogEntry(9, "doc6", "2-a")
 	tombstone.SetDeleted()
-	cache.addToCache(ctx, tombstone, true)
+	cache.AddToCacheForTest(t, ctx, tombstone, true)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 1, tombstones)
 	assert.Equal(t, 3, removals)
 
 	// Tombstone a document id already present in the cache as an active revision
-	tombstone = MakeTestLogEntry(10, "doc2", "3-a")
+	tombstone = db.MakeTestLogEntry(10, "doc2", "3-a")
 	tombstone.SetDeleted()
-	cache.addToCache(ctx, tombstone, false)
+	cache.AddToCacheForTest(t, ctx, tombstone, false)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 1, active)
 	assert.Equal(t, 2, tombstones)
@@ -583,8 +585,8 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -592,24 +594,24 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
 	testStats := dbstats.Cache()
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, testStats)
-	cache.options.ChannelCacheMaxLength = 5
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collectionID), 0, testStats)
+	cache.OptionsForTest(t).ChannelCacheMaxLength = 5
 
 	// Add more than ChannelCacheMaxLength entries to cache
-	cache.addToCache(ctx, MakeTestLogEntry(1, "doc1", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(2, "doc2", "1-a"), true)
-	cache.addToCache(ctx, MakeTestLogEntry(3, "doc3", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(4, "doc4", "1-a"), true)
-	cache.addToCache(ctx, MakeTestLogEntry(5, "doc5", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(6, "doc6", "1-a"), true)
-	cache.addToCache(ctx, MakeTestLogEntry(7, "doc7", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(8, "doc8", "1-a"), true)
-	cache.addToCache(ctx, MakeTestLogEntry(9, "doc9", "1-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(10, "doc10", "1-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc2", "1-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc3", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(4, "doc4", "1-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc5", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(6, "doc6", "1-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(7, "doc7", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(8, "doc8", "1-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(9, "doc9", "1-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), true)
 
 	active, tombstones, removals := getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
@@ -622,8 +624,8 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := SetupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -631,23 +633,23 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
 	testStats := dbstats.Cache()
-	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 99, testStats)
-	cache.options.ChannelCacheMaxLength = 15
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collectionID), 99, testStats)
+	cache.OptionsForTest(t).ChannelCacheMaxLength = 15
 
 	// Add 9 entries to cache, 3 of each type
-	cache.addToCache(ctx, MakeTestLogEntry(100, "active1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(102, "active2", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(104, "removal1", "2-a"), true)
-	cache.addToCache(ctx, MakeDeletedTestLogEntry(106, "tombstone1", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(107, "removal2", "2-a"), true)
-	cache.addToCache(ctx, MakeTestLogEntry(108, "removal3", "2-a"), true)
-	cache.addToCache(ctx, MakeDeletedTestLogEntry(110, "tombstone2", "2-a"), false)
-	cache.addToCache(ctx, MakeDeletedTestLogEntry(111, "tombstone3", "2-a"), false)
-	cache.addToCache(ctx, MakeTestLogEntry(112, "active3", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(100, "active1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(102, "active2", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(104, "removal1", "2-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeDeletedTestLogEntry(106, "tombstone1", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(107, "removal2", "2-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(108, "removal3", "2-a"), true)
+	cache.AddToCacheForTest(t, ctx, db.MakeDeletedTestLogEntry(110, "tombstone2", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeDeletedTestLogEntry(111, "tombstone3", "2-a"), false)
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(112, "active3", "2-a"), false)
 
 	active, tombstones, removals := getCacheUtilization(testStats)
 	require.Equal(t, 3, active)
@@ -655,13 +657,13 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	assert.Equal(t, 3, removals)
 
 	// Attempt to prepend entries with later sequences already in cache.  Shouldn't modify stats (note that prepend expects one overlap)
-	prependDuplicatesSet := make(LogEntries, 5)
-	prependDuplicatesSet[0] = (MakeTestLogEntry(50, "active1", "1-a"))
-	prependDuplicatesSet[1] = (MakeDeletedTestLogEntry(51, "active2", "1-a"))
-	prependDuplicatesSet[2] = (MakeTestLogEntry(52, "removal1", "1-a"))
-	prependDuplicatesSet[3] = (MakeDeletedTestLogEntry(53, "tombstone1", "1-a"))
-	prependDuplicatesSet[4] = (MakeTestLogEntry(54, "tombstone3", "1-a"))
-	cache.prependChanges(ctx, prependDuplicatesSet, 50, 99)
+	prependDuplicatesSet := make(db.LogEntries, 5)
+	prependDuplicatesSet[0] = (db.MakeTestLogEntry(50, "active1", "1-a"))
+	prependDuplicatesSet[1] = (db.MakeDeletedTestLogEntry(51, "active2", "1-a"))
+	prependDuplicatesSet[2] = (db.MakeTestLogEntry(52, "removal1", "1-a"))
+	prependDuplicatesSet[3] = (db.MakeDeletedTestLogEntry(53, "tombstone1", "1-a"))
+	prependDuplicatesSet[4] = (db.MakeTestLogEntry(54, "tombstone3", "1-a"))
+	cache.PrependChangesForTest(t, ctx, prependDuplicatesSet, 50, 99)
 
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
@@ -669,19 +671,19 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	assert.Equal(t, 3, removals)
 
 	// Prepend 10 non-duplicates - 5 active, 5 tombstone.  Cache only has room for 6, validate stats
-	prependSet := make(LogEntries, 11)
-	prependSet[0] = (MakeTestLogEntry(40, "new1", "1-a"))
-	prependSet[1] = (MakeDeletedTestLogEntry(41, "new2", "1-a"))
-	prependSet[2] = (MakeTestLogEntry(42, "new3", "1-a"))
-	prependSet[3] = (MakeDeletedTestLogEntry(43, "new4", "1-a"))
-	prependSet[4] = (MakeTestLogEntry(44, "new5", "1-a"))
-	prependSet[5] = (MakeDeletedTestLogEntry(45, "new6", "1-a"))
-	prependSet[6] = (MakeTestLogEntry(46, "new7", "1-a"))
-	prependSet[7] = (MakeDeletedTestLogEntry(47, "new8", "1-a"))
-	prependSet[8] = (MakeTestLogEntry(48, "new9", "1-a"))
-	prependSet[9] = (MakeDeletedTestLogEntry(49, "new10", "1-a"))
-	prependSet[10] = (MakeDeletedTestLogEntry(50, "active1", "1-a"))
-	cache.prependChanges(ctx, prependSet, 40, 50)
+	prependSet := make(db.LogEntries, 11)
+	prependSet[0] = (db.MakeTestLogEntry(40, "new1", "1-a"))
+	prependSet[1] = (db.MakeDeletedTestLogEntry(41, "new2", "1-a"))
+	prependSet[2] = (db.MakeTestLogEntry(42, "new3", "1-a"))
+	prependSet[3] = (db.MakeDeletedTestLogEntry(43, "new4", "1-a"))
+	prependSet[4] = (db.MakeTestLogEntry(44, "new5", "1-a"))
+	prependSet[5] = (db.MakeDeletedTestLogEntry(45, "new6", "1-a"))
+	prependSet[6] = (db.MakeTestLogEntry(46, "new7", "1-a"))
+	prependSet[7] = (db.MakeDeletedTestLogEntry(47, "new8", "1-a"))
+	prependSet[8] = (db.MakeTestLogEntry(48, "new9", "1-a"))
+	prependSet[9] = (db.MakeDeletedTestLogEntry(49, "new10", "1-a"))
+	prependSet[10] = (db.MakeDeletedTestLogEntry(50, "active1", "1-a"))
+	cache.PrependChangesForTest(t, ctx, prependSet, 40, 50)
 	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 6, active)
 	assert.Equal(t, 6, tombstones)
@@ -695,23 +697,20 @@ func TestBypassSingleChannelCache(t *testing.T) {
 	defer close(terminator)
 
 	// Seed the query handler with 100 docs across 10 channels
-	queryHandler := &QueryHandlerForTest{}
+	queryHandler := &db.QueryHandlerForTest{}
 	for seq := 1; seq <= 100; seq++ {
 		channelName := fmt.Sprintf("chan_%d", seq%10)
-		queryEntry := MakeTestLogEntryForChannels(seq, []string{channelName})
-		queryHandler.SeedEntries(LogEntries{queryEntry})
+		queryEntry := db.MakeTestLogEntryForChannels(seq, []string{channelName})
+		queryHandler.SeedEntries(db.LogEntries{queryEntry})
 	}
 
-	bypassCache := &bypassChannelCache{
-		channel:      channels.NewID("chan_1", base.DefaultCollectionID),
-		queryHandler: queryHandler,
-	}
+	bypassCache := db.NewBypassChannelCacheForTest(t, queryHandler, channels.NewID("chan_1", base.DefaultCollectionID))
 
-	entries, err := bypassCache.GetChanges(base.TestCtx(t), GetChangesOptionsWithZeroSeq(t))
+	entries, err := bypassCache.GetChanges(base.TestCtx(t), db.GetChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err)
 	require.Len(t, entries, 10)
 
-	validFrom, cachedEntries := bypassCache.GetCachedChanges(GetChangesOptionsWithZeroSeq(t))
+	validFrom, cachedEntries := bypassCache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
 	assert.Equal(t, uint64(math.MaxUint64), validFrom)
 	require.Len(t, cachedEntries, 0)
 }
@@ -720,8 +719,8 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
@@ -729,9 +728,9 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 	docIDs := make([]string, b.N)
 	docCount := 0
@@ -742,7 +741,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	b.ResetTimer()
 	for i := range docCount {
-		cache.addToCache(ctx, MakeTestLogEntry(uint64(i), docIDs[i], "1-a"), false)
+		cache.AddToCacheForTest(b, ctx, db.MakeTestLogEntry(uint64(i), docIDs[i], "1-a"), false)
 	}
 }
 
@@ -750,8 +749,8 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
@@ -759,15 +758,15 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(5.0, b.N)
 
 	for i := 0; b.Loop(); i++ {
-		cache.addToCache(ctx, MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
+		cache.AddToCacheForTest(b, ctx, db.MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
 
@@ -775,23 +774,23 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(20.0, b.N)
 
 	for i := 0; b.Loop(); i++ {
-		cache.addToCache(ctx, MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
+		cache.AddToCacheForTest(b, ctx, db.MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
 
@@ -799,23 +798,23 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(50.0, b.N)
 
 	for i := 0; b.Loop(); i++ {
-		cache.addToCache(ctx, MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
+		cache.AddToCacheForTest(b, ctx, db.MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
 
@@ -823,23 +822,23 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(80.0, b.N)
 
 	for i := 0; b.Loop(); i++ {
-		cache.addToCache(ctx, MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
+		cache.AddToCacheForTest(b, ctx, db.MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
 
@@ -847,23 +846,23 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(95.0, b.N)
 
 	for i := 0; b.Loop(); i++ {
-		cache.addToCache(ctx, MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
+		cache.AddToCacheForTest(b, ctx, db.MakeTestLogEntry(uint64(i), docIDs[i], revStrings[i]), false)
 	}
 }
 
@@ -871,23 +870,23 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := SetupTestDB(b)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(b)
+	defer database.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(b, err)
 	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
+	collection := db.GetSingleDatabaseCollection(b, database.DatabaseContext)
 
-	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
+	cache := db.NewSingleChannelCacheForTest(b, collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate docs
-	docs := make([]*LogEntry, b.N)
+	docs := make([]*db.LogEntry, b.N)
 	r := rand.New(rand.NewSource(99))
 	docCount := 0
 	for b.Loop() {
-		docs[docCount] = MakeTestLogEntry(uint64(docCount), fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", docCount), "1-a")
+		docs[docCount] = db.MakeTestLogEntry(uint64(docCount), fmt.Sprintf("long_document_id_for_sufficient_equals_complexity_%012d", docCount), "1-a")
 	}
 	// shuffle sequences
 	for i := docCount - 1; i >= 0; i-- {
@@ -899,7 +898,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	b.ResetTimer()
 	for i := range docCount {
-		cache.addToCache(ctx, docs[i], false)
+		cache.AddToCacheForTest(b, ctx, docs[i], false)
 	}
 }
 
@@ -923,7 +922,7 @@ func generateDocs(percentInsert float64, N int) ([]string, []string) {
 	return docIDs, revStrings
 }
 
-func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {
+func verifyChannelSequences(entries []*db.LogEntry, sequences []uint64) bool {
 	if len(entries) != len(sequences) {
 		log.Printf("verifyChannelSequences: entries size (%v) not equals to sequences size (%v)",
 			len(entries), len(sequences))
@@ -939,7 +938,7 @@ func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {
 	return true
 }
 
-func verifyChannelDocIDs(entries []*LogEntry, docIDs []string) bool {
+func verifyChannelDocIDs(entries []*db.LogEntry, docIDs []string) bool {
 	if len(entries) != len(docIDs) {
 		log.Printf("verifyChannelDocIDs: entries size (%v) not equals to DocIDs size (%v)",
 			len(entries), len(docIDs))
@@ -959,7 +958,7 @@ type cvValues struct {
 	version uint64
 }
 
-func verifyCVEntries(entries []*LogEntry, cvs []cvValues) bool {
+func verifyCVEntries(entries []*db.LogEntry, cvs []cvValues) bool {
 	for index, cv := range cvs {
 		if entries[index].SourceID != cv.source {
 			return false
@@ -971,7 +970,7 @@ func verifyCVEntries(entries []*LogEntry, cvs []cvValues) bool {
 	return true
 }
 
-func writeEntries(entries []*LogEntry) {
+func writeEntries(entries []*db.LogEntry) {
 	for index, entry := range entries {
 		log.Printf("%d:seq=%d, docID=%s, revID=%s", index, entry.Sequence, entry.DocID, entry.RevID)
 	}
