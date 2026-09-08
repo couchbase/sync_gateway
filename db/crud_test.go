@@ -1607,7 +1607,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 
 	// init channel cache, this will make changes call after timeout doc is written below fail pre changes made in CBG-4067,
 	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
-	_ = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	_ = getChanges(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 
 	assert.Equal(t, uint64(0), db.DbStats.Database().SequenceReleasedCount.Value())
 
@@ -1626,7 +1626,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// get cached changes + assert the document is present
-	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	changes := getChanges(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, changes, 1)
 	assert.Equal(t, timeoutDoc, changes[0].ID)
 

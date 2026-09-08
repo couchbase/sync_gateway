@@ -1511,3 +1511,47 @@ func (qh *QueryHandlerForTest) QueryCount() int {
 	defer qh.lock.RUnlock()
 	return qh.queryCount
 }
+
+// ---------------------------------------------------------------------------
+// Bridges for out-of-package test packages.
+//
+// Each of these exists only because a test in db/changesfeedtest, db/changecachetest or
+// db/channelcachetest needs to reach an unexported field or method. They are deliberately
+// thin: no assertions, no retries, no extra synchronisation, so a test calling a bridge
+// exercises exactly what the same line exercised while the test lived in package db.
+// ---------------------------------------------------------------------------
+
+// ChannelCacheForTest exposes the database's channel cache.
+func (dbc *DatabaseContext) ChannelCacheForTest() ChannelCache {
+	return dbc.channelCache
+}
+
+// ChangesFeedForTest drives a single channel's changes feed against the supplied cache,
+// bypassing the multi-channel feed. Lets a test drive changesFeed's own pagination
+// bookkeeping with a stub cache and no real documents, DCP or query backend.
+func (db *DatabaseCollectionWithUser) ChangesFeedForTest(ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
+	return db.changesFeed(ctx, singleChannelCache, options, to)
+}
+
+// SetCollectionID sets the entry's collection, which the changes feed populates from the
+// collection the entry was read from. Takes testing.TB to mark it as test-only.
+func (ce *ChangeEntry) SetCollectionID(_ testing.TB, collectionID uint32) {
+	ce.collectionID = collectionID
+}
+
+// SetAllRemoved marks the entry as removed from every channel visible to the user.
+// Takes testing.TB to mark it as test-only.
+func (ce *ChangeEntry) SetAllRemoved(_ testing.TB, allRemoved bool) {
+	ce.allRemoved = allRemoved
+}
+
+// IsPrincipalDoc reports whether the entry is a _user or _role doc.
+func (ce *ChangeEntry) IsPrincipalDoc() bool {
+	return ce.principalDoc
+}
+
+// SetDatabaseCollectionUser swaps the user a collection resolves channel access against, so a
+// test can re-read the changes feed as a different principal without rebuilding the collection.
+func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUser(user auth.User) {
+	c.user = user
+}

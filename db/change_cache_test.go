@@ -495,7 +495,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionWithUser.user, err = authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	changes := getChanges(t, collectionWithUser, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	changes := getChanges(t, collectionWithUser, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 
 	collectionID := collection.GetCollectionID()
 
@@ -531,7 +531,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
-	changes = getChanges(t, collectionWithUser, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
+	changes = getChanges(t, collectionWithUser, base.SetOf("*"), GetChangesOptionsWithSeq(t, lastSeq))
 	assert.Len(t, changes, 3)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},
@@ -1163,7 +1163,7 @@ func TestChannelCacheSize(t *testing.T) {
 	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collectionWithUser.user, err = authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	changes := getChanges(t, collectionWithUser, base.SetOf("ABC"), getChangesOptionsWithZeroSeq(t))
+	changes := getChanges(t, collectionWithUser, base.SetOf("ABC"), GetChangesOptionsWithZeroSeq(t))
 	assert.Len(t, changes, 750)
 
 	// Validate that cache stores the expected number of values
@@ -1488,7 +1488,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes := getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "zero"), GetChangesOptionsWithCtxOnly(t))
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
 
@@ -1505,7 +1505,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes = getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "zero"), GetChangesOptionsWithCtxOnly(t))
 	assert.Len(t, changes, 10)
 }
 
@@ -1550,7 +1550,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes := getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly(t))
+	changes := getChanges(t, collection, channels.BaseSetOf(t, "zero"), GetChangesOptionsWithCtxOnly(t))
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
 	if firstChangesCount > 0 {
@@ -1560,7 +1560,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes = getChanges(t, collection, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(t, lastSeq))
+	changes = getChanges(t, collection, channels.BaseSetOf(t, "zero"), GetChangesOptionsWithSeq(t, lastSeq))
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
 
@@ -1783,7 +1783,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq(b))
+					_, err := changeCache.GetChanges(ctx, channel, GetChangesOptionsWithZeroSeq(b))
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -1946,7 +1946,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
-					_, err := changeCache.GetChanges(ctx, channel, getChangesOptionsWithZeroSeq(b))
+					_, err := changeCache.GetChanges(ctx, channel, GetChangesOptionsWithZeroSeq(b))
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -3109,7 +3109,7 @@ func TestUnblockPendingWithUnusedRange(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// init change cache
-	_, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), getChangesOptionsWithZeroSeq(t))
+	_, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), GetChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
 	docID := fmt.Sprintf("doc_%d", 1)
@@ -3145,7 +3145,7 @@ func TestUnblockPendingWithUnusedRange(t *testing.T) {
 		assert.Equal(c, uint64(21), db.changeCache.nextSequence)
 	}, time.Second*10, time.Millisecond*100)
 
-	entries, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), getChangesOptionsWithZeroSeq(t))
+	entries, err := db.changeCache.GetChanges(ctx, channels.NewID("channelA", collection.GetCollectionID()), GetChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
 	assert.Len(t, entries, 1)

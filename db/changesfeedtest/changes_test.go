@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package db
+package changesfeedtest
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -55,27 +57,28 @@ func TestFilterToAvailableChannels(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
-			defer db.Close(ctx)
-			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+			database, ctx := db.SetupTestDB(t)
+			defer database.Close(ctx)
+			collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
-			auth := db.Authenticator(base.TestCtx(t))
+			auth := database.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
 			require.NoError(t, err)
 			require.NoError(t, auth.Save(user))
 
 			for i := 0; i < testCase.genChanAndDocs; i++ {
 				id := fmt.Sprintf("%d", i+1)
-				_, _, err = collection.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
+				_, _, err = collection.Put(ctx, "doc"+id, db.Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
-			db.WaitForPendingChanges(t)
+			database.WaitForPendingChanges(t)
 
-			collection.user, err = auth.GetUser("test")
-			require.NoError(t, err)
+			collUser, collUserErr := auth.GetUser("test")
+			require.NoError(t, collUserErr)
+			collection.SetDatabaseCollectionUser(collUser)
 
-			ch := getChanges(t, collection, testCase.accessChans, getChangesOptionsWithZeroSeq(t))
+			ch := db.GetChangesForTest(t, collection, testCase.accessChans, db.GetChangesOptionsWithZeroSeq(t))
 			require.NoError(t, err)
 			require.Len(t, ch, len(testCase.expectedDocsReturned))
 
@@ -93,41 +96,42 @@ func TestFilterToAvailableChannels(t *testing.T) {
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
-	db, ctx := setupTestDBDefaultCollection(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBDefaultCollection(t)
+	defer database.Close(ctx)
 
 	// Create a user with access to channel ABC
-	authenticator := db.Authenticator(base.TestCtx(t))
+	authenticator := database.Authenticator(base.TestCtx(t))
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
-	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+	cacheWaiter := database.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
+	_, _, err = collection.Put(ctx, "doc1", db.Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	// Modify user to have access to both channels (sequence 2):
-	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
+	userInfo, err := database.GetPrincipalForTest(t, "naomi", true)
 	require.NoError(t, err)
 	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 
-	_, _, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
+	_, _, err = database.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
-	db.WaitForPendingChanges(t)
+	database.WaitForPendingChanges(t)
 
 	// Check the _changes feed:
-	collection.user, err = authenticator.GetUser("naomi")
-	require.NoError(t, err)
-	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	collUser, collUserErr := authenticator.GetUser("naomi")
+	require.NoError(t, collUserErr)
+	collection.SetDatabaseCollectionUser(collUser)
+	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 	require.Len(t, changes, 3)
 
@@ -142,103 +146,87 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// User doc
 	assert.Equal(t, "_user/naomi", changes[2].ID)
-	assert.True(t, changes[2].principalDoc)
+	assert.True(t, changes[2].IsPrincipalDoc())
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
+	lastSeq, _ = db.ParsePlainSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
+	revid, _, err := collection.Put(ctx, "doc2", db.Body{"channels": []string{"PBS"}})
 	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
+	changes = db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithSeq(t, lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
 	require.Len(t, changes, 1)
 	assert.Equal(t, "doc2", changes[0].ID)
-	assert.Equal(t, []ChangeByVersionType{{"rev": revid}}, changes[0].Changes)
+	assert.Equal(t, []db.ChangeByVersionType{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
-	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	changes = db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 
 }
 
-func printChanges(changes []*ChangeEntry) {
+func printChanges(changes []*db.ChangeEntry) {
 	for _, change := range changes {
 		log.Printf("Change:%+v", change)
 	}
 }
 
-func getLastSeq(changes []*ChangeEntry) SequenceID {
+func getLastSeq(changes []*db.ChangeEntry) db.SequenceID {
 	if len(changes) > 0 {
 		return changes[len(changes)-1].Seq
 	}
-	return SequenceID{}
-}
-
-// getChangesOptionsWithZeroSeq delegates to GetChangesOptionsWithZeroSeq; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer GetChangesOptionsWithZeroSeq in new code.
-func getChangesOptionsWithZeroSeq(t testing.TB) ChangesOptions {
-	return GetChangesOptionsWithZeroSeq(t)
-}
-
-// getChangesOptionsWithSeq delegates to GetChangesOptionsWithSeq; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer GetChangesOptionsWithSeq in new code.
-func getChangesOptionsWithSeq(t *testing.T, seq SequenceID) ChangesOptions {
-	return GetChangesOptionsWithSeq(t, seq)
-}
-
-// getChangesOptionsWithCtxOnly delegates to GetChangesOptionsWithCtxOnly; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer GetChangesOptionsWithCtxOnly in new code.
-func getChangesOptionsWithCtxOnly(t *testing.T) ChangesOptions {
-	return GetChangesOptionsWithCtxOnly(t)
+	return db.SequenceID{}
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	// Create a user with access to channel A
-	authenticator := db.Authenticator(base.TestCtx(t))
+	authenticator := database.Authenticator(base.TestCtx(t))
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
-	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+	cacheWaiter := database.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := collection.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := collection.Put(ctx, "alpha", db.Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	collection.user, err = authenticator.GetUser("alice")
-	require.NoError(t, err)
-	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	collUser, collUserErr := authenticator.GetUser("alice")
+	require.NoError(t, collUserErr)
+	collection.SetDatabaseCollectionUser(collUser)
+	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 	assert.Len(t, changes, 1)
 	collectionID := collection.GetCollectionID()
-	require.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 1},
-		ID:           "alpha",
-		Changes:      []ChangeByVersionType{{"rev": revid}},
-		collectionID: collectionID}, changes[0])
+	expectedEntry := &db.ChangeEntry{
+		Seq:     db.SequenceID{Seq: 1},
+		ID:      "alpha",
+		Changes: []db.ChangeByVersionType{{"rev": revid}}}
+	expectedEntry.SetCollectionID(t, collectionID)
+	require.Equal(t, expectedEntry, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
+	lastSeq, _ = db.ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := collection.dataStore.GetRaw(ctx, "alpha") // cas, err
+	rv, _, _ := collection.GetCollectionDatastore().GetRaw(ctx, "alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]any
@@ -263,56 +251,58 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update raw document in the bucket
-	assert.NoError(t, collection.dataStore.SetRaw(ctx, "alpha", 0, nil, b))
+	assert.NoError(t, collection.GetCollectionDatastore().SetRaw(ctx, "alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
+	changes = db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithSeq(t, lastSeq))
 
 	assert.Len(t, changes, 1)
-	assert.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 2},
-		ID:           "alpha",
-		Removed:      base.SetOf("A"),
-		allRemoved:   true,
-		Changes:      []ChangeByVersionType{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}},
-		collectionID: collectionID}, changes[0])
+	expectedEntry2 := &db.ChangeEntry{
+		Seq:     db.SequenceID{Seq: 2},
+		ID:      "alpha",
+		Removed: base.SetOf("A"),
+		Changes: []db.ChangeByVersionType{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}}
+	expectedEntry2.SetAllRemoved(t, true)
+	expectedEntry2.SetCollectionID(t, collectionID)
+	assert.Equal(t, expectedEntry2, changes[0])
 
 	printChanges(changes)
 }
 
 func TestCVPopulationOnChangeEntry(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 	collectionID := collection.GetCollectionID()
-	sourceID := db.EncodedSourceID
+	sourceID := database.EncodedSourceID
 
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
-	authenticator := db.Authenticator(base.TestCtx(t))
+	authenticator := database.Authenticator(base.TestCtx(t))
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collection.user, _ = authenticator.GetUser("alice")
+	collUser, _ := authenticator.GetUser("alice")
+	collection.SetDatabaseCollectionUser(collUser)
 
 	// Make channel active
-	changesOpts := getChangesOptionsWithZeroSeq(t)
-	changesOpts.VersionType = ChangesVersionTypeCV
-	_, err = db.channelCache.GetChanges(ctx, channels.NewID("A", collectionID), changesOpts)
+	changesOpts := db.GetChangesOptionsWithZeroSeq(t)
+	changesOpts.VersionType = db.ChangesVersionTypeCV
+	_, err = database.ChannelCacheForTest().GetChanges(ctx, channels.NewID("A", collectionID), changesOpts)
 	require.NoError(t, err)
 
-	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
+	_, doc, err := collection.Put(ctx, "doc1", db.Body{"channels": []string{"A"}})
 	require.NoError(t, err)
 
-	db.WaitForPendingChanges(t)
+	database.WaitForPendingChanges(t)
 
-	changes := getChanges(t, collection, base.SetOf("A"), changesOpts)
+	changes := db.GetChangesForTest(t, collection, base.SetOf("A"), changesOpts)
 	require.NoError(t, err)
 
-	docVersion := GetChangeEntryCV(t, changes[0])
+	docVersion := db.GetChangeEntryCV(t, changes[0])
 	assert.Equal(t, doc.ID, changes[0].ID)
 	assert.Equal(t, sourceID, docVersion.SourceID)
 	assert.Equal(t, doc.HLV.Version, docVersion.Value)
@@ -321,43 +311,45 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
 
 	// Create a user with access to channel A
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
-	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+	cacheWaiter := database.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := collection.Put(ctx, "alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := collection.Put(ctx, "alpha", db.Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	collection.user, err = authenticator.GetUser("alice")
-	require.NoError(t, err)
-	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	collUser, collUserErr := authenticator.GetUser("alice")
+	require.NoError(t, collUserErr)
+	collection.SetDatabaseCollectionUser(collUser)
+	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 
 	collectionID := collection.GetCollectionID()
 	assert.Len(t, changes, 1)
-	require.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 1},
-		ID:           "alpha",
-		Changes:      []ChangeByVersionType{{"rev": revid}},
-		collectionID: collectionID}, changes[0])
+	expectedEntry := &db.ChangeEntry{
+		Seq:     db.SequenceID{Seq: 1},
+		ID:      "alpha",
+		Changes: []db.ChangeByVersionType{{"rev": revid}}}
+	expectedEntry.SetCollectionID(t, collectionID)
+	require.Equal(t, expectedEntry, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
+	lastSeq, _ = db.ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := collection.dataStore.GetRaw(ctx, "alpha") // cas, err
+	rv, _, _ := collection.GetCollectionDatastore().GetRaw(ctx, "alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]any
@@ -378,29 +370,30 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update raw document in the bucket
-	require.NoError(t, collection.dataStore.SetRaw(ctx, "alpha", 0, nil, b))
+	require.NoError(t, collection.GetCollectionDatastore().SetRaw(ctx, "alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
 
-	changes = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithSeq(t, lastSeq))
+	changes = db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithSeq(t, lastSeq))
 
 	assert.Len(t, changes, 1)
-	require.Equal(t, &ChangeEntry{
-		Seq:          SequenceID{Seq: 3},
-		ID:           "alpha",
-		Changes:      []ChangeByVersionType{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}},
-		collectionID: collectionID}, changes[0])
+	expectedEntry2 := &db.ChangeEntry{
+		Seq:     db.SequenceID{Seq: 3},
+		ID:      "alpha",
+		Changes: []db.ChangeByVersionType{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}}
+	expectedEntry2.SetCollectionID(t, collectionID)
+	require.Equal(t, expectedEntry2, changes[0])
 
 	printChanges(changes)
 }
 
 func TestActiveOnlyCacheUpdate(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
@@ -408,7 +401,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	var err error
 	for i := 1; i <= 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		body := Body{"foo": "bar"}
+		body := db.Body{"foo": "bar"}
 		revId, _, err = collection.Put(ctx, key, body)
 		require.NoError(t, err, "Couldn't create document")
 	}
@@ -416,48 +409,48 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	// Tombstone 5 documents
 	for i := 2; i <= 6; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err = collection.DeleteDoc(ctx, key, DocVersion{RevTreeID: revId})
+		_, _, err = collection.DeleteDoc(ctx, key, db.DocVersion{RevTreeID: revId})
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
-	db.WaitForPendingChanges(t)
+	database.WaitForPendingChanges(t)
 
-	changesOptions := ChangesOptions{
-		Since:      SequenceID{Seq: 0},
+	changesOptions := db.ChangesOptions{
+		Since:      db.SequenceID{Seq: 0},
 		ActiveOnly: true,
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	initQueryCount := db.DbStats.Cache().ViewQueries.Value()
+	initQueryCount := database.DbStats.Cache().ViewQueries.Value()
 
 	// Get changes with active_only=true
-	activeChanges := getChanges(t, collection, base.SetOf("*"), changesOptions)
+	activeChanges := db.GetChangesForTest(t, collection, base.SetOf("*"), changesOptions)
 	require.Len(t, activeChanges, 5)
 
 	// Ensure the test is triggering a query, and not serving from DCP-generated cache
-	postChangesQueryCount := db.DbStats.Cache().ViewQueries.Value()
+	postChangesQueryCount := database.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+1, postChangesQueryCount)
 
 	// Get changes with active_only=false, validate that triggers a new query
 	changesOptions.ActiveOnly = false
-	allChanges := getChanges(t, collection, base.SetOf("*"), changesOptions)
+	allChanges := db.GetChangesForTest(t, collection, base.SetOf("*"), changesOptions)
 	require.Len(t, allChanges, 10)
 
-	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
+	postChangesQueryCount = database.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
 
 	// Get changes with active_only=false again, verify results are served from the cache
 	changesOptions.ActiveOnly = false
-	allChanges = getChanges(t, collection, base.SetOf("*"), changesOptions)
+	allChanges = db.GetChangesForTest(t, collection, base.SetOf("*"), changesOptions)
 	require.Len(t, allChanges, 10)
 
-	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
+	postChangesQueryCount = database.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
 
 }
 
 func TestChangesOptionsStringer(t *testing.T) {
-	opts := ChangesOptions{}
+	opts := db.ChangesOptions{}
 	var stringerFields []string
 	for key := range strings.SplitSeq(opts.String()[1:len(opts.String())-1], ",") {
 		fieldName, _, found := strings.Cut(strings.Trim(key, `" ,`), ":")
@@ -472,7 +465,7 @@ func TestChangesOptionsStringer(t *testing.T) {
 		"SinceRaw": {},
 	}
 	var expectedFields []string
-	for _, field := range reflect.VisibleFields(reflect.TypeOf(ChangesOptions{})) {
+	for _, field := range reflect.VisibleFields(reflect.TypeOf(db.ChangesOptions{})) {
 		// some field names are not in stringer
 		if _, ok := ignoredFields[field.Name]; ok {
 			continue
@@ -490,27 +483,27 @@ func TestChangesOptionsStringer(t *testing.T) {
 //   - Assert the CV in the entry fetched from channel cache matches the sync data CV and the bucket UUID on the database context
 func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyDCP, base.KeyCache, base.KeyHTTP)
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 	collectionID := collection.GetCollectionID()
-	sourceID := db.EncodedSourceID
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+	sourceID := database.EncodedSourceID
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
 	// Make channel active
-	_, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
+	_, err := database.ChannelCacheForTest().GetChanges(ctx, channels.NewID("ABC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
 	// Put a doc that gets assigned a CV to populate the channel cache with
-	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
+	_, _, err = collection.Put(ctx, "doc1", db.Body{"channels": []string{"ABC"}})
 	require.NoError(t, err)
-	db.WaitForPendingChanges(t)
+	database.WaitForPendingChanges(t)
 
-	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
+	doc, err := collection.GetDocument(ctx, "doc1", db.DocUnmarshalSync)
 	require.NoError(t, err)
 
 	// get entry of above doc from channel cache
-	entries, err := db.channelCache.GetChanges(ctx, channels.NewID("ABC", collectionID), getChangesOptionsWithZeroSeq(t))
+	entries, err := database.ChannelCacheForTest().GetChanges(ctx, channels.NewID("ABC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 	require.NotNil(t, entries)
 
@@ -526,11 +519,11 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 // the pagination inside changesFeed does not terminate prematurely due to counting inactive/deleted
 // entries as "sent", ensuring the client receives the requested number of active changes when available.
 func TestActiveOnlyWithLimit(t *testing.T) {
-	cacheOptions := DefaultCacheOptions()
+	cacheOptions := db.DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 3
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
@@ -538,7 +531,7 @@ func TestActiveOnlyWithLimit(t *testing.T) {
 	revs := make(map[string]string)
 	for i := 1; i <= 6; i++ {
 		key := fmt.Sprintf("doc_del_%d", i)
-		body := Body{"foo": "bar"}
+		body := db.Body{"foo": "bar"}
 		revId, _, err := collection.Put(ctx, key, body)
 		require.NoError(t, err)
 		revs[key] = revId
@@ -547,29 +540,29 @@ func TestActiveOnlyWithLimit(t *testing.T) {
 	// 2. Delete those 6 documents so we have 6 deleted sequences at the start of the feed
 	for i := 1; i <= 6; i++ {
 		key := fmt.Sprintf("doc_del_%d", i)
-		_, _, err := collection.DeleteDoc(ctx, key, DocVersion{RevTreeID: revs[key]})
+		_, _, err := collection.DeleteDoc(ctx, key, db.DocVersion{RevTreeID: revs[key]})
 		require.NoError(t, err)
 	}
 
 	// 3. Create 4 active documents
 	for i := 1; i <= 4; i++ {
 		key := fmt.Sprintf("doc_act_%d", i)
-		body := Body{"foo": "bar"}
+		body := db.Body{"foo": "bar"}
 		_, _, err := collection.Put(ctx, key, body)
 		require.NoError(t, err)
 	}
 
-	db.WaitForPendingChanges(t)
+	database.WaitForPendingChanges(t)
 
 	// Get changes with active_only=true and Limit=3
-	changesOptions := ChangesOptions{
-		Since:      SequenceID{Seq: 0},
+	changesOptions := db.ChangesOptions{
+		Since:      db.SequenceID{Seq: 0},
 		ActiveOnly: true,
 		Limit:      3,
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	changes := getChanges(t, collection, base.SetOf("*"), changesOptions)
+	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), changesOptions)
 	// We should receive exactly 3 active changes ("doc_act_1", "doc_act_2", "doc_act_3")
 	require.Len(t, changes, 3)
 	assert.Equal(t, "doc_act_1", changes[0].ID)
@@ -586,13 +579,13 @@ func TestActiveOnlyWithLimit(t *testing.T) {
 // interface.
 type stubSingleChannelCache struct {
 	channelID channels.ID
-	entries   []*LogEntry // full ordered set of entries in the channel, by sequence
+	entries   []*db.LogEntry // full ordered set of entries in the channel, by sequence
 	calls     int
 }
 
-func (s *stubSingleChannelCache) GetChanges(_ context.Context, options ChangesOptions) ([]*LogEntry, error) {
+func (s *stubSingleChannelCache) GetChanges(_ context.Context, options db.ChangesOptions) ([]*db.LogEntry, error) {
 	s.calls++
-	var result []*LogEntry
+	var result []*db.LogEntry
 	for _, entry := range s.entries {
 		if entry.Sequence <= options.Since.Seq {
 			continue
@@ -605,7 +598,7 @@ func (s *stubSingleChannelCache) GetChanges(_ context.Context, options ChangesOp
 	return result, nil
 }
 
-func (s *stubSingleChannelCache) GetCachedChanges(_ ChangesOptions) (uint64, []*LogEntry) {
+func (s *stubSingleChannelCache) GetCachedChanges(_ db.ChangesOptions) (uint64, []*db.LogEntry) {
 	return 0, nil
 }
 
@@ -621,7 +614,7 @@ func (s *stubSingleChannelCache) LateSequenceUUID() uuid.UUID {
 	return uuid.UUID{}
 }
 
-func (s *stubSingleChannelCache) GetLateSequencesSince(_ uint64) ([]*LogEntry, uint64, error) {
+func (s *stubSingleChannelCache) GetLateSequencesSince(_ uint64) ([]*db.LogEntry, uint64, error) {
 	return nil, 0, nil
 }
 
@@ -635,8 +628,8 @@ func (s *stubSingleChannelCache) ReleaseLateSequenceClient(_ uint64) bool {
 
 // drainChangesFeed reads a changesFeed's output channel to completion, failing the test on any
 // error entry.
-func drainChangesFeed(t *testing.T, feed <-chan *ChangeEntry) []*ChangeEntry {
-	var received []*ChangeEntry
+func drainChangesFeed(t *testing.T, feed <-chan *db.ChangeEntry) []*db.ChangeEntry {
+	var received []*db.ChangeEntry
 	for entry := range feed {
 		require.NoError(t, entry.Err)
 		received = append(received, entry)
@@ -651,15 +644,15 @@ func drainChangesFeed(t *testing.T, feed <-chan *ChangeEntry) []*ChangeEntry {
 // The test ensures changesFeed continues to iterate over the result set to retrieve all active entries
 // even when an inactive page precedes them.
 func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
-	cacheOptions := DefaultCacheOptions()
+	cacheOptions := db.DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 3
-	ctx, _, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+	ctx, _, collection := db.SetupDBWithChannelCacheSettings(t, cacheOptions)
 	collectionID := collection.GetCollectionID()
 	channelID := channels.NewID("active", collectionID)
 
 	stub := &stubSingleChannelCache{
 		channelID: channelID,
-		entries: []*LogEntry{
+		entries: []*db.LogEntry{
 			{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
 			{DocID: "removed2", RevID: "1-a", Sequence: 2, Flags: channels.Removed, CollectionID: collectionID},
 			{DocID: "removed3", RevID: "1-a", Sequence: 3, Flags: channels.Removed, CollectionID: collectionID},
@@ -668,14 +661,14 @@ func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 		},
 	}
 
-	options := ChangesOptions{
-		Since:      SequenceID{Seq: 0},
+	options := db.ChangesOptions{
+		Since:      db.SequenceID{Seq: 0},
 		ActiveOnly: true,
 		Limit:      1,
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
+	received := drainChangesFeed(t, collection.ChangesFeedForTest(ctx, stub, options, "test"))
 
 	// changesFeed forwards every entry it sees, active or not - ActiveOnly filtering happens
 	// upstream in SimpleMultiChangesFeed. What matters here is that all 5 entries were retrieved,
@@ -695,18 +688,18 @@ func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 // as soon as it had sent Limit-many active entries, so it would give up after active2 and never see
 // active3 or active4, even though the channel has more data.
 func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
-	cacheOptions := DefaultCacheOptions()
+	cacheOptions := db.DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 3
-	ctx, _, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+	ctx, _, collection := db.SetupDBWithChannelCacheSettings(t, cacheOptions)
 	collectionID := collection.GetCollectionID()
 	channelID := channels.NewID("active", collectionID)
 
-	var entries []*LogEntry
+	var entries []*db.LogEntry
 	for seq := uint64(1); seq <= 9; seq++ {
-		entries = append(entries, &LogEntry{DocID: fmt.Sprintf("removed%d", seq), RevID: "1-a", Sequence: seq, Flags: channels.Removed, CollectionID: collectionID})
+		entries = append(entries, &db.LogEntry{DocID: fmt.Sprintf("removed%d", seq), RevID: "1-a", Sequence: seq, Flags: channels.Removed, CollectionID: collectionID})
 	}
 	for i, seq := 1, uint64(10); seq <= 13; i, seq = i+1, seq+1 {
-		entries = append(entries, &LogEntry{DocID: fmt.Sprintf("active%d", i), RevID: "1-a", Sequence: seq, CollectionID: collectionID})
+		entries = append(entries, &db.LogEntry{DocID: fmt.Sprintf("active%d", i), RevID: "1-a", Sequence: seq, CollectionID: collectionID})
 	}
 
 	stub := &stubSingleChannelCache{
@@ -714,14 +707,14 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 		entries:   entries,
 	}
 
-	options := ChangesOptions{
-		Since:      SequenceID{Seq: 0},
+	options := db.ChangesOptions{
+		Since:      db.SequenceID{Seq: 0},
 		ActiveOnly: true,
 		Limit:      2,
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
+	received := drainChangesFeed(t, collection.ChangesFeedForTest(ctx, stub, options, "test"))
 
 	require.Len(t, received, 13)
 	assert.Equal(t, "active1", received[9].ID)
@@ -736,27 +729,27 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 // Limit: the final batch is shorter than the pagination limit requested for that call, which is
 // changesFeed's signal that the channel has no more data.
 func TestChangesFeedActiveOnlyStopsWhenChannelExhausted(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 	collectionID := collection.GetCollectionID()
 	channelID := channels.NewID("active", collectionID)
 
 	stub := &stubSingleChannelCache{
 		channelID: channelID,
-		entries: []*LogEntry{
+		entries: []*db.LogEntry{
 			{DocID: "removed1", RevID: "1-a", Sequence: 1, Flags: channels.Removed, CollectionID: collectionID},
 		},
 	}
 
-	options := ChangesOptions{
-		Since:      SequenceID{Seq: 0},
+	options := db.ChangesOptions{
+		Since:      db.SequenceID{Seq: 0},
 		ActiveOnly: true,
 		Limit:      5,
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	received := drainChangesFeed(t, collection.changesFeed(ctx, stub, options, "test"))
+	received := drainChangesFeed(t, collection.ChangesFeedForTest(ctx, stub, options, "test"))
 
 	require.Len(t, received, 1)
 	assert.Equal(t, "removed1", received[0].ID)
@@ -796,15 +789,15 @@ type channelFeedEntry struct {
 // seedChannelFeed writes entries into targetChannel in order, moving removed entries into otherChannel
 // so they show up as removals. Writes happen before the cache is primed, so a since=0 request backfills
 // through real query pagination rather than an already-warm cache.
-func seedChannelFeed(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, targetChannel, otherChannel string, entries []channelFeedEntry) {
+func seedChannelFeed(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, targetChannel, otherChannel string, entries []channelFeedEntry) {
 	for _, e := range entries {
 		if e.removed {
-			revID, _, err := collection.Put(ctx, e.docID, Body{"channels": targetChannel})
+			revID, _, err := collection.Put(ctx, e.docID, db.Body{"channels": targetChannel})
 			require.NoError(t, err)
-			_, _, err = collection.Put(ctx, e.docID, Body{"channels": otherChannel, "_rev": revID})
+			_, _, err = collection.Put(ctx, e.docID, db.Body{"channels": otherChannel, "_rev": revID})
 			require.NoError(t, err)
 		} else {
-			_, _, err := collection.Put(ctx, e.docID, Body{"channels": targetChannel})
+			_, _, err := collection.Put(ctx, e.docID, db.Body{"channels": targetChannel})
 			require.NoError(t, err)
 		}
 	}
@@ -935,9 +928,9 @@ func TestChangesQueryLimitBoundaries(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cacheOptions := DefaultCacheOptions()
+			cacheOptions := db.DefaultCacheOptions()
 			cacheOptions.ChannelQueryLimit = tc.queryLimit
-			ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+			ctx, database, collection := db.SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 			removed := removedFlagsFromMutations(t, tc.mutations)
 			entries := make([]channelFeedEntry, 0, len(removed))
@@ -945,15 +938,15 @@ func TestChangesQueryLimitBoundaries(t *testing.T) {
 				entries = append(entries, channelFeedEntry{docID: fmt.Sprintf("doc%d", i+1), removed: r})
 			}
 			seedChannelFeed(t, ctx, collection, targetChannel, otherChannel, entries)
-			db.WaitForPendingChanges(t)
+			database.WaitForPendingChanges(t)
 
-			changesOptions := ChangesOptions{
-				Since:      SequenceID{Seq: 0},
+			changesOptions := db.ChangesOptions{
+				Since:      db.SequenceID{Seq: 0},
 				ActiveOnly: tc.activeOnly,
 				Limit:      tc.requestLimit,
 				ChangesCtx: base.TestCtx(t),
 			}
-			changes := getChanges(t, collection, base.SetOf(targetChannel), changesOptions)
+			changes := db.GetChangesForTest(t, collection, base.SetOf(targetChannel), changesOptions)
 
 			expected := expectedActiveOnlyDocIDs(removed, tc.activeOnly, tc.requestLimit)
 
@@ -1039,15 +1032,15 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cacheOptions := DefaultCacheOptions()
+			cacheOptions := db.DefaultCacheOptions()
 			cacheOptions.ChannelCacheMaxLength = tc.cacheMaxLength
 			cacheOptions.ChannelQueryLimit = tc.queryLimit
-			ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+			ctx, database, collection := db.SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 			// Prime the cache before writing so live writes populate it directly (and get pruned live
 			// once ChannelCacheMaxLength is exceeded), rather than requiring a query to backfill it.
-			primingOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
-			_ = getChanges(t, collection, base.SetOf(targetChannel), primingOptions)
+			primingOptions := db.ChangesOptions{Since: db.SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
+			_ = db.GetChangesForTest(t, collection, base.SetOf(targetChannel), primingOptions)
 
 			removed := removedFlagsFromMutations(t, tc.mutations)
 			entries := make([]channelFeedEntry, 0, len(removed))
@@ -1055,15 +1048,15 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 				entries = append(entries, channelFeedEntry{docID: fmt.Sprintf("doc%d", i+1), removed: r})
 			}
 			seedChannelFeed(t, ctx, collection, targetChannel, otherChannel, entries)
-			db.WaitForPendingChanges(t)
+			database.WaitForPendingChanges(t)
 
-			changesOptions := ChangesOptions{
-				Since:      SequenceID{Seq: 0},
+			changesOptions := db.ChangesOptions{
+				Since:      db.SequenceID{Seq: 0},
 				ActiveOnly: tc.activeOnly,
 				Limit:      tc.requestLimit,
 				ChangesCtx: base.TestCtx(t),
 			}
-			changes := getChanges(t, collection, base.SetOf(targetChannel), changesOptions)
+			changes := db.GetChangesForTest(t, collection, base.SetOf(targetChannel), changesOptions)
 
 			expected := expectedActiveOnlyDocIDs(removed, tc.activeOnly, tc.requestLimit)
 
@@ -1094,10 +1087,10 @@ func (e multiChannelFeedEntry) fullyRemoved() bool {
 // seedMultiChannelFeed is seedChannelFeed generalized to multiple (and shared) channels: entries are
 // written in slice order, so write order equals global sequence order. A fully-removed doc moves to
 // otherChannel; a partially-removed doc just drops the removedFrom channels, staying live elsewhere.
-func seedMultiChannelFeed(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, otherChannel string, entries []multiChannelFeedEntry) {
+func seedMultiChannelFeed(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, otherChannel string, entries []multiChannelFeedEntry) {
 	for i, e := range entries {
 		docID := fmt.Sprintf("doc%d", i+1)
-		revID, _, err := collection.Put(ctx, docID, Body{"channels": e.channels})
+		revID, _, err := collection.Put(ctx, docID, db.Body{"channels": e.channels})
 		require.NoError(t, err)
 		if len(e.removedFrom) == 0 {
 			continue
@@ -1117,7 +1110,7 @@ func seedMultiChannelFeed(t *testing.T, ctx context.Context, collection *Databas
 			// with an empty channel list, mirroring seedChannelFeed's single-channel convention.
 			newChannels = []string{otherChannel}
 		}
-		_, _, err = collection.Put(ctx, docID, Body{"channels": newChannels, "_rev": revID})
+		_, _, err = collection.Put(ctx, docID, db.Body{"channels": newChannels, "_rev": revID})
 		require.NoError(t, err)
 	}
 }
@@ -1277,21 +1270,21 @@ func TestChangesMultiChannelActiveOnlyLimit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cacheOptions := DefaultCacheOptions()
+			cacheOptions := db.DefaultCacheOptions()
 			cacheOptions.ChannelQueryLimit = tc.queryLimit
-			ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+			ctx, database, collection := db.SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 			entries := entriesFromMultiChannelMutations(t, tc.mutations, ch1, ch2)
 			seedMultiChannelFeed(t, ctx, collection, otherChannel, entries)
-			db.WaitForPendingChanges(t)
+			database.WaitForPendingChanges(t)
 
-			changesOptions := ChangesOptions{
-				Since:      SequenceID{Seq: 0},
+			changesOptions := db.ChangesOptions{
+				Since:      db.SequenceID{Seq: 0},
 				ActiveOnly: tc.activeOnly,
 				Limit:      tc.requestLimit,
 				ChangesCtx: base.TestCtx(t),
 			}
-			changes := getChanges(t, collection, base.SetOf(ch1, ch2), changesOptions)
+			changes := db.GetChangesForTest(t, collection, base.SetOf(ch1, ch2), changesOptions)
 
 			removed := make([]bool, len(entries))
 			entriesByDocID := make(map[string]multiChannelFeedEntry, len(entries))

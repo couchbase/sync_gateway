@@ -33,13 +33,13 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	collectionID := GetSingleDatabaseCollection(t, db.DatabaseContext).GetCollectionID()
 
 	// Make channels active
-	_, err := cache.GetChanges(ctx, channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err := cache.GetChanges(ctx, channels.NewID("TestA", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err = cache.GetChanges(ctx, channels.NewID("TestB", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("TestC", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err = cache.GetChanges(ctx, channels.NewID("TestC", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("TestD", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err = cache.GetChanges(ctx, channels.NewID("TestD", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
@@ -67,13 +67,13 @@ func TestChannelCacheCurrentVersion(t *testing.T) {
 	collectionID := GetSingleDatabaseCollection(t, db.DatabaseContext).GetCollectionID()
 
 	// Make channels active
-	_, err := cache.GetChanges(ctx, channels.NewID("chanA", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err := cache.GetChanges(ctx, channels.NewID("chanA", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("chanB", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err = cache.GetChanges(ctx, channels.NewID("chanB", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("chanC", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err = cache.GetChanges(ctx, channels.NewID("chanC", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
-	_, err = cache.GetChanges(ctx, channels.NewID("chanD", collectionID), getChangesOptionsWithCtxOnly(t))
+	_, err = cache.GetChanges(ctx, channels.NewID("chanD", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
 
 	cache.AddToCache(ctx, testLogEntryWithCV(1, "doc1", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test1", 123))
@@ -82,7 +82,7 @@ func TestChannelCacheCurrentVersion(t *testing.T) {
 	cache.AddToCache(ctx, testLogEntryWithCV(4, "doc4", "1-a", []string{"chanC"}, collectionID, "test4", 123456))
 
 	// assert on channel cache entries for 'chanC'
-	entriesChanC, err := cache.GetChanges(ctx, channels.NewID("chanC", collectionID), getChangesOptionsWithZeroSeq(t))
+	entriesChanC, err := cache.GetChanges(ctx, channels.NewID("chanC", collectionID), GetChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err)
 	require.Len(t, entriesChanC, 4)
 	assert.True(t, verifyChannelSequences(entriesChanC, []uint64{1, 2, 3, 4}))
@@ -90,7 +90,7 @@ func TestChannelCacheCurrentVersion(t *testing.T) {
 	assert.True(t, verifyCVEntries(entriesChanC, []cvValues{{source: "test1", version: 123}, {source: "test2", version: 1234}, {source: "test3", version: 12345}, {source: "test4", version: 123456}}))
 
 	// assert on channel cache entries for 'chanD'
-	entriesChanD, err := cache.GetChanges(ctx, channels.NewID("chanD", collectionID), getChangesOptionsWithZeroSeq(t))
+	entriesChanD, err := cache.GetChanges(ctx, channels.NewID("chanD", collectionID), GetChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err)
 	require.Len(t, entriesChanD, 3)
 	assert.True(t, verifyChannelSequences(entriesChanD, []uint64{1, 2, 3}))
@@ -98,7 +98,7 @@ func TestChannelCacheCurrentVersion(t *testing.T) {
 	assert.True(t, verifyCVEntries(entriesChanD, []cvValues{{source: "test1", version: 123}, {source: "test2", version: 1234}, {source: "test3", version: 12345}}))
 
 	// assert on channel cache entries for 'chanB'
-	entriesChanB, err := cache.GetChanges(ctx, channels.NewID("chanB", collectionID), getChangesOptionsWithZeroSeq(t))
+	entriesChanB, err := cache.GetChanges(ctx, channels.NewID("chanB", collectionID), GetChangesOptionsWithZeroSeq(t))
 	assert.NoError(t, err)
 	require.Len(t, entriesChanB, 2)
 	assert.True(t, verifyChannelSequences(entriesChanB, []uint64{1, 2}))
@@ -370,7 +370,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 			for range getChangesCount {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
-				options := getChangesOptionsWithCtxOnly(t)
+				options := GetChangesOptionsWithCtxOnly(t)
 				changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
@@ -445,7 +445,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 			for range getChangesCount {
 				channelNumber := rand.Intn(channelCount) + 1
 				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
-				options := getChangesOptionsWithCtxOnly(t)
+				options := GetChangesOptionsWithCtxOnly(t)
 				changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
@@ -506,7 +506,7 @@ func TestChannelCacheBypass(t *testing.T) {
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
 	for c := 1; c <= channelCount; c++ {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", c), base.DefaultCollectionID)
-		options := getChangesOptionsWithCtxOnly(t)
+		options := GetChangesOptionsWithCtxOnly(t)
 		changes, err := cache.GetChanges(base.TestCtx(t), channel, options)
 		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %q", channel))
 		assert.True(t, len(changes) == 1, "Expected one change per channel")
