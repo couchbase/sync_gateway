@@ -351,7 +351,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 		UpdateCallback: writeUpdateCallback,
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -414,7 +414,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 		UpdateCallback: writeUpdateCallback,
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1592,7 +1592,7 @@ var attachmentMigrationCASRetryExpected = AttachmentMap{
 // without it, the retry sees a stub mutated by the first invocation and applies a parent
 // lookup that returns the migrated revpos=1.
 func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
-	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
+	db, ctx := SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()

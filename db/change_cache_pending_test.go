@@ -182,7 +182,7 @@ func TestAddPendingLogs(t *testing.T) {
 			for i, incomingRange := range testCase.incoming {
 				if incomingRange.end == 0 {
 					// treat as a document pushed to pending
-					logEntry := logEntry(incomingRange.start, fmt.Sprintf("doc%d", i), "1-abc", []string{testChannelID.Name}, testChannelID.CollectionID)
+					logEntry := MakeLogEntry(incomingRange.start, fmt.Sprintf("doc%d", i), "1-abc", []string{testChannelID.Name}, testChannelID.CollectionID)
 					logEntry.TimeReceived = backdatedTimeReceived
 					heap.Push(&testChangeCache.pendingLogs, logEntry)
 				} else {

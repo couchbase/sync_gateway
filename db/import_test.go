@@ -659,7 +659,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 	for _, testcase := range testcases {
 		t.Run(testcase.docname, func(t *testing.T) {
-			db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
+			db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
 			defer db.Close(ctx)
 
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1502,7 +1502,7 @@ func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 
 	docID := t.Name()
 
-	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
+	db, ctx := SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

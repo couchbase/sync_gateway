@@ -85,7 +85,7 @@ func fastFeedBroadcast(cacheOptions CacheOptions) CacheOptions {
 // within a short test rather than only after 500 late entries accumulate. Late logs uses the same maximum as chanel cache
 // configuration.
 func shortWaitCacheWithLateLogMax(lateLogMax int) CacheOptions {
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = lateLogMax
 	return cacheOptions
 }
@@ -105,7 +105,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	const lateLogMax = 5
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
+	db, ctx := SetupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -190,7 +190,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	const lateLogMax = 5
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
+	db, ctx := SetupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -316,13 +316,13 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	// Large LateLogAge so the CleanAgedLateLogs background task (which runs on this interval) doesn't fire
 	// during the test and reclaim the entries before we can assert they accumulated. The manual sweep below
 	// lowers ABC's own threshold to force the age-based reclaim deterministically.
 	cacheOptions.LateLogAge = time.Hour
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -575,10 +575,10 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	cacheOptions.LateLogAge = time.Millisecond
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -694,7 +694,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	// shortWaitCache carries the shipped default late-log caps - deliberately not overridden here.
-	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
+	db, ctx := SetupTestDBWithCacheOptions(t, fastFeedBroadcast(ShortWaitCache()))
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -1015,10 +1015,10 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is parked.
 	const spikeSize = 2000
 
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = 10 * spikeSize // large: the length force-prune must never fire during the spike
 	cacheOptions.LateLogAge = time.Hour                 // large: the age sweep must never reclaim entries during the test
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -1189,7 +1189,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// Shipped default late-log caps (DefaultChannelCacheMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
 	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
 	// never fires.
-	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
+	db, ctx := SetupTestDBWithCacheOptions(t, fastFeedBroadcast(ShortWaitCache()))
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -1328,7 +1328,7 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// Shipped default late-log caps (DefaultChannelCacheMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
 	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
 	// never fires.
-	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
+	db, ctx := SetupTestDBWithCacheOptions(t, fastFeedBroadcast(ShortWaitCache()))
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)

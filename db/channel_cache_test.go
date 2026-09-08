@@ -43,10 +43,10 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
-	cache.AddToCache(ctx, logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(ctx, logEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(ctx, logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(ctx, logEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
+	cache.AddToCache(ctx, MakeLogEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(ctx, MakeLogEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(ctx, MakeLogEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(ctx, MakeLogEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
 
 	db.UpdateCalculatedStats(ctx)
 
@@ -76,10 +76,10 @@ func TestChannelCacheCurrentVersion(t *testing.T) {
 	_, err = cache.GetChanges(ctx, channels.NewID("chanD", collectionID), GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
 
-	cache.AddToCache(ctx, testLogEntryWithCV(1, "doc1", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test1", 123))
-	cache.AddToCache(ctx, testLogEntryWithCV(2, "doc2", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test2", 1234))
-	cache.AddToCache(ctx, testLogEntryWithCV(3, "doc3", "1-a", []string{"chanC", "chanD"}, collectionID, "test3", 12345))
-	cache.AddToCache(ctx, testLogEntryWithCV(4, "doc4", "1-a", []string{"chanC"}, collectionID, "test4", 123456))
+	cache.AddToCache(ctx, MakeTestLogEntryWithCV(1, "doc1", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test1", 123))
+	cache.AddToCache(ctx, MakeTestLogEntryWithCV(2, "doc2", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test2", 1234))
+	cache.AddToCache(ctx, MakeTestLogEntryWithCV(3, "doc3", "1-a", []string{"chanC", "chanD"}, collectionID, "test3", 12345))
+	cache.AddToCache(ctx, MakeTestLogEntryWithCV(4, "doc4", "1-a", []string{"chanC"}, collectionID, "test4", 123456))
 
 	// assert on channel cache entries for 'chanC'
 	entriesChanC, err := cache.GetChanges(ctx, channels.NewID("chanC", collectionID), GetChangesOptionsWithZeroSeq(t))
@@ -351,11 +351,11 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	}
 
 	// Seed the query handler with a single doc that's in all the channels
-	queryEntry := testLogEntryForChannels(1, channelNames)
+	queryEntry := MakeTestLogEntryForChannels(1, channelNames)
 	queryHandler.SeedEntries(LogEntries{queryEntry})
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
-	logEntry := testLogEntryForChannels(1, channelNames)
+	logEntry := MakeTestLogEntryForChannels(1, channelNames)
 	cache.AddToCache(ctx, logEntry)
 
 	workerCount := 25
@@ -426,11 +426,11 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	}
 
 	// Seed the query handler with a single doc that's in all the channels
-	queryEntry := testLogEntryForChannels(1, channelNames)
+	queryEntry := MakeTestLogEntryForChannels(1, channelNames)
 	queryHandler.SeedEntries(LogEntries{queryEntry})
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
-	logEntry := testLogEntryForChannels(1, channelNames)
+	logEntry := MakeTestLogEntryForChannels(1, channelNames)
 	cache.AddToCache(ctx, logEntry)
 
 	workerCount := 25
@@ -496,11 +496,11 @@ func TestChannelCacheBypass(t *testing.T) {
 	}
 
 	// Seed the query handler with a single doc that's in all the channels
-	queryEntry := testLogEntryForChannels(1, channelNames)
+	queryEntry := MakeTestLogEntryForChannels(1, channelNames)
 	queryHandler.SeedEntries(LogEntries{queryEntry})
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
-	logEntry := testLogEntryForChannels(1, channelNames)
+	logEntry := MakeTestLogEntryForChannels(1, channelNames)
 	cache.AddToCache(ctx, logEntry)
 
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
@@ -598,7 +598,7 @@ func TestChannelCacheActiveOnlyAndLimit(t *testing.T) {
 		ActiveOnly: false,
 		ChangesCtx: base.TestCtx(t),
 	}
-	require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 3)
+	require.Len(t, GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions), 3)
 
 	// whether limit or no limit, should only be 1 active entry
 	for _, limit := range []int{0, 1} {
@@ -609,7 +609,7 @@ func TestChannelCacheActiveOnlyAndLimit(t *testing.T) {
 				ChangesCtx: base.TestCtx(t),
 				Limit:      limit,
 			}
-			require.Len(t, getChanges(t, collection, base.SetOf(activeChannel), changesOptions), 1)
+			require.Len(t, GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions), 1)
 		})
 	}
 }
@@ -640,19 +640,19 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 
 		// With limit 1 (before)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 1, ChangesCtx: base.TestCtx(t)}
-		changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 1)
 		assert.Equal(t, "doc1", changes[0].ID)
 
 		// No limit
 		changesOptions.Limit = 0
-		changes = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 1)
 		assert.Equal(t, "doc1", changes[0].ID)
 
 		// With limit 1 (after)
 		changesOptions.Limit = 1
-		changes = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 1)
 		assert.Equal(t, "doc1", changes[0].ID)
 	})
@@ -678,20 +678,20 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 
 		// With limit 1 (before)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 1, ChangesCtx: base.TestCtx(t)}
-		changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 1)
 		assert.Equal(t, "doc1", changes[0].ID)
 
 		// No limit: should get doc1 and doc3
 		changesOptions.Limit = 0
-		changes = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 2)
 		assert.Equal(t, "doc1", changes[0].ID)
 		assert.Equal(t, "doc3", changes[1].ID)
 
 		// With limit 1 (after)
 		changesOptions.Limit = 1
-		changes = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 1)
 		assert.Equal(t, "doc1", changes[0].ID)
 	})
@@ -715,27 +715,27 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 
 		// With limit 1 (before)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 1, ChangesCtx: base.TestCtx(t)}
-		changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 0)
 
 		// No limit: should get nothing
 		changesOptions.Limit = 0
-		changes = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 0)
 
 		// With limit 1 (after)
 		changesOptions.Limit = 1
-		changes = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 0)
 	})
 	t.Run("cache populated, query requires pagination", func(t *testing.T) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 5
 		cacheOptions.ChannelQueryLimit = 5
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 		// seed activeChannel in the cache prior to writing docs
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
-		_ = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		// Write 20 docs to the channel.  5 should be cached, 15 require query
 		for i := range 20 {
 			docID := fmt.Sprintf("doc%d", i+1)
@@ -744,7 +744,7 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		}
 		db.WaitForPendingChanges(t)
 		changesOptions = ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 0, ChangesCtx: base.TestCtx(t)}
-		changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 20)
 		for i, change := range changes {
 			assert.Equal(t, fmt.Sprintf("doc%d", i+1), change.ID, "change at index %d", i)
@@ -757,9 +757,9 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 5
 		cacheOptions.ChannelQueryLimit = 5
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 		changesOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
-		_ = getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		for i := 1; i <= 20; i++ {
 			_, _, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"channels": activeChannel})
 			require.NoError(t, err)
@@ -768,7 +768,7 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 		// Limit=10 spans two query batches (5+5) before reaching cache. The pagination loop must
 		// not prematurely append cache after the first batch hits the active limit.
 		changesOptions = ChangesOptions{Since: SequenceID{Seq: 0}, ActiveOnly: true, Limit: 10, ChangesCtx: base.TestCtx(t)}
-		changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 		require.Len(t, changes, 10)
 		for i, change := range changes {
 			assert.Equal(t, fmt.Sprintf("doc%d", i+1), change.ID, "change at index %d", i)
@@ -779,12 +779,6 @@ func TestChannelCacheActiveOnlyScenarios(t *testing.T) {
 func setupDBWithChannelCacheSize(t *testing.T, maxLength int) (context.Context, *Database, *DatabaseCollectionWithUser) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = maxLength
-	return setupDBWithChannelCacheSettings(t, cacheOptions)
-}
-
-// setupDBWithChannelCacheSettings delegates to SetupDBWithChannelCacheSettings; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer SetupDBWithChannelCacheSettings in new code.
-func setupDBWithChannelCacheSettings(t *testing.T, cacheOptions CacheOptions) (context.Context, *Database, *DatabaseCollectionWithUser) {
 	return SetupDBWithChannelCacheSettings(t, cacheOptions)
 }
 
@@ -840,11 +834,11 @@ func FuzzChannelCacheActiveOnly(f *testing.F) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = int(cacheMaxLength)
 		cacheOptions.ChannelQueryLimit = int(queryLimit)
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 		// Seed the channel in the cache before writing docs so subsequent writes land
 		// in the cache from sequence 1.
-		_ = getChanges(t, collection, base.SetOf("active"), ChangesOptions{
+		_ = GetChangesForTest(t, collection, base.SetOf("active"), ChangesOptions{
 			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
 		})
 
@@ -925,7 +919,7 @@ func FuzzChannelCacheActiveOnly(f *testing.F) {
 
 		db.WaitForPendingChanges(t)
 
-		changes := getChanges(t, collection, base.SetOf("active"), ChangesOptions{
+		changes := GetChangesForTest(t, collection, base.SetOf("active"), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      int(requestLimit),
@@ -974,7 +968,7 @@ func FuzzChannelCacheActiveOnly(f *testing.F) {
 func TestChannelCacheActiveOnlyLimitWithCrossChannelGap(t *testing.T) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 2
-	ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+	ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 	const activeChannel = "active"
 	const otherChannel = "other"
@@ -983,7 +977,7 @@ func TestChannelCacheActiveOnlyLimitWithCrossChannelGap(t *testing.T) {
 	// live via _pruneCacheLength), which is the path where validFrom can land on a sequence
 	// that isn't an entry in this channel at all (see _pruneCacheLength).
 	primingOptions := ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
-	_ = getChanges(t, collection, base.SetOf(activeChannel), primingOptions)
+	_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), primingOptions)
 
 	// doc1: active (seq1) -> removed from channel (seq2)
 	revID, _, err := collection.Put(ctx, "doc1", Body{"channels": activeChannel})
@@ -1017,7 +1011,7 @@ func TestChannelCacheActiveOnlyLimitWithCrossChannelGap(t *testing.T) {
 		Limit:      1,
 		ChangesCtx: base.TestCtx(t),
 	}
-	changes := getChanges(t, collection, base.SetOf(activeChannel), changesOptions)
+	changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), changesOptions)
 	require.Len(t, changes, 1)
 	assert.Equal(t, "doc3", changes[0].ID)
 }
@@ -1029,10 +1023,10 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 	t.Run("Query and cache both exactly at boundary (No Gap)", func(t *testing.T) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 2
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 		// Prime cache
-		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
 		})
 
@@ -1048,7 +1042,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		// Since doc1 is pruned (cache length 2), validFrom is 2 (doc2's sequence is 2).
 		// Querying with Limit=10 should return all 3 docs: doc1 (Seq 1), doc2 (Seq 2), and doc3 (Seq 3).
 		// Since query reached boundary (Seq 2 >= 2), the cache should be appended, deduplicating doc2.
-		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      10,
@@ -1063,10 +1057,10 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 	t.Run("Query gap before boundary, cache at boundary", func(t *testing.T) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 2
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 		// Prime cache
-		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
 		})
 
@@ -1086,7 +1080,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		// limit, so the query for doc1 (Seq 1) has room left over and the cache entries (doc2, doc3)
 		// are appended too. It's the main changes loop, not this query, that then trims the combined
 		// result down to the requested Limit=1, leaving only doc1.
-		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      1,
@@ -1099,10 +1093,10 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 	t.Run("Query at boundary, cache gap after boundary", func(t *testing.T) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 2
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 		// Prime cache
-		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
 		})
 
@@ -1122,7 +1116,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		// doc1 and doc2 are pruned. Cache contains doc3 and doc4. validFrom is 3 (doc2.Seq + 1 = 3).
 		// Querying with Limit=2 gets doc1 (Seq 1) and doc2 (Seq 2) and stops early (highSeq = 2 < 3).
 		// The query returns exactly `limit` (2) rows, so there's no room left to append the cache.
-		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      2,
@@ -1134,7 +1128,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 
 		// Querying with Limit=10 gets doc1, doc2 (2 rows, under the limit), leaving room to append
 		// the cache (doc3, doc4), so all 4 are returned.
-		changes10 := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		changes10 := GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      10,
@@ -1150,10 +1144,10 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 	t.Run("Gaps in both directions", func(t *testing.T) {
 		cacheOptions := DefaultCacheOptions()
 		cacheOptions.ChannelCacheMaxLength = 2
-		ctx, db, collection := setupDBWithChannelCacheSettings(t, cacheOptions)
+		ctx, db, collection := SetupDBWithChannelCacheSettings(t, cacheOptions)
 
 		// Prime cache
-		_ = getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		_ = GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t),
 		})
 
@@ -1175,7 +1169,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		// doc1 and doc2 are pruned. Cache contains doc3 and doc4. validFrom is 4 (doc2.Seq + 1 = 4).
 		// Querying with Limit=2 gets doc1 (Seq 1) and doc2 (Seq 3) and stops early (highSeq = 3 < 4).
 		// The query returns exactly `limit` (2) rows, so there's no room left to append the cache.
-		changes := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		changes := GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      2,
@@ -1187,7 +1181,7 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 
 		// Querying with Limit=10 gets doc1, doc2 (2 rows, under the limit), leaving room to append
 		// the cache (doc3, doc4), so all 4 are returned.
-		changes10 := getChanges(t, collection, base.SetOf(activeChannel), ChangesOptions{
+		changes10 := GetChangesForTest(t, collection, base.SetOf(activeChannel), ChangesOptions{
 			Since:      SequenceID{Seq: 0},
 			ActiveOnly: true,
 			Limit:      10,

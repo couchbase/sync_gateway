@@ -1601,13 +1601,13 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 		ForceTimeoutErrorOnUpdateKeys: []string{timeoutDoc},
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), callbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), callbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// init channel cache, this will make changes call after timeout doc is written below fail pre changes made in CBG-4067,
 	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
-	_ = getChanges(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
+	_ = GetChangesForTest(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 
 	assert.Equal(t, uint64(0), db.DbStats.Database().SequenceReleasedCount.Value())
 
@@ -1626,7 +1626,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// get cached changes + assert the document is present
-	changes := getChanges(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
+	changes := GetChangesForTest(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, changes, 1)
 	assert.Equal(t, timeoutDoc, changes[0].ID)
 

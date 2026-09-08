@@ -79,7 +79,7 @@ func TestAttachmentMark(t *testing.T) {
 }
 
 func TestAttachmentSweep(t *testing.T) {
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 	collectionID := GetSingleDatabaseCollection(t, testDb.DatabaseContext).GetCollectionID()
@@ -306,7 +306,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 }
 
 func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
@@ -791,7 +791,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	const docsToCreate = 10_000
 
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 

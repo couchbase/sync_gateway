@@ -98,12 +98,6 @@ func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbc
 	return db, addDatabaseAndTestUserContext(ctx, db)
 }
 
-// setupTestDBWithCacheOptions delegates to SetupTestDBWithCacheOptions; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer SetupTestDBWithCacheOptions in new code.
-func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, context.Context) {
-	return SetupTestDBWithCacheOptions(t, options)
-}
-
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
 // tests against Couchbase Server
 func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
@@ -149,18 +143,6 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	atomic.StoreUint32(&dbCtx.State, DBOnline)
 
 	return db, addDatabaseAndTestUserContext(ctx, db)
-}
-
-// setupTestLeakyDBWithCacheOptions delegates to SetupTestLeakyDBWithCacheOptions; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer SetupTestLeakyDBWithCacheOptions in new code.
-func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
-	return SetupTestLeakyDBWithCacheOptions(t, options, leakyOptions)
-}
-
-// setupTestDBDefaultCollection delegates to SetupTestDBDefaultCollection; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer SetupTestDBDefaultCollection in new code.
-func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
-	return SetupTestDBDefaultCollection(t)
 }
 
 func assertHTTPError(t *testing.T, err error, status int) bool {
@@ -1817,7 +1799,7 @@ func TestAllDocsOnly(t *testing.T) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
+	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1880,7 +1862,7 @@ func TestAllDocsOnly(t *testing.T) {
 	changesCtx, changesCtxCancel := context.WithCancelCause(base.TestCtx(t))
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel(errors.New("test teardown"))
-	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
+	changes := GetChangesForTest(t, collection, channels.BaseSetOf(t, "all"), options)
 	require.Len(t, changes, 100)
 
 	for i, change := range changes {
@@ -1907,7 +1889,7 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
-	changes = getChanges(t, collection, channels.BaseSetOf(t, "KFJC"), options)
+	changes = GetChangesForTest(t, collection, channels.BaseSetOf(t, "KFJC"), options)
 	assert.Len(t, changes, 10)
 	for i, change := range changes {
 		assert.Equal(t, ids[10*i].DocID, change.ID)
@@ -1928,7 +1910,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	defer SuspendSequenceBatching()()
 
 	// use default collection based on use of GetPrincipalForTest
-	db, ctx := setupTestDBDefaultCollection(t)
+	db, ctx := SetupTestDBDefaultCollection(t)
 	defer db.Close(ctx)
 
 	// Create a user with access to channel ABC
@@ -2170,7 +2152,7 @@ func TestConflicts(t *testing.T) {
 		ChangesCtx: t.Context(),
 	}
 
-	changes := getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
+	changes := GetChangesForTest(t, collection, channels.BaseSetOf(t, "all"), options)
 
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
@@ -2205,7 +2187,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Verify the _changes feed:
-	changes = getChanges(t, collection, channels.BaseSetOf(t, "all"), options)
+	changes = GetChangesForTest(t, collection, channels.BaseSetOf(t, "all"), options)
 	assert.Len(t, changes, 1)
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 4},
@@ -2761,7 +2743,7 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	opts := DefaultCacheOptions()
 	opts.CachePendingSeqMaxNum = 1
 	opts.CachePendingSeqMaxWait = 10 * time.Nanosecond
-	db, ctx := setupTestDBWithCacheOptions(t, opts)
+	db, ctx := SetupTestDBWithCacheOptions(t, opts)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	docID := t.Name() + "_doc1"
@@ -3466,7 +3448,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 		UpdateCallback: writeUpdateCallback,
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3684,7 +3666,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 		}
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{UpdateCallback: writeUpdateCallback})
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{UpdateCallback: writeUpdateCallback})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
