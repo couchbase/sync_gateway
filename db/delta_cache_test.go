@@ -197,7 +197,7 @@ func TestNumberBasedEvictionForDeltaCache(t *testing.T) {
 func TestUpdateDeltaWhenNoDeltaCacheInit(t *testing.T) {
 
 	// setup db with no delta sync enabled, no delta cache will be initialised
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

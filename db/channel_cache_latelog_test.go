@@ -471,7 +471,7 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
@@ -539,7 +539,7 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 // to each per-channel cache by newChannelCacheWithOptions, and that non-positive values fall back to the
 // package defaults rather than disabling the caps. Also verifies that late logs max length is set to chanel cache max length.
 func TestLateLogOptionsPropagation(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
@@ -813,7 +813,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 func TestLateLogsPurgeEdgeCases(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
@@ -904,7 +904,7 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 

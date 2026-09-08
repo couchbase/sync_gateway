@@ -359,7 +359,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -411,7 +411,7 @@ func TestMigrateMetadataWithHLV(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -476,7 +476,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -742,7 +742,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -760,7 +760,7 @@ func TestImportNullDoc(t *testing.T) {
 func TestImportNullDocRaw(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -796,7 +796,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 
 func TestEvaluateFunction(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	// Simulate unexpected error invoking import filter for document
@@ -853,7 +853,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 		t.Skip("This test requires Couchbase Server") // no cluster UUIDs in Walrus
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1581,7 +1581,7 @@ func getBucketDocument(t *testing.T, collection *DatabaseCollection, docID strin
 // Tests that repair is committed against post import version of the doc on write
 func TestWritePathRepairForcesCasRetryAfterImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -1627,7 +1627,7 @@ func TestWritePathRepairForcesCasRetryAfterImport(t *testing.T) {
 // Asserts that on demand import triggered in get path and repair is done in one pass of Get
 func TestGetPathDoesNotRepairJustImportedDoc(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -1702,7 +1702,7 @@ func TestImportTombstoneAttachmentMetadata(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// no import listener, so the SDK tombstone created below stays unimported until this test
 			// imports it, as OnDemandImportForWrite does when a write lands on top of a tombstone
-			dbc, ctx := setupTestDB(t)
+			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 			ds := collection.GetCollectionDatastore()
@@ -1777,7 +1777,7 @@ func TestImportTombstoneAttachmentMetadata(t *testing.T) {
 // against Couchbase Server and 200 against Rosmar), and neither leaves metadata behind in the pre-4.0
 // location, which is what this test is here to pin.
 func TestOnDemandImportForWriteOverLegacyTombstone(t *testing.T) {
-	dbc, ctx := setupTestDB(t)
+	dbc, ctx := SetupTestDB(t)
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 	ds := collection.GetCollectionDatastore()

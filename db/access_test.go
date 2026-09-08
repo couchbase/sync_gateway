@@ -21,7 +21,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	dbCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	syncFn := `

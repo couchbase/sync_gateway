@@ -30,7 +30,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 		t.Skip("This test is view only, but GSI is enabled")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -82,7 +82,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -131,7 +131,7 @@ func TestCoveringQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -182,7 +182,7 @@ func TestCoveringQueries(t *testing.T) {
 
 func TestAllDocsQuery(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -254,7 +254,7 @@ func TestAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -298,7 +298,7 @@ func TestAccessQuery(t *testing.T) {
 }
 
 func TestRoleAccessQuery(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -535,7 +535,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 }
 
 func TestCountAllActiveDocs(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

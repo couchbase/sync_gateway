@@ -40,12 +40,6 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-// setupTestDB delegates to SetupTestDB; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer SetupTestDB in new code.
-func setupTestDB(t testing.TB) (*Database, context.Context) {
-	return SetupTestDB(t)
-}
-
 func setupTestDBAllowConflicts(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		AllowConflicts: base.Ptr(true),
@@ -210,7 +204,7 @@ func TestDatabaseStartOnlineProcessesWhileClosing(t *testing.T) {
 
 func TestDatabase(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -337,7 +331,7 @@ func TestDatabase(t *testing.T) {
 // TestCheckProposedVersion ensures that a given CV will return the appropriate status based on the information present in the HLV.
 func TestCheckProposedVersion(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -463,7 +457,7 @@ func TestCheckProposedVersion(t *testing.T) {
 
 func TestUpsertTestDocVersion(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -480,7 +474,7 @@ func TestUpsertTestDocVersion(t *testing.T) {
 // TestCheckProposedVersionWithHLVRev tests CheckProposedVersion when the full HLV is provided in the rev element of the proposeChanges message
 func TestCheckProposedVersionWithHLVRev(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -754,7 +748,7 @@ func incrementCas(cas uint64, delta int) (casOut uint64) {
 
 func TestGetDeleted(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -795,7 +789,7 @@ func TestGetDeleted(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAsUser(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -884,7 +878,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	auth := db.Authenticator(ctx)
@@ -968,7 +962,7 @@ func TestFetchRevisionBackupWithCollectionAccess(t *testing.T) {
 
 // Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	auth := db.Authenticator(ctx)
@@ -1145,7 +1139,7 @@ func TestFetchCurrentRevAfterFetchBackupRevByCV(t *testing.T) {
 }
 
 func TestFetchCurrentRevAfterFetchBackupRevByRevID(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1524,7 +1518,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDB(t)
 			defer db.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -1611,7 +1605,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemoved(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
@@ -1691,7 +1685,7 @@ func TestGetRemoved(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAndDeleted(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	backingStoreMap := CreateTestSingleBackingStoreMap(collection, collection.GetCollectionID())
@@ -2230,7 +2224,7 @@ func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
 
 func TestNoConflictsMode(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
@@ -2454,7 +2448,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 func TestSyncFnOnPush(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2498,7 +2492,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 func TestInvalidChannel(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2511,7 +2505,7 @@ func TestInvalidChannel(t *testing.T) {
 
 func TestAccessFunctionValidation(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2545,7 +2539,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -2651,7 +2645,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 func TestPostWithExistingId(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2687,7 +2681,7 @@ func TestPostWithExistingId(t *testing.T) {
 // Unit test for issue #976
 func TestWithNullPropertyKey(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2703,7 +2697,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 
 // Unit test for issue #507, modified for CBG-1995 (allowing special properties)
 func TestPostWithUserSpecialProperty(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2809,7 +2803,7 @@ func TestRecentSequenceHandlingForDeduplication(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	docID := t.Name()
@@ -2845,7 +2839,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	defer SuspendSequenceBatching()()
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2924,7 +2918,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestMaintainMinimumRecentSequences(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	const docID = "doc1"
@@ -2996,7 +2990,7 @@ func TestChannelView(t *testing.T) {
 
 func TestChannelQuery(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
@@ -3076,7 +3070,7 @@ func TestChannelQuery(t *testing.T) {
 // TestChannelQueryRevocation ensures that the correct rev (revTreeID and cv) is returned by the channel query.
 func TestChannelQueryRevocation(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
@@ -3154,7 +3148,7 @@ func TestChannelQueryRevocation(t *testing.T) {
 
 func TestConcurrentImport(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3398,7 +3392,7 @@ func TestGetOIDCProvider(t *testing.T) {
 // TestSyncFnMutateBody ensures that any mutations made to the body by the sync function aren't persisted
 func TestSyncFnMutateBody(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3691,7 +3685,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	var body Body
 	var revid string
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3851,7 +3845,7 @@ func TestGetAllUsers(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	log.Printf("Creating users...")
@@ -3886,7 +3880,7 @@ func TestGetAllUsers(t *testing.T) {
 func TestGetRoleIDs(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	authenticator := db.Authenticator(ctx)
@@ -3932,7 +3926,7 @@ func TestGetRoleIDs(t *testing.T) {
 func Test_updateAllPrincipalsSequences(t *testing.T) {
 	base.LongRunningTest(t)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	auth := db.Authenticator(ctx)
@@ -4071,7 +4065,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 }
 
 func Test_resyncDocument(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -4171,7 +4165,7 @@ func Test_resyncDocument(t *testing.T) {
 
 func Test_getUpdatedDocument(t *testing.T) {
 	t.Run("Non Sync document is not processed", func(t *testing.T) {
-		db, ctx := setupTestDB(t)
+		db, ctx := SetupTestDB(t)
 		defer db.Close(ctx)
 
 		docID := "testDoc"
@@ -4192,7 +4186,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 	})
 
 	t.Run("Sync Document", func(t *testing.T) {
-		db, ctx := setupTestDB(t)
+		db, ctx := SetupTestDB(t)
 		defer db.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		syncFn := `
@@ -4308,7 +4302,7 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 }
 
 func TestServerUUID(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	if base.TestUseCouchbaseServer() {
@@ -4335,7 +4329,7 @@ func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...a
 }
 
 func Test_stopBackgroundManagers(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	testCases := []struct {
@@ -4557,7 +4551,7 @@ func TestBadDCPStart(t *testing.T) {
 }
 
 func TestInject1xBodyProperties(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -4629,7 +4623,7 @@ func TestDatabaseCloseIdempotent(t *testing.T) {
 //   - Permutations include doc being created if it doesn't exist, one element being updated and preserving the other
 //     elements if it exists and
 func TestSettingSyncInfo(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
@@ -4952,7 +4946,7 @@ func TestRevTreeConflictCheck(t *testing.T) {
 		},
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

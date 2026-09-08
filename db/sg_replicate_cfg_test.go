@@ -843,7 +843,7 @@ func (c *pausingCfg) Get(key string, cas uint64) ([]byte, uint64, error) {
 func TestRefreshReplicationCfgRacesStopTeardown(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	wrapped := &pausingCfg{Cfg: testDB.CfgSG, readDone: make(chan struct{}, 1), release: make(chan struct{})}
@@ -911,7 +911,7 @@ func TestRefreshReplicationCfgRacesStopTeardown(t *testing.T) {
 func TestStartReplicationsRacesStopTeardown(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	wrapped := &pausingCfg{Cfg: testDB.CfgSG, readDone: make(chan struct{}, 1), release: make(chan struct{})}
@@ -977,7 +977,7 @@ func TestStartReplicationsRacesStopTeardown(t *testing.T) {
 func TestStopInterruptsReplicationStartupWait(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	// ServerContextHasStarted is never signalled here, so the startup goroutine has only the timer to wait on.
@@ -1008,7 +1008,7 @@ func TestStopInterruptsReplicationStartupWait(t *testing.T) {
 func TestStartReplicationsRacesStopTeardownDuringStart(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	// The remote accepts the request and holds it, parking Start inside its reachability check.
@@ -1099,7 +1099,7 @@ func TestStopDrainsStartupBeforeStoppingReplications(t *testing.T) {
 	}))
 	defer remote.Close()
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	const (
@@ -1170,7 +1170,7 @@ func TestStopDrainsStartupBeforeStoppingReplications(t *testing.T) {
 func TestStartReplicationsDoesNotSubscribeAfterStop(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	wrapped := &pausingCfg{Cfg: testDB.CfgSG, readDone: make(chan struct{}, 1), release: make(chan struct{})}
@@ -1208,7 +1208,7 @@ func TestStartReplicationsDoesNotSubscribeAfterStop(t *testing.T) {
 func TestStartReplicationsSkipsInitErrorWhenStopping(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	wrapped := &pausingCfg{Cfg: testDB.CfgSG, readDone: make(chan struct{}, 1), release: make(chan struct{})}
@@ -1269,7 +1269,7 @@ func TestStartReplicationsSkipsInitErrorWhenStopping(t *testing.T) {
 func TestSGReplicateManagerStopDoesNotPanicOnConcurrentClusterUpdate(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelWarn, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	const attempts = 200
@@ -1325,7 +1325,7 @@ func TestSGReplicateManagerStopDoesNotPanicOnConcurrentClusterUpdate(t *testing.
 func TestSGReplicateManagerStopDrainsClusterUpdates(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCluster)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
 	cfgSG, err := base.NewCfgSG(ctx, testDB.MetadataStore, "", false)

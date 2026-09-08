@@ -28,7 +28,7 @@ func TestDuplicateDocID(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
@@ -83,7 +83,7 @@ func TestLateArrivingSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -124,7 +124,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -165,7 +165,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -247,7 +247,7 @@ func TestPrependChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	// 1. Test prepend to empty cache
@@ -456,7 +456,7 @@ func TestChannelCacheRemove(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -504,7 +504,7 @@ func TestChannelCacheStats(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -583,7 +583,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -622,7 +622,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -720,7 +720,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -750,7 +750,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -775,7 +775,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -799,7 +799,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -823,7 +823,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -847,7 +847,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()
@@ -871,7 +871,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 
 	stats, err := base.NewSyncGatewayStats()

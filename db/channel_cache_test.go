@@ -25,7 +25,7 @@ import (
 )
 
 func TestChannelCacheMaxSize(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	cache := db.changeCache.getChannelCache()
@@ -59,7 +59,7 @@ func TestChannelCacheMaxSize(t *testing.T) {
 //   - Add 4 docs to the channel cache with CV defined in the log entry
 //   - Get changes for each channel in question and assert that the CV is populated in each entry expected
 func TestChannelCacheCurrentVersion(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	cache := db.changeCache.getChannelCache()

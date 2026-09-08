@@ -26,7 +26,7 @@ import (
 )
 
 func TestAttachmentMark(t *testing.T) {
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := SetupTestDB(t)
 	defer testDb.Close(ctx)
 
 	databaseCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
@@ -125,7 +125,7 @@ func TestAttachmentSweep(t *testing.T) {
 }
 
 func TestAttachmentCleanup(t *testing.T) {
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := SetupTestDB(t)
 	defer testDb.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
 	dataStore := collection.dataStore
@@ -546,7 +546,7 @@ func TestAttachmentProcessError(t *testing.T) {
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	base.TestRequiresGocbDCPClient(t)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 	dataStore := testDB.Bucket.DefaultDataStore(ctx)
 	collectionID := GetSingleDatabaseCollection(t, testDB.DatabaseContext).GetCollectionID()

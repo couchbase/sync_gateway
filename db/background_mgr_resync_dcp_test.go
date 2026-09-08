@@ -131,7 +131,7 @@ func TestResyncDCPInit(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.title, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDB(t)
 			defer db.Close(ctx)
 
 			defer func() {
@@ -1109,7 +1109,7 @@ func TestResyncManagerOptionsStoredInMeta(t *testing.T) {
 // by GetProcessStatus.  This ensures that BackgroundManager.Resume can read options back from the bucket after
 // a Start call.
 func TestResyncDCPInitStoresOptionsInMeta(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	// Use all collections by passing an empty CollectionNames — avoids hard-coding scope/collection names

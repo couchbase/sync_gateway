@@ -269,7 +269,7 @@ func TestHLVImport(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -524,7 +524,7 @@ func TestHLVImport(t *testing.T) {
 // TestHLVVersionAheadOfCASCorrection exercises correctVersionAheadOfCAS by simulating the Sync Gateway
 // clock running ahead of the server, so the generated current version exceeds the committed CAS.
 func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
