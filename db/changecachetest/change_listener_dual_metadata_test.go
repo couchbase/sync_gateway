@@ -32,7 +32,7 @@ func TestCachingFeedCollections_DualMetadataStore(t *testing.T) {
 	fallback := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primary, fallback)
 
-	got := db.CachingFeedCollectionsForTest(ms, nil)
+	got := db.CachingFeedCollectionsForTest(t, ms, nil)
 
 	require.Contains(t, maps.Keys(got), base.SystemScope, "expected %s scope to be present", base.SystemScope)
 	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
@@ -55,7 +55,7 @@ func TestCachingFeedCollectionsDualMetadataStoreMigrationComplete(t *testing.T) 
 	ms := base.NewMetadataStore(primary, fallback)
 	ms.DisableFallbackReads()
 
-	got := db.CachingFeedCollectionsForTest(ms, nil)
+	got := db.CachingFeedCollectionsForTest(t, ms, nil)
 
 	require.Contains(t, maps.Keys(got), base.SystemScope, "expected %s scope to be present", base.SystemScope)
 	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
@@ -75,7 +75,7 @@ func TestCachingFeedCollections_SingleMetadataStore(t *testing.T) {
 
 	metadataStore := bucket.DefaultDataStore(ctx)
 
-	got := db.CachingFeedCollectionsForTest(metadataStore, nil)
+	got := db.CachingFeedCollectionsForTest(t, metadataStore, nil)
 
 	require.Contains(t, maps.Keys(got), base.DefaultScope)
 	assert.Contains(t, maps.Keys(got[base.DefaultScope]), base.DefaultCollection)
@@ -103,7 +103,7 @@ func TestCachingFeedCollections_UserScopesIncluded(t *testing.T) {
 		},
 	}
 
-	got := db.CachingFeedCollectionsForTest(ms, scopes)
+	got := db.CachingFeedCollectionsForTest(t, ms, scopes)
 
 	require.Contains(t, maps.Keys(got), base.SystemScope)
 	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)

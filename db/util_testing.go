@@ -1572,124 +1572,124 @@ func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUser(user auth.User) {
 
 // NewChangeCacheForTest returns an uninitialised change cache, as tests that build their own
 // cache rather than using a database's do. Call Init and Start on the result.
-func NewChangeCacheForTest() *changeCache {
+func NewChangeCacheForTest(_ testing.TB) *changeCache {
 	return &changeCache{}
 }
 
 // ChangeCacheForTest exposes the database's own change cache.
-func (dbc *DatabaseContext) ChangeCacheForTest() *changeCache {
+func (dbc *DatabaseContext) ChangeCacheForTest(_ testing.TB) *changeCache {
 	return &dbc.changeCache
 }
 
 // ProcessEntry caches a single entry and returns the channels it was added to.
-func (c *changeCache) ProcessEntry(ctx context.Context, change *LogEntry) []channels.ID {
+func (c *changeCache) ProcessEntryForTest(_ testing.TB, ctx context.Context, change *LogEntry) []channels.ID {
 	return c.processEntry(ctx, change)
 }
 
 // UpdateStats applies the cache's running stats to the database expvars.
-func (c *changeCache) UpdateStats(ctx context.Context) {
+func (c *changeCache) UpdateStatsForTest(_ testing.TB, ctx context.Context) {
 	c.updateStats(ctx)
 }
 
 // NextSequence reports the next consecutive sequence the cache expects. Read without the lock,
 // matching the tests this replaced.
-func (c *changeCache) NextSequence() uint64 {
+func (c *changeCache) NextSequenceForTest(_ testing.TB) uint64 {
 	return c.nextSequence
 }
 
 // ReleaseUnusedSequenceRange handles a released range of sequences the feed will never deliver.
-func (c *changeCache) ReleaseUnusedSequenceRange(ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) {
+func (c *changeCache) ReleaseUnusedSequenceRangeForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) {
 	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, timeReceived)
 }
 
 // SkippedSeqs exposes the skipped sequence list.
-func (c *changeCache) SkippedSeqs() *SkippedSequenceSkiplist {
+func (c *changeCache) SkippedSeqsForTest(_ testing.TB) *SkippedSequenceSkiplist {
 	return c.skippedSeqs
 }
 
 // GetChannelCache exposes the channel cache underlying the change cache.
-func (c *changeCache) GetChannelCache() ChannelCache {
+func (c *changeCache) GetChannelCacheForTest(_ testing.TB) ChannelCache {
 	return c.getChannelCache()
 }
 
 // GetMaxStableCached reports the highest contiguous cached sequence. Called without the lock,
 // matching the test this replaced - production's caller holds the read lock.
-func (c *changeCache) GetMaxStableCached(ctx context.Context) uint64 {
+func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Context) uint64 {
 	return c._getMaxStableCached(ctx)
 }
 
 // SetNotifyChangeFunc installs the callback invoked when channels receive new entries.
-func (c *changeCache) SetNotifyChangeFunc(notify func(context.Context, channels.Set)) {
+func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
 	c.notifyChangeFunc = notify
 }
 
 // SetUserForTest swaps the user a database resolves channel access against.
-func (db *Database) SetUserForTest(user auth.User) {
+func (db *Database) SetUserForTest(_ testing.TB, user auth.User) {
 	db.user = user
 }
 
 // List exposes the underlying skiplist so tests can walk it directly.
-func (s *SkippedSequenceSkiplist) List() *skiplist.SkipList {
+func (s *SkippedSequenceSkiplist) ListForTest(_ testing.TB) *skiplist.SkipList {
 	return s.list
 }
 
 // GetOldest returns the oldest skipped sequence, or 0 if the list is empty.
-func (s *SkippedSequenceSkiplist) GetOldest() uint64 {
+func (s *SkippedSequenceSkiplist) GetOldestForTest(_ testing.TB) uint64 {
 	return s.getOldest()
 }
 
 // ProcessUnusedSequenceRangeAtSkipped removes a released range from the skipped list.
-func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) int64 {
+func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkippedForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64) int64 {
 	return s.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
 }
 
 // NewSingleChannelCacheForTest builds a single channel cache directly, bypassing the channel
 // cache that would normally own it.
-func NewSingleChannelCacheForTest(queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+func NewSingleChannelCacheForTest(_ testing.TB, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
 	return newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
 }
 
 // AsSingleChannelCacheImpl asserts a SingleChannelCache to the concrete implementation. Tests
 // outside package db cannot name the type to perform the assertion themselves.
-func AsSingleChannelCacheImpl(cache SingleChannelCache) (*singleChannelCacheImpl, bool) {
+func AsSingleChannelCacheImplForTest(_ testing.TB, cache SingleChannelCache) (*singleChannelCacheImpl, bool) {
 	impl, ok := cache.(*singleChannelCacheImpl)
 	return impl, ok
 }
 
 // Logs exposes the cache's in-sequence log entries.
-func (c *singleChannelCacheImpl) Logs() LogEntries {
+func (c *singleChannelCacheImpl) LogsForTest(_ testing.TB) LogEntries {
 	return c.logs
 }
 
 // LateLogs exposes the late-arriving entries, in the order they were received.
-func (c *singleChannelCacheImpl) LateLogs() []*lateLogEntry {
+func (c *singleChannelCacheImpl) LateLogsForTest(_ testing.TB) []*lateLogEntry {
 	return c.lateLogs
 }
 
 // PurgeLateLogEntries drops late log entries no listener still needs.
-func (c *singleChannelCacheImpl) PurgeLateLogEntries() {
+func (c *singleChannelCacheImpl) PurgeLateLogEntriesForTest(_ testing.TB) {
 	c.purgeLateLogEntries()
 }
 
 // GetListenerCount reports how many late-feed clients still need this entry.
-func (l *lateLogEntry) GetListenerCount() uint64 {
+func (l *lateLogEntry) GetListenerCountForTest(_ testing.TB) uint64 {
 	return l.getListenerCount()
 }
 
 // LogEntry exposes the entry a late log slot holds.
-func (l *lateLogEntry) LogEntry() *LogEntry {
+func (l *lateLogEntry) LogEntryForTest(_ testing.TB) *LogEntry {
 	return l.logEntry
 }
 
 // GetSingleChannelCacheForTest looks up one channel's cache. ChannelCache is an exported
 // interface whose accessor methods are unexported, so the call has to be made from package db.
-func GetSingleChannelCacheForTest(ctx context.Context, cache ChannelCache, ch channels.ID) (SingleChannelCache, error) {
+func GetSingleChannelCacheForTest(_ testing.TB, ctx context.Context, cache ChannelCache, ch channels.ID) (SingleChannelCache, error) {
 	return cache.getSingleChannelCache(ctx, ch)
 }
 
 // CachingFeedCollectionsForTest returns the (scope, collection) pairs the caching DCP feed
 // subscribes to.
-func CachingFeedCollectionsForTest(metadataStore base.DataStore, scopes map[string]Scope) base.CollectionNameSet {
+func CachingFeedCollectionsForTest(_ testing.TB, metadataStore base.DataStore, scopes map[string]Scope) base.CollectionNameSet {
 	return cachingFeedCollections(metadataStore, scopes)
 }
 

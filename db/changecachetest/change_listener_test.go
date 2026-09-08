@@ -40,7 +40,7 @@ func TestUserWaiter(t *testing.T) {
 	// Create the user waiter (note: user hasn't been saved yet)
 	log.Printf("Saved user")
 	userDb := &db.Database{DatabaseContext: database.DatabaseContext}
-	userDb.SetUserForTest(user)
+	userDb.SetUserForTest(t, user)
 	userWaiter := userDb.NewUserWaiter()
 	assert.False(t, userWaiter.RefreshUserCount())
 
@@ -86,7 +86,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	// Create the user waiter (note: user hasn't been saved yet)
 	userDb := &db.Database{DatabaseContext: database.DatabaseContext}
-	userDb.SetUserForTest(user)
+	userDb.SetUserForTest(t, user)
 	userWaiter := userDb.NewUserWaiter()
 	isChanged := userWaiter.RefreshUserCount()
 	assert.False(t, isChanged)
