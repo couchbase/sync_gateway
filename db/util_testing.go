@@ -1419,6 +1419,13 @@ func MakeTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
 }
 
 // Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
+// MakeDeletedTestLogEntry returns a tombstoned LogEntry for the given sequence.
+func MakeDeletedTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
+	entry := MakeTestLogEntry(seq, docid, revid)
+	entry.SetDeleted()
+	return entry
+}
+
 func MakeTestLogEntryForChannels(seq int, channelNames []string) *LogEntry {
 	channelMap := make(channels.ChannelMap)
 	for _, channelName := range channelNames {

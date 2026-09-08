@@ -27,37 +27,6 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// testLogEntry delegates to MakeTestLogEntry; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer MakeTestLogEntry in new code.
-func testLogEntry(seq uint64, docid string, revid string) *LogEntry {
-	return MakeTestLogEntry(seq, docid, revid)
-}
-
-// testLogEntryForChannels delegates to MakeTestLogEntryForChannels; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer MakeTestLogEntryForChannels in new code.
-func testLogEntryForChannels(seq int, channelNames []string) *LogEntry {
-	return MakeTestLogEntryForChannels(seq, channelNames)
-}
-
-// Tombstoned entry
-func et(seq uint64, docid string, revid string) *LogEntry {
-	entry := testLogEntry(seq, docid, revid)
-	entry.SetDeleted()
-	return entry
-}
-
-// logEntry delegates to MakeLogEntry; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer MakeLogEntry in new code.
-func logEntry(seq uint64, docid string, revid string, channelNames []string, collectionID uint32) *LogEntry {
-	return MakeLogEntry(seq, docid, revid, channelNames, collectionID)
-}
-
-// testLogEntryWithCV delegates to MakeTestLogEntryWithCV; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer MakeTestLogEntryWithCV in new code.
-func testLogEntryWithCV(seq uint64, docid string, revid string, channelNames []string, collectionID uint32, sourceID string, version uint64) *LogEntry {
-	return MakeTestLogEntryWithCV(seq, docid, revid, channelNames, collectionID, sourceID, version)
-}
-
 func TestLateSequenceHandling(t *testing.T) {
 
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
@@ -1173,12 +1142,6 @@ func TestChannelCacheSize(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, abcCache.(*singleChannelCacheImpl).logs, 600)
-}
-
-// shortWaitCache delegates to ShortWaitCache; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer ShortWaitCache in new code.
-func shortWaitCache() CacheOptions {
-	return ShortWaitCache()
 }
 
 // verifyCacheSequences asserts a full match on the sequences stored in singleCache's log.
@@ -2804,12 +2767,6 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		dbContext.UpdateCalculatedStats(ctx)
 		assert.Equal(c, uint64(19), dbContext.DbStats.CacheStats.HighSeqCached.Value())
 	}, time.Second*10, time.Millisecond*100)
-}
-
-// getChanges delegates to GetChangesForTest; the implementation moved to util_testing.go so
-// out-of-package test packages can use it. Prefer GetChangesForTest in new code.
-func getChanges(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
-	return GetChangesForTest(t, collection, channels, options)
 }
 
 func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
