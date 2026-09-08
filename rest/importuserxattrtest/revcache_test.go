@@ -40,10 +40,14 @@ func TestUserXattrRevCache(t *testing.T) {
 				}
 			}`
 
-	// Sync function to set channel access to a channels UserXattrKey
+	// Sync function to set channel access to a channels UserXattrKey.
+	// Each rest tester needs a distinct database name - the cbgt dest factory registry is
+	// process-global and keyed on database name, so same-named databases in one process would
+	// clobber each other's import listener registration.
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Name:             "rt1",
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
@@ -55,6 +59,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Name:             "rt2",
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
@@ -66,7 +71,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	dataStore := rt2.GetSingleDataStore()
 
 	ctx = rt2.Context()
-	a := rt2.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	a := rt2.ServerContext().Database(ctx, rt2.GetDatabase().Name).Authenticator(ctx)
 	userABC, err := a.NewUser("userABC", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, a.Save(userABC))
