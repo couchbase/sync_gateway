@@ -282,40 +282,38 @@ func TestChangesSinceLogging(t *testing.T) {
 	// inside one, and NewBlipTesterClientOptsWithRT fails if not inside one.
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
-		// A separate RestTester from the REST phase above, which also keeps NumPullReplTotalOneShot free
-		// of REST traffic for the barrier below.
+		// A separate RestTester from the REST phase above, so the two phases cannot disturb each other.
 		blipRT := NewRestTester(t, &RestTesterConfig{
-			SyncFn:       `function(doc) {channel(doc.channels)}`,
-			GuestEnabled: true, // for the blip client
+			SyncFn: `function(doc) {channel(doc.channels)}`,
 		})
 		defer blipRT.Close()
+		blipRT.CreateUser(username, []string{"alpha"})
 		for i := range numDocs {
 			blipRT.PutDoc(fmt.Sprintf("doc%d", i), `{"channels":["alpha"]}`)
 		}
 		blipRT.WaitForPendingChanges()
 
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(blipRT, nil)
-		defer btc.Close()
-
 		pullStats := blipRT.GetDatabase().DbStats.CBLReplicationPull()
-		baseTotal := pullStats.NumPullReplTotalOneShot.Value()
 
 		for i, tc := range cases {
 			t.Run("since="+tc.rawSince, func(t *testing.T) {
+				// A client per case: the previous case's revs land on a connection that is already
+				// closed, so no case is answered from a client that has not stored them yet, and the
+				// second copy of a revision it already holds cannot fail its conflict check.
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(blipRT, &BlipTesterClientOpts{Username: username})
+				defer btc.Close()
+
+				defer func() {
+					// wait for replications to clear since we are checking log messages. Does not affect test.
+					base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, int64(i)+1)
+					base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
+				}()
 				// StartPullSince blocks on the subChanges response, which go-blip sends only once
 				// handleSubChanges has returned - so the log line is already emitted.  Deliberately no
 				// WaitForDoc: cases like 999 deliver nothing, and it would spin for its full timeout.
 				base.AssertLogContains(t, wantBLIP(tc.wantSince), func() {
 					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: tc.rawSince})
 				})
-				// Only one subChanges may be outstanding per collection (activeSubChanges in
-				// db/blip_handler.go), and the flag is cleared asynchronously by the changes goroutine.
-				// Wait on the total first: the active count is also 0 before that goroutine starts, so
-				// waiting on it alone can return immediately while the flag is still set.  Once the total
-				// has advanced, the active count reaching 0 does imply the flag is clear - its defer is
-				// registered before the flag-clearing one, so it unwinds after it.
-				base.RequireWaitForStat(t, pullStats.NumPullReplTotalOneShot.Value, baseTotal+int64(i)+1)
-				base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0)
 			})
 		}
 	})
