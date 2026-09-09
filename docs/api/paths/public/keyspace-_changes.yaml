@@ -33,6 +33,9 @@ get:
         enum:
           - main_only
           - all_docs
+        x-enumDescriptions:
+          main_only: Return only the current winning revision.
+          all_docs: Return all leaf revisions, including conflicts and deleted conflicts.
     - name: active_only
       in: query
       description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
@@ -53,18 +56,26 @@ get:
         enum:
           - sync_gateway/bychannel
           - _doc_ids
+        x-enumDescriptions:
+          sync_gateway/bychannel: Filter by channel, using the `channels` parameter.
+          _doc_ids: Filter by document ID, using the `doc_ids` parameter. Requires `feed=normal`.
     - name: channels
       in: query
-      description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+      description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannel`.'
       schema:
         type: string
     - name: doc_ids
       in: query
-      description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma separated list of document IDs instead.'
+      description: 'A JSON array of document IDs, serialized to a string, to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`. Also accepts a comma-separated list of document IDs instead.'
       schema:
-        type: array
-        items:
-          type: string
+        type: string
+      examples:
+        jsonArray:
+          summary: Serialized JSON array
+          value: '["doc1","doc2"]'
+        commaSeparated:
+          summary: Comma-separated list
+          value: 'doc1,doc2'
     - name: heartbeat
       in: query
       description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration. If heartbeat is non zero, it must be at least 25000 milliseconds.
@@ -90,6 +101,17 @@ get:
           - longpoll
           - continuous
           - websocket
+        x-enumDescriptions:
+          normal: Return all current changes at once, then close the connection.
+          longpoll: As `normal`, but if there are no changes yet, waits for the next change (or the heartbeat/timeout) before sending its single response.
+          continuous: Stream each change as it happens, over a single long-lived connection.
+          websocket: Stream changes over a WebSocket connection.
+    - name: request_plus
+      in: query
+      description: When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.
+      schema:
+        type: boolean
+        default: false
     - name: version_type
       in: query
       description: 'The preferred type of document versioning to use for the changes feed.'
@@ -126,37 +148,59 @@ post:
           properties:
             limit:
               description: Maximum number of changes to return.
-              type: string
+              type: integer
+            since:
+              description: Starts the results from the change immediately after the given sequence ID. Sequence IDs should be considered opaque; they come from the last_seq property of a prior response. Accepts either a string or, for a simple sequence, a number.
+              oneOf:
+                - type: string
+                - type: integer
             style:
               description: Controls whether to return the current winning revision (`main_only`) or all the leaf revision including conflicts and deleted former conflicts (`all_docs`).
               type: string
             active_only:
               description: Set true to exclude deleted documents and notifications for documents the user no longer has access to from the changes feed.
-              type: string
+              type: boolean
             include_docs:
               description: Include the body associated with each document.
               type: boolean
-            revocations:
-              description: 'If true, revocation messages will be sent on the changes feed.'
-              type: string
             filter:
               description: Set a filter to either filter by channels or document IDs.
               type: string
             channels:
-              description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannels`.'
+              description: 'A comma-separated list of channel names to filter the response to only the channels specified. To use this option, the `filter` query option must be set to `sync_gateway/bychannel`.'
               type: string
             doc_ids:
-              description: 'A valid JSON array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`.'
-              type: string
+              description: 'An array of document IDs to filter the documents in the response to only the documents specified. To use this option, the `filter` query option must be set to `_doc_ids` and the `feed` parameter must be `normal`.'
+              type: array
+              items:
+                type: string
             heartbeat:
-              description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration.
-              type: string
+              description: The interval (in milliseconds) to send an empty line (CRLF) in the response. This is to help prevent gateways from deciding the socket is idle and therefore closing it. This is only applicable to `feed=longpoll` or `feed=continuous`. This will override any timeouts to keep the feed alive indefinitely. Setting to 0 results in no heartbeat. The maximum heartbeat can be set in the server replication configuration. If heartbeat is non zero, it must be at least 25000 milliseconds.
+              type: integer
+              default: 0
             timeout:
               description: 'This is the maximum period (in milliseconds) to wait for a change before the response is sent, even if there are no results. This is only applicable for `feed=longpoll` or `feed=continuous` changes feeds. Setting to 0 results in no timeout.'
-              type: string
+              type: integer
+              default: 300000
+              maximum: 900000
+              minimum: 0
             feed:
               description: 'The type of changes feed to use. '
               type: string
+            request_plus:
+              description: 'When true, ensures all valid documents written prior to the request being issued are included in the response.  This is only applicable for non-continuous feeds.'
+              type: boolean
+              default: false
+            version_type:
+              description: The preferred type of document versioning to use for the changes feed.
+              type: string
+              default: rev
+              enum:
+                - rev
+                - cv
+              x-enumDescriptions:
+                rev: 'Revision Tree IDs. For example: 1-293a80ce8f4874724732f27d35b3959a13cd96e0'
+                cv: 'Current Version. For example: 1854e4e557cc0000@zTWkmBiYZgNQo7BHVZrB/Q'
   responses:
     '200':
       $ref: ../../components/responses.yaml#/changes-feed

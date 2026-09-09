@@ -39,6 +39,8 @@ The entry point is `main.go`, which calls `rest.ServerMain()`. The runtime objec
 
 ## Conventions
 
+These apply when you write code and when you review it.
+
 ### JSON
 
 Call `base.JSONMarshal`, `base.JSONUnmarshal`, and `base.JSONDecoder` rather than `json.Marshal`, `json.Unmarshal`, and `json.NewDecoder` — EE swaps in `jsoniter` underneath, and direct calls silently bypass that. Importing `encoding/json` for types such as `json.RawMessage` or to implement `json.Marshaler` is fine and common.
@@ -56,12 +58,28 @@ Rosmar is not fully feature-compatible with Couchbase Server, so anything leanin
 
 ### REST API changes
 
-Changing a handler, query parameter, or response schema means updating the OpenAPI specs in [docs/api/](docs/api/README.md). `redocly lint` and `yamllint` gate this in both pre-commit and CI.
+Changing a handler, query parameter, or response schema means updating the OpenAPI specs in [docs/api/](docs/api/README.md). The `redocly-lint` pre-commit hook and the `openapi` CI workflow gate this, along with `yamllint`. To lint the specs by hand, run `npm ci` and then `npm run lint:openapi` — that script runs the version pinned in `package.json` and passes `--config=.redocly.yaml`.
 
 ### Xattrs are mandatory (SG 4.0+)
 
 Xattr mode is the only supported mode on `main`. New code must assume xattrs are enabled — do not add `UseXattrs` checks, non-xattr write/read branches, or config surfaces that let xattr mode be turned off.
 
-The one preserved carve-out is **read-side migration of pre-existing non-xattr documents** already in a bucket: that gradual-migration path must keep working so older data is upgraded on access. No new code path should *produce* non-xattr data.
+The one preserved carve-out is **read-side migration of pre-existing non-xattr documents** already in a bucket: that gradual-migration path must keep working so older data is upgraded on access. No new code path should _produce_ non-xattr data.
 
 When touching an existing `UseXattrs` check, prefer simplifying toward the xattrs-on branch and deleting the alternative, unless the code is part of the read/migration path above.
+
+### Concurrency
+
+Be mindful of performance implications, such as mutex contention, race conditions, and other concurrency-related issues.
+
+Pair every `Lock()` with a `defer Unlock()` and every `RLock()` with a `defer RUnlock()`, taken immediately after the lock. A manual `Unlock()`/`RUnlock()` is skipped on an early return or a panic. If the critical section must end before the function does, move it into its own function or a closure so that the `defer` still covers it.
+
+### Comments
+
+Code comments explain the _intent_ or _reasoning_ behind an implementation, rather than just restating what the code does.
+
+Comments describe the code as it is now, not how it used to behave, and not which ticket changed it — `git blame` and the PR carry that history. A ticket reference is fine when it points at outstanding work (`TODO: CBG-1234`).
+
+### Loops
+
+`for` loops need sufficient exit conditions and must not be prone to infinite loops. Prefer expressing the exit condition in the loop declaration itself, rather than relying on `break` statements within the loop body.

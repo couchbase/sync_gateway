@@ -50,10 +50,13 @@ post:
             redact_level:
               description: The redaction level to use for redacting the collected logs.
               type: string
-              default: partial
+              default: none
               enum:
                 - partial
                 - none
+              x-enumDescriptions:
+                partial: Redacts sensitive data from the collected logs.
+                none: No redaction; collected logs may contain sensitive data. Default.
             redact_salt:
               description: The salt to use for the log redactions.
               type: string

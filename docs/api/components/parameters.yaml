@@ -38,10 +38,9 @@ atts_since:
   in: query
   required: false
   schema:
-    type: array
-    items:
-      type: string
-  description: Include attachments only since specified revisions. Excludes the attachments for the specified revisions. Only gets used if `attachments=true`.
+    type: string
+  example: '["1-abc","2-def"]'
+  description: 'A serialized JSON array of revision IDs. Include attachments only since the specified revisions, excluding the attachments for the specified revisions. Only gets used if `attachments=true`.'
 compact-type:
   name: type
   in: query
@@ -52,6 +51,9 @@ compact-type:
     enum:
       - attachment
       - tombstone
+    x-enumDescriptions:
+      attachment: Clean up legacy (pre-3.0) attachments.
+      tombstone: Purge the JSON bodies of old, non-current revisions.
   description: |-
     This is the type of compaction to use. The type must be either:
     * `attachment` for cleaning up legacy (pre-3.0) attachments
@@ -168,7 +170,7 @@ include_doc:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: Include the body associated with the document.
 include_docs:
   name: include_docs
@@ -190,17 +192,16 @@ keys:
   in: query
   required: false
   schema:
-    type: array
-    items:
-      type: string
-  description: An array of document ID strings to filter by.
+    type: string
+  example: '["doc1","doc2"]'
+  description: A serialized JSON array of document ID strings to filter by.
 limit-result-rows:
   name: limit
   in: query
   required: false
   schema:
-    type: number
-  description: This limits the number of result rows returned. Using a value of `0` has the same effect as the value `1`.
+    type: integer
+  description: This limits the number of result rows returned. Using a value of `0` means no limit (equivalent to omitting `limit`).
 log-level:
   name: logLevel
   in: query
@@ -241,7 +242,7 @@ offline:
   in: query
   required: false
   schema:
-    type: string
+    type: boolean
   description: 'If true, the OpenID Connect provider is requested to confirm with the user the permissions requested and refresh the OIDC token. To do this, access_type=offline and prompt=consent is set on the redirection link.'
 oidc-code:
   name: code
@@ -276,10 +277,9 @@ open_revs:
   in: query
   required: false
   schema:
-    type: array
-    items:
-      type: string
-  description: 'Option to fetch specified revisions of the document. The value can be all to fetch all leaf revisions or an array of revision numbers (i.e. open_revs=["rev1", "rev2"]). Only leaf revision bodies that haven''t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
+    type: string
+  example: '["1-abc","2-def"]'
+  description: 'Option to fetch specified revisions of the document. The value can be `all` to fetch all leaf revisions, or a serialized JSON array of revision IDs (i.e. `open_revs=["1-abc", "2-def"]`). Only leaf revision bodies that haven''t been pruned are guaranteed to be returned. If this option is specified the response will be in multipart format. Use the `Accept: application/json` request header to get the result as a JSON object.'
 pprof-seconds:
   name: seconds
   in: query
@@ -331,8 +331,8 @@ replicationid:
   required: true
   schema:
     type: string
-    minimum: 1
-    maximum: 160
+    minLength: 1
+    maxLength: 160
   description: What replication to target based on its replication ID.
 replicator2:
   name: replicator2
@@ -354,10 +354,9 @@ revs_from:
   in: query
   required: false
   schema:
-    type: array
-    items:
-      type: string
-  description: 'Trim the revision history to stop at the first revision in the provided list. If no match is found, the revisions will be trimmed to the `revs_limit`.'
+    type: string
+  example: '["1-abc"]'
+  description: 'Trim the revision history to stop at the first revision in the provided serialized JSON array of revision IDs. If no match is found, the revisions will be trimmed to the `revs_limit`.'
 revs_limit:
   name: revs_limit
   in: query
@@ -494,6 +493,7 @@ stale:
     enum:
       - ok
       - update_after
+      - "false"
 key:
   name: key
   in: query
