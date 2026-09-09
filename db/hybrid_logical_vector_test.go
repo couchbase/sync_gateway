@@ -581,8 +581,7 @@ func TestRestampVersionCASSkipsConcurrentWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = collection.restampVersionCAS(ctx, docID, doc, casOfFirstWrite)
-	require.Error(t, err, "a superseded write must not be re-stamped")
-	require.True(t, isSupersededWriteError(err), "the re-stamp has to fail in a way correctVersionAheadOfCAS skips on, got %v", err)
+	require.ErrorIs(t, err, base.ErrUpdateCancel, "the re-stamp has to fail in a way correctVersionAheadOfCAS skips on")
 
 	_, _, casAfter := getSyncAndMou(t, collection, docID)
 	require.Equal(t, concurrentDoc.Cas, casAfter, "the concurrent write must be left untouched")

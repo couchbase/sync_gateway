@@ -3355,7 +3355,7 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 
 	cas2, err := db.restampVersionCAS(ctx, key, doc, casOut)
 	if err != nil {
-		if isSupersededWriteError(err) {
+		if errors.Is(err, base.ErrUpdateCancel) {
 			// A concurrent writer beat us to it; it's that writer's responsibility to satisfy the invariant.
 			base.DebugfCtx(ctx, base.KeyVV, "Skipping CAS re-stamp for doc %q due to our generated version %d ahead of CAS %d: concurrent update won ahead of re-stamp", base.UD(doc.ID), doc.HLV.Version, casOut)
 			return doc
@@ -3378,13 +3378,6 @@ func (db *DatabaseCollectionWithUser) correctVersionAheadOfCAS(ctx context.Conte
 	}
 	base.InfofCtx(ctx, base.KeyVV, "Re-stamped CAS for doc %q from %d to %d so generated version %d <= CAS", base.UD(doc.ID), casOut, cas2, doc.HLV.Version)
 	return doc
-}
-
-// isSupersededWriteError reports whether err means the write a correction was asked to apply to has already
-// been superseded by a concurrent write. The correction applies to that one write only, so it is skipped and
-// satisfying the invariant becomes the concurrent writer's responsibility.
-func isSupersededWriteError(err error) bool {
-	return errors.Is(err, base.ErrUpdateCancel) || base.IsCasMismatch(err)
 }
 
 // restampVersionCAS re-persists the document's _sync and _vv xattrs so the server assigns a fresh CAS,
