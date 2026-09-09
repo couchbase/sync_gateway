@@ -33,7 +33,7 @@ def testSummary() {
 // (insertion order preserved, so pass a LinkedHashMap / map literal), the JUnit test summary, and
 // a trailing link.
 def slackMessage(String title, String status, String link, Map details = [:]) {
-    def emoji = status == 'passed' ? ':white_check_mark:' : ':x:'
+    def emoji = ['passed': ':white_check_mark:', 'aborted': ':no_entry_sign:'].get(status, ':x:')
     def lines = ["${emoji} *${title} ${status}* — ${currentBuild.fullDisplayName}"]
     if (details) {
         lines << ''
@@ -61,6 +61,29 @@ def refLink(String ref) {
     return "<https://github.com/couchbase/sync_gateway/commit/${ref}|${ref}>"
 }
 
+// Formats a commit SHA as a Slack link to its GitHub commit page, showing the short SHA as the
+// link text. Returns 'n/a' if commit is null/empty (e.g. GIT_COMMIT wasn't captured).
+def githubCommitLink(String commit) {
+    if (!commit) {
+        return 'n/a'
+    }
+    return "<https://github.com/couchbase/sync_gateway/commit/${commit}|${commit.take(8)}>"
+}
+
+// Looks for a CBG-<digits> ticket reference (e.g. from a branch name like 'torcolvin/CBG-1234-fix')
+// and formats it as a Slack link to the corresponding Jira issue. Returns null if no match is found.
+def jiraLinkForBranch(String branch) {
+    if (!branch) {
+        return null
+    }
+    def matcher = (branch =~ /(?i)CBG-(\d+)/)
+    if (!matcher.find()) {
+        return null
+    }
+    def ticket = "CBG-${matcher.group(1)}"
+    return "<https://jira.issues.couchbase.com/browse/${ticket}|${ticket}>"
+}
+
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
 // .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,
@@ -83,6 +106,19 @@ def slackUserIdForBuild() {
         return null
     }
     return slackUserId
+}
+
+// Returns true if this build was both started by a user and then interrupted by a user - i.e. somebody
+// kicked off an adhoc run and cancelled it themselves, so there is nobody who needs telling. An abort with
+// any other cause (agent lost, timeout, an automated build cancelled by the system) returns false, since
+// nobody chose that and it's worth reporting.
+def isSelfCancelledAdhocBuild() {
+    if (!currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')) {
+        return false
+    }
+    return currentBuild.rawBuild.getActions(jenkins.model.InterruptedBuildAction).any { action ->
+        action.causes.any { it instanceof jenkins.model.CauseOfInterruption.UserInterruption }
+    }
 }
 
 // Returns true if this build is for a pull request, which Jenkins signals by setting CHANGE_ID.

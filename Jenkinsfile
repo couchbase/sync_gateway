@@ -199,7 +199,7 @@ pipeline {
                                 echo 'Queueing Integration test for branch "main" ...'
                                 // Queues up an async integration test run using default build params (main branch),
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'MainIntegration', quietPeriod: 3600, wait: false
+                                build job: 'MainIntegration-Pipeline', quietPeriod: 3600, wait: false
 
                                 echo 'Queueing E2E test runs (rosmar/cbs) for branch "main" ...'
                                 script {

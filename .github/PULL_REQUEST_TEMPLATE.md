@@ -11,8 +11,8 @@ Describe your PR here...
 - [ ] Link upstream PRs
 - [ ] Update Go module dependencies when merged
 
-## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration/build?delay=0sec)
-- [ ] https://jenkins.sgwdev.com/job/SyncGatewayIntegration/0000/
+## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/build?delay=0sec)
+- [ ] https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/0000/
 
 <!--
 Automated review runs on every non-draft PR raised from this repo (forks are not reviewed automatically).
