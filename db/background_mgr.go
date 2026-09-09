@@ -314,28 +314,13 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	}
 
 	if b.mode() == backgroundManagerModeSingleNode {
-		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
-		go func(terminator *base.SafeTerminator) {
-			defer b.backgroundManagerStatusUpdateWaitGroup.Done()
-			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					err := b.UpdateSingleNodeClusterAwareStatus(ctx)
-					if err != nil {
-						base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
-					}
-				case <-terminator.Done():
-					ticker.Stop()
-					return
-				}
-			}
-		}(b.terminator)
-
+		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
+			b.startSingleNodeStatusUpdater(ctx, b.terminator)
+		})
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
-			b.startPollingMultiNodeStatus(ctx, b.terminator)
+			b.startMultiNodeStatusUpdater(ctx, b.terminator)
 		})
 	}
 	go func() {
@@ -413,21 +398,9 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 		b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
 
+		// TODO: put this in backgroundManagerStatusUpdateWaitGroup so it doesn't outlive a run
 		go func(terminator *base.SafeTerminator) {
-			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					err = b.UpdateHeartbeatDocClusterAware(ctx)
-					if err != nil {
-						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
-						b.SetError(err)
-					}
-				case <-terminator.Done():
-					ticker.Stop()
-					return
-				}
-			}
+			b.startHeartbeatWriter(ctx, terminator)
 		}(b.terminator)
 
 		b.setRunState(BackgroundProcessStateRunning)
@@ -869,10 +842,45 @@ func (b *BackgroundManager[O]) UpdateHeartbeatDocClusterAware(ctx context.Contex
 	return nil
 }
 
-// startPollingMultiNodeStatus starts a loop which polls the status document for changes. If the status document
+// startHeartbeatWriter starts a loop of writing a heartbeat document until the terminator is closed.
+func (b *BackgroundManager[O]) startHeartbeatWriter(ctx context.Context, terminator *base.SafeTerminator) {
+	ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			err := b.UpdateHeartbeatDocClusterAware(ctx)
+			if err != nil {
+				base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
+				b.SetError(err)
+				return
+			}
+		case <-terminator.Done():
+			return
+		}
+	}
+}
+
+// startSingleNodeStatusUpdater writes the status document in a loop until terminator is closed.
+func (b *BackgroundManager[O]) startSingleNodeStatusUpdater(ctx context.Context, terminator *base.SafeTerminator) {
+	ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			err := b.UpdateSingleNodeClusterAwareStatus(ctx)
+			if err != nil {
+				base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
+			}
+		case <-terminator.Done():
+			return
+		}
+	}
+}
+
+// startMultiNodeStatusUpdater starts a loop which polls the status document for changes and writes the local status to
+// the bucket. If the status document
 // indicates that the process should stop, then this will trigger a stop of the local process. This is used for
 // multi-node cluster aware background managers where we want all nodes to stop if any node triggers a stop.
-func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, terminator *base.SafeTerminator) {
+func (b *BackgroundManager[O]) startMultiNodeStatusUpdater(ctx context.Context, terminator *base.SafeTerminator) {
 	ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 	for {
 		select {
