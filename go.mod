@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.2
 	github.com/KimMachineGun/automemlimit v1.0.0
 	github.com/coder/websocket v1.8.14
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/couchbase/cbgt v1.4.15-0.20260520122852-6e34ff79a0e6
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
@@ -19,7 +19,7 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20260814160154-fdadaf72889b
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.18
@@ -28,7 +28,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.70.1
+	github.com/prometheus/common v0.71.0
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20260131233133-1193a855cc76
