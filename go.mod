@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.2
 	github.com/KimMachineGun/automemlimit v1.0.0
 	github.com/coder/websocket v1.8.14
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/couchbase/cbgt v1.4.15-0.20260520122852-6e34ff79a0e6
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
@@ -19,26 +19,26 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20260814160154-fdadaf72889b
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.18
 	github.com/json-iterator/go v1.1.12
-	github.com/kardianos/service v1.2.2
+	github.com/kardianos/service v1.3.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.70.0
+	github.com/prometheus/common v0.71.0
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23
 	github.com/robertkrimen/otto v0.0.0-20211024170158-b87d35c0b86f
 	github.com/samuel/go-metrics v0.0.0-20260131233133-1193a855cc76
 	github.com/shirou/gopsutil/v4 v4.26.8
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/crypto v0.55.0
-	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597
-	golang.org/x/net v0.58.0
-	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
+	golang.org/x/net v0.59.0
+	golang.org/x/oauth2 v0.37.0
+	golang.org/x/sync v0.23.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
@@ -70,7 +70,7 @@ require (
 	github.com/google/pprof v0.0.0-20260709232956-b9395ee17fa0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/klauspost/compress v1.19.0 // indirect
+	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260627054121-477a66015f15 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -97,13 +97,13 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/mod v0.39.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/time v0.16.0 // indirect
+	golang.org/x/tools v0.50.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260727163830-6c54dddc4772 // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
