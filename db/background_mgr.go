@@ -178,20 +178,6 @@ type BackgroundManagerProcessI[O any] interface {
 	ResetStatus()
 }
 
-// dcpCheckpointPurger is implemented by BackgroundManager processes that persist DCP checkpoints, so
-// the manager can clean them up once a run completes successfully. Processes with no DCP feed
-// (tombstone compaction, async index init, metadata migration) simply do not implement it.
-//
-// This belongs on the manager rather than on the DCP client: GoCBDCPClient purges one-shot feeds
-// implicitly in deactivateVbucket, but RosmarDCPClient and the cbgt/sharded path used by distributed
-// resync do not. Without this, whether a completed run cleans up depends on which client it happened
-// to use rather than on whether the task actually succeeded.
-type dcpCheckpointPurger interface {
-	// purgeCompletedCheckpoints removes the DCP checkpoints belonging to the run that has just
-	// completed.
-	purgeCompletedCheckpoints(ctx context.Context) error
-}
-
 // StoppableBackgroundManager allows stopping of the generic background managers.
 type StoppableBackgroundManager interface {
 	GetName() string
