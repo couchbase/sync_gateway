@@ -1625,6 +1625,10 @@ func TestInvalidRevTreePullRenamedRevReplacementOrNoRev(t *testing.T) {
 					_, found := btcRunner.GetVersion(client.id, docID, repairedVersion)
 					require.False(t, found, "3-def should not have arrived on the pull that skipped 2-def")
 
+					// the next pull is one-shot too, so it only carries the repair once the change cache
+					// has caught up with the sequence the repair allocated
+					rt.WaitForPendingChanges()
+
 					btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Continuous: false})
 					btcRunner.WaitForVersion(client.id, docID, repairedVersion)
 				}
