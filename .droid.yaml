@@ -28,5 +28,5 @@ review:
 
   guidelines:
     - path: "*"
-      guideline: "Follow our copilot-instructions.md style guide."
-      context_document_path: ".github/copilot-instructions.md"
+      guideline: "Follow our AGENTS.md style guide."
+      context_document_path: "AGENTS.md"
