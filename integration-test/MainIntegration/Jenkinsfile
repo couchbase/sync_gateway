@@ -19,15 +19,10 @@ def slackDetails(slackUtils) {
 // Sends the build result to Slack. slackUtils.groovy is fetched in the Checkout stage, so it can be absent
 // if the build failed before that point - fall back to a bare message rather than throwing out of the post
 // block, which would leave the failure unreported entirely.
-// TODO(pre-merge): while the switch-to-pipeline branch is unmerged, every notification goes to a single
-// Slack DM instead of #syncgatewaybot / #syncgatewaybot-alerts, so test runs of this new job don't spam the
-// channels. Before merging, restore channel 'syncgatewaybot' for 'passed', and slackUtils.slackSendFailure()
-// (which DMs the triggering user or escalates to #syncgatewaybot-alerts) for 'unstable'/'build failure'.
 def notifySlack(String status) {
-    def channel = 'U03D1N4373N' // torcolvin, per .github/slack_usernames.yaml
     def color = ['passed': 'good', 'aborted': 'warning'].get(status, 'danger')
     if (!fileExists('integration-test/slackUtils.groovy')) {
-        slackSend(channel: channel, color: color, message: ":x: *MainIntegration ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
+        slackSend(channel: 'syncgatewaybot', color: color, message: ":x: *MainIntegration ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
         return
     }
     def slackUtils = load('integration-test/slackUtils.groovy')
@@ -35,7 +30,13 @@ def notifySlack(String status) {
         echo('Build was started and cancelled by the same user - skipping Slack notification')
         return
     }
-    slackSend(channel: channel, color: color, message: slackUtils.slackMessage('MainIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
+    // Only a genuine failure goes through slackSendFailure(), which DMs the triggering user or escalates
+    // to #syncgatewaybot-alerts. An abort nobody chose is still worth recording, but not escalating.
+    if (status == 'unstable' || status == 'build failure') {
+        slackUtils.slackSendFailure('MainIntegration', status, env.BUILD_URL, slackDetails(slackUtils))
+        return
+    }
+    slackSend(channel: 'syncgatewaybot', color: color, message: slackUtils.slackMessage('MainIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
 }
 
 pipeline {
@@ -55,13 +56,6 @@ pipeline {
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
         string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness.')
-    }
-
-    // TODO(pre-merge): restricts the run to the auth package so this new pipeline can be smoke-tested in
-    // minutes rather than hours. Delete this whole environment block before merging - the full run needs
-    // TARGET_PACKAGE to fall back to "..." (all packages) inside jenkins-integration-build.sh's -m block.
-    environment {
-        TARGET_PACKAGE = 'auth'
     }
 
     stages {
@@ -84,11 +78,7 @@ pipeline {
                 // slackUtils.groovy may be stale or missing helpers the post blocks below need - always
                 // load the current one from main instead (same fix as integration-test/e2e/Jenkinsfile
                 // uses for the same reason).
-                // TODO(pre-merge): temporarily pointed at the switch-to-pipeline branch so test runs pick
-                // up its slackUtils.groovy. This MUST be reverted to main before merging: `curl -sSf` exits
-                // non-zero on a 404, so once the branch is deleted this step - and therefore every build of
-                // this job - fails in Checkout.
-                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/switch-to-pipeline/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
+                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
             }
         }
         stage('Integration Tests') {

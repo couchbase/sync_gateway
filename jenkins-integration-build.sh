@@ -15,9 +15,7 @@ set -e # Abort on errors
 if [ "${1:-}" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
-    # TODO(pre-merge): TARGET_PACKAGE is honoured if already set, so the MainIntegration pipeline can be
-    # smoke-tested against a single package. Restore the unconditional TARGET_PACKAGE="..." before merging.
-    TARGET_PACKAGE="${TARGET_PACKAGE:-...}"
+    TARGET_PACKAGE="..."
     TARGET_TEST="ALL"
     RUN_WALRUS="true"
     DETECT_RACES="false"
