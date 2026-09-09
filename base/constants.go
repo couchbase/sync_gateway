@@ -94,6 +94,9 @@ const (
 	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
 	DefaultHttpIdleConnTimeout = 90000 * time.Millisecond
 
+	// How long to wait for response headers once a request has been written.
+	DefaultHttpResponseHeaderTimeout = 30 * time.Second
+
 	// Number of kv connections (pipelines) per Couchbase Server node
 	DefaultGocbKvPoolSize = 2
 
