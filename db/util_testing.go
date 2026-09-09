@@ -1479,19 +1479,31 @@ func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandl
 	return qh, nil
 }
 
+// getChangesInChannelFromQuery serves seeded entries, applying the same filters the real
+// handler does. The sequence bounds match DatabaseCollection.QueryChannels: startSeq and endSeq
+// are both INCLUSIVE (the N1QL statement uses BETWEEN [$channelName, $startSeq] AND
+// [$channelName, $endSeq], and the views path uses startkey/endkey with the default
+// inclusive_end), and endSeq of 0 means unbounded - query.go substitutes N1QLMaxInt64 for it.
+// The bounds are applied before the limit, so entries outside the range do not consume it.
 func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	queryEntries := make(LogEntries, 0)
 	qh.lock.RLock()
 	for _, entry := range qh.entries {
-		_, ok := entry.Channels[channel]
-		if ok {
-			if activeOnly && !entry.IsActive() {
-				continue
-			}
-			queryEntries = append(queryEntries, entry)
-			if limit > 0 && len(queryEntries) >= limit {
-				break
-			}
+		if _, ok := entry.Channels[channel]; !ok {
+			continue
+		}
+		if entry.Sequence < startSeq {
+			continue
+		}
+		if endSeq != 0 && entry.Sequence > endSeq {
+			continue
+		}
+		if activeOnly && !entry.IsActive() {
+			continue
+		}
+		queryEntries = append(queryEntries, entry)
+		if limit > 0 && len(queryEntries) >= limit {
+			break
 		}
 	}
 	qh.lock.RUnlock()
