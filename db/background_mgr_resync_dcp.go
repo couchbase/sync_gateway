@@ -159,21 +159,12 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 	// Otherwise, we should resume with the resync ID, and the previous stats specified in the doc.
 	var resetMsg string // an optional message about why we're resetting
 	var statusDoc ResyncManagerStatusDocDCP
-	// Unmarshal ahead of the guard chain rather than inside it, so statusDoc.ResyncID is populated on
-	// every path that falls through to the purge below - including an explicit reset, which previously
-	// short-circuited before the unmarshal and so never purged the abandoned run's checkpoints.
-	var unmarshalErr error
-	if clusterStatus != nil {
-		unmarshalErr = base.JSONUnmarshal(clusterStatus, &statusDoc)
-	}
 	if clusterStatus == nil {
 		resetMsg = "no previous run found"
-	} else if unmarshalErr != nil {
-		resetMsg = "failed to unmarshal cluster status"
-	} else if options.Reset && statusDoc.State != BackgroundProcessStateRunning {
-		// A Running status doc means this Start is a node joining an in-flight run, not an operator
-		// abandoning it - resuming is correct, and purging its checkpoints would break it.
+	} else if options.Reset {
 		resetMsg = "reset option requested"
+	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
+		resetMsg = "failed to unmarshal cluster status"
 	} else if statusDoc.State == BackgroundProcessStateCompleted {
 		resetMsg = "previous run completed"
 	} else if !base.SlicesEqualIgnoreOrder(r.collectionIDs, statusDoc.CollectionIDs) {
@@ -228,11 +219,6 @@ func totalResyncDocs(ctx context.Context, collections DatabaseCollections) (uint
 		total += count
 	}
 	return total, nil
-}
-
-// purgeCompletedCheckpoints implements dcpCheckpointPurger.
-func (r *ResyncManagerDCP) purgeCompletedCheckpoints(ctx context.Context) error {
-	return r.purgeCheckpoints(ctx, r.ResyncID)
 }
 
 // purgeCheckpoints removes checkpoints for a given resync run.
@@ -487,6 +473,15 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
 			return err
+		}
+
+		// The sharded feed has no client-level purge, unlike the gocb and rosmar clients, so a completed
+		// distributed run has to clean up its own checkpoints. This runs after shutdown, so cbgt has
+		// stopped writing them.
+		if r.Distributed {
+			if purgeErr := r.purgeCheckpoints(ctx, r.ResyncID); purgeErr != nil {
+				base.WarnfCtx(ctx, "Failed to purge checkpoints after completing resync %q: %v, these will be abandoned and unused", r.ResyncID, purgeErr)
+			}
 		}
 
 		if err := r.invalidatePrincipals(ctx, db, regenerateSequences); err != nil {
