@@ -62,7 +62,7 @@ func startChangesFeed(ctx context.Context, t *testing.T, collectionWithUser *db.
 	feedCollection := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: collectionWithUser.DatabaseCollection,
 	}
-	feedCollection.SetDatabaseCollectionUser(collectionWithUser.User())
+	feedCollection.SetDatabaseCollectionUserForTest(t, collectionWithUser.User())
 	options := db.ChangesOptions{
 		Since:      db.SequenceID{Seq: 0},
 		ChangesCtx: feedCtx,
@@ -116,7 +116,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
 	numEntriesInLateFeed := func() int64 { return database.DbStats.Cache().NumEntriesInLateFeed.Value() }
@@ -201,7 +201,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
 	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
@@ -333,7 +333,7 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
 	feed1 := startChangesFeed(ctx, t, collectionWithUser) // healthy: drained after every write
@@ -589,7 +589,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
 	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
@@ -705,7 +705,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
 	numEntriesInLateFeed := func() int64 { return database.DbStats.Cache().NumEntriesInLateFeed.Value() }
@@ -1029,7 +1029,7 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // the feed inherits this user's ABC access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // the feed inherits this user's ABC access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 	cCache := database.ChangeCacheForTest(t)
 
@@ -1200,7 +1200,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user) // the feed inherits this user's ABC access via the wildcard, as a real client would
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // the feed inherits this user's ABC access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 	cCache := database.ChangeCacheForTest(t)
 
@@ -1337,7 +1337,7 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collectionWithUser.SetDatabaseCollectionUser(user)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user)
 	collection := collectionWithUser.DatabaseCollection
 	cCache := database.ChangeCacheForTest(t)
 

@@ -76,7 +76,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 
 			collUser, collUserErr := auth.GetUser("test")
 			require.NoError(t, collUserErr)
-			collection.SetDatabaseCollectionUser(collUser)
+			collection.SetDatabaseCollectionUserForTest(t, collUser)
 
 			ch := db.GetChangesForTest(t, collection, testCase.accessChans, db.GetChangesOptionsWithZeroSeq(t))
 			require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	// Check the _changes feed:
 	collUser, collUserErr := authenticator.GetUser("naomi")
 	require.NoError(t, collUserErr)
-	collection.SetDatabaseCollectionUser(collUser)
+	collection.SetDatabaseCollectionUserForTest(t, collUser)
 	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 	require.Len(t, changes, 3)
@@ -210,7 +210,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	collUser, collUserErr := authenticator.GetUser("alice")
 	require.NoError(t, collUserErr)
-	collection.SetDatabaseCollectionUser(collUser)
+	collection.SetDatabaseCollectionUserForTest(t, collUser)
 	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 	assert.Len(t, changes, 1)
@@ -286,7 +286,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	collUser, _ := authenticator.GetUser("alice")
-	collection.SetDatabaseCollectionUser(collUser)
+	collection.SetDatabaseCollectionUserForTest(t, collUser)
 
 	// Make channel active
 	changesOpts := db.GetChangesOptionsWithZeroSeq(t)
@@ -332,7 +332,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	collUser, collUserErr := authenticator.GetUser("alice")
 	require.NoError(t, collUserErr)
-	collection.SetDatabaseCollectionUser(collUser)
+	collection.SetDatabaseCollectionUserForTest(t, collUser)
 	changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 	printChanges(changes)
 

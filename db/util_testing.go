@@ -1315,7 +1315,7 @@ func revTreeParents(tree RevTree) map[string]string {
 	return parents
 }
 
-// getChanges is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
+// GetChangesForTest is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
 func GetChangesForTest(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
 	require.NotNil(t, options.ChangesCtx)
 	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
@@ -1385,8 +1385,6 @@ func SetupDBWithChannelCacheSettings(t *testing.T, cacheOptions CacheOptions) (c
 }
 
 func ShortWaitCache() CacheOptions {
-
-	// cacheOptions := DefaultCacheOptions()
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
 	cacheOptions.CachePendingSeqMaxNum = 50
@@ -1419,7 +1417,6 @@ func MakeTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
 	}
 }
 
-// Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
 // MakeDeletedTestLogEntry returns a tombstoned LogEntry for the given sequence.
 func MakeDeletedTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
 	entry := MakeTestLogEntry(seq, docid, revid)
@@ -1427,6 +1424,7 @@ func MakeDeletedTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
 	return entry
 }
 
+// MakeTestLogEntryForChannels Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
 func MakeTestLogEntryForChannels(seq int, channelNames []string) *LogEntry {
 	channelMap := make(channels.ChannelMap)
 	for _, channelName := range channelNames {
@@ -1558,17 +1556,11 @@ func (ce *ChangeEntry) IsPrincipalDoc() bool {
 	return ce.principalDoc
 }
 
-// SetDatabaseCollectionUser swaps the user a collection resolves channel access against, so a
+// SetDatabaseCollectionUserForTest swaps the user a collection resolves channel access against, so a
 // test can re-read the changes feed as a different principal without rebuilding the collection.
-func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUser(user auth.User) {
+func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUserForTest(_ *testing.T, user auth.User) {
 	c.user = user
 }
-
-// The accessors below exist so db/changecachetest can drive the change cache, the skipped
-// sequence list and the late-log surface from outside package db. They are thin pass-throughs:
-// each does exactly what the corresponding test line did before the tests were relocated, with
-// no added locking, retries or assertions. Receivers on unexported types are legal here because
-// this file is in package db.
 
 // NewChangeCacheForTest returns an uninitialised change cache, as tests that build their own
 // cache rather than using a database's do. Call Init and Start on the result.
@@ -1695,11 +1687,6 @@ func CachingFeedCollectionsForTest(_ testing.TB, metadataStore base.DataStore, s
 
 // DefaultWaitForSequence is the feed wait time used when a test does not supply its own.
 const DefaultWaitForSequence = defaultWaitForSequence
-
-// The accessors below serve db/channelcachetest, which drives the channel cache and the single
-// channel cache from outside package db. Same conventions as the change cache set above: thin
-// pass-throughs, a leading testing.TB to mark them test-only, and a ForTest suffix so the whole
-// surface is greppable.
 
 // NewChannelCacheForTest builds a channel cache directly, bypassing the database that would
 // normally own it.

@@ -466,7 +466,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 	collUser, err := authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	collectionWithUser.SetDatabaseCollectionUser(collUser)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, collUser)
 	changes := db.GetChangesForTest(t, collectionWithUser, base.SetOf("*"), db.GetChangesOptionsWithZeroSeq(t))
 
 	collectionID := collection.GetCollectionID()
@@ -645,7 +645,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	database.WaitForSequence(t, 6)
 	collUser, err := authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	dbCollection.SetDatabaseCollectionUser(collUser)
+	dbCollection.SetDatabaseCollectionUserForTest(t, collUser)
 
 	// Start changes feed
 
@@ -1145,7 +1145,7 @@ func TestChannelCacheSize(t *testing.T) {
 	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 	collUser, err := authenticator.GetUser("naomi")
 	require.NoError(t, err)
-	collectionWithUser.SetDatabaseCollectionUser(collUser)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, collUser)
 	changes := db.GetChangesForTest(t, collectionWithUser, base.SetOf("ABC"), db.GetChangesOptionsWithZeroSeq(t))
 	assert.Len(t, changes, 750)
 
