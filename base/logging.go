@@ -419,6 +419,10 @@ func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
 // AssertLogContains asserts that the logs produced by function f contain string s.
 func AssertLogContains(t *testing.T, s string, f func()) {
 	t.Helper()
+	// Flush before redirecting, so that already-collated logs go to the real output rather than
+	// into the buffer we are about to capture into.
+	FlushLogBuffers()
+
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
@@ -426,8 +430,8 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 	// Call the given function
 	f()
 
-	FlushLogBuffers()
 	consoleLogger.Load().FlushBufferToLog()
+	FlushLogBuffers()
 	// do not reset output in defer, since we are accessing b.String() after
 	consoleLogger.Load().logger.SetOutput(os.Stderr)
 	assert.Contains(t, b.String(), s)
@@ -436,6 +440,10 @@ func AssertLogContains(t *testing.T, s string, f func()) {
 // AssertLogNotContains asserts that the logs produced by function f do not contain string s.
 func AssertLogNotContains(t *testing.T, s string, f func()) {
 	t.Helper()
+	// Flush before redirecting, so that already-collated logs go to the real output rather than
+	// into the buffer we are about to capture into.
+	FlushLogBuffers()
+
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
@@ -443,8 +451,8 @@ func AssertLogNotContains(t *testing.T, s string, f func()) {
 	// Call the given function
 	f()
 
-	FlushLogBuffers()
 	consoleLogger.Load().FlushBufferToLog()
+	FlushLogBuffers()
 	// do not reset output in defer, since we are accessing b.String() after
 	consoleLogger.Load().logger.SetOutput(os.Stderr)
 	assert.NotContains(t, b.String(), s)
@@ -452,6 +460,10 @@ func AssertLogNotContains(t *testing.T, s string, f func()) {
 
 // AuditLogContents returns that the audit logs produced by function f.
 func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
+	// Flush before redirecting, so that already-collated events go to the real output rather than
+	// into the buffer we are about to capture into.
+	FlushLogBuffers()
+
 	// Temporarily override logger output
 	b := &bytes.Buffer{}
 	mw := io.MultiWriter(b, os.Stderr)
@@ -460,8 +472,10 @@ func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
 	// Call the given function
 	f(t)
 
-	FlushLogBuffers()
+	// FlushBufferToLog feeds the memory logger's contents back through the collation buffer, so it
+	// has to happen before the flush that drains it.
 	auditLogger.Load().FlushBufferToLog()
+	FlushLogBuffers()
 	// do not reset output in defer, since we are accessing b.bytes()
 	auditLogger.Load().logger.SetOutput(os.Stderr)
 	return b.Bytes()

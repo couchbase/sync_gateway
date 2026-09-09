@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 )
 
 // ConsoleLogger is a file logger with a default output of stderr, and tunable log level/keys.
@@ -84,12 +83,11 @@ func NewConsoleLogger(ctx context.Context, shouldLogLocation bool, config *Conso
 
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
-		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
-		logger.flushChan = make(chan struct{}, 1)
-		logger.collateBufferWg = &sync.WaitGroup{}
+		logger.collateBuffer = make(chan collateEntry, *config.CollationBufferSize)
+		logger.workerDone = make(chan struct{})
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.closed, logger.workerDone, logger.collateBuffer, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
 	// We can only log the console log location itself when logging has previously been set up and is being re-initialized from a config.
@@ -113,8 +111,7 @@ func (l *ConsoleLogger) logf(format string, args ...any) {
 		return
 	}
 	if l.collateBuffer != nil {
-		l.collateBufferWg.Add(1)
-		l.collateBuffer <- fmt.Sprintf(format, args...)
+		l.collate(fmt.Sprintf(format, args...))
 	} else {
 		l.logger.Printf(format, args...)
 	}

@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 const standardMessage = "foobar"
 
 // captureConsoleLogs returns the console output produced by f, logged at the given level and keys.
-func captureConsoleLogs(t testing.TB, logLevel LogLevel, logKeys []LogKey, f func()) string {
+func captureConsoleLogs(t testing.TB, logLevel LogLevel, logKeys []LogKey, f func()) (logs string) {
 	t.Helper()
 	b := bytes.Buffer{}
 
@@ -34,6 +35,9 @@ func captureConsoleLogs(t testing.TB, logLevel LogLevel, logKeys []LogKey, f fun
 		ColorEnabled: Ptr(false),
 		FileLoggerConfig: FileLoggerConfig{
 			Enabled: Ptr(true),
+			// pin the collation buffer on, so that the logger stays single-writer at any log level -
+			// init() leaves it off below LevelInfo, which would let f() race us on b
+			CollationBufferSize: Ptr(defaultConsoleLoggerCollateBufferSize),
 		},
 	}
 	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)
@@ -42,14 +46,20 @@ func captureConsoleLogs(t testing.TB, logLevel LogLevel, logKeys []LogKey, f fun
 
 	// Temporarily override logger output for the given function call
 	oldLogger := consoleLogger.Swap(tempLogger)
+	// Read the output in the defer, once the temp logger is stopped, so that a log from another
+	// goroutine cannot write to the buffer while we read it. Deferred so that a failure inside f
+	// still restores the logger and stops the collation worker.
 	defer func() {
 		consoleLogger.Store(oldLogger)
+		assert.NoError(t, tempLogger.Close())
+		logs = b.String()
 	}()
 
 	f()
 
 	FlushLogBuffers()
-	return b.String()
+
+	return
 }
 
 // RequireLogIs asserts that the logs produced by function f contain string s.

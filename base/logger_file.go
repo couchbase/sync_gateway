@@ -20,7 +20,6 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -55,10 +54,9 @@ type FileLogger struct {
 	Enabled AtomicBool
 
 	// collateBuffer is used to store log entries to batch up multiple logs.
-	collateBuffer    chan string
-	collateBufferWg  *sync.WaitGroup
+	collateBuffer    chan collateEntry
 	closed           chan struct{}
-	flushChan        chan struct{}
+	workerDone       chan struct{} // workerDone is closed when the log collation worker has stopped
 	level            LogLevel
 	name             string
 	output           io.Writer
@@ -122,12 +120,11 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
-		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
-		logger.flushChan = make(chan struct{}, 1)
-		logger.collateBufferWg = &sync.WaitGroup{}
+		logger.collateBuffer = make(chan collateEntry, *config.CollationBufferSize)
+		logger.workerDone = make(chan struct{})
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.closed, logger.workerDone, logger.collateBuffer, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
@@ -160,9 +157,15 @@ func (l *FileLogger) Rotate() error {
 
 // Close cancels the log rotation rotation and the underlying file descriptor for the active log file.
 func (l *FileLogger) Close() error {
-	// cancelFunc will stop the log rotionation/deletion goroutine
-	// once all log rotation is done and log output is closed, shut down the logCollationWorker
-	defer close(l.closed)
+	// write out what is buffered, then shut down the logCollationWorker and wait for it to stop, so
+	// that nothing is written to the output after Close returns
+	l.flushCollateBuffer()
+	if l.closed != nil {
+		close(l.closed)
+	}
+	if l.workerDone != nil {
+		<-l.workerDone
+	}
 	// cancel the log rotation goroutine and wait for it to stop
 	if l.cancelFunc != nil {
 		l.cancelFunc(errors.New("FileLogger closed"))
@@ -194,8 +197,7 @@ func (l *FileLogger) logf(format string, args ...any) {
 		return
 	}
 	if l.collateBuffer != nil {
-		l.collateBufferWg.Add(1)
-		l.collateBuffer <- fmt.Sprintf(format, args...)
+		l.collate(fmt.Sprintf(format, args...))
 	} else {
 		l.logger.Printf(format, args...)
 	}
@@ -208,11 +210,54 @@ func (l *FileLogger) log(msg string) {
 		return
 	}
 	if l.collateBuffer != nil {
-		l.collateBufferWg.Add(1)
-		l.collateBuffer <- msg
+		l.collate(msg)
 	} else {
 		l.logger.Print(msg)
 	}
+}
+
+// collate queues the message for the log collation worker, discarding it if the logger has been
+// closed, so that a straggling log cannot block on a buffer that nothing is draining any more.
+func (l *FileLogger) collate(msg string) {
+	select {
+	case l.collateBuffer <- collateEntry{msg: msg}:
+	case <-l.closed:
+	}
+}
+
+// requestFlush queues a request for the collation worker to write out everything queued ahead of it,
+// returning the channel that the worker closes once the write has happened. Returns nil if there is
+// nothing to wait for.
+func (l *FileLogger) requestFlush() chan struct{} {
+	if l.collateBuffer == nil {
+		return nil
+	}
+	flushed := make(chan struct{})
+	// The send blocks whilst the buffer is full, and the worker that would drain it stops as soon as
+	// the logger is closed, so give up on close as well.
+	select {
+	case l.collateBuffer <- collateEntry{flushed: flushed}:
+		return flushed
+	case <-l.closed:
+		return nil
+	}
+}
+
+// awaitFlush waits for a flush requested by requestFlush to have been written out.
+func (l *FileLogger) awaitFlush(flushed chan struct{}) {
+	if flushed == nil {
+		return
+	}
+	select {
+	case <-flushed:
+	case <-l.closed:
+	}
+}
+
+// flushCollateBuffer asks the collation worker to write out everything queued ahead of the request,
+// and waits until it has done so.
+func (l *FileLogger) flushCollateBuffer() {
+	l.awaitFlush(l.requestFlush())
 }
 
 // conditionalPrintf will log the message if the logger is enabled.

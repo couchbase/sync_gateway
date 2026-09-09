@@ -6,8 +6,6 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-//go:build !race
-
 package rest
 
 import (
@@ -1617,32 +1615,7 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 		PersistentConfig: true,
 		SyncFn:           `function(doc) {channel(doc.channels);}`,
 		MutateStartupConfig: func(config *StartupConfig) {
-			config.Logging = base.LoggingConfig{
-				LogFilePath: tempdir,
-				Audit: &base.AuditLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled:             base.Ptr(true),
-						CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
-					},
-				},
-				Console: &base.ConsoleLoggerConfig{
-					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: base.Ptr(true),
-					},
-				},
-				Info: &base.FileLoggerConfig{
-					Enabled:             base.Ptr(false),
-					CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-				Debug: &base.FileLoggerConfig{
-					Enabled:             base.Ptr(false),
-					CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-				Trace: &base.FileLoggerConfig{
-					Enabled:             base.Ptr(false),
-					CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code
-				},
-			}
+			config.Logging = getAuditLoggingTestConfig(tempdir)
 			require.NoError(t, config.SetupAndValidateLogging(base.TestCtx(t)))
 		},
 	})
@@ -2104,14 +2077,13 @@ func requireDocChannelAuditEvent(t testing.TB, output []byte, eventID base.Audit
 		base.AuditEvents[eventID].Name, docID, countFound)
 }
 
-// getAuditLoggingTestConfig returns a logging config with audit enabled and other loggers configured without collation to avoid CBG-4129
+// getAuditLoggingTestConfig returns a logging config with audit enabled and the verbose loggers off.
 func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 	return base.LoggingConfig{
 		LogFilePath: tempdir,
 		Audit: &base.AuditLoggerConfig{
 			FileLoggerConfig: base.FileLoggerConfig{
-				Enabled:             base.Ptr(true),
-				CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+				Enabled: base.Ptr(true),
 			},
 		},
 		Console: &base.ConsoleLoggerConfig{
@@ -2120,16 +2092,13 @@ func getAuditLoggingTestConfig(tempdir string) base.LoggingConfig {
 			},
 		},
 		Info: &base.FileLoggerConfig{
-			Enabled:             base.Ptr(false),
-			CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			Enabled: base.Ptr(false),
 		},
 		Debug: &base.FileLoggerConfig{
-			Enabled:             base.Ptr(false),
-			CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			Enabled: base.Ptr(false),
 		},
 		Trace: &base.FileLoggerConfig{
-			Enabled:             base.Ptr(false),
-			CollationBufferSize: base.Ptr(0), // avoid data race in collation with FlushLogBuffers test code CBG-4129
+			Enabled: base.Ptr(false),
 		},
 	}
 }

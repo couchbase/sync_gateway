@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -241,6 +242,37 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 			consoleLogger.Load().LogLevel.Set(i)
 			AssertLogContains(t, LongVersionString, func() { LogSyncGatewayVersion(TestCtx(t)) })
 		})
+	}
+}
+
+// TestFlushLogBuffersConcurrentLogging ensures a flush can run while other goroutines are logging
+// into the same collation buffer.
+func TestFlushLogBuffersConcurrentLogging(t *testing.T) {
+	ctx := TestCtx(t)
+	stop := make(chan struct{})
+	var loggers sync.WaitGroup
+	for i := range 2 {
+		loggers.Add(1)
+		go func() {
+			defer loggers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					InfofCtx(ctx, KeyAll, "concurrent log %d", i)
+				}
+			}
+		}()
+	}
+	defer func() {
+		close(stop)
+		loggers.Wait()
+	}()
+
+	for range 200 {
+		logs := captureConsoleLogs(t, LevelInfo, []LogKey{KeyAll}, func() { InfofCtx(ctx, KeyAll, standardMessage) })
+		require.Contains(t, logs, standardMessage)
 	}
 }
 
