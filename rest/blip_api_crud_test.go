@@ -145,11 +145,12 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
+	// Expect two callbacks on the "changes" profile handler: one for the pushed rev, and one empty (body
+	// "null") request that the handler ignores. Count them before sending, since the handler can run as
+	// soon as subChanges is on the wire.
+	receivedChangesRequestWg.Add(2)
 	sent = bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
-	// Also expect the "changes" profile handler above to be called back again with an empty request that
-	// will be ignored since body will be "null" hence the incrementing for the wait group by 2
-	receivedChangesRequestWg.Add(2)
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
 
