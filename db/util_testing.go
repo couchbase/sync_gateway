@@ -1315,7 +1315,7 @@ func revTreeParents(tree RevTree) map[string]string {
 	return parents
 }
 
-// GetChangesForTest is a synchronous convenience function that returns all changes as a simple array. This will fail the test if an error is returned.
+// GetChangesForTest is a synchronous convenience function that returns all changes as a simple array.
 func GetChangesForTest(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
 	require.NotNil(t, options.ChangesCtx)
 	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
