@@ -1,0 +1,67 @@
+// Throwaway probe. Answers one question: can the github_ghcr_pat credential list the tags of the private
+// ghcr.io/cb-vanilla/server package, and what do those tags look like? Prints HTTP statuses and tag names
+// only - never the credential, only its length. Delete this file, its branch and its job once the tag
+// shapes are recorded in integration-test/SyncGatewayIntegrationWeekly/Jenkinsfile.
+
+// Runs nothing else on purpose: no child builds, no GitHub commit status, no Slack. It cannot disturb the
+// weekly sweep or the jobs it fans out to.
+
+pipeline {
+    agent { label 'very-lightweight-jobs-only' }
+
+    options {
+        skipDefaultCheckout()
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    stages {
+        stage('Probe GHCR') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+                    // No jq or python is assumed - the agent label only promises a shell.
+                    sh '''#!/bin/bash
+                        set -u
+
+                        echo "===== 1. scopes the PAT carries"
+                        curl -sS -o /dev/null -D - -H "Authorization: Bearer $GHCR_TOKEN" \\
+                            https://api.github.com/user | grep -iE '^(HTTP/|x-oauth-scopes)' || true
+
+                        echo "===== 2. registry token exchange"
+                        code=$(curl -sS -o ghcr-token.json -w '%{http_code}' -u "$GHCR_USER:$GHCR_TOKEN" \\
+                            "https://ghcr.io/token?service=ghcr.io&scope=repository:cb-vanilla/server:pull")
+                        echo "HTTP $code"
+                        BEARER=$(sed -e 's/.*"token":"//' -e 's/".*//' ghcr-token.json)
+                        rm -f ghcr-token.json
+                        echo "bearer token length: ${#BEARER}"
+
+                        echo "===== 3. registry tag listing"
+                        code=$(curl -sS -o tags.json -D tags.hdr -w '%{http_code}' \\
+                            -H "Authorization: Bearer $BEARER" \\
+                            "https://ghcr.io/v2/cb-vanilla/server/tags/list?n=100")
+                        echo "HTTP $code"
+                        grep -i '^link:' tags.hdr || echo "no Link header, so this is the only page"
+                        tr -d ' \\n' < tags.json | sed -e 's/.*"tags":\\[//' -e 's/\\].*//' |
+                            tr ',' '\\n' | tr -d '"' > tags.txt
+                        echo "tags on this page: $(grep -c . tags.txt)"
+                        echo "-- first 40 as returned"
+                        head -40 tags.txt
+                        echo "-- highest 5 of the bare x.y.z tags"
+                        grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' tags.txt | sort -V | tail -5
+                        echo "-- highest 5 of the enterprise-x.y.z tags"
+                        grep -E '^enterprise-[0-9]+\\.[0-9]+\\.[0-9]+$' tags.txt | sort -V | tail -5
+
+                        echo "===== 4. same question through the GitHub Packages REST API"
+                        code=$(curl -sS -o versions.json -w '%{http_code}' \\
+                            -H "Authorization: Bearer $GHCR_TOKEN" -H "Accept: application/vnd.github+json" \\
+                            "https://api.github.com/orgs/cb-vanilla/packages/container/server/versions?per_page=5")
+                        echo "HTTP $code"
+                        head -c 1500 versions.json
+                        echo
+                        rm -f tags.json tags.hdr tags.txt versions.json
+                    '''
+                }
+            }
+        }
+    }
+}
