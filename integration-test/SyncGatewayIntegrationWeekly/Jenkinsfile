@@ -11,7 +11,7 @@
 // by version rather than lexically, which matters as soon as a line reaches patch 10.
 def latestDockerHubTag(String line) {
     def tag = sh(returnStdout: true, script: '''#!/bin/bash
-        set -eu
+        set -euo pipefail
         curl -sSf 'https://hub.docker.com/v2/repositories/couchbase/server/tags?page_size=100&name=LINE.' |
             grep -o '"name":"[^"]*"' | cut -d'"' -f4 | grep -E "^LINE\\.[0-9]+$" | sort -V | tail -1
     '''.replace('LINE', line)).trim()
