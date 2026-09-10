@@ -1,7 +1,6 @@
-// Throwaway probe. Answers one question: can the github_ghcr_pat credential list the tags of the private
-// ghcr.io/cb-vanilla/server package, and what do those tags look like? Prints HTTP statuses and tag names
-// only - never the credential, only its length. Delete this file, its branch and its job once the tag
-// shapes are recorded in integration-test/SyncGatewayIntegrationWeekly/Jenkinsfile.
+// Throwaway probe. Second question: alongside the floating '<version>' tag, what is the newest
+// '<version>-<build number>' tag on each cb-vanilla release line, and do the two agree? Prints tags only,
+// never the credential. Delete this file, its branch and its job once the answer is recorded.
 
 // Runs nothing else on purpose: no child builds, no GitHub commit status, no Slack. It cannot disturb the
 // weekly sweep or the jobs it fans out to.
@@ -16,49 +15,32 @@ pipeline {
     }
 
     stages {
-        stage('Probe GHCR') {
+        stage('Probe GHCR builds') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
-                    // No jq or python is assumed - the agent label only promises a shell.
                     sh '''#!/bin/bash
-                        set -u
-
-                        echo "===== 1. scopes the PAT carries"
-                        curl -sS -o /dev/null -D - -H "Authorization: Bearer $GHCR_TOKEN" \\
-                            https://api.github.com/user | grep -iE '^(HTTP/|x-oauth-scopes)' || true
-
-                        echo "===== 2. registry token exchange"
-                        code=$(curl -sS -o ghcr-token.json -w '%{http_code}' -u "$GHCR_USER:$GHCR_TOKEN" \\
-                            "https://ghcr.io/token?service=ghcr.io&scope=repository:cb-vanilla/server:pull")
-                        echo "HTTP $code"
-                        BEARER=$(sed -e 's/.*"token":"//' -e 's/".*//' ghcr-token.json)
-                        rm -f ghcr-token.json
-                        echo "bearer token length: ${#BEARER}"
-
-                        echo "===== 3. registry tag listing"
-                        code=$(curl -sS -o tags.json -D tags.hdr -w '%{http_code}' \\
-                            -H "Authorization: Bearer $BEARER" \\
-                            "https://ghcr.io/v2/cb-vanilla/server/tags/list?n=100")
-                        echo "HTTP $code"
-                        grep -i '^link:' tags.hdr || echo "no Link header, so this is the only page"
-                        tr -d ' \\n' < tags.json | sed -e 's/.*"tags":\\[//' -e 's/\\].*//' |
-                            tr ',' '\\n' | tr -d '"' > tags.txt
-                        echo "tags on this page: $(grep -c . tags.txt)"
-                        echo "-- first 40 as returned"
-                        head -40 tags.txt
-                        echo "-- highest 5 of the bare x.y.z tags"
-                        grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' tags.txt | sort -V | tail -5
-                        echo "-- highest 5 of the enterprise-x.y.z tags"
-                        grep -E '^enterprise-[0-9]+\\.[0-9]+\\.[0-9]+$' tags.txt | sort -V | tail -5
-
-                        echo "===== 4. same question through the GitHub Packages REST API"
-                        code=$(curl -sS -o versions.json -w '%{http_code}' \\
-                            -H "Authorization: Bearer $GHCR_TOKEN" -H "Accept: application/vnd.github+json" \\
-                            "https://api.github.com/orgs/cb-vanilla/packages/container/server/versions?per_page=5")
-                        echo "HTTP $code"
-                        head -c 1500 versions.json
-                        echo
-                        rm -f tags.json tags.hdr tags.txt versions.json
+                        set -euo pipefail
+                        echo "===== newest cb-vanilla builds, per release line"
+                        : > pairs.txt
+                        for page in 1 2 3 4 5; do
+                            curl -sSf -H "Authorization: Bearer $GHCR_TOKEN" -H "Accept: application/vnd.github+json" \\
+                                "https://api.github.com/orgs/cb-vanilla/packages/container/server/versions?per_page=100&page=$page"
+                        done | jq -r '.[] | (.metadata.container.tags // []) | select(length > 0) | join(" ")' > pairs.txt
+                        echo "tagged versions: $(grep -c . pairs.txt)"
+                        echo "-- first 8 tag groups, newest first"
+                        head -8 pairs.txt
+                        tr ' ' '\\n' < pairs.txt > tags.txt
+                        echo "-- per line: the floating tag, the build tag sharing its digest, and the"
+                        echo "-- highest build tag on the line, which shows whether the float has lagged"
+                        for line in 7.2 7.6 8.0 8.1 8.5; do
+                            floating=$(grep -E "^${line}\\.[0-9]+$" tags.txt | sort -V | tail -1 || true)
+                            paired=$(grep -E "(^| )${floating}( |$)" pairs.txt | tr ' ' '\\n' |
+                                grep -E "^${floating}-[0-9]+$" | head -1 || true)
+                            highest=$(grep -E "^${line}\\.[0-9]+-[0-9]+$" tags.txt | sort -V | tail -1 || true)
+                            printf 'line %s: floating=%s paired-build=%s highest-build=%s\\n' \\
+                                "$line" "${floating:-none}" "${paired:-none}" "${highest:-none}"
+                        done
+                        rm -f pairs.txt tags.txt
                     '''
                 }
             }
