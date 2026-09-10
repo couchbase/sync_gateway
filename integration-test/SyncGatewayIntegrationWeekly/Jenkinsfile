@@ -21,10 +21,10 @@ def latestDockerHubTag(String line) {
     return tag
 }
 
-// Every bare 'major.minor.patch' tag on the private cb-vanilla server package, in version order. Each build
-// there is tagged '<version>-<build number>' and the newest build of a line also carries the bare tag, which
-// is the one worth testing. Needs the same credential the child jobs use to pull the images, and five pages
-// of versions to reach past the untagged digests to every active line.
+// Every '<version>-<build number>' tag on the private cb-vanilla server package, in version order. The
+// newest build of a line also carries a bare '<version>' tag, but that one moves from build to build, so the
+// sweep pins the build tag and the record says exactly which image ran. Needs the same credential the child
+// jobs use to pull the images, and five pages of versions to reach past the untagged digests.
 def cbVanillaTags() {
     def tags = sh(returnStdout: true, script: '''#!/bin/bash
         set -euo pipefail
@@ -32,7 +32,7 @@ def cbVanillaTags() {
             curl -sSf -H "Authorization: Bearer $GHCR_TOKEN" -H "Accept: application/vnd.github+json" \\
                 "https://api.github.com/orgs/cb-vanilla/packages/container/server/versions?per_page=100&page=$page"
         done | jq -r '.[] | .metadata.container.tags // [] | .[]' |
-            grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' | sort -Vu
+            grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+$' | sort -Vu
     ''').trim()
     if (!tags) {
         error('Found no cb-vanilla server tags - see the curl output above')
@@ -40,11 +40,11 @@ def cbVanillaTags() {
     return tags.tokenize('\n')
 }
 
-// Highest cb-vanilla image on one line, for example '8.5' -> 'ghcr.io/cb-vanilla/server:8.5.0'.
+// Newest cb-vanilla build on one line, for example '8.5' -> 'ghcr.io/cb-vanilla/server:8.5.0-1109'.
 def latestVanillaImage(List tags, String line) {
     def onLine = tags.findAll { it.startsWith(line + '.') }
     if (!onLine) {
-        error("Found no cb-vanilla tag on line ${line}")
+        error("Found no cb-vanilla build tag on line ${line}")
     }
     return 'ghcr.io/cb-vanilla/server:' + onLine.last()
 }
