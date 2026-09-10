@@ -1,0 +1,76 @@
+// Weekend sweep of the server versions and edition/flag combinations that the adhoc and per-commit runs do
+// not cover. Every combination is a separate SyncGatewayIntegration-Pipeline build and they all run in
+// parallel, so the sweep takes about as long as its slowest child - roughly 2 hours.
+
+// Note for whoever repoints the job at this file: a cron trigger declared in a Jenkinsfile only registers
+// once a build has evaluated it, so start one build by hand afterwards. Until then the job sits waiting on
+// a timer Jenkins does not know about yet.
+
+// Stage name for a server version: '7.6.4' for a Docker Hub enterprise tag, '7.6.4-CE' for a community one,
+// and the bare version for a cb-vanilla image, whose tag carries no edition.
+def shortServer(String image) {
+    if (image.contains('/')) {
+        return image.tokenize(':').last()
+    }
+    def parts = image.split('-', 2)
+    if (parts.size() < 2) {
+        return image
+    }
+    return parts[1] + (parts[0] == 'community' ? '-CE' : '')
+}
+
+pipeline {
+    agent none
+
+    options {
+        timestamps()
+        timeout(time: 4, unit: 'HOURS')
+        buildDiscarder(logRotator(daysToKeepStr: '30', numToKeepStr: '-1', artifactDaysToKeepStr: '-1', artifactNumToKeepStr: '-1'))
+        // A sweep still running when the next one is due is wedged, so drop it rather than doubling the
+        // load on the integration-test agents.
+        disableConcurrentBuilds(abortPrevious: true)
+    }
+
+    triggers {
+        // Saturday morning Pacific, which leaves the rest of the weekend for a rerun.
+        cron('TZ=America/Los_Angeles\nH 9 * * 6')
+    }
+
+    stages {
+        stage('Integration Tests') {
+            steps {
+                script {
+                    // Anything not named here takes the child job's own default: EE, rev cache enabled.
+                    def combinations = [
+                        [server: 'enterprise-7.6.4'],                 // oldest supported
+                        [server: 'enterprise-7.6.10'],                // latest 7.6 GA
+                        [server: 'enterprise-8.0.0'],                 // latest 8.0 GA
+                        [server: 'ghcr.io/cb-vanilla/server:7.6.11'], // 7.6 tip
+                        [server: 'ghcr.io/cb-vanilla/server:8.0.1'],  // 8.0 tip
+                        [server: 'ghcr.io/cb-vanilla/server:8.1.0'],  // 8.1 tip
+                        [server: 'enterprise-7.6.4', sgEdition: 'CE'],
+                        [server: 'enterprise-7.6.4', disableRevCache: true],
+                    ]
+
+                    parallel(combinations.collectEntries { combo ->
+                        def edition = combo.sgEdition ?: 'EE'
+                        def flags = combo.disableRevCache ? "no_revcache_${edition}" : edition
+                        def label = "${shortServer(combo.server)}__${flags}".toString()
+                        [(label): {
+                            node('very-lightweight-jobs-only') {
+                                stage(label) {
+                                    build job: 'SyncGatewayIntegration-Pipeline', parameters: [
+                                        string(name: 'COUCHBASE_SERVER_VERSION', value: combo.server),
+                                        booleanParam(name: 'DISABLE_REV_CACHE', value: combo.disableRevCache as boolean),
+                                        string(name: 'SG_EDITION', value: edition),
+                                        string(name: 'PARENT_JOB_NAME', value: 'WEEKLY: '),
+                                    ]
+                                }
+                            }
+                        }]
+                    })
+                }
+            }
+        }
+    }
+}
