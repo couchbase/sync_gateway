@@ -6,20 +6,47 @@
 // once a build has evaluated it, so start one build by hand afterwards. Until then the job sits waiting on
 // a timer Jenkins does not know about yet.
 
-// Newest Docker Hub tag on a Couchbase Server release line, so that 'enterprise-7.6' resolves to
-// 'enterprise-7.6.12' and the sweep tracks GA patch releases without a commit. The name parameter is a
-// substring match, so the grep drops prereleases and anything from a longer line, and sort -V orders by
-// version rather than lexically, which matters as soon as a line reaches patch 10.
-def latestServerTag(String line) {
-    def tag = sh(returnStdout: true, script: """#!/bin/bash
+// Newest Docker Hub tag on a release line, so that 'enterprise-7.6' resolves to 'enterprise-7.6.12'. The
+// name parameter is a substring match, so the grep drops prereleases and longer lines, and sort -V orders
+// by version rather than lexically, which matters as soon as a line reaches patch 10.
+def latestDockerHubTag(String line) {
+    def tag = sh(returnStdout: true, script: '''#!/bin/bash
         set -eu
-        curl -sSf 'https://hub.docker.com/v2/repositories/couchbase/server/tags?page_size=100&name=${line}.' |
-            grep -o '"name":"[^"]*"' | cut -d'"' -f4 | grep -E "^${line}\\.[0-9]+\$" | sort -V | tail -1
-    """).trim()
+        curl -sSf 'https://hub.docker.com/v2/repositories/couchbase/server/tags?page_size=100&name=LINE.' |
+            grep -o '"name":"[^"]*"' | cut -d'"' -f4 | grep -E "^LINE\\.[0-9]+$" | sort -V | tail -1
+    '''.replace('LINE', line)).trim()
     if (!tag) {
         error("Found no Docker Hub tag for Couchbase Server line ${line}")
     }
     return tag
+}
+
+// Every bare 'major.minor.patch' tag on the private cb-vanilla server package, in version order. Each build
+// there is tagged '<version>-<build number>' and the newest build of a line also carries the bare tag, which
+// is the one worth testing. Needs the same credential the child jobs use to pull the images, and five pages
+// of versions to reach past the untagged digests to every active line.
+def cbVanillaTags() {
+    def tags = sh(returnStdout: true, script: '''#!/bin/bash
+        set -euo pipefail
+        for page in 1 2 3 4 5; do
+            curl -sSf -H "Authorization: Bearer $GHCR_TOKEN" -H "Accept: application/vnd.github+json" \\
+                "https://api.github.com/orgs/cb-vanilla/packages/container/server/versions?per_page=100&page=$page"
+        done | jq -r '.[] | .metadata.container.tags // [] | .[]' |
+            grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+$' | sort -Vu
+    ''').trim()
+    if (!tags) {
+        error('Found no cb-vanilla server tags - see the curl output above')
+    }
+    return tags.tokenize('\n')
+}
+
+// Highest cb-vanilla image on one line, for example '8.5' -> 'ghcr.io/cb-vanilla/server:8.5.0'.
+def latestVanillaImage(List tags, String line) {
+    def onLine = tags.findAll { it.startsWith(line + '.') }
+    if (!onLine) {
+        error("Found no cb-vanilla tag on line ${line}")
+    }
+    return 'ghcr.io/cb-vanilla/server:' + onLine.last()
 }
 
 // Stage name for a server version: '7.6.4' for a Docker Hub enterprise tag, '7.6.4-CE' for a community one,
@@ -56,24 +83,34 @@ pipeline {
         stage('Integration Tests') {
             steps {
                 script {
-                    def latestGA76 = null
-                    def latestGA80 = null
+                    // Resolved on every run so that the sweep follows new patch builds without a commit.
+                    def ga76 = null
+                    def ga80 = null
+                    def tip76 = null
+                    def tip80 = null
+                    def tip85 = null
                     node('very-lightweight-jobs-only') {
-                        latestGA76 = latestServerTag('enterprise-7.6')
-                        latestGA80 = latestServerTag('enterprise-8.0')
+                        ga76 = latestDockerHubTag('enterprise-7.6')
+                        ga80 = latestDockerHubTag('enterprise-8.0')
+                        withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+                            def vanillaTags = cbVanillaTags()
+                            tip76 = latestVanillaImage(vanillaTags, '7.6')
+                            tip80 = latestVanillaImage(vanillaTags, '8.0')
+                            tip85 = latestVanillaImage(vanillaTags, '8.5')
+                        }
                     }
-                    echo("Latest GA server tags: ${latestGA76}, ${latestGA80}")
+                    echo("Resolved GA ${ga76}, ${ga80} and tips ${tip76}, ${tip80}, ${tip85}")
 
                     // Anything not named here takes the child job's own default: EE, rev cache enabled.
                     def combinations = [
-                        [server: 'enterprise-7.6.4'],                 // oldest supported
-                        [server: latestGA76],
-                        [server: latestGA80],
-                        [server: 'ghcr.io/cb-vanilla/server:7.6.11'], // 7.6 tip
-                        [server: 'ghcr.io/cb-vanilla/server:8.0.1'],  // 8.0 tip
-                        [server: 'ghcr.io/cb-vanilla/server:8.1.0'],  // 8.1 tip
-                        [server: latestGA76, sgEdition: 'CE'],
-                        [server: latestGA76, disableRevCache: true],
+                        [server: 'enterprise-7.6.4'], // oldest supported
+                        [server: ga76],
+                        [server: ga80],
+                        [server: tip76],
+                        [server: tip80],
+                        [server: tip85],
+                        [server: 'enterprise-7.6.4', sgEdition: 'CE'],
+                        [server: 'enterprise-7.6.4', disableRevCache: true],
                     ]
 
                     parallel(combinations.collectEntries { combo ->
