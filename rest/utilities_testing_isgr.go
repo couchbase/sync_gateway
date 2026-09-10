@@ -92,6 +92,8 @@ type TestISGRPeerOpts struct {
 	UserChannelAccess []string
 	// AvoidUserCreation if true, don't create the user on the passive peer
 	AvoidUserCreation bool
+	// ActiveSyncFn overrides the active peer's sync function. Empty means the default.
+	ActiveSyncFn string
 }
 
 // deltaSyncConfig returns a delta sync config when enabled, and nil - the database default - when not.
@@ -118,13 +120,17 @@ type TestISGRPeers struct {
 // activeRTConfig returns the config for a node in the active cluster. Built per node, since RestTester rewrites the
 // config it holds as it starts up.
 func (p *TestISGRPeers) activeRTConfig() *RestTesterConfig {
+	syncFn := channels.DocChannelsSyncFunction
+	if p.opts.ActiveSyncFn != "" {
+		syncFn = p.opts.ActiveSyncFn
+	}
 	return &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Name:      "activedb",
 			DeltaSync: deltaSyncConfig(p.opts.UseDeltas),
 		}},
 		SgReplicateEnabled:            true,
-		SyncFn:                        channels.DocChannelsSyncFunction,
+		SyncFn:                        syncFn,
 		ISGRSupportedBLIPSubprotocols: p.opts.ActivePeerSupportedBLIPSubProtocols,
 		CustomTestBucket:              p.activeTestBucket.NoCloseClone(),
 	}

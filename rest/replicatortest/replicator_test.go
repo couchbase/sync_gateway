@@ -2066,6 +2066,90 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 }
 
+// TestActiveReplicatorPullCheckpointStallsOnRevError covers the checkpoint stall that a failed pull write causes.
+// processRev returns before it records the sequence as processed, so that sequence stays in expectedSeqs for the
+// life of the connection. The safe-sequence scan stops at the first gap, so the checkpoint pins below the failed
+// sequence while later revisions keep replicating.
+func TestActiveReplicatorPullCheckpointStallsOnRevError(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeySync, base.KeySyncMsg)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
+			ActiveSyncFn: `function(doc){ if (doc.rejectLocally) { throw({forbidden: "rejected by the active peer"}); } channel(doc.channels); }`,
+		})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
+		ctx1 := rt1.Context()
+
+		const username = "alice"
+		docIDPrefix := rest.SafeDocumentName(t, t.Name())
+		firstDocID := docIDPrefix + "first"
+		blockingDocID := docIDPrefix + "blocking"
+		laterDocID := docIDPrefix + "later"
+
+		// blockingDoc sits between two replicable docs, so its sequence lands in the middle of expectedSeqs
+		firstVersion := rt2.PutDoc(firstDocID, `{"channels":["`+username+`"]}`)
+		_ = rt2.PutDoc(blockingDocID, `{"channels":["`+username+`"],"rejectLocally":true}`)
+		laterVersion := rt2.PutDoc(laterDocID, `{"channels":["`+username+`"]}`)
+		rt2.WaitForPendingChanges()
+
+		rt2Collection, rt2Ctx := rt2.GetSingleTestDatabaseCollection()
+		firstDoc, err := rt2Collection.GetDocument(rt2Ctx, firstDocID, db.DocUnmarshalSync)
+		require.NoError(t, err)
+		stalledSeq := strconv.FormatUint(firstDoc.Sequence, 10)
+
+		dbstats := dbReplicatorStats(t, rt1.GetDatabase())
+		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ID:                     rest.SafeDocumentName(t, t.Name()),
+			Direction:              db.ActiveReplicatorTypePull,
+			RemoteDBURL:            userDBURL(rt2, username),
+			ActiveDB:               &db.Database{DatabaseContext: rt1.GetDatabase()},
+			ChangesBatchSize:       200,
+			Continuous:             true,
+			CheckpointInterval:     100 * time.Millisecond,
+			ReplicationStatsMap:    dbstats,
+			CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
+			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, ar.Stop()) }()
+
+		require.NoError(t, ar.Start(ctx1))
+		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
+
+		// the two writable docs replicate, and the rejected one is counted but never stored
+		sgrRunner.WaitForVersion(firstDocID, rt1, firstVersion)
+		sgrRunner.WaitForVersion(laterDocID, rt1, laterVersion)
+		base.RequireWaitForStat(t, dbstats.FailedToPullCount.Value, 1)
+		rt1.RequireDocNotFound(blockingDocID)
+
+		// only the sequence before the rejected doc is ever checkpointed. LastSeqPull reports the live safe
+		// sequence, so wait on the checkpoint write itself rather than on the status field.
+		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().SetCheckpointCount }, 1)
+		require.Equal(t, stalledSeq, ar.GetStatus(ctx1).LastSeqPull)
+
+		// further revisions replicate but cannot move the checkpoint past the gap
+		afterDocID := docIDPrefix + "after"
+		afterVersion := rt2.PutDoc(afterDocID, `{"channels":["`+username+`"]}`)
+		rt2.WaitForPendingChanges()
+		sgrRunner.WaitForVersion(afterDocID, rt1, afterVersion)
+
+		require.Never(t, func() bool {
+			return pullCheckpointer.Stats().SetCheckpointCount != 1 ||
+				ar.GetStatus(ctx1).LastSeqPull != stalledSeq
+		}, 2*time.Second, 100*time.Millisecond, "checkpoint advanced even though the gap remains")
+
+		status := ar.GetStatus(ctx1)
+		assert.Equal(t, int64(1), status.RejectedLocal)
+		assert.Equal(t, int64(3), status.DocsRead, "later revisions must keep replicating while the checkpoint stalls")
+
+		// the unprocessed sequence keeps expectedSeqs from draining, however many revisions follow it
+		assert.NotZero(t, dbstats.ExpectedSequenceLenPostCleanup.Value(),
+			"expectedSeqs drained despite an unprocessed sequence")
+	})
+}
+
 // TestActiveReplicatorPullSkippedSequence ensures that ISGR and the checkpointer are able to handle the compound sequence format appropriately.
 // - Creates several documents on rt2, separated by a skipped sequence, and rt1 pulls them.
 //   - rt2 seq 1 _user    rt1 seq n/a
