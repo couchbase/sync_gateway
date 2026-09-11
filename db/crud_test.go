@@ -2958,7 +2958,7 @@ func TestWritePathRepairMouChain(t *testing.T) {
 
 	// the SDK write is the last real body mutation
 	require.NoError(t, collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"sdk":true}`)))
-	_, sdkWriteCas, err := collection.dataStore.GetRaw(ctx, docID)
+	sdkWriteRevSeqNo, sdkWriteCas, err := collection.getRevSeqNo(ctx, docID)
 	require.NoError(t, err)
 	dbCtx.FlushRevisionCacheForTest()
 
@@ -2977,12 +2977,8 @@ func TestWritePathRepairMouChain(t *testing.T) {
 	assert.Equal(t, base.CasToString(sdkWriteCas), mouAfterRepair.PreviousHexCAS,
 		"write-path _mou.pCas should have chained back to the SDK write, not restarted at the import")
 
-	// _mou.pRev is the revSeqNo before the repair's own mutation. The repair is the last write here (the
-	// caller's write was rejected), so that is one less than the document's current revSeqNo - and never
-	// zero, which is what the write path stamped before it stopped discarding the revSeqNo it fetches.
-	revSeqNoAfterRepair, _, err := collection.getRevSeqNo(ctx, docID)
-	require.NoError(t, err)
-	require.NotZero(t, revSeqNoAfterRepair)
-	assert.Equal(t, revSeqNoAfterRepair-1, mouAfterRepair.PreviousRevSeqNo,
-		"write-path _mou.pRev should be the revSeqNo immediately before the repair (current revSeqNo %d)", revSeqNoAfterRepair)
+	// pRev names the same mutation as pCas, so it has to chain back past the import too
+	require.NotZero(t, sdkWriteRevSeqNo)
+	assert.Equal(t, sdkWriteRevSeqNo, mouAfterRepair.PreviousRevSeqNo,
+		"write-path _mou.pRev should name the SDK write like pCas does, not the import between it and the repair")
 }
