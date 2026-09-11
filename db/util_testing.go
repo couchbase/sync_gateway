@@ -1463,9 +1463,11 @@ func MakeTestLogEntryWithCV(seq uint64, docid string, revid string, channelNames
 // file because ChannelQueryHandler's only method is unexported: Go will not let a type
 // outside package db implement it, so out-of-package test packages cannot write their own.
 type QueryHandlerForTest struct {
-	entries    LogEntries
-	queryCount int
-	lock       sync.RWMutex
+	entries       LogEntries
+	queryCount    int
+	queryCallback func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
+	factoryErr    error
+	lock          sync.RWMutex
 }
 
 // QueryHandlerFactoryForTest is a ChannelQueryHandlerFactory returning a fresh, empty handler.
@@ -1474,9 +1476,44 @@ func QueryHandlerFactoryForTest(collectionID uint32) (ChannelQueryHandler, error
 }
 
 // AsFactory adapts this handler to ChannelQueryHandlerFactory, so a single handler instance is
-// shared across every collection.
+// shared across every collection. Returns the error set by SetFactoryError, if any, which is how
+// a test drives the channel cache's own "could not obtain a query handler" branches - production
+// fails here when asked for a collectionID the database no longer holds.
 func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandler, error) {
+	qh.lock.RLock()
+	defer qh.lock.RUnlock()
+	if qh.factoryErr != nil {
+		return nil, qh.factoryErr
+	}
 	return qh, nil
+}
+
+// SetFactoryError makes every subsequent AsFactory call fail with err, so callers of
+// getChannelCache and getBypassChannelCache take their error branches. Pass nil to clear.
+func (qh *QueryHandlerForTest) SetFactoryError(err error) {
+	qh.lock.Lock()
+	defer qh.lock.Unlock()
+	qh.factoryErr = err
+}
+
+// SetQueryCallback installs a function that replaces the handler's own filtering, so a test can
+// return an error, a short result, or a different result per call. Pass nil to restore the
+// seeded-entry behaviour. The callback runs outside the handler's lock, so it is free to call
+// back into SeedEntries or QueryCount without deadlocking.
+func (qh *QueryHandlerForTest) SetQueryCallback(callback func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)) {
+	qh.lock.Lock()
+	defer qh.lock.Unlock()
+	qh.queryCallback = callback
+}
+
+// SetError makes every subsequent query fail with err, the common case of SetQueryCallback.
+// Pass nil to clear.
+func (qh *QueryHandlerForTest) SetError(err error) {
+	if err == nil {
+		qh.SetQueryCallback(nil)
+		return
+	}
+	qh.SetQueryCallback(func(string, uint64, uint64, int, bool) (LogEntries, error) { return nil, err })
 }
 
 // getChangesInChannelFromQuery serves seeded entries, applying the same filters the real
@@ -1486,9 +1523,22 @@ func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandl
 // inclusive_end), and endSeq of 0 means unbounded - query.go substitutes N1QLMaxInt64 for it.
 // The bounds are applied before the limit, so entries outside the range do not consume it.
 func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+	// One lock acquisition covers the count and the snapshot. queryCount counts queries issued,
+	// not queries that succeeded, so a test injecting an error can still assert that the caller
+	// reached the backend - and that it did not then retry. Copying the slice header is enough
+	// to iterate outside the lock: SeedEntries only ever appends, so entries below this length
+	// never move.
+	qh.lock.Lock()
+	qh.queryCount++
+	callback, entries := qh.queryCallback, qh.entries
+	qh.lock.Unlock()
+
+	if callback != nil {
+		return callback(channel, startSeq, endSeq, limit, activeOnly)
+	}
+
 	queryEntries := make(LogEntries, 0)
-	qh.lock.RLock()
-	for _, entry := range qh.entries {
+	for _, entry := range entries {
 		if _, ok := entry.Channels[channel]; !ok {
 			continue
 		}
@@ -1506,11 +1556,6 @@ func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context,
 			break
 		}
 	}
-	qh.lock.RUnlock()
-
-	qh.lock.Lock()
-	qh.queryCount++
-	qh.lock.Unlock()
 	return queryEntries, nil
 }
 
