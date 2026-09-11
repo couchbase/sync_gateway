@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
 )
@@ -793,6 +794,29 @@ func TestDefaultHTTPTransport(t *testing.T) {
 		transport := DefaultHTTPTransport()
 		assert.NotNil(t, transport, "Returned DefaultHTTPTransport was unexpectedly nil")
 	})
+}
+
+// TestWebSocketClientResponseHeaderTimeout is the regression test for CBG-5747: a remote that accepted the
+// connection and then never sent response headers used to block the replicator forever.  The BLIP upgrade
+// is an ordinary HTTP request until the 101, and websocket.Dial takes no context, so ResponseHeaderTimeout
+// is what bounds it.
+func TestWebSocketClientResponseHeaderTimeout(t *testing.T) {
+	listener := sgtest.NewStallingListener(t)
+
+	client := GetHttpClientForWebSocket(false)
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok, "expected client to carry an *http.Transport, got %T", client.Transport)
+	require.Equal(t, DefaultHttpResponseHeaderTimeout, transport.ResponseHeaderTimeout)
+	// each call returns its own client, so shorten this one rather than waiting out the default
+	transport.ResponseHeaderTimeout = 10 * time.Millisecond
+
+	_, err := client.Get("http://" + listener.Addr() + "/db1/_blipsync")
+	require.Error(t, err, "expected the stalled remote to be given up on")
+	assert.ErrorContains(t, err, "timeout awaiting response headers")
+
+	listener.RequireAcceptedConnections(t, 1)
+	// giving up has to hang up too, otherwise every stalled request leaks a connection
+	listener.RequireClosedConnections(t, 1)
 }
 
 func TestIsDeltaError(t *testing.T) {

@@ -1,0 +1,126 @@
+// Copyright 2026-Present Couchbase, Inc.
+//
+// Use of this software is governed by the Business Source License included
+// in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+// in that file, in accordance with the Business Source License, use of this
+// software will be governed by the Apache License, Version 2.0, included in
+// the file licenses/APL2.txt.
+
+package sgtest
+
+import (
+	"fmt"
+	"io"
+	"net"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+)
+
+const (
+	// how long StallingListener waits for a connection count to be reached before failing the test
+	stallingListenerTimeout      = 30 * time.Second
+	stallingListenerPollInterval = 10 * time.Millisecond
+)
+
+// StallingListener is a loopback TCP listener that accepts connections, drains whatever is written to it,
+// and never writes a byte back.  It stands in for the remote that broke ISGR: one that completes the TCP
+// handshake and then goes silent, so a caller with no deadline waits forever.
+//
+// Accepted connections are held open until the test finishes.
+type StallingListener struct {
+	listener net.Listener
+	mutex    sync.Mutex
+	conns    []net.Conn
+	accepted int
+	closed   int
+}
+
+// NewStallingListener starts a StallingListener and registers cleanup that closes it along with every
+// connection it accepted.
+func NewStallingListener(t testing.TB) *StallingListener {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	l := &StallingListener{listener: listener}
+
+	// the accept loop is waited on separately from the drains: cleanup has to know the connection list is
+	// final before it closes them, or a connection accepted as cleanup runs is never closed and its drain
+	// never returns
+	var acceptLoop, drains sync.WaitGroup
+	acceptLoop.Go(func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return // listener closed by cleanup
+			}
+			l.mutex.Lock()
+			l.conns = append(l.conns, conn)
+			l.accepted++
+			l.mutex.Unlock()
+			drains.Go(func() {
+				// drain without ever responding, so this only returns once the peer hangs up - or once
+				// cleanup closes the connection from this side
+				_, _ = io.Copy(io.Discard, conn)
+				l.mutex.Lock()
+				l.closed++
+				l.mutex.Unlock()
+			})
+		}
+	})
+
+	t.Cleanup(func() {
+		assert.NoError(t, listener.Close())
+		acceptLoop.Wait()
+		l.mutex.Lock()
+		for _, conn := range l.conns {
+			_ = conn.Close()
+		}
+		l.mutex.Unlock()
+		drains.Wait()
+	})
+	return l
+}
+
+// Addr returns the host:port to dial.
+func (l *StallingListener) Addr() string {
+	return l.listener.Addr().String()
+}
+
+// RequireAcceptedConnections waits for the listener to have accepted at least count connections, so a test
+// can tell "the client gave up before connecting" apart from "the client connected and then gave up".
+func (l *StallingListener) RequireAcceptedConnections(t testing.TB, count int) {
+	t.Helper()
+	l.requireCount(t, count, "accepted", func() int { return l.accepted })
+}
+
+// RequireClosedConnections waits for at least count of the accepted connections to have been closed.  Call
+// it before the test finishes, while the only party that can have closed one is the client - that makes it
+// an assertion that a client which gave up also hung up, rather than leaking the connection.
+func (l *StallingListener) RequireClosedConnections(t testing.TB, count int) {
+	t.Helper()
+	l.requireCount(t, count, "closed", func() int { return l.closed })
+}
+
+// requireCount polls until the given counter reaches count, and fails the test if it never does.  Polling
+// rather than signalling keeps this helper free of the deadlock a bounded channel would risk during cleanup.
+func (l *StallingListener) requireCount(t testing.TB, count int, name string, get func() int) {
+	t.Helper()
+	read := func() int {
+		l.mutex.Lock()
+		defer l.mutex.Unlock()
+		return get()
+	}
+	deadline := time.Now().Add(stallingListenerTimeout)
+	for time.Now().Before(deadline) {
+		if read() >= count {
+			return
+		}
+		time.Sleep(stallingListenerPollInterval)
+	}
+	require.GreaterOrEqual(t, read(), count, fmt.Sprintf("timed out after %s waiting for %d %s connections", stallingListenerTimeout, count, name))
+}

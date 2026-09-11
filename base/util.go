@@ -1621,6 +1621,9 @@ func GetHttpClient(insecureSkipVerify bool) *http.Client {
 // one IP packet instead of generating lots of tiny packets.
 func GetHttpClientForWebSocket(insecureSkipVerify bool) *http.Client {
 	transport := DefaultHTTPTransport()
+	// bounds the wait for response headers, so a remote that accepts the connection and then goes silent
+	// fails the BLIP upgrade instead of blocking the replicator
+	transport.ResponseHeaderTimeout = DefaultHttpResponseHeaderTimeout
 	dial := transport.DialContext
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		conn, err := dial(ctx, network, addr)
