@@ -118,15 +118,13 @@ pipeline {
                         def flags = combo.disableRevCache ? "no_revcache_${edition}" : edition
                         def label = "${shortServer(combo.server)}__${flags}".toString()
                         [(label): {
-                            node('very-lightweight-jobs-only') {
-                                stage(label) {
-                                    build job: 'SyncGatewayIntegration-Pipeline', parameters: [
-                                        string(name: 'COUCHBASE_SERVER_VERSION', value: combo.server),
-                                        booleanParam(name: 'DISABLE_REV_CACHE', value: combo.disableRevCache as boolean),
-                                        string(name: 'SG_EDITION', value: edition),
-                                        string(name: 'PARENT_JOB_NAME', value: 'WEEKLY: '),
-                                    ]
-                                }
+                            stage(label) {
+                                build job: 'SyncGatewayIntegration-Pipeline', parameters: [
+                                    string(name: 'COUCHBASE_SERVER_VERSION', value: combo.server),
+                                    booleanParam(name: 'DISABLE_REV_CACHE', value: combo.disableRevCache as boolean),
+                                    string(name: 'SG_EDITION', value: edition),
+                                    string(name: 'PARENT_JOB_NAME', value: 'WEEKLY: '),
+                                ]
                             }
                         }]
                     })
