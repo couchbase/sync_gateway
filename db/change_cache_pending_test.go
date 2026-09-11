@@ -21,13 +21,8 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestAddPendingLogs and its helpers stay in package db: the test holds changeCache.lock
-// across a direct push onto the pendingLogs heap, _pushRangeToPending and _addPendingLogs.
-// The underscore-prefixed methods require the caller to hold that lock, and a held lock
-// cannot be expressed across a package boundary - a test accessor that took the lock itself
-// would no longer exercise the buffering path this test pins down.
-
-// TestAddPendingLogs:
+// TestAddPendingLogs stays in package db: it holds changeCache.lock across _pushRangeToPending
+// and _addPendingLogs, and a held lock can't cross a package boundary.
 //   - Test age-based eviction of sequences and ranges from pending logs.
 //   - Adds to pending logs directly via heap.Push with backdated TimeReceived,
 //     triggers eviction with call to _addPendingLogs

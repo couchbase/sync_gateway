@@ -146,7 +146,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// User doc
 	assert.Equal(t, "_user/naomi", changes[2].ID)
-	assert.True(t, changes[2].IsPrincipalDoc())
+	assert.True(t, changes[2].IsPrincipalDocForTest(t))
 
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParsePlainSequenceID(lastSeq.String())
@@ -219,7 +219,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		Seq:     db.SequenceID{Seq: 1},
 		ID:      "alpha",
 		Changes: []db.ChangeByVersionType{{"rev": revid}}}
-	expectedEntry.SetCollectionID(t, collectionID)
+	expectedEntry.SetCollectionIDForTest(t, collectionID)
 	require.Equal(t, expectedEntry, changes[0])
 
 	lastSeq := getLastSeq(changes)
@@ -264,8 +264,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		ID:      "alpha",
 		Removed: base.SetOf("A"),
 		Changes: []db.ChangeByVersionType{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}}
-	expectedEntry2.SetAllRemoved(t, true)
-	expectedEntry2.SetCollectionID(t, collectionID)
+	expectedEntry2.SetAllRemovedForTest(t, true)
+	expectedEntry2.SetCollectionIDForTest(t, collectionID)
 	assert.Equal(t, expectedEntry2, changes[0])
 
 	printChanges(changes)
@@ -291,7 +291,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	// Make channel active
 	changesOpts := db.GetChangesOptionsWithZeroSeq(t)
 	changesOpts.VersionType = db.ChangesVersionTypeCV
-	_, err = database.ChannelCacheForTest().GetChanges(ctx, channels.NewID("A", collectionID), changesOpts)
+	_, err = database.ChannelCacheForTest(t).GetChanges(ctx, channels.NewID("A", collectionID), changesOpts)
 	require.NoError(t, err)
 
 	_, doc, err := collection.Put(ctx, "doc1", db.Body{"channels": []string{"A"}})
@@ -342,7 +342,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		Seq:     db.SequenceID{Seq: 1},
 		ID:      "alpha",
 		Changes: []db.ChangeByVersionType{{"rev": revid}}}
-	expectedEntry.SetCollectionID(t, collectionID)
+	expectedEntry.SetCollectionIDForTest(t, collectionID)
 	require.Equal(t, expectedEntry, changes[0])
 
 	lastSeq := getLastSeq(changes)
@@ -383,7 +383,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		Seq:     db.SequenceID{Seq: 3},
 		ID:      "alpha",
 		Changes: []db.ChangeByVersionType{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}}
-	expectedEntry2.SetCollectionID(t, collectionID)
+	expectedEntry2.SetCollectionIDForTest(t, collectionID)
 	require.Equal(t, expectedEntry2, changes[0])
 
 	printChanges(changes)
@@ -491,7 +491,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 
 	// Make channel active
-	_, err := database.ChannelCacheForTest().GetChanges(ctx, channels.NewID("ABC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
+	_, err := database.ChannelCacheForTest(t).GetChanges(ctx, channels.NewID("ABC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 
 	// Put a doc that gets assigned a CV to populate the channel cache with
@@ -503,7 +503,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// get entry of above doc from channel cache
-	entries, err := database.ChannelCacheForTest().GetChanges(ctx, channels.NewID("ABC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
+	entries, err := database.ChannelCacheForTest(t).GetChanges(ctx, channels.NewID("ABC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
 	require.NoError(t, err)
 	require.NotNil(t, entries)
 
@@ -668,7 +668,7 @@ func TestChangesFeedActiveOnlyContinuesPastInactiveBatch(t *testing.T) {
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	received := drainChangesFeed(t, collection.ChangesFeedForTest(ctx, stub, options, "test"))
+	received := drainChangesFeed(t, collection.ChangesFeedForTest(t, ctx, stub, options, "test"))
 
 	// changesFeed forwards every entry it sees, active or not - ActiveOnly filtering happens
 	// upstream in SimpleMultiChangesFeed. What matters here is that all 5 entries were retrieved,
@@ -714,7 +714,7 @@ func TestChangesFeedActiveOnlyMultipleInactiveBatches(t *testing.T) {
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	received := drainChangesFeed(t, collection.ChangesFeedForTest(ctx, stub, options, "test"))
+	received := drainChangesFeed(t, collection.ChangesFeedForTest(t, ctx, stub, options, "test"))
 
 	require.Len(t, received, 13)
 	assert.Equal(t, "active1", received[9].ID)
@@ -749,7 +749,7 @@ func TestChangesFeedActiveOnlyStopsWhenChannelExhausted(t *testing.T) {
 		ChangesCtx: base.TestCtx(t),
 	}
 
-	received := drainChangesFeed(t, collection.ChangesFeedForTest(ctx, stub, options, "test"))
+	received := drainChangesFeed(t, collection.ChangesFeedForTest(t, ctx, stub, options, "test"))
 
 	require.Len(t, received, 1)
 	assert.Equal(t, "removed1", received[0].ID)

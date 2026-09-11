@@ -1316,7 +1316,7 @@ func revTreeParents(tree RevTree) map[string]string {
 }
 
 // GetChangesForTest is a synchronous convenience function that returns all changes as a simple array.
-func GetChangesForTest(t *testing.T, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
+func GetChangesForTest(t testing.TB, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
 	require.NotNil(t, options.ChangesCtx)
 	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
 
@@ -1329,22 +1329,22 @@ func GetChangesForTest(t *testing.T, collection *DatabaseCollectionWithUser, cha
 	return changes
 }
 
-// Makes changes options starting at sequence 0, with a new changes context
+// GetChangesOptionsWithZeroSeq makes changes options starting at sequence 0, with a new changes context
 func GetChangesOptionsWithZeroSeq(t testing.TB) ChangesOptions {
 	return ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
 }
 
-// Makes changes options a new changes context
-func GetChangesOptionsWithCtxOnly(t *testing.T) ChangesOptions {
+// GetChangesOptionsWithCtxOnly makes changes options with a new changes context
+func GetChangesOptionsWithCtxOnly(t testing.TB) ChangesOptions {
 	return ChangesOptions{ChangesCtx: base.TestCtx(t)}
 }
 
-// Makes changes options with a since value of seq and a new changes context
-func GetChangesOptionsWithSeq(t *testing.T, seq SequenceID) ChangesOptions {
+// GetChangesOptionsWithSeq makes changes options with a since value of seq and a new changes context
+func GetChangesOptionsWithSeq(t testing.TB, seq SequenceID) ChangesOptions {
 	return ChangesOptions{Since: seq, ChangesCtx: base.TestCtx(t)}
 }
 
-// Note: It is important to call db.Close() on the returned database.
+// SetupTestDB returns a database with the default cache options. Caller must call db.Close().
 func SetupTestDB(t testing.TB) (*Database, context.Context) {
 	return SetupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
@@ -1521,61 +1521,52 @@ func (qh *QueryHandlerForTest) SeedEntries(seededEntries LogEntries) {
 	qh.lock.Unlock()
 }
 
-// QueryCount reports how many queries the handler has served. Unlike the field read it
-// replaces, this takes the read lock: callers that have not synchronised with the querying
-// goroutines still get a consistent value.
+// QueryCount reports how many queries the handler has served, under the read lock.
 func (qh *QueryHandlerForTest) QueryCount() int {
 	qh.lock.RLock()
 	defer qh.lock.RUnlock()
 	return qh.queryCount
 }
 
-// ---------------------------------------------------------------------------
-// Bridges for out-of-package test packages.
-//
-// Each of these exists only because a test in db/changesfeedtest, db/changecachetest or
-// db/channelcachetest needs to reach an unexported field or method. They are deliberately
-// thin: no assertions, no retries, no extra synchronisation, so a test calling a bridge
-// exercises exactly what the same line exercised while the test lived in package db.
-// ---------------------------------------------------------------------------
+/// Bridges for out-of-package test packages.
+// Deliberately thin - no assertions, no retries, no extra synchronisation.
 
 // ChannelCacheForTest exposes the database's channel cache.
-func (dbc *DatabaseContext) ChannelCacheForTest() ChannelCache {
+func (dbc *DatabaseContext) ChannelCacheForTest(_ testing.TB) ChannelCache {
 	return dbc.channelCache
 }
 
 // ChangesFeedForTest drives a single channel's changes feed against the supplied cache,
 // bypassing the multi-channel feed. Lets a test drive changesFeed's own pagination
 // bookkeeping with a stub cache and no real documents, DCP or query backend.
-func (db *DatabaseCollectionWithUser) ChangesFeedForTest(ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
+func (db *DatabaseCollectionWithUser) ChangesFeedForTest(_ testing.TB, ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
 	return db.changesFeed(ctx, singleChannelCache, options, to)
 }
 
-// SetCollectionID sets the entry's collection, which the changes feed populates from the
+// SetCollectionIDForTest sets the entry's collection, which the changes feed populates from the
 // collection the entry was read from. Takes testing.TB to mark it as test-only.
-func (ce *ChangeEntry) SetCollectionID(_ testing.TB, collectionID uint32) {
+func (ce *ChangeEntry) SetCollectionIDForTest(_ testing.TB, collectionID uint32) {
 	ce.collectionID = collectionID
 }
 
-// SetAllRemoved marks the entry as removed from every channel visible to the user.
+// SetAllRemovedForTest marks the entry as removed from every channel visible to the user.
 // Takes testing.TB to mark it as test-only.
-func (ce *ChangeEntry) SetAllRemoved(_ testing.TB, allRemoved bool) {
+func (ce *ChangeEntry) SetAllRemovedForTest(_ testing.TB, allRemoved bool) {
 	ce.allRemoved = allRemoved
 }
 
-// IsPrincipalDoc reports whether the entry is a _user or _role doc.
-func (ce *ChangeEntry) IsPrincipalDoc() bool {
+// IsPrincipalDocForTest reports whether the entry is a _user or _role doc.
+func (ce *ChangeEntry) IsPrincipalDocForTest(_ testing.TB) bool {
 	return ce.principalDoc
 }
 
 // SetDatabaseCollectionUserForTest swaps the user a collection resolves channel access against, so a
 // test can re-read the changes feed as a different principal without rebuilding the collection.
-func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUserForTest(_ *testing.T, user auth.User) {
+func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUserForTest(_ testing.TB, user auth.User) {
 	c.user = user
 }
 
-// NewChangeCacheForTest returns an uninitialised change cache, as tests that build their own
-// cache rather than using a database's do. Call Init and Start on the result.
+// NewChangeCacheForTest returns an uninitialised change cache. Call Init and Start on the result.
 func NewChangeCacheForTest(_ testing.TB) *changeCache {
 	return &changeCache{}
 }
@@ -1585,44 +1576,44 @@ func (dbc *DatabaseContext) ChangeCacheForTest(_ testing.TB) *changeCache {
 	return &dbc.changeCache
 }
 
-// ProcessEntry caches a single entry and returns the channels it was added to.
+// ProcessEntryForTest caches a single entry and returns the channels it was added to.
 func (c *changeCache) ProcessEntryForTest(_ testing.TB, ctx context.Context, change *LogEntry) []channels.ID {
 	return c.processEntry(ctx, change)
 }
 
-// UpdateStats applies the cache's running stats to the database expvars.
+// UpdateStatsForTest applies the cache's running stats to the database expvars.
 func (c *changeCache) UpdateStatsForTest(_ testing.TB, ctx context.Context) {
 	c.updateStats(ctx)
 }
 
-// NextSequence reports the next consecutive sequence the cache expects. Read without the lock,
+// NextSequenceForTest reports the next consecutive sequence the cache expects. Read without the lock,
 // matching the tests this replaced.
 func (c *changeCache) NextSequenceForTest(_ testing.TB) uint64 {
 	return c.nextSequence
 }
 
-// ReleaseUnusedSequenceRange handles a released range of sequences the feed will never deliver.
+// ReleaseUnusedSequenceRangeForTest handles a released range of sequences the feed will never deliver.
 func (c *changeCache) ReleaseUnusedSequenceRangeForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) {
 	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, timeReceived)
 }
 
-// SkippedSeqs exposes the skipped sequence list.
+// SkippedSeqsForTest exposes the skipped sequence list.
 func (c *changeCache) SkippedSeqsForTest(_ testing.TB) *SkippedSequenceSkiplist {
 	return c.skippedSeqs
 }
 
-// GetChannelCache exposes the channel cache underlying the change cache.
+// GetChannelCacheForTest exposes the channel cache underlying the change cache.
 func (c *changeCache) GetChannelCacheForTest(_ testing.TB) ChannelCache {
 	return c.getChannelCache()
 }
 
-// GetMaxStableCached reports the highest contiguous cached sequence. Called without the lock,
-// matching the test this replaced - production's caller holds the read lock.
+// GetMaxStableCachedForTest reports the highest contiguous cached sequence. Called without the
+// lock, unlike production's caller which holds the read lock.
 func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Context) uint64 {
 	return c._getMaxStableCached(ctx)
 }
 
-// SetNotifyChangeFunc installs the callback invoked when channels receive new entries.
+// SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries.
 func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
 	c.notifyChangeFunc = notify
 }
@@ -1632,17 +1623,17 @@ func (db *Database) SetUserForTest(_ testing.TB, user auth.User) {
 	db.user = user
 }
 
-// List exposes the underlying skiplist so tests can walk it directly.
+// ListForTest exposes the underlying skiplist so tests can walk it directly.
 func (s *SkippedSequenceSkiplist) ListForTest(_ testing.TB) *skiplist.SkipList {
 	return s.list
 }
 
-// GetOldest returns the oldest skipped sequence, or 0 if the list is empty.
+// GetOldestForTest returns the oldest skipped sequence, or 0 if the list is empty.
 func (s *SkippedSequenceSkiplist) GetOldestForTest(_ testing.TB) uint64 {
 	return s.getOldest()
 }
 
-// ProcessUnusedSequenceRangeAtSkipped removes a released range from the skipped list.
+// ProcessUnusedSequenceRangeAtSkippedForTest removes a released range from the skipped list.
 func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkippedForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64) int64 {
 	return s.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
 }
@@ -1653,34 +1644,34 @@ func NewSingleChannelCacheForTest(_ testing.TB, queryHandler ChannelQueryHandler
 	return newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
 }
 
-// AsSingleChannelCacheImpl asserts a SingleChannelCache to the concrete implementation. Tests
+// AsSingleChannelCacheImplForTest asserts a SingleChannelCache to the concrete implementation. Tests
 // outside package db cannot name the type to perform the assertion themselves.
 func AsSingleChannelCacheImplForTest(_ testing.TB, cache SingleChannelCache) (*singleChannelCacheImpl, bool) {
 	impl, ok := cache.(*singleChannelCacheImpl)
 	return impl, ok
 }
 
-// Logs exposes the cache's in-sequence log entries.
+// LogsForTest exposes the cache's in-sequence log entries.
 func (c *singleChannelCacheImpl) LogsForTest(_ testing.TB) LogEntries {
 	return c.logs
 }
 
-// LateLogs exposes the late-arriving entries, in the order they were received.
+// LateLogsForTest exposes the late-arriving entries, in the order they were received.
 func (c *singleChannelCacheImpl) LateLogsForTest(_ testing.TB) []*lateLogEntry {
 	return c.lateLogs
 }
 
-// PurgeLateLogEntries drops late log entries no listener still needs.
+// PurgeLateLogEntriesForTest drops late log entries no listener still needs.
 func (c *singleChannelCacheImpl) PurgeLateLogEntriesForTest(_ testing.TB) {
 	c.purgeLateLogEntries()
 }
 
-// GetListenerCount reports how many late-feed clients still need this entry.
+// GetListenerCountForTest reports how many late-feed clients still need this entry.
 func (l *lateLogEntry) GetListenerCountForTest(_ testing.TB) uint64 {
 	return l.getListenerCount()
 }
 
-// LogEntry exposes the entry a late log slot holds.
+// LogEntryForTest exposes the entry a late log slot holds.
 func (l *lateLogEntry) LogEntryForTest(_ testing.TB) *LogEntry {
 	return l.logEntry
 }
@@ -1766,8 +1757,7 @@ func (c *singleChannelCacheImpl) PrependChangesForTest(_ testing.TB, ctx context
 	return c.prependChanges(ctx, changes, changesValidFrom, changesValidTo)
 }
 
-// OptionsForTest exposes the cache's size and expiry settings. The field is a pointer, so tests
-// can adjust the caps in place as they did before.
+// OptionsForTest exposes the cache's size and expiry settings. The field is a pointer, so tests can adjust the caps in place.
 func (c *singleChannelCacheImpl) OptionsForTest(_ testing.TB) *ChannelCacheOptions {
 	return c.options
 }
@@ -1798,8 +1788,7 @@ func SetRecentlyUsedForTest(_ testing.TB, cache SingleChannelCache, recentlyUsed
 	cache.(*singleChannelCacheImpl).recentlyUsed.Set(recentlyUsed)
 }
 
-// AddListenerToNewestLateLogForTest registers a late-feed listener on the newest late log entry,
-// holding lateLogLock for exactly the operation the test performed inline before the move.
+// AddListenerToNewestLateLogForTest registers a late-feed listener on the newest late log entry.
 func (c *singleChannelCacheImpl) AddListenerToNewestLateLogForTest(_ testing.TB) {
 	c.lateLogLock.Lock()
 	defer c.lateLogLock.Unlock()

@@ -476,7 +476,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		ID:      "doc-1",
 		Changes: []db.ChangeByVersionType{{"rev": "1-a"}},
 	}
-	expected.SetCollectionID(t, collectionID)
+	expected.SetCollectionIDForTest(t, collectionID)
 	assert.Equal(t, expected, changes[0])
 
 	lastSeq := changes[len(changes)-1].Seq
@@ -512,7 +512,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		ID:      "doc-3",
 		Changes: []db.ChangeByVersionType{{"rev": "1-a"}},
 	}
-	expected3.SetCollectionID(t, collectionID)
+	expected3.SetCollectionIDForTest(t, collectionID)
 	assert.Equal(t, expected3, changes[0])
 
 }
@@ -670,7 +670,7 @@ func TestLowSequenceHandling(t *testing.T) {
 		ID:      "doc-1",
 		Changes: []db.ChangeByVersionType{{"rev": "1-a"}},
 	}
-	expected.SetCollectionID(t, collectionID)
+	expected.SetCollectionIDForTest(t, collectionID)
 	require.Equal(t, expected, changes[0])
 
 	// Test backfill clear - sequence numbers go back to standard handling
@@ -1747,7 +1747,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			collectionID := collection.GetCollectionID()
 
 			changeCache := db.NewChangeCacheForTest(b)
-			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(), nil, nil, context.MetadataKeys); err != nil {
+			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(b), nil, nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -1911,7 +1911,7 @@ func BenchmarkDocChanged(b *testing.B) {
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := db.NewChangeCacheForTest(b)
-			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(), nil, nil, context.MetadataKeys); err != nil {
+			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(b), nil, nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -1971,7 +1971,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 2 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2046,7 +2046,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 2 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2122,7 +2122,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 2 * time.Second,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2180,7 +2180,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2245,7 +2245,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  5,
@@ -2304,7 +2304,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  5,
@@ -2370,7 +2370,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2468,7 +2468,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2551,7 +2551,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2620,7 +2620,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 100 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2691,7 +2691,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  0,
@@ -2803,7 +2803,7 @@ func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
 		CachePendingSeqMaxWait: 2 * time.Nanosecond,
 		CacheSkippedSeqMaxWait: 1 * time.Second,
 		CachePendingSeqMaxNum:  0,
