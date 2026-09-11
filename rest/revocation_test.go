@@ -2452,105 +2452,62 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	sgrRunner := NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
-		// Passive
-		_, rt2 := InitScenario(t, nil)
-		defer rt2.Close()
-		rt2ds := rt2.GetSingleDataStore()
+		peers := sgrRunner.SetupSGRPeersWithOptions(t, TestISGRPeerOpts{UserChannelAccess: []string{"A", "B"}})
+		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		// Active
-		rt1 := NewRestTester(t,
-			&RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-				SyncFn:           channels.DocChannelsSyncFunction,
-			})
-		defer rt1.Close()
-		ctx1 := rt1.Context()
-
-		resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"A", "B"}, nil))
-		RequireStatus(t, resp, http.StatusOK)
-
-		// Setup replicator
-		srv := httptest.NewServer(rt2.TestPublicHandler())
-		defer srv.Close()
-
-		passiveDBURL, err := url.Parse(srv.URL + "/db")
-		require.NoError(t, err)
-
-		passiveDBURL.User = url.UserPassword("user", "letmein")
-		id := SafeDocumentName(t, t.Name())
-
-		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          id,
-			Direction:   db.ActiveReplicatorTypePull,
-			RemoteDBURL: passiveDBURL,
-			ActiveDB: &db.Database{
-				DatabaseContext: rt1.GetDatabase(),
-			},
-			Continuous:             true,
-			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
-			CollectionsEnabled:     base.TestsUseNamedCollections(),
-			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
-		})
-		require.NoError(t, err)
+		replicationID := SafeDocumentName(t, t.Name())
 
 		for i := range 10 {
 			_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
 		}
 
+		var lastDocID string
 		for i := range 7 {
-			_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+			lastDocID = fmt.Sprintf("docB%d", i)
+			_ = rt2.PutDoc(lastDocID, `{"channels": ["B"]}`)
 		}
 
 		rt2.WaitForPendingChanges()
 
-		require.NoError(t, ar.Start(ctx1))
+		rt1.CreateReplication(replicationID, peers.PassiveDBURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
+		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 		changesResults := rt1.WaitForChanges(17, "/{{.keyspace}}/_changes?since=0", "", true)
 
 		// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
 		// to hit CBG-1591
-		require.NoError(t, ar.Stop())
-		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+		WaitForISGRPullSequence(rt1, replicationID, rt2.GetDocumentSequence(lastDocID))
+		rt1.StopReplication(replicationID)
 
-		resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
+		resp := rt2.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt2.GetSingleDataStore(), []string{"B"}, nil))
 		RequireStatus(t, resp, http.StatusOK)
 
 		// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 		// not processed by the rt1 receiver.
 		for i := 7; i < 15; i++ {
-			_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+			lastDocID = fmt.Sprintf("docB%d", i)
+			_ = rt2.PutDoc(lastDocID, `{"channels": ["B"]}`)
 		}
 
 		rt2.WaitForPendingChanges()
 
-		require.NoError(t, ar.Start(ctx1))
-		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+		rt1.StartReplication(replicationID)
 
 		changesResults = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 
-		require.NoError(t, ar.Stop())
-		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+		// Stopping before the revoked channel's sequence is checkpointed would rewind the next replication past the
+		// revocation, and the channel A docs would be purged once purge_on_removal is turned on below.
+		WaitForISGRPullSequence(rt1, replicationID, rt2.GetDocumentSequence(lastDocID))
+		rt1.StopReplication(replicationID)
 
-		ar, err = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          id,
-			Direction:   db.ActiveReplicatorTypePull,
-			RemoteDBURL: passiveDBURL,
-			ActiveDB: &db.Database{
-				DatabaseContext: rt1.GetDatabase(),
-			},
-			Continuous:             true,
-			PurgeOnRemoval:         true,
-			ReplicationStatsMap:    DbReplicatorStats(t, rt1.GetDatabase(), id),
-			CollectionsEnabled:     base.TestsUseNamedCollections(),
-			SupportedBLIPProtocols: sgrRunner.SupportedSubprotocols,
-		})
-		require.NoError(t, err)
+		// Flip purge_on_removal on. This is not part of the checkpoint hash, so the replication keeps its checkpoint.
+		resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/"+replicationID, `{"purge_on_removal": true}`)
+		RequireStatus(t, resp, http.StatusOK)
 
 		// Send a doc to act as a 'marker' so we know when replication has completed
 		_ = rt2.PutDoc("docMarker", `{"channels": ["B"]}`)
 
-		require.NoError(t, ar.Start(ctx1))
-		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+		rt1.StartReplication(replicationID)
 
 		// Validate none of the documents are purged after flipping option
 		rt2.WaitForPendingChanges()
@@ -2568,8 +2525,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		}
 
 		// Shutdown replicator to close out
-		require.NoError(t, ar.Stop())
-		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+		rt1.StopReplication(replicationID)
 	})
 }
 

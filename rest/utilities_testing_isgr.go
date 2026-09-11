@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -371,6 +372,17 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) *TestISGRPeers 
 	peers.ActiveRT = peers.AddActiveRT(t)
 
 	return peers
+}
+
+// WaitForISGRPullSequence waits for the pull replication on rt to have checkpointed the given remote sequence.
+// A pulled document is written before its sequence reaches the checkpointer, so it can be readable on rt while the
+// replication is still unable to checkpoint it - stopping in that window rewinds the replication on the next start.
+func WaitForISGRPullSequence(rt *RestTester, replicationID string, seq uint64) {
+	rt.TB().Helper()
+	expectedSeq := strconv.FormatUint(seq, 10)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, expectedSeq, rt.GetReplicationStatus(replicationID).LastSeqPull)
+	}, 20*time.Second, 10*time.Millisecond)
 }
 
 // DbReplicatorStats returns the replication stats for the given database and replication ID. Stats are cached per
