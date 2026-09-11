@@ -903,33 +903,6 @@ func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 	return rt.DiagnosticHandler
 }
 
-// WaitForCondition runs a retry loop that evaluates the provided function, and terminates
-// when the function returns true.
-func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
-	return rt.WaitForConditionWithOptions(successFunc, 200, 100)
-}
-
-func (rt *RestTester) WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	return WaitForConditionWithOptions(rt.Context(), successFunc, maxNumAttempts, timeToSleepMs)
-}
-
-func WaitForConditionWithOptions(ctx context.Context, successFunc func() bool, maxNumAttempts, timeToSleepMs int) error {
-	waitForSuccess := func() (shouldRetry bool, err error, value any) {
-		if successFunc() {
-			return false, nil, nil
-		}
-		return true, nil, nil
-	}
-
-	sleeper := base.CreateSleeperFunc(maxNumAttempts, timeToSleepMs)
-	err, _ := base.RetryLoop(ctx, "Wait for condition options", waitForSuccess, sleeper)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
 	request := Request(method, rt.mustTemplateResource(resource), body)
 
