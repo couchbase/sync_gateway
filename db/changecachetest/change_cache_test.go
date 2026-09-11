@@ -2938,3 +2938,52 @@ func TestUnblockPendingWithUnusedRange(t *testing.T) {
 	assert.Equal(t, docID, entries[0].DocID)
 	assert.Equal(t, uint64(20), entries[0].Sequence)
 }
+
+// TestChangeCacheLastSequence pins the arithmetic in LastSequence: the cache is up-to-date with
+// the sequence one below the one it expects next. Everything else in the suite reads
+// LastSequence only to compare it against an equally derived value, so an off-by-one in the
+// accessor itself stays invisible.
+func TestChangeCacheLastSequence(t *testing.T) {
+	for _, initialSequence := range []uint64{0, 1, 100} {
+		t.Run(fmt.Sprintf("initialSequence=%d", initialSequence), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			bucket := base.GetTestBucket(t)
+			dbContext, err := db.NewDatabaseContext(ctx, "db", bucket, false, db.DatabaseContextOptions{
+				Scopes: db.GetScopesOptions(t, bucket, 1),
+			})
+			require.NoError(t, err)
+			defer dbContext.Close(ctx)
+
+			ctx = dbContext.AddDatabaseLogContext(ctx)
+			require.NoError(t, dbContext.StartOnlineProcesses(ctx))
+
+			// Long waits keep the pending and skipped background tasks from advancing
+			// nextSequence underneath the assertions.
+			cacheOptions := db.DefaultCacheOptions()
+			cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+			cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+
+			testChangeCache := db.NewChangeCacheForTest(t)
+			require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &cacheOptions, dbContext.MetadataKeys))
+			require.NoError(t, testChangeCache.Start(initialSequence))
+			defer testChangeCache.Stop(ctx)
+
+			// A cache that has seen nothing since startup is up-to-date with its initial sequence.
+			require.Equal(t, initialSequence+1, testChangeCache.NextSequenceForTest(t))
+			assert.Equal(t, initialSequence, testChangeCache.LastSequence())
+
+			// Three contiguous entries advance it by exactly three.
+			for seq := initialSequence + 1; seq <= initialSequence+3; seq++ {
+				_ = testChangeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc_%d", seq), "1-abc"))
+			}
+			require.Equal(t, initialSequence+4, testChangeCache.NextSequenceForTest(t))
+			assert.Equal(t, initialSequence+3, testChangeCache.LastSequence())
+
+			// An entry past the next expected sequence is buffered as pending rather than
+			// cached, so the cache is still up-to-date only with the last contiguous sequence.
+			_ = testChangeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(initialSequence+5, "doc_gap", "1-abc"))
+			require.Equal(t, initialSequence+4, testChangeCache.NextSequenceForTest(t))
+			assert.Equal(t, initialSequence+3, testChangeCache.LastSequence())
+		})
+	}
+}
