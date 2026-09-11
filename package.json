@@ -7,6 +7,6 @@
     "preview:openapi": "redocly preview-docs --config=.redocly.yaml"
   },
   "devDependencies": {
-    "@redocly/cli": "2.49.0"
+    "@redocly/cli": "2.51.2"
   }
 }
