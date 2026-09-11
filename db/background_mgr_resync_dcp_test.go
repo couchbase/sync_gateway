@@ -1232,3 +1232,74 @@ func TestNewResyncManagerDCPUpdateDatabaseState(t *testing.T) {
 	require.NotNil(t, state.ResyncRunning)
 	require.False(t, *state.ResyncRunning)
 }
+
+// TestResyncCheckpointsRemovedOnCompletion covers the other half of CBG-5041 for resync: nothing
+// purges checkpoints when a run finishes successfully. BackgroundManager's terminal transition
+// persists the final status and deletes the heartbeat doc but never touches checkpoints, so the only
+// cleanup is the gocb client's implicit purge in deactivateVbucket. Rosmar has no equivalent, and
+// neither does the cbgt/sharded path used by distributed resync.
+func TestResyncCheckpointsRemovedOnCompletion(t *testing.T) {
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{docsToCreate: 1000})
+	defer db.Close(ctx)
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+
+	require.NoError(t, db.ResyncManager.Start(ctx, ResyncOptions{Collections: base.NewCollectionNames()}))
+	completed := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+	require.NotEmpty(t, completed.ResyncID)
+
+	prefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, completed.ResyncID, process.Distributed)
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, prefix, db.distributedDCPFeedMode()),
+		"completed resync run %q left its DCP checkpoints behind", completed.ResyncID)
+}
+
+// TestResyncInitPurgesCompletedRunCheckpoints locks in behaviour that is correct *today* and which the
+// CBG-5041 fix must not break: when Init starts a new run because the previous one completed, it purges
+// that previous run's checkpoints.
+//
+// This is the one reset-adjacent path that is not redundant with the stopped-run test, because resync's
+// guard chain treats the two differently - "previous run completed" reaches the JSONUnmarshal and so
+// populates statusDoc.ResyncID, whereas an explicit Reset short-circuits before it and leaves the ID
+// empty, so the abandoned run's checkpoints leak. Any fix that rearranges that chain could
+// silently lose this purge, and nothing else would catch it.
+//
+// Init is driven directly with a crafted status document rather than by running resync twice, so the
+// precondition does not depend on a completed run leaving checkpoints behind. That keeps the test valid
+// once purge-on-completion lands, and it still models a real state: checkpoints written by a completed
+// run on an older build, cleaned up on the next run after upgrade.
+func TestResyncInitPurgesCompletedRunCheckpoints(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	defer func() {
+		_ = db.ResyncManager.Stop(ctx)
+		// Start would normally do this; needed here because Init is called directly
+		db.ResyncManager.resetStatus()
+	}()
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+	feedMode := db.distributedDCPFeedMode()
+
+	previousResyncID := uuid.NewString()
+	previousPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, previousResyncID, process.Distributed)
+	writeDCPCheckpoint(t, ctx, db.DatabaseContext, previousPrefix, feedMode)
+
+	clusterData, err := json.Marshal(ResyncManagerStatusDocDCP{
+		ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+			BackgroundManagerStatus: BackgroundManagerStatus{State: BackgroundProcessStateCompleted},
+			ResyncID:                previousResyncID,
+		},
+		ResyncManagerMeta: ResyncManagerMeta{
+			CollectionIDs: slices.Collect(maps.Keys(db.CollectionByID)),
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = process.Init(ctx, ResyncOptions{Collections: base.NewCollectionNames()}, clusterData)
+	require.NoError(t, err)
+
+	require.NotEqual(t, previousResyncID, getResyncStats(t, db).ResyncID,
+		"Init should have started a new resync run after a completed previous run")
+
+	require.Empty(t, existingDCPCheckpoints(t, ctx, db.DatabaseContext, previousPrefix, feedMode),
+		"Init did not purge the completed previous run %q's checkpoints", previousResyncID)
+}

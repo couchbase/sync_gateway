@@ -881,3 +881,98 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 }
+
+// getAttachmentCompactionStatus returns the current attachment compaction status.
+func getAttachmentCompactionStatus(t testing.TB, db *Database) AttachmentManagerResponse {
+	t.Helper()
+	var status AttachmentManagerResponse
+	rawStatus, err := db.AttachmentCompactionManager.GetStatus(base.TestCtx(t))
+	require.NoError(t, err)
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+	return status
+}
+
+// TestAttachmentCompactionResetPurgesStoppedRunCheckpoints covers the non-happy path, and is the
+// case that shows the CBG-5041 reset leak is a production defect rather than a rosmar artifact.
+//
+// A cleanly completed run is the one situation where a gocb feed tidies up after itself, via the
+// implicit purge in deactivateVbucket. A run that is stopped part way through does not reach that
+// path, so its checkpoints persist on every backend - 1 document on rosmar, one per worker on gocb.
+// That is also the realistic reason an operator reaches for reset=true: the previous run got stuck,
+// not that it succeeded.
+//
+// Reset must therefore purge them, and does not: Init takes the reset branch without ever reading
+// statusDoc.CompactID.
+func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
+	testDb, ctx := setupTestDBDefaultCollection(t)
+	defer testDb.Close(ctx)
+	dataStore := testDb.Bucket.DefaultDataStore(ctx)
+
+	// enough unmarked attachments that the mark phase is still in flight when it is stopped
+	for i := range 1000 {
+		require.NoError(t, dataStore.SetRaw(ctx, fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i), 0, nil, []byte("{}")))
+	}
+
+	mgr := testDb.AttachmentCompactionManager
+	feedMode := testDb.dcpFeedMode()
+
+	require.NoError(t, mgr.Start(ctx, AttachmentCompactionOptions{Database: testDb}))
+	require.NoError(t, mgr.Stop(ctx))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateStopped)
+
+	stopped := getAttachmentCompactionStatus(t, testDb)
+	require.Equal(t, string(MarkPhase), stopped.Phase)
+	require.NotEmpty(t, stopped.CompactID)
+
+	markPrefix := GetAttachmentCompactionDCPCheckpointPrefix(testDb.DatabaseContext, stopped.CompactID, MarkPhase)
+	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, testDb.DatabaseContext, markPrefix, feedMode),
+		"precondition: a stopped mark phase should have persisted checkpoints")
+
+	// reset - this abandons the stopped run in favour of a new compactID
+	require.NoError(t, mgr.Start(ctx, AttachmentCompactionOptions{Database: testDb, Reset: true}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	require.NotEqual(t, stopped.CompactID, getAttachmentCompactionStatus(t, testDb).CompactID,
+		"reset should have started a new compaction run")
+
+	require.Empty(t, existingDCPCheckpoints(t, ctx, testDb.DatabaseContext, markPrefix, feedMode),
+		"reset left behind the mark phase checkpoints for the stopped compaction run %q", stopped.CompactID)
+}
+
+// TestAttachmentCompactionCheckpointsRemovedOnCompletion covers the completion half of CBG-5041 for
+// attachment compaction. BackgroundManager's terminal transition persists the final status and deletes
+// the heartbeat doc, but did not touch checkpoints - the only cleanup was the gocb client's implicit
+// purge in deactivateVbucket, which rosmar has no equivalent of.
+//
+// Compaction persists one checkpoint prefix per phase, so a completed run must leave none of the three
+// behind. This also exercises the _database captured in Init, which the completion purge depends on
+// because it runs after Run has returned and so has no options to read.
+func TestAttachmentCompactionCheckpointsRemovedOnCompletion(t *testing.T) {
+	testDb, ctx := setupTestDBDefaultCollection(t)
+	defer testDb.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
+	const legacyAttachmentCount = 10
+	for i := range legacyAttachmentCount {
+		attBody, err := base.JSONMarshal(map[string]any{"value": strconv.Itoa(i)})
+		require.NoError(t, err)
+		CreateLegacyAttachmentDoc(t, ctx, collection, fmt.Sprintf("testDoc-%d", i), []byte("{}"), fmt.Sprintf("att-%d", i), attBody)
+	}
+
+	mgr := testDb.AttachmentCompactionManager
+	feedMode := testDb.dcpFeedMode()
+
+	require.NoError(t, mgr.Start(ctx, AttachmentCompactionOptions{Database: testDb}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	status := getAttachmentCompactionStatus(t, testDb)
+	require.NotEmpty(t, status.CompactID)
+	// guards against the run completing without doing any work, which would make the assertions below vacuous
+	require.Equal(t, int64(legacyAttachmentCount), status.MarkedAttachments)
+
+	for _, phase := range []attachmentCompactionPhase{MarkPhase, SweepPhase, CleanupPhase} {
+		prefix := GetAttachmentCompactionDCPCheckpointPrefix(testDb.DatabaseContext, status.CompactID, phase)
+		require.Empty(t, existingDCPCheckpoints(t, ctx, testDb.DatabaseContext, prefix, feedMode),
+			"completed compaction run %q left its %s phase checkpoints behind", status.CompactID, phase)
+	}
+}
