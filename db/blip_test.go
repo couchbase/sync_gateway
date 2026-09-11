@@ -30,7 +30,7 @@ func TestSubprotocolString(t *testing.T) {
 }
 
 func TestBlipCorrelationID(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	ctx, cancelFunc := context.WithCancelCause(ctx)
 	defer cancelFunc(errors.New("test teardown"))

@@ -26,7 +26,7 @@ import (
 )
 
 func TestAttachmentMark(t *testing.T) {
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := SetupTestDB(t)
 	defer testDb.Close(ctx)
 
 	databaseCollection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
@@ -79,7 +79,7 @@ func TestAttachmentMark(t *testing.T) {
 }
 
 func TestAttachmentSweep(t *testing.T) {
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 	collectionID := GetSingleDatabaseCollection(t, testDb.DatabaseContext).GetCollectionID()
@@ -125,7 +125,7 @@ func TestAttachmentSweep(t *testing.T) {
 }
 
 func TestAttachmentCleanup(t *testing.T) {
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := SetupTestDB(t)
 	defer testDb.Close(ctx)
 	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
 	dataStore := collection.dataStore
@@ -306,7 +306,7 @@ func TestAttachmentCleanupRollback(t *testing.T) {
 }
 
 func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
@@ -546,7 +546,7 @@ func TestAttachmentProcessError(t *testing.T) {
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	base.TestRequiresGocbDCPClient(t)
 
-	testDB, ctx := setupTestDB(t)
+	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 	dataStore := testDB.Bucket.DefaultDataStore(ctx)
 	collectionID := GetSingleDatabaseCollection(t, testDB.DatabaseContext).GetCollectionID()
@@ -791,7 +791,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	const docsToCreate = 10_000
 
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore(ctx)
 

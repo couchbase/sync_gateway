@@ -551,7 +551,7 @@ func TestBackingStoreCV(t *testing.T) {
 // Ensure internal properties aren't being incorrectly stored in revision cache
 func TestRevisionCacheInternalProperties(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -604,7 +604,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 func TestBypassRevisionCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -670,7 +670,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 		t.Skip("Revision cache expected to be used for this test")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -714,7 +714,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutExistingRev
 func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1377,7 +1377,7 @@ func TestRevisionCacheRemove(t *testing.T) {
 	if base.TestDisableRevCache() {
 		t.Skip("test requires revision cache to be enabled")
 	}
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2062,7 +2062,7 @@ func TestConcurrentLoadByCVAndRevOnCache(t *testing.T) {
 //   - Create db, create a doc on the db
 //   - Call GetActive pn the rev cache and assert that the rev and cv are correct
 func TestGetActive(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2306,7 +2306,7 @@ func TestRevCacheOnDemandImportNoCache(t *testing.T) {
 		t.Skip("test requires rev cache enabled")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2634,7 +2634,7 @@ func TestMultipleRevCacheItemsForSameDocs(t *testing.T) {
 		t.Skip("test requires rev cache enabled")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

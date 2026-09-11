@@ -8,11 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package changesfeedtest
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -23,44 +25,44 @@ import (
 // (simple, TriggeredBy:Seq, and LowSeq:TriggeredBy:Seq, including an empty TriggeredBy component)
 // as well as malformed inputs that should return an error.
 func TestParseSequenceID(t *testing.T) {
-	s, err := parseIntegerSequenceID("1234")
+	s, err := db.ParsePlainSequenceID("1234")
 	assert.NoError(t, err, "parseIntegerSequenceID")
-	assert.Equal(t, SequenceID{Seq: 1234}, s)
+	assert.Equal(t, db.SequenceID{Seq: 1234}, s)
 
-	s, err = parseIntegerSequenceID("5678:1234")
+	s, err = db.ParsePlainSequenceID("5678:1234")
 	assert.NoError(t, err, "parseIntegerSequenceID")
-	assert.Equal(t, SequenceID{Seq: 1234, TriggeredBy: 5678}, s)
+	assert.Equal(t, db.SequenceID{Seq: 1234, TriggeredBy: 5678}, s)
 
-	s, err = parseIntegerSequenceID("")
+	s, err = db.ParsePlainSequenceID("")
 	assert.NoError(t, err, "parseIntegerSequenceID")
-	assert.Equal(t, SequenceID{Seq: 0, TriggeredBy: 0}, s)
+	assert.Equal(t, db.SequenceID{Seq: 0, TriggeredBy: 0}, s)
 
-	s, err = parseIntegerSequenceID("123:456:789")
+	s, err = db.ParsePlainSequenceID("123:456:789")
 	assert.NoError(t, err, "parseIntegerSequenceID")
-	assert.Equal(t, SequenceID{Seq: 789, TriggeredBy: 456, LowSeq: 123}, s)
+	assert.Equal(t, db.SequenceID{Seq: 789, TriggeredBy: 456, LowSeq: 123}, s)
 
-	s, err = parseIntegerSequenceID("123::789")
+	s, err = db.ParsePlainSequenceID("123::789")
 	assert.NoError(t, err, "parseIntegerSequenceID")
-	assert.Equal(t, SequenceID{Seq: 789, TriggeredBy: 0, LowSeq: 123}, s)
+	assert.Equal(t, db.SequenceID{Seq: 789, TriggeredBy: 0, LowSeq: 123}, s)
 
-	s, err = parseIntegerSequenceID("foo")
+	s, err = db.ParsePlainSequenceID("foo")
 	require.Error(t, err)
-	require.Equal(t, SequenceID{}, s)
-	s, err = parseIntegerSequenceID(":")
+	require.Equal(t, db.SequenceID{}, s)
+	s, err = db.ParsePlainSequenceID(":")
 	require.Error(t, err)
-	require.Equal(t, SequenceID{}, s)
-	s, err = parseIntegerSequenceID(":1")
+	require.Equal(t, db.SequenceID{}, s)
+	s, err = db.ParsePlainSequenceID(":1")
 	require.Error(t, err)
-	require.Equal(t, SequenceID{}, s)
-	s, err = parseIntegerSequenceID("::1")
+	require.Equal(t, db.SequenceID{}, s)
+	s, err = db.ParsePlainSequenceID("::1")
 	require.Error(t, err)
-	require.Equal(t, SequenceID{}, s)
-	s, err = parseIntegerSequenceID("10:11:12:13")
+	require.Equal(t, db.SequenceID{}, s)
+	s, err = db.ParsePlainSequenceID("10:11:12:13")
 	require.Error(t, err)
-	require.Equal(t, SequenceID{}, s)
-	s, err = parseIntegerSequenceID("123:ggg")
+	require.Equal(t, db.SequenceID{}, s)
+	s, err = db.ParsePlainSequenceID("123:ggg")
 	require.Error(t, err)
-	require.Equal(t, SequenceID{}, s)
+	require.Equal(t, db.SequenceID{}, s)
 }
 
 // BenchmarkParseSequenceID measures parseIntegerSequenceID's performance across the same set of
@@ -84,7 +86,7 @@ func BenchmarkParseSequenceID(b *testing.B) {
 		b.Run(test, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				_, _ = parseIntegerSequenceID(test)
+				_, _ = db.ParsePlainSequenceID(test)
 			}
 		})
 	}
@@ -93,13 +95,13 @@ func BenchmarkParseSequenceID(b *testing.B) {
 // TestMarshalSequenceID verifies String() and JSON marshal/unmarshal round-trip a simple sequence
 // (no TriggeredBy or LowSeq) as a bare integer.
 func TestMarshalSequenceID(t *testing.T) {
-	s := SequenceID{Seq: 1234}
+	s := db.SequenceID{Seq: 1234}
 	assert.Equal(t, "1234", s.String())
 	asJson, err := base.JSONMarshal(s)
 	assert.NoError(t, err, "Marshal failed")
 	assert.Equal(t, "1234", string(asJson))
 
-	var s2 SequenceID
+	var s2 db.SequenceID
 	err = base.JSONUnmarshal(asJson, &s2)
 	assert.NoError(t, err, "Unmarshal failed")
 	assert.Equal(t, s, s2)
@@ -110,65 +112,65 @@ func TestMarshalSequenceID(t *testing.T) {
 func TestSequenceIDUnmarshalJSON(t *testing.T) {
 
 	str := "123"
-	s := SequenceID{}
+	s := db.SequenceID{}
 	err := s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
-	assert.Equal(t, SequenceID{Seq: 123}, s)
+	assert.Equal(t, db.SequenceID{Seq: 123}, s)
 
 	str = "456:123"
-	s = SequenceID{}
+	s = db.SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
-	assert.Equal(t, SequenceID{TriggeredBy: 456, Seq: 123}, s)
+	assert.Equal(t, db.SequenceID{TriggeredBy: 456, Seq: 123}, s)
 
 	str = "220::222"
-	s = SequenceID{}
+	s = db.SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
-	assert.Equal(t, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
+	assert.Equal(t, db.SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
 
 	str = "\"234\""
-	s = SequenceID{}
+	s = db.SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
-	assert.Equal(t, SequenceID{Seq: 234}, s)
+	assert.Equal(t, db.SequenceID{Seq: 234}, s)
 
 	str = "\"567:234\""
-	s = SequenceID{}
+	s = db.SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
-	assert.Equal(t, SequenceID{TriggeredBy: 567, Seq: 234}, s)
+	assert.Equal(t, db.SequenceID{TriggeredBy: 567, Seq: 234}, s)
 
 	str = "\"220::222\""
-	s = SequenceID{}
+	s = db.SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
-	assert.Equal(t, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
+	assert.Equal(t, db.SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
 }
 
 // TestMarshalTriggeredSequenceID verifies String() and JSON marshaling for a TriggeredBy:Seq
 // sequence, plus the case where LowSeq is set but greater than Seq - LowSeq should still be
 // dropped from the output.
 func TestMarshalTriggeredSequenceID(t *testing.T) {
-	s := SequenceID{TriggeredBy: 5678, Seq: 1234}
+	s := db.SequenceID{TriggeredBy: 5678, Seq: 1234}
 	assert.Equal(t, "5678:1234", s.String())
 	asJson, err := base.JSONMarshal(s)
 	assert.NoError(t, err, "Marshal failed")
 	assert.Equal(t, "\"5678:1234\"", string(asJson))
 
-	var s2 SequenceID
+	var s2 db.SequenceID
 	err = base.JSONUnmarshal(asJson, &s2)
 	assert.NoError(t, err, "Unmarshal failed")
 	assert.Equal(t, s, s2)
 
-	s = SequenceID{LowSeq: 5000, TriggeredBy: 5678, Seq: 1234}
+	s = db.SequenceID{LowSeq: 5000, TriggeredBy: 5678, Seq: 1234}
 	assert.Equal(t, "5000:5678:1234", s.String())
 }
 
 // TestCompareSequenceIDs verifies Before() produces a strict total order over a mix of simple and
 // TriggeredBy:Seq sequences, checking every pair in orderedSeqs.
 func TestCompareSequenceIDs(t *testing.T) {
-	orderedSeqs := []SequenceID{
+	orderedSeqs := []db.SequenceID{
 		{Seq: 1234},
 		{Seq: 5677},
 		{TriggeredBy: 5678, Seq: 1234},
@@ -188,7 +190,7 @@ func TestCompareSequenceIDs(t *testing.T) {
 // TestCompareSequenceIDsLowSeq verifies Before() produces a strict total order over sequences that
 // include LowSeq, TriggeredBy, and combinations of both, checking every pair in orderedSeqs.
 func TestCompareSequenceIDsLowSeq(t *testing.T) {
-	orderedSeqs := []SequenceID{
+	orderedSeqs := []db.SequenceID{
 		{LowSeq: 1200, Seq: 1233},
 		{LowSeq: 1205, Seq: 1234},
 		{Seq: 1234},
@@ -217,52 +219,52 @@ func TestCompareSequenceIDsLowSeq(t *testing.T) {
 func TestIntSeqToString(t *testing.T) {
 	testCases := []struct {
 		name   string
-		seq    SequenceID
+		seq    db.SequenceID
 		seqStr string
 	}{
 		{
 			name:   "simple sequence",
-			seq:    SequenceID{Seq: 100},
+			seq:    db.SequenceID{Seq: 100},
 			seqStr: "100",
 		},
 		{
 			name:   "compound sequence with triggeredBy seq and seq",
-			seq:    SequenceID{TriggeredBy: 110, Seq: 20},
+			seq:    db.SequenceID{TriggeredBy: 110, Seq: 20},
 			seqStr: "110:20",
 		},
 		{
 			name:   "compound sequence with lowSeq seq and seq",
-			seq:    SequenceID{LowSeq: 80, Seq: 100},
+			seq:    db.SequenceID{LowSeq: 80, Seq: 100},
 			seqStr: "80::100",
 		},
 		{
 			name:   "compound sequence with lowSeq seq greater than seq",
-			seq:    SequenceID{LowSeq: 110, Seq: 100},
+			seq:    db.SequenceID{LowSeq: 110, Seq: 100},
 			seqStr: "100",
 		},
 		{
 			name:   "compound sequence with lowSeq, triggeredBy seq and seq",
-			seq:    SequenceID{LowSeq: 105, TriggeredBy: 110, Seq: 20},
+			seq:    db.SequenceID{LowSeq: 105, TriggeredBy: 110, Seq: 20},
 			seqStr: "105:110:20",
 		},
 		{
 			name:   "compound sequence with lowSeq, triggeredBy seq and seq and seq < lowSeq",
-			seq:    SequenceID{LowSeq: 120, TriggeredBy: 110, Seq: 20},
+			seq:    db.SequenceID{LowSeq: 120, TriggeredBy: 110, Seq: 20},
 			seqStr: "110:20",
 		},
 		{
 			name:   "backfill is complete, triggeredBy is less than lowseq",
-			seq:    SequenceID{TriggeredBy: 110, Seq: 150},
+			seq:    db.SequenceID{TriggeredBy: 110, Seq: 150},
 			seqStr: "150",
 		},
 		{
 			name:   "backfill is complete and seq is less than lowSeq, triggeredBy is less than lowseq",
-			seq:    SequenceID{LowSeq: 120, TriggeredBy: 100, Seq: 110},
+			seq:    db.SequenceID{LowSeq: 120, TriggeredBy: 100, Seq: 110},
 			seqStr: "110",
 		},
 		{
 			name:   "backfill is complete and lowseq is less than seq, triggeredBy is greater than lowseq",
-			seq:    SequenceID{LowSeq: 120, TriggeredBy: 130, Seq: 150},
+			seq:    db.SequenceID{LowSeq: 120, TriggeredBy: 130, Seq: 150},
 			seqStr: "120::150",
 		},
 	}

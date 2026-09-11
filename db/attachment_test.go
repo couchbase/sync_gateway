@@ -261,7 +261,7 @@ func TestAttachments(t *testing.T) {
 }
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -282,7 +282,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 }
 
 func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -351,7 +351,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 		UpdateCallback: writeUpdateCallback,
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -414,7 +414,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 		UpdateCallback: writeUpdateCallback,
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -453,7 +453,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 }
 
 func TestForEachStubAttachmentErrors(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -588,7 +588,7 @@ func TestDecodeAttachmentError(t *testing.T) {
 }
 
 func TestSetAttachment(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -669,7 +669,7 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 }
 
 func TestStoreAttachments(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -776,7 +776,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	const docKey = "TestMigrateBodyAttachments"
 
 	setupFn := func(t *testing.T) (db *Database, ctx context.Context) {
-		db, ctx = setupTestDB(t)
+		db, ctx = SetupTestDB(t)
 
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1025,7 +1025,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	const docKey = "TestMigrateBodyAttachmentsMerge"
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1164,7 +1164,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
 	const docKey = "TestMigrateBodyAttachmentsMergeConflicting"
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1486,7 +1486,7 @@ func TestGetAttVersion(t *testing.T) {
 func TestLargeAttachments(t *testing.T) {
 	base.LongRunningTest(t)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1592,7 +1592,7 @@ var attachmentMigrationCASRetryExpected = AttachmentMap{
 // without it, the retry sees a stub mutated by the first invocation and applies a parent
 // lookup that returns the migrated revpos=1.
 func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
-	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
+	db, ctx := SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	ds := collection.GetCollectionDatastore()
@@ -1680,7 +1680,7 @@ func TestAttachmentMigrationCASRetryOnUpdate(t *testing.T) {
 // well, or the attachment metadata exists in neither xattr afterwards.
 func TestRepairDoesNotDropPre4dot0Attachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -1748,7 +1748,7 @@ func TestRepairDoesNotDropPre4dot0Attachments(t *testing.T) {
 
 func TestRepairPreservesPost4Dot0Attachment(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -1824,7 +1824,7 @@ func requireAttachmentMetadataPreserved(t *testing.T, ds base.DataStore, docID, 
 // without the revSeqNo virtual xattr, so doc.RevSeqNo is zero and _mou.pRev is written as 0 instead of
 // naming the mutation that last wrote the body. Tracked by CBG-5764.
 func TestVersionCASCorrectionPreservesGlobalXattr(t *testing.T) {
-	dbc, ctx := setupTestDB(t)
+	dbc, ctx := SetupTestDB(t)
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 	ds := collection.GetCollectionDatastore()
@@ -2006,7 +2006,7 @@ func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			dbc, ctx := setupTestDB(t)
+			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 			ds := collection.GetCollectionDatastore()

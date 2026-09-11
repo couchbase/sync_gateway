@@ -6,11 +6,13 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package db
+package changecachetest
 
 import (
 	"maps"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -30,7 +32,7 @@ func TestCachingFeedCollections_DualMetadataStore(t *testing.T) {
 	fallback := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primary, fallback)
 
-	got := cachingFeedCollections(ms, nil)
+	got := db.CachingFeedCollectionsForTest(t, ms, nil)
 
 	require.Contains(t, maps.Keys(got), base.SystemScope, "expected %s scope to be present", base.SystemScope)
 	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
@@ -53,7 +55,7 @@ func TestCachingFeedCollectionsDualMetadataStoreMigrationComplete(t *testing.T) 
 	ms := base.NewMetadataStore(primary, fallback)
 	ms.DisableFallbackReads()
 
-	got := cachingFeedCollections(ms, nil)
+	got := db.CachingFeedCollectionsForTest(t, ms, nil)
 
 	require.Contains(t, maps.Keys(got), base.SystemScope, "expected %s scope to be present", base.SystemScope)
 	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)
@@ -73,7 +75,7 @@ func TestCachingFeedCollections_SingleMetadataStore(t *testing.T) {
 
 	metadataStore := bucket.DefaultDataStore(ctx)
 
-	got := cachingFeedCollections(metadataStore, nil)
+	got := db.CachingFeedCollectionsForTest(t, metadataStore, nil)
 
 	require.Contains(t, maps.Keys(got), base.DefaultScope)
 	assert.Contains(t, maps.Keys(got[base.DefaultScope]), base.DefaultCollection)
@@ -92,16 +94,16 @@ func TestCachingFeedCollections_UserScopesIncluded(t *testing.T) {
 	fallback := bucket.DefaultDataStore(ctx)
 	ms := base.NewMetadataStore(primary, fallback)
 
-	scopes := map[string]Scope{
+	scopes := map[string]db.Scope{
 		"myScope": {
-			Collections: map[string]*DatabaseCollection{
+			Collections: map[string]*db.DatabaseCollection{
 				"collA": nil,
 				"collB": nil,
 			},
 		},
 	}
 
-	got := cachingFeedCollections(ms, scopes)
+	got := db.CachingFeedCollectionsForTest(t, ms, scopes)
 
 	require.Contains(t, maps.Keys(got), base.SystemScope)
 	assert.Contains(t, maps.Keys(got[base.SystemScope]), base.SystemCollectionMobile)

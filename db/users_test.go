@@ -32,7 +32,7 @@ func TestDeleteRoleSequenceAllocation(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDB(t)
 			defer db.Close(ctx)
 
 			authenticator := db.Authenticator(ctx)

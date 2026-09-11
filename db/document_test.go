@@ -744,7 +744,7 @@ func TestAlignRevTreeHistory(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDB(t)
 			defer db.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,6 +32,7 @@ import (
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbase/sync_gateway/testing/sgtest"
+	skiplist "github.com/couchbasedeps/fast-skiplist"
 )
 
 func (db *DatabaseContext) CacheCompactActive() bool {
@@ -1311,4 +1313,495 @@ func revTreeParents(tree RevTree) map[string]string {
 		parents[revID] = info.Parent
 	}
 	return parents
+}
+
+// GetChangesForTest is a synchronous convenience function that returns all changes as a simple array.
+func GetChangesForTest(t testing.TB, collection *DatabaseCollectionWithUser, channels base.Set, options ChangesOptions) []*ChangeEntry {
+	require.NotNil(t, options.ChangesCtx)
+	feed, err := collection.MultiChangesFeed(options.ChangesCtx, channels, options)
+
+	require.NoError(t, err)
+	require.NotNil(t, feed)
+	var changes = make([]*ChangeEntry, 0, 50)
+	for entry := range feed {
+		changes = append(changes, entry)
+	}
+	return changes
+}
+
+// GetChangesOptionsWithZeroSeq makes changes options starting at sequence 0, with a new changes context
+func GetChangesOptionsWithZeroSeq(t testing.TB) ChangesOptions {
+	return ChangesOptions{Since: SequenceID{Seq: 0}, ChangesCtx: base.TestCtx(t)}
+}
+
+// GetChangesOptionsWithCtxOnly makes changes options with a new changes context
+func GetChangesOptionsWithCtxOnly(t testing.TB) ChangesOptions {
+	return ChangesOptions{ChangesCtx: base.TestCtx(t)}
+}
+
+// GetChangesOptionsWithSeq makes changes options with a since value of seq and a new changes context
+func GetChangesOptionsWithSeq(t testing.TB, seq SequenceID) ChangesOptions {
+	return ChangesOptions{Since: seq, ChangesCtx: base.TestCtx(t)}
+}
+
+// SetupTestDB returns a database with the default cache options. Caller must call db.Close().
+func SetupTestDB(t testing.TB) (*Database, context.Context) {
+	return SetupTestDBWithCacheOptions(t, DefaultCacheOptions())
+}
+
+func SetupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, context.Context) {
+
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	return SetupTestDBWithOptions(t, dbcOptions)
+}
+
+func SetupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		Scopes:       GetScopesOptionsDefaultCollectionOnly(t),
+		CacheOptions: &cacheOptions,
+	}
+	return SetupTestDBWithOptions(t, dbcOptions)
+}
+
+func SetupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
+	testBucket := base.GetTestBucket(t)
+	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	return SetupTestDBForBucketWithOptions(t, leakyBucket, dbcOptions)
+}
+
+func SetupDBWithChannelCacheSettings(t *testing.T, cacheOptions CacheOptions) (context.Context, *Database, *DatabaseCollectionWithUser) {
+	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
+	t.Cleanup(func() { db.Close(ctx) })
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
+	return ctx, db, collection
+}
+
+func ShortWaitCache() CacheOptions {
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CachePendingSeqMaxNum = 50
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	return cacheOptions
+}
+
+func MakeLogEntry(seq uint64, docid string, revid string, channelNames []string, collectionID uint32) *LogEntry {
+	entry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		CollectionID: collectionID,
+	}
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+	entry.Channels = channelMap
+	return entry
+}
+
+func MakeTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
+	return &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+	}
+}
+
+// MakeDeletedTestLogEntry returns a tombstoned LogEntry for the given sequence.
+func MakeDeletedTestLogEntry(seq uint64, docid string, revid string) *LogEntry {
+	entry := MakeTestLogEntry(seq, docid, revid)
+	entry.SetDeleted()
+	return entry
+}
+
+// MakeTestLogEntryForChannels Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
+func MakeTestLogEntryForChannels(seq int, channelNames []string) *LogEntry {
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+
+	return &LogEntry{
+		Sequence:     uint64(seq),
+		DocID:        fmt.Sprintf("doc_%d", seq),
+		RevID:        "1-abc",
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		Channels:     channelMap,
+	}
+}
+
+func MakeTestLogEntryWithCV(seq uint64, docid string, revid string, channelNames []string, collectionID uint32, sourceID string, version uint64) *LogEntry {
+	entry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: channels.NewFeedTimestampFromNow(),
+		CollectionID: collectionID,
+		SourceID:     sourceID,
+		Version:      version,
+	}
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+	entry.Channels = channelMap
+	return entry
+}
+
+// QueryHandlerForTest is a ChannelQueryHandler test double serving entries from a seeded,
+// in-memory list instead of a real GSI or view query. It lives here rather than in a test
+// file because ChannelQueryHandler's only method is unexported: Go will not let a type
+// outside package db implement it, so out-of-package test packages cannot write their own.
+type QueryHandlerForTest struct {
+	entries    LogEntries
+	queryCount int
+	lock       sync.RWMutex
+}
+
+// QueryHandlerFactoryForTest is a ChannelQueryHandlerFactory returning a fresh, empty handler.
+func QueryHandlerFactoryForTest(collectionID uint32) (ChannelQueryHandler, error) {
+	return &QueryHandlerForTest{}, nil
+}
+
+// AsFactory adapts this handler to ChannelQueryHandlerFactory, so a single handler instance is
+// shared across every collection.
+func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandler, error) {
+	return qh, nil
+}
+
+// getChangesInChannelFromQuery serves seeded entries, applying the same filters the real
+// handler does. The sequence bounds match DatabaseCollection.QueryChannels: startSeq and endSeq
+// are both INCLUSIVE (the N1QL statement uses BETWEEN [$channelName, $startSeq] AND
+// [$channelName, $endSeq], and the views path uses startkey/endkey with the default
+// inclusive_end), and endSeq of 0 means unbounded - query.go substitutes N1QLMaxInt64 for it.
+// The bounds are applied before the limit, so entries outside the range do not consume it.
+func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+	queryEntries := make(LogEntries, 0)
+	qh.lock.RLock()
+	for _, entry := range qh.entries {
+		if _, ok := entry.Channels[channel]; !ok {
+			continue
+		}
+		if entry.Sequence < startSeq {
+			continue
+		}
+		if endSeq != 0 && entry.Sequence > endSeq {
+			continue
+		}
+		if activeOnly && !entry.IsActive() {
+			continue
+		}
+		queryEntries = append(queryEntries, entry)
+		if limit > 0 && len(queryEntries) >= limit {
+			break
+		}
+	}
+	qh.lock.RUnlock()
+
+	qh.lock.Lock()
+	qh.queryCount++
+	qh.lock.Unlock()
+	return queryEntries, nil
+}
+
+// SeedEntries appends entries for the handler to serve.
+func (qh *QueryHandlerForTest) SeedEntries(seededEntries LogEntries) {
+	qh.lock.Lock()
+	qh.entries = append(qh.entries, seededEntries...)
+	qh.lock.Unlock()
+}
+
+// QueryCount reports how many queries the handler has served, under the read lock.
+func (qh *QueryHandlerForTest) QueryCount() int {
+	qh.lock.RLock()
+	defer qh.lock.RUnlock()
+	return qh.queryCount
+}
+
+/// Bridges for out-of-package test packages.
+// Deliberately thin - no assertions, no retries, no extra synchronisation.
+
+// ChannelCacheForTest exposes the database's channel cache.
+func (dbc *DatabaseContext) ChannelCacheForTest(_ testing.TB) ChannelCache {
+	return dbc.channelCache
+}
+
+// ChangesFeedForTest drives a single channel's changes feed against the supplied cache,
+// bypassing the multi-channel feed. Lets a test drive changesFeed's own pagination
+// bookkeeping with a stub cache and no real documents, DCP or query backend.
+func (db *DatabaseCollectionWithUser) ChangesFeedForTest(_ testing.TB, ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
+	return db.changesFeed(ctx, singleChannelCache, options, to)
+}
+
+// SetCollectionIDForTest sets the entry's collection, which the changes feed populates from the
+// collection the entry was read from. Takes testing.TB to mark it as test-only.
+func (ce *ChangeEntry) SetCollectionIDForTest(_ testing.TB, collectionID uint32) {
+	ce.collectionID = collectionID
+}
+
+// SetAllRemovedForTest marks the entry as removed from every channel visible to the user.
+// Takes testing.TB to mark it as test-only.
+func (ce *ChangeEntry) SetAllRemovedForTest(_ testing.TB, allRemoved bool) {
+	ce.allRemoved = allRemoved
+}
+
+// IsPrincipalDocForTest reports whether the entry is a _user or _role doc.
+func (ce *ChangeEntry) IsPrincipalDocForTest(_ testing.TB) bool {
+	return ce.principalDoc
+}
+
+// SetDatabaseCollectionUserForTest swaps the user a collection resolves channel access against, so a
+// test can re-read the changes feed as a different principal without rebuilding the collection.
+func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUserForTest(_ testing.TB, user auth.User) {
+	c.user = user
+}
+
+// NewChangeCacheForTest returns an uninitialised change cache. Call Init and Start on the result.
+func NewChangeCacheForTest(_ testing.TB) *changeCache {
+	return &changeCache{}
+}
+
+// ChangeCacheForTest exposes the database's own change cache.
+func (dbc *DatabaseContext) ChangeCacheForTest(_ testing.TB) *changeCache {
+	return &dbc.changeCache
+}
+
+// ProcessEntryForTest caches a single entry and returns the channels it was added to.
+func (c *changeCache) ProcessEntryForTest(_ testing.TB, ctx context.Context, change *LogEntry) []channels.ID {
+	return c.processEntry(ctx, change)
+}
+
+// UpdateStatsForTest applies the cache's running stats to the database expvars.
+func (c *changeCache) UpdateStatsForTest(_ testing.TB, ctx context.Context) {
+	c.updateStats(ctx)
+}
+
+// NextSequenceForTest reports the next consecutive sequence the cache expects. Read without the lock,
+// matching the tests this replaced.
+func (c *changeCache) NextSequenceForTest(_ testing.TB) uint64 {
+	return c.nextSequence
+}
+
+// ReleaseUnusedSequenceRangeForTest handles a released range of sequences the feed will never deliver.
+func (c *changeCache) ReleaseUnusedSequenceRangeForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) {
+	c.releaseUnusedSequenceRange(ctx, fromSequence, toSequence, timeReceived)
+}
+
+// SkippedSeqsForTest exposes the skipped sequence list.
+func (c *changeCache) SkippedSeqsForTest(_ testing.TB) *SkippedSequenceSkiplist {
+	return c.skippedSeqs
+}
+
+// GetChannelCacheForTest exposes the channel cache underlying the change cache.
+func (c *changeCache) GetChannelCacheForTest(_ testing.TB) ChannelCache {
+	return c.getChannelCache()
+}
+
+// GetMaxStableCachedForTest reports the highest contiguous cached sequence. Called without the
+// lock, unlike production's caller which holds the read lock.
+func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Context) uint64 {
+	return c._getMaxStableCached(ctx)
+}
+
+// SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries.
+func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
+	c.notifyChangeFunc = notify
+}
+
+// SetUserForTest swaps the user a database resolves channel access against.
+func (db *Database) SetUserForTest(_ testing.TB, user auth.User) {
+	db.user = user
+}
+
+// ListForTest exposes the underlying skiplist so tests can walk it directly.
+func (s *SkippedSequenceSkiplist) ListForTest(_ testing.TB) *skiplist.SkipList {
+	return s.list
+}
+
+// GetOldestForTest returns the oldest skipped sequence, or 0 if the list is empty.
+func (s *SkippedSequenceSkiplist) GetOldestForTest(_ testing.TB) uint64 {
+	return s.getOldest()
+}
+
+// ProcessUnusedSequenceRangeAtSkippedForTest removes a released range from the skipped list.
+func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkippedForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64) int64 {
+	return s.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+}
+
+// NewSingleChannelCacheForTest builds a single channel cache directly, bypassing the channel
+// cache that would normally own it.
+func NewSingleChannelCacheForTest(_ testing.TB, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	return newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
+}
+
+// AsSingleChannelCacheImplForTest asserts a SingleChannelCache to the concrete implementation. Tests
+// outside package db cannot name the type to perform the assertion themselves.
+func AsSingleChannelCacheImplForTest(_ testing.TB, cache SingleChannelCache) (*singleChannelCacheImpl, bool) {
+	impl, ok := cache.(*singleChannelCacheImpl)
+	return impl, ok
+}
+
+// LogsForTest exposes the cache's in-sequence log entries.
+func (c *singleChannelCacheImpl) LogsForTest(_ testing.TB) LogEntries {
+	return c.logs
+}
+
+// LateLogsForTest exposes the late-arriving entries, in the order they were received.
+func (c *singleChannelCacheImpl) LateLogsForTest(_ testing.TB) []*lateLogEntry {
+	return c.lateLogs
+}
+
+// PurgeLateLogEntriesForTest drops late log entries no listener still needs.
+func (c *singleChannelCacheImpl) PurgeLateLogEntriesForTest(_ testing.TB) {
+	c.purgeLateLogEntries()
+}
+
+// GetListenerCountForTest reports how many late-feed clients still need this entry.
+func (l *lateLogEntry) GetListenerCountForTest(_ testing.TB) uint64 {
+	return l.getListenerCount()
+}
+
+// LogEntryForTest exposes the entry a late log slot holds.
+func (l *lateLogEntry) LogEntryForTest(_ testing.TB) *LogEntry {
+	return l.logEntry
+}
+
+// GetSingleChannelCacheForTest looks up one channel's cache. ChannelCache is an exported
+// interface whose accessor methods are unexported, so the call has to be made from package db.
+func GetSingleChannelCacheForTest(_ testing.TB, ctx context.Context, cache ChannelCache, ch channels.ID) (SingleChannelCache, error) {
+	return cache.getSingleChannelCache(ctx, ch)
+}
+
+// CachingFeedCollectionsForTest returns the (scope, collection) pairs the caching DCP feed
+// subscribes to.
+func CachingFeedCollectionsForTest(_ testing.TB, metadataStore base.DataStore, scopes map[string]Scope) base.CollectionNameSet {
+	return cachingFeedCollections(metadataStore, scopes)
+}
+
+// DefaultWaitForSequence is the feed wait time used when a test does not supply its own.
+const DefaultWaitForSequence = defaultWaitForSequence
+
+// NewChannelCacheForTest builds a channel cache directly, bypassing the database that would
+// normally own it.
+func NewChannelCacheForTest(_ testing.TB, ctx context.Context, dbName string, options ChannelCacheOptions,
+	queryHandlerFactory ChannelQueryHandlerFactory, activeChannels *channels.ActiveChannels,
+	cacheStats *base.CacheStats) (*channelCacheImpl, error) {
+	return newChannelCache(ctx, dbName, options, queryHandlerFactory, activeChannels, cacheStats)
+}
+
+// NewSingleChannelCacheWithOptionsForTest builds a single channel cache with explicit cache
+// options rather than the defaults.
+func NewSingleChannelCacheWithOptionsForTest(_ testing.TB, ctx context.Context, queryHandler ChannelQueryHandler,
+	channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	return newChannelCacheWithOptions(ctx, queryHandler, channel, validFrom, options, cacheStats)
+}
+
+// NewBypassChannelCacheForTest builds the bypass cache used when the channel cache is at capacity.
+func NewBypassChannelCacheForTest(_ testing.TB, queryHandler ChannelQueryHandler, channel channels.ID) *bypassChannelCache {
+	return &bypassChannelCache{channel: channel, queryHandler: queryHandler}
+}
+
+// The two cache implementations are exported under aliases because some test code has to name
+// the type rather than merely hold it: a type assertion, and a closure whose result type is the
+// concrete cache. An accessor cannot stand in for either.
+type ChannelCacheImplForTest = channelCacheImpl
+type SingleChannelCacheImplForTest = singleChannelCacheImpl
+
+// ChannelCachesForTest exposes the collection of per-channel caches.
+func (c *channelCacheImpl) ChannelCachesForTest(_ testing.TB) *channels.RangeSafeCollection {
+	return c.channelCaches
+}
+
+// AddChannelCacheForTest adds a cache for the given channel, reporting false if the cache is at
+// capacity.
+func (c *channelCacheImpl) AddChannelCacheForTest(_ testing.TB, ctx context.Context, channel channels.ID) (*singleChannelCacheImpl, bool) {
+	return c.addChannelCache(ctx, channel)
+}
+
+// WaitForChannelCacheCompactionForTest polls until compaction has finished, reporting false if it
+// did not complete in time.
+func WaitForChannelCacheCompactionForTest(_ testing.TB, cache *channelCacheImpl) (compactionComplete bool) {
+	for i := 0; i <= 10; i++ {
+		if cache.compactRunning.IsTrue() {
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			return true
+		}
+	}
+	return false
+}
+
+// CleanAgedLateLogsForTest runs the background age-based late log prune across all channels.
+func (c *channelCacheImpl) CleanAgedLateLogsForTest(_ testing.TB, ctx context.Context) error {
+	return c.cleanAgedLateLogs(ctx)
+}
+
+// AddToCacheForTest caches a single entry directly, bypassing the change cache.
+func (c *singleChannelCacheImpl) AddToCacheForTest(_ testing.TB, ctx context.Context, change *LogEntry, isRemoval bool) {
+	c.addToCache(ctx, change, isRemoval)
+}
+
+// PrependChangesForTest prepends historical changes to the cache, returning the number added.
+func (c *singleChannelCacheImpl) PrependChangesForTest(_ testing.TB, ctx context.Context, changes LogEntries,
+	changesValidFrom uint64, changesValidTo uint64) int {
+	return c.prependChanges(ctx, changes, changesValidFrom, changesValidTo)
+}
+
+// OptionsForTest exposes the cache's size and expiry settings. The field is a pointer, so tests can adjust the caps in place.
+func (c *singleChannelCacheImpl) OptionsForTest(_ testing.TB) *ChannelCacheOptions {
+	return c.options
+}
+
+// SetValidFromForTest sets the first sequence the cached log is valid for.
+func (c *singleChannelCacheImpl) SetValidFromForTest(_ testing.TB, validFrom uint64) {
+	c.validFrom = validFrom
+}
+
+// LateLogCountForTest reports the number of late log entries held.
+func (c *singleChannelCacheImpl) LateLogCountForTest(_ testing.TB) int64 {
+	return c.lateLogCount()
+}
+
+// CountedLateLogCountForTest reports the late log count as reflected in the stats gauge, which
+// does not count the parked sentinel entry.
+func (c *singleChannelCacheImpl) CountedLateLogCountForTest(_ testing.TB) int64 {
+	return c.countedLateLogCount()
+}
+
+// PruneLateLogAgeForTest drops late log entries older than the configured age.
+func (c *singleChannelCacheImpl) PruneLateLogAgeForTest(_ testing.TB, ctx context.Context) {
+	c.pruneLateLogAge(ctx)
+}
+
+// SetRecentlyUsedForTest sets the recently-used flag that cache compaction reads.
+func SetRecentlyUsedForTest(_ testing.TB, cache SingleChannelCache, recentlyUsed bool) {
+	cache.(*singleChannelCacheImpl).recentlyUsed.Set(recentlyUsed)
+}
+
+// AddListenerToNewestLateLogForTest registers a late-feed listener on the newest late log entry.
+func (c *singleChannelCacheImpl) AddListenerToNewestLateLogForTest(_ testing.TB) {
+	c.lateLogLock.Lock()
+	defer c.lateLogLock.Unlock()
+	c.lateLogs[len(c.lateLogs)-1].addListener()
+}
+
+// GetNextSequenceForTest reports the next consecutive sequence the change cache expects, taking
+// the read lock as the underlying accessor does.
+func (c *changeCache) GetNextSequenceForTest(_ testing.TB) uint64 {
+	return c.getNextSequence()
+}
+
+// GetOldestSkippedSequenceForTest reports the oldest sequence still pending on the caching feed.
+func (c *changeCache) GetOldestSkippedSequenceForTest(_ testing.TB, ctx context.Context) uint64 {
+	return c.getOldestSkippedSequence(ctx)
 }

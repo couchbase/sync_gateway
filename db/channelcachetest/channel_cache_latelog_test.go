@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package channelcachetest
 
 import (
 	"context"
@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -29,7 +31,7 @@ import (
 // the barrier behaviour can ignore the return value.
 //
 // The nil marker means the feed had nothing sendable that iteration, not that it saw the caller's last write.
-func drainUntilWait(t *testing.T, feed <-chan *ChangeEntry) (drained []uint64) {
+func drainUntilWait(t *testing.T, feed <-chan *db.ChangeEntry) (drained []uint64) {
 	t.Helper()
 	for {
 		select {
@@ -50,19 +52,19 @@ func drainUntilWait(t *testing.T, feed <-chan *ChangeEntry) (drained []uint64) {
 // collectionWithUser (the REST _changes handler does the same - see changes_api.go), rather than applying an
 // explicit channel filter. collectionWithUser must therefore have a user with the appropriate access set.
 // The feed is canceled at test cleanup so its goroutine can always unblock and exit, even if abandoned.
-func startChangesFeed(ctx context.Context, t *testing.T, collectionWithUser *DatabaseCollectionWithUser) <-chan *ChangeEntry {
+func startChangesFeed(ctx context.Context, t *testing.T, collectionWithUser *db.DatabaseCollectionWithUser) <-chan *db.ChangeEntry {
 	feedCtx, cancel := context.WithCancelCause(ctx)
 	t.Cleanup(func() { cancel(errors.New("test teardown")) })
 	// Give each feed its own DatabaseCollectionWithUser, exactly as production does - every changes feed / BLIP
 	// handler copies it via copyDatabaseCollectionWithUser. MultiChangesFeed's goroutine calls ReloadUser, which
 	// reassigns the user field and is explicitly documented as unsafe to call from concurrent goroutines, so two
 	// feeds sharing a single collectionWithUser would race on that field under -race.
-	feedCollection := &DatabaseCollectionWithUser{
+	feedCollection := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: collectionWithUser.DatabaseCollection,
-		user:               collectionWithUser.user,
 	}
-	options := ChangesOptions{
-		Since:      SequenceID{Seq: 0},
+	feedCollection.SetDatabaseCollectionUserForTest(t, collectionWithUser.User())
+	options := db.ChangesOptions{
+		Since:      db.SequenceID{Seq: 0},
 		ChangesCtx: feedCtx,
 		Continuous: true,
 		Wait:       true,
@@ -74,7 +76,7 @@ func startChangesFeed(ctx context.Context, t *testing.T, collectionWithUser *Dat
 
 // fastFeedBroadcast shrinks the continuous-feed broadcast intervals so the 500ms skipped-sequence slow mode
 // (SkippedSequenceBroadcastChangesTime) doesn't dominate these tests' runtime.
-func fastFeedBroadcast(cacheOptions CacheOptions) CacheOptions {
+func fastFeedBroadcast(cacheOptions db.CacheOptions) db.CacheOptions {
 	cacheOptions.BroadcastChangesInterval = 5 * time.Millisecond
 	cacheOptions.SkippedSequenceBroadcastInterval = 5 * time.Millisecond
 	return cacheOptions
@@ -84,8 +86,8 @@ func fastFeedBroadcast(cacheOptions CacheOptions) CacheOptions {
 // lateLogs cap, so the length-based force-prune (channel_cache_single.go _purgeLateLogEntries) fires
 // within a short test rather than only after 500 late entries accumulate. Late logs uses the same maximum as chanel cache
 // configuration.
-func shortWaitCacheWithLateLogMax(lateLogMax int) CacheOptions {
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+func shortWaitCacheWithLateLogMax(lateLogMax int) db.CacheOptions {
+	cacheOptions := fastFeedBroadcast(db.ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = lateLogMax
 	return cacheOptions
 }
@@ -105,34 +107,34 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	const lateLogMax = 5
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
-	numEntriesInLateFeed := func() int64 { return db.DbStats.Cache().NumEntriesInLateFeed.Value() }
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	numEntriesInLateFeed := func() int64 { return database.DbStats.Cache().NumEntriesInLateFeed.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 
 	feed1 := startChangesFeed(ctx, t, collectionWithUser) // stays healthy: drained after every write
 	feed2 := startChangesFeed(ctx, t, collectionWithUser) // drained through the first cycle only, then abandoned
 
 	// Only channel ABC accumulates late entries in this test, so assert against ABC's own lateLogs rather
 	// than the global gauge (whose floor is the variable number of live channel caches under a wildcard feed).
-	cc, ok := collectionWithUser.changeCache().getChannelCache().(*channelCacheImpl)
+	cc, ok := database.ChangeCacheForTest(t).GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
 
 	writeSeq := func(seq uint64) {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 		drainUntilWait(t, feed1)
 	}
 
@@ -162,7 +164,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 		writeSeq(seq)     // skips seq-1
 		writeSeq(seq - 1) // resolves seq-1 late -> AddLateSequence -> force-prune
 
-		require.LessOrEqualf(t, abcCache.lateLogCount(), int64(lateLogMax),
+		require.LessOrEqualf(t, abcCache.LateLogCountForTest(t), int64(lateLogMax),
 			"ABC's lateLogs must stay bounded by ChannelCacheMaxLength (%d) even though the stalled listener "+
 				"still pins the front of the queue", lateLogMax)
 
@@ -177,7 +179,7 @@ func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 		"the stalled listener's pinned entry (#%d) should have been force-pruned from lateLogs", stalledSince)
 
 	t.Logf("ABC late entries after %d cycles with feed2 abandoned: %d (cap %d); total num_entries_in_late_feed: %d; feed rollbacks: %d",
-		numCycles, abcCache.lateLogCount(), lateLogMax, numEntriesInLateFeed(), feedRollbacks)
+		numCycles, abcCache.LateLogCountForTest(t), lateLogMax, numEntriesInLateFeed(), feedRollbacks)
 }
 
 // TestLateLogsForcedRollbackResetsSlowFeed shows the safety-net side of the cap: when a slow (but not
@@ -190,30 +192,30 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	const lateLogMax = 5
-	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, shortWaitCacheWithLateLogMax(lateLogMax))
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 
 	feed1 := startChangesFeed(ctx, t, collectionWithUser) // healthy: drained after every write
 	feed2 := startChangesFeed(ctx, t, collectionWithUser) // slow: drained only occasionally
 
 	// feed2 lags only on channel ABC, so assert against ABC's own lateLogs rather than the global gauge
 	// (whose floor is the variable number of live channel caches under a wildcard feed).
-	cc, ok := collectionWithUser.changeCache().getChannelCache().(*channelCacheImpl)
+	cc, ok := database.ChangeCacheForTest(t).GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
 
 	// feed2Seen records every sequence feed2 delivers across its entire lifetime, so we can prove at the
 	// end that the forced rollback lost no data - i.e. feed2 received every sequence that was written,
@@ -229,7 +231,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 	drainFeed2()
 
 	writeSeq := func(seq uint64) {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 		drainUntilWait(t, feed1)
 	}
 
@@ -250,7 +252,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 		writeSeq(seq)     // skips seq-1
 		writeSeq(seq - 1) // resolves seq-1 late
 
-		require.LessOrEqualf(t, abcCache.lateLogCount(), int64(lateLogMax),
+		require.LessOrEqualf(t, abcCache.LateLogCountForTest(t), int64(lateLogMax),
 			"ABC's lateLogs must stay bounded by ChannelCacheMaxLength (%d) while feed2 lags", lateLogMax)
 
 		if (i+1)%feed2DrainEvery == 0 {
@@ -268,7 +270,7 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 	// sequences - the no-data-loss assertion below relies on every value in that range having been written.
 	seq++
 	finalSeq := seq
-	WriteDirect(t, collection, []string{"ABC"}, finalSeq)
+	db.WriteDirect(t, collection, []string{"ABC"}, finalSeq)
 	drainUntilWait(t, feed1)
 
 	var maxSeqSeen uint64
@@ -316,29 +318,29 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(db.ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	// Large LateLogAge so the CleanAgedLateLogs background task (which runs on this interval) doesn't fire
 	// during the test and reclaim the entries before we can assert they accumulated. The manual sweep below
 	// lowers ABC's own threshold to force the age-based reclaim deterministically.
 	cacheOptions.LateLogAge = time.Hour
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
 	feed1 := startChangesFeed(ctx, t, collectionWithUser) // healthy: drained after every write
 	feed2 := startChangesFeed(ctx, t, collectionWithUser) // abandoned after registering its listener
 
 	writeSeq := func(seq uint64) {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 		drainUntilWait(t, feed1)
 	}
 
@@ -362,13 +364,13 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 		writeSeq(seq - 1) // resolves seq-1 late
 	}
 
-	cc, ok := collectionWithUser.changeCache().getChannelCache().(*channelCacheImpl)
+	cc, ok := database.ChangeCacheForTest(t).GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
 
-	beforeSweep := abcCache.lateLogCount()
+	beforeSweep := abcCache.LateLogCountForTest(t)
 	require.Greater(t, beforeSweep, int64(2),
 		"stalled feed2 should have accumulated several pinned late entries in ABC that the (high) length cap leaves in place")
 
@@ -377,14 +379,14 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 	// background task does on its timer). It must reclaim feed2's pinned ABC entries down to the tail even
 	// though feed2 still references them. Check ABC's own queue rather than the global gauge, whose floor is
 	// the variable number of live channel caches.
-	abcCache.options.LateLogAge = time.Millisecond
+	abcCache.OptionsForTest(t).LateLogAge = time.Millisecond
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		require.NoError(t, cc.cleanAgedLateLogs(ctx))
-		require.Equal(t, int64(1), abcCache.lateLogCount(),
+		require.NoError(t, cc.CleanAgedLateLogsForTest(t, ctx))
+		require.Equal(t, int64(1), abcCache.LateLogCountForTest(t),
 			"age sweep must reclaim stalled feed2's pinned ABC late entries down to the tail once older than LateLogAge")
 	}, 10*time.Second, 10*time.Millisecond)
 
-	t.Logf("ABC late entries before age sweep: %d, after: %d", beforeSweep, abcCache.lateLogCount())
+	t.Logf("ABC late entries before age sweep: %d, after: %d", beforeSweep, abcCache.LateLogCountForTest(t))
 }
 
 // TestLateLogsStatReleasedOnChannelEviction verifies that when channel caches are evicted by compaction the
@@ -398,7 +400,7 @@ func TestLateLogsAgedPruneReclaimsStalledFeed(t *testing.T) {
 func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	options := DefaultCacheOptions().ChannelCacheOptions
+	options := db.DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20 // high watermark 16, low watermark 12
 
 	stats, err := base.NewSyncGatewayStats()
@@ -408,7 +410,7 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
 	ctx := base.TestCtx(t)
-	cache, err := newChannelCache(ctx, "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options, db.QueryHandlerFactoryForTest, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop(ctx)
 
@@ -418,9 +420,9 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	// channel caches still present in the collection - the value NumEntriesInLateFeed must always equal.
 	sumLateLogs := func() int64 {
 		var total int64
-		cache.channelCaches.Range(func(value any) bool {
-			if scc := AsSingleChannelCache(ctx, value); scc != nil {
-				total += scc.countedLateLogCount()
+		cache.ChannelCachesForTest(t).Range(func(value any) bool {
+			if scc := db.AsSingleChannelCache(ctx, value); scc != nil {
+				total += scc.CountedLateLogCountForTest(t)
 			}
 			return true
 		})
@@ -433,13 +435,13 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	// any eviction is guaranteed to decrement the gauge.
 	const seededPerChannel = 3
 	for i := 1; i <= 16; i++ {
-		scc, _ := cache.addChannelCache(ctx, channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID))
+		scc, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID))
 		scc.RegisterLateSequenceClient() // pin the sentinel so the seeded late entries survive the purge
 		for seq := uint64(1); seq <= seededPerChannel; seq++ {
-			scc.AddLateSequence(&LogEntry{Sequence: seq})
+			scc.AddLateSequence(&db.LogEntry{Sequence: seq})
 		}
 	}
-	require.Equal(t, 16, cache.channelCaches.Length())
+	require.Equal(t, 16, cache.ChannelCachesForTest(t).Length())
 
 	// The gauge counts only the seeded late entries (16 channels x 3), with no per-channel floor - the sentinels
 	// are excluded. Under the old sentinel-counting behaviour this would have been 16 + 16*3.
@@ -450,9 +452,9 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 	beforeCompaction := numEntriesInLateFeed()
 
 	// Add another channel to exceed the high watermark and trigger compaction down to the low watermark.
-	cache.addChannelCache(ctx, channels.NewID("chan_17", base.DefaultCollectionID))
-	require.True(t, waitForCompaction(cache), "compaction didn't complete in expected time")
-	require.Equal(t, 12, cache.channelCaches.Length(), "compaction should evict down to the low watermark")
+	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_17", base.DefaultCollectionID))
+	require.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "compaction didn't complete in expected time")
+	require.Equal(t, 12, cache.ChannelCachesForTest(t).Length(), "compaction should evict down to the low watermark")
 
 	// The decisive assertion: after eviction the gauge must have been decremented to exactly the non-sentinel
 	// lateLogs still held by the surviving channels - none of the evicted channels' entries leaked.
@@ -462,7 +464,7 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 		"eviction must have decremented NumEntriesInLateFeed by the evicted channels' late entries")
 
 	t.Logf("num_entries_in_late_feed before compaction: %d, after: %d (%d channels remain)",
-		beforeCompaction, numEntriesInLateFeed(), cache.channelCaches.Length())
+		beforeCompaction, numEntriesInLateFeed(), cache.ChannelCachesForTest(t).Length())
 }
 
 // TestLateLogsConcurrentReleaseAndPrune exercises ReleaseLateSequenceClient concurrently with the operations
@@ -471,9 +473,9 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -481,8 +483,8 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
 
-	cache := newSingleChannelCache(collection, channels.NewID("raceChan", collection.GetCollectionID()), 0, testStats)
-	cache.options.ChannelCacheMaxLength = 5 // force _purgeLateLogEntries to reassign the slice on nearly every add
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("raceChan", collection.GetCollectionID()), 0, testStats)
+	cache.OptionsForTest(t).ChannelCacheMaxLength = 5 // force _purgeLateLogEntries to reassign the slice on nearly every add
 
 	const releaserGoroutines = 4
 	const iterations = 2000
@@ -493,7 +495,7 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := range iterations {
-			cache.AddLateSequence(&LogEntry{Sequence: uint64(i + 1)})
+			cache.AddLateSequence(&db.LogEntry{Sequence: uint64(i + 1)})
 		}
 	}()
 
@@ -531,17 +533,17 @@ func TestLateLogsConcurrentReleaseAndPrune(t *testing.T) {
 
 	require.GreaterOrEqual(t, testStats.NumEntriesInLateFeed.Value(), int64(0),
 		"NumEntriesInLateFeed must never go negative under concurrent churn")
-	require.LessOrEqualf(t, testStats.NumEntriesInLateFeed.Value(), int64(cache.options.ChannelCacheMaxLength),
-		"lateLogs must stay bounded by the length cap (%d) under concurrent churn - the sentinel isn't counted", cache.options.ChannelCacheMaxLength)
+	require.LessOrEqualf(t, testStats.NumEntriesInLateFeed.Value(), int64(cache.OptionsForTest(t).ChannelCacheMaxLength),
+		"lateLogs must stay bounded by the length cap (%d) under concurrent churn - the sentinel isn't counted", cache.OptionsForTest(t).ChannelCacheMaxLength)
 }
 
 // TestLateLogOptionsPropagation verifies that the LateLogAge cache option is propagated
 // to each per-channel cache by newChannelCacheWithOptions, and that non-positive values fall back to the
 // package defaults rather than disabling the caps. Also verifies that late logs max length is set to chanel cache max length.
 func TestLateLogOptionsPropagation(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -550,19 +552,19 @@ func TestLateLogOptionsPropagation(t *testing.T) {
 	cacheStats := dbstats.Cache()
 
 	// Configured (positive) values are applied to the per-channel cache.
-	options := DefaultCacheOptions().ChannelCacheOptions
+	options := db.DefaultCacheOptions().ChannelCacheOptions
 	options.ChannelCacheMaxLength = 7
 	options.LateLogAge = 42 * time.Second
-	sc := newChannelCacheWithOptions(ctx, collection, channels.NewID("configured", collection.GetCollectionID()), 0, options, cacheStats)
-	require.Equal(t, 7, sc.options.ChannelCacheMaxLength)
-	require.Equal(t, 42*time.Second, sc.options.LateLogAge)
+	sc := db.NewSingleChannelCacheWithOptionsForTest(t, ctx, collection, channels.NewID("configured", collection.GetCollectionID()), 0, options, cacheStats)
+	require.Equal(t, 7, sc.OptionsForTest(t).ChannelCacheMaxLength)
+	require.Equal(t, 42*time.Second, sc.OptionsForTest(t).LateLogAge)
 
 	// Non-positive values fall back to the defaults - the caps are never disabled by a zero value.
 	options.ChannelCacheMaxLength = 0
 	options.LateLogAge = 0
-	scDefault := newChannelCacheWithOptions(ctx, collection, channels.NewID("defaulted", collection.GetCollectionID()), 0, options, cacheStats)
-	require.Equal(t, DefaultChannelCacheMaxLength, scDefault.options.ChannelCacheMaxLength)
-	require.Equal(t, DefaultLateLogAge, scDefault.options.LateLogAge)
+	scDefault := db.NewSingleChannelCacheWithOptionsForTest(t, ctx, collection, channels.NewID("defaulted", collection.GetCollectionID()), 0, options, cacheStats)
+	require.Equal(t, db.DefaultChannelCacheMaxLength, scDefault.OptionsForTest(t).ChannelCacheMaxLength)
+	require.Equal(t, db.DefaultLateLogAge, scDefault.OptionsForTest(t).LateLogAge)
 }
 
 // TestLateLogsAgedForcedRollbackResetsSlowFeed is the age-based counterpart to
@@ -575,24 +577,24 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	base.LongRunningTest(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(db.ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = 100000 // large: isolate the age path so the length cap never fires
 	cacheOptions.LateLogAge = time.Millisecond
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 
-	cc, ok := collectionWithUser.changeCache().getChannelCache().(*channelCacheImpl)
+	cc, ok := database.ChangeCacheForTest(t).GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
 
 	feed1 := startChangesFeed(ctx, t, collectionWithUser) // healthy: drained after every write
@@ -605,7 +607,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	}
 
 	writeSeq := func(seq uint64) {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 		drainUntilWait(t, feed1)
 	}
 
@@ -635,12 +637,12 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	// lateLogs to its tail even though feed2 still references an interior entry - exactly what the
 	// cleanAgedLateLogs background task does on its timer. Check ABC's own queue rather than the global gauge,
 	// whose floor is the (variable) number of live channel caches. Poll until ABC has collapsed.
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.NoError(c, cc.cleanAgedLateLogs(ctx))
-		assert.Equal(c, int64(1), abcCache.lateLogCount(),
+		assert.NoError(c, cc.CleanAgedLateLogsForTest(t, ctx))
+		assert.Equal(c, int64(1), abcCache.LateLogCountForTest(t),
 			"age sweep must collapse ABC's lateLogs to just its tail, aging out feed2's parked position")
 	}, 10*time.Second, 10*time.Millisecond)
 
@@ -648,7 +650,7 @@ func TestLateLogsAgedForcedRollbackResetsSlowFeed(t *testing.T) {
 	// was aged out (rollback), reset to its low sequence, and catch back up to the latest sequence.
 	seq++
 	finalSeq := seq
-	WriteDirect(t, collection, []string{"ABC"}, finalSeq)
+	db.WriteDirect(t, collection, []string{"ABC"}, finalSeq)
 	drainUntilWait(t, feed1)
 
 	var maxSeqSeen uint64
@@ -694,20 +696,20 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 
 	// shortWaitCache carries the shipped default late-log caps - deliberately not overridden here.
-	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, fastFeedBroadcast(db.ShortWaitCache()))
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // feeds inherit this user's channel access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // feeds inherit this user's channel access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
 
-	numEntriesInLateFeed := func() int64 { return db.DbStats.Cache().NumEntriesInLateFeed.Value() }
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	numEntriesInLateFeed := func() int64 { return database.DbStats.Cache().NumEntriesInLateFeed.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 
 	feed1 := startChangesFeed(ctx, t, collectionWithUser) // both feeds stay healthy: drained after every write
 	feed2 := startChangesFeed(ctx, t, collectionWithUser)
@@ -724,8 +726,8 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	drainBoth()
 
 	writeSeq := func(seq uint64) {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
-		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
+		require.NoError(t, database.WaitForSequenceNotSkipped(ctx, seq))
 		drainBoth()
 	}
 
@@ -758,7 +760,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 	// drainBoth() observes (cache commit and feed wakeup are decoupled). Earlier cycles get backstopped by the
 	// next writeSeq's drain; the last one has no such backstop, so wait here without requiring a fresh
 	// "caught up" marker.
-	awaitAllSequences := func(feed <-chan *ChangeEntry, seen map[uint64]bool) {
+	awaitAllSequences := func(feed <-chan *db.ChangeEntry, seen map[uint64]bool) {
 		t.Helper()
 		allSeen := func() bool {
 			for s := uint64(1); s <= finalSeq; s++ {
@@ -813,19 +815,19 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 func TestLateLogsPurgeEdgeCases(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
 	// newCache builds a fresh single-channel cache with its own stats so each sub-case is isolated.
-	newCache := func(t *testing.T, lateLogMax int) (*singleChannelCacheImpl, *base.CacheStats) {
+	newCache := func(t *testing.T, lateLogMax int) (*db.SingleChannelCacheImplForTest, *base.CacheStats) {
 		stats, err := base.NewSyncGatewayStats()
 		require.NoError(t, err)
 		dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
 		require.NoError(t, err)
 		cacheStats := dbstats.Cache()
-		sc := newSingleChannelCache(collection, channels.NewID("edge", collection.GetCollectionID()), 0, cacheStats)
-		sc.options.ChannelCacheMaxLength = lateLogMax
+		sc := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("edge", collection.GetCollectionID()), 0, cacheStats)
+		sc.OptionsForTest(t).ChannelCacheMaxLength = lateLogMax
 		return sc, cacheStats
 	}
 
@@ -833,11 +835,11 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		sc, cacheStats := newCache(t, 5)
 		since := sc.RegisterLateSequenceClient() // pins the sentinel (seq 0) at the front of the queue
 		for i := uint64(1); i <= 20; i++ {
-			sc.AddLateSequence(&LogEntry{Sequence: i})
-			require.LessOrEqualf(t, sc.lateLogCount(), int64(5),
+			sc.AddLateSequence(&db.LogEntry{Sequence: i})
+			require.LessOrEqualf(t, sc.LateLogCountForTest(t), int64(5),
 				"force-prune must never let lateLogs exceed the cap, even with a listener pinning the front (i=%d)", i)
 		}
-		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value(), "stat must match the counted (non-sentinel) queue length")
+		require.Equal(t, sc.CountedLateLogCountForTest(t), cacheStats.NumEntriesInLateFeed.Value(), "stat must match the counted (non-sentinel) queue length")
 		// Once the queue hit the cap the pinned sentinel was force-dropped, so the caller must be rolled back
 		// rather than served from a position that no longer exists.
 		_, _, err := sc.GetLateSequencesSince(since)
@@ -848,16 +850,16 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		sc, _ := newCache(t, 1)
 		since := sc.RegisterLateSequenceClient() // registers on the sentinel (seq 0)
 		for i := uint64(1); i <= 5; i++ {
-			sc.AddLateSequence(&LogEntry{Sequence: i})
+			sc.AddLateSequence(&db.LogEntry{Sequence: i})
 		}
-		require.Equal(t, int64(1), sc.lateLogCount(), "cap of one collapses lateLogs to just the newest entry")
+		require.Equal(t, int64(1), sc.LateLogCountForTest(t), "cap of one collapses lateLogs to just the newest entry")
 		_, _, err := sc.GetLateSequencesSince(since)
 		require.Error(t, err, "the caller's pruned position must force a rollback rather than silently skipping")
 	})
 
 	t.Run("fresh cache reports one sentinel entry but a zero gauge", func(t *testing.T) {
 		sc, cacheStats := newCache(t, 5)
-		require.Equal(t, int64(1), sc.lateLogCount(), "a fresh channel cache holds exactly its sentinel entry")
+		require.Equal(t, int64(1), sc.LateLogCountForTest(t), "a fresh channel cache holds exactly its sentinel entry")
 		require.Equal(t, int64(0), cacheStats.NumEntriesInLateFeed.Value(), "the sentinel is not counted, so a fresh cache contributes nothing to the gauge")
 	})
 
@@ -865,33 +867,33 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 		sc, cacheStats := newCache(t, 5)
 		since := sc.RegisterLateSequenceClient() // on the sentinel (seq 0)
 		for i := uint64(1); i <= 20; i++ {
-			sc.AddLateSequence(&LogEntry{Sequence: i}) // force-prunes the sentinel out from under the listener
+			sc.AddLateSequence(&db.LogEntry{Sequence: i}) // force-prunes the sentinel out from under the listener
 		}
 		require.False(t, sc.ReleaseLateSequenceClient(since), "releasing an already-pruned sequence must report not-found")
-		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value(), "stat stays consistent with the counted (non-sentinel) queue")
+		require.Equal(t, sc.CountedLateLogCountForTest(t), cacheStats.NumEntriesInLateFeed.Value(), "stat stays consistent with the counted (non-sentinel) queue")
 	})
 
 	t.Run("age prune keeps at least one entry and never drives the stat negative", func(t *testing.T) {
 		sc, cacheStats := newCache(t, 100000) // length cap out of the way, isolate the age path
-		sc.options.LateLogAge = time.Millisecond
+		sc.OptionsForTest(t).LateLogAge = time.Millisecond
 
 		// No-op on a minimal queue: pruning a sentinel-only cache leaves the (uncounted) sentinel in place, so the
 		// queue length is one but the gauge stays at zero.
-		sc.pruneLateLogAge(ctx)
-		require.Equal(t, int64(1), sc.lateLogCount())
+		sc.PruneLateLogAgeForTest(t, ctx)
+		require.Equal(t, int64(1), sc.LateLogCountForTest(t))
 		require.Equal(t, int64(0), cacheStats.NumEntriesInLateFeed.Value())
 
 		sc.RegisterLateSequenceClient()
 		for i := uint64(1); i <= 10; i++ {
-			sc.AddLateSequence(&LogEntry{Sequence: i})
+			sc.AddLateSequence(&db.LogEntry{Sequence: i})
 		}
 		time.Sleep(2 * time.Millisecond) // let the entries exceed LateLogAge
-		sc.pruneLateLogAge(ctx)
-		require.Equal(t, int64(1), sc.lateLogCount(), "age prune collapses to the tail but always keeps one entry")
+		sc.PruneLateLogAgeForTest(t, ctx)
+		require.Equal(t, int64(1), sc.LateLogCountForTest(t), "age prune collapses to the tail but always keeps one entry")
 		// The surviving tail entry is now the always-retained placeholder (the seq-0 sentinel was pruned off the
 		// front), so it is not counted: the gauge collapses to zero, never negative, and matches the counted queue.
 		require.Equal(t, int64(0), cacheStats.NumEntriesInLateFeed.Value(), "stat collapses to zero (only the retained placeholder remains) and never goes negative")
-		require.Equal(t, sc.countedLateLogCount(), cacheStats.NumEntriesInLateFeed.Value())
+		require.Equal(t, sc.CountedLateLogCountForTest(t), cacheStats.NumEntriesInLateFeed.Value())
 	})
 }
 
@@ -904,9 +906,9 @@ func TestLateLogsPurgeEdgeCases(t *testing.T) {
 func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -914,11 +916,11 @@ func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 	require.NoError(t, err)
 	cacheStats := dbstats.Cache()
 
-	sc := newSingleChannelCache(collection, channels.NewID("sentinel", collection.GetCollectionID()), 0, cacheStats)
+	sc := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("sentinel", collection.GetCollectionID()), 0, cacheStats)
 	// Large age and length caps so neither the length force-prune nor a legitimate age-out of the (fresh)
 	// non-sentinel entry can fire - the only thing that could drop the sentinel here is the zero-arrived bug.
-	sc.options.LateLogAge = 5 * time.Minute
-	sc.options.ChannelCacheMaxLength = 100000
+	sc.OptionsForTest(t).LateLogAge = 5 * time.Minute
+	sc.OptionsForTest(t).ChannelCacheMaxLength = 100000
 
 	// A continuous feed that connected before any late sequence arrived parks on the sentinel (Sequence 0).
 	since := sc.RegisterLateSequenceClient()
@@ -926,12 +928,12 @@ func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 
 	// One late sequence resolves, arriving just now (well within LateLogAge). Queue is now [sentinel, seq7];
 	// the sentinel is pinned by the parked feed's listener so the zero-listener purge leaves it in place.
-	sc.AddLateSequence(&LogEntry{Sequence: 7})
-	require.Equal(t, int64(2), sc.lateLogCount(), "queue should hold the pinned sentinel plus the one fresh late entry")
+	sc.AddLateSequence(&db.LogEntry{Sequence: 7})
+	require.Equal(t, int64(2), sc.LateLogCountForTest(t), "queue should hold the pinned sentinel plus the one fresh late entry")
 
 	// The age sweep runs (as cleanAgedLateLogs would on its timer). The only non-sentinel entry is fresh, so
 	// nothing has legitimately aged past the 5-minute LateLogAge; the sentinel must be retained.
-	sc.pruneLateLogAge(ctx)
+	sc.PruneLateLogAgeForTest(t, ctx)
 
 	// Behavioural assertion: the parked feed reads from its since=0 position and must be served seq 7, not
 	// rolled back. With the bug the sentinel was pruned, so this lookup fails and LateFeedForcedRollbacks fires.
@@ -955,7 +957,7 @@ func TestLateLogsAgedPrunePreservesParkedSentinel(t *testing.T) {
 func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	options := DefaultCacheOptions().ChannelCacheOptions
+	options := db.DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
 
 	stats, err := base.NewSyncGatewayStats()
@@ -965,16 +967,16 @@ func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 	testStats := dbstats.Cache()
 	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
 	ctx := base.TestCtx(t)
-	cache, err := newChannelCache(ctx, "testDb", options, testQueryHandlerFactory, activeChannels, testStats)
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options, db.QueryHandlerFactoryForTest, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop(ctx)
 
 	numEntriesInLateFeed := func() int64 { return testStats.NumEntriesInLateFeed.Value() }
 	sumLateLogs := func() int64 {
 		var total int64
-		cache.channelCaches.Range(func(value any) bool {
-			if scc := AsSingleChannelCache(ctx, value); scc != nil {
-				total += scc.countedLateLogCount()
+		cache.ChannelCachesForTest(t).Range(func(value any) bool {
+			if scc := db.AsSingleChannelCache(ctx, value); scc != nil {
+				total += scc.CountedLateLogCountForTest(t)
 			}
 			return true
 		})
@@ -984,15 +986,15 @@ func TestLateLogsStatLeakOnConcurrentAddChannelCache(t *testing.T) {
 	ch := channels.NewID("contended", base.DefaultCollectionID)
 
 	// First caller wins the insert.
-	first, ok := cache.addChannelCache(ctx, ch)
+	first, ok := cache.AddChannelCacheForTest(t, ctx, ch)
 	require.True(t, ok)
 
 	// Second caller (the other goroutine that also missed the Get check) builds a fresh cache, then GetOrInsert
 	// returns the existing cache and discards the new one.
-	second, ok := cache.addChannelCache(ctx, ch)
+	second, ok := cache.AddChannelCacheForTest(t, ctx, ch)
 	require.True(t, ok)
 	require.True(t, first == second, "both callers must resolve to the single inserted cache")
-	require.Equal(t, 1, cache.channelCaches.Length(), "only one cache for the contended channel is ever inserted")
+	require.Equal(t, 1, cache.ChannelCachesForTest(t).Length(), "only one cache for the contended channel is ever inserted")
 
 	require.Equal(t, sumLateLogs(), numEntriesInLateFeed(),
 		"NumEntriesInLateFeed must equal the real non-sentinel lateLogs total held by inserted caches; the "+
@@ -1015,23 +1017,23 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is parked.
 	const spikeSize = 2000
 
-	cacheOptions := fastFeedBroadcast(shortWaitCache())
+	cacheOptions := fastFeedBroadcast(db.ShortWaitCache())
 	cacheOptions.ChannelCacheMaxLength = 10 * spikeSize // large: the length force-prune must never fire during the spike
 	cacheOptions.LateLogAge = time.Hour                 // large: the age sweep must never reclaim entries during the test
-	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // the feed inherits this user's ABC access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // the feed inherits this user's ABC access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
-	cCache := collection.changeCache()
+	cCache := database.ChangeCacheForTest(t)
 
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 
 	// Prime: start a real continuous feed and let it catch up. On its first iteration it creates ABC's channel
 	// cache (marking it active, so late arrivals are recorded there) and registers a late-sequence listener on
@@ -1046,15 +1048,15 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	collectSeen(drainUntilWait(t, feed)) // initial caught-up marker
 
 	// One in-order write so the feed is streaming normally and the cache's nextSequence advances to 2.
-	WriteDirect(t, collection, []string{"ABC"}, 1)
+	db.WriteDirect(t, collection, []string{"ABC"}, 1)
 	collectSeen(drainUntilWait(t, feed))
 
-	cc, ok := cCache.getChannelCache().(*channelCacheImpl)
+	cc, ok := cCache.GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
-	require.Equal(t, int64(1), abcCache.lateLogCount(), "ABC starts with just its sentinel entry")
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
+	require.Equal(t, int64(1), abcCache.LateLogCountForTest(t), "ABC starts with just its sentinel entry")
 
 	// Hold an extra listener on ABC's sentinel for the duration of the spike. While this front listener is held,
 	// the zero-listener purge can never advance past the head of the queue, so every late arrival accumulates
@@ -1069,7 +1071,7 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	gapWriteSeq := uint64(spikeSize + 2)
 	firstSkipped := uint64(2)
 	lastSkipped := uint64(spikeSize + 1)
-	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
+	db.WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, cCache.WasSkipped(firstSkipped) && cCache.WasSkipped(lastSkipped),
 			"the gap %d..%d should have been pushed to the skipped list", firstSkipped, lastSkipped)
@@ -1080,17 +1082,17 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	// ABC's lateLogs. Each arrival calls AddLateSequence -> _purgeLateLogEntries, but the pinned sentinel and the
 	// large caps mean nothing is ever dropped.
 	for seq := firstSkipped; seq <= lastSkipped; seq++ {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 	}
 
 	// All spikeSize late arrivals land in ABC's lateLogs (plus the sentinel), and none are pruned.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, int64(spikeSize+1), abcCache.lateLogCount(),
+		assert.Equal(c, int64(spikeSize+1), abcCache.LateLogCountForTest(t),
 			"all %d late arrivals plus the sentinel should be held in ABC's lateLogs", spikeSize)
 	}, 60*time.Second, 20*time.Millisecond)
 	require.Equal(t, int64(0), forcedRollbacks(),
 		"nothing should have been pruned out from under the parked feed while the spike accumulated")
-	t.Logf("spike loaded: ABC lateLogs=%d (sentinel + %d late arrivals)", abcCache.lateLogCount(), spikeSize)
+	t.Logf("spike loaded: ABC lateLogs=%d (sentinel + %d late arrivals)", abcCache.LateLogCountForTest(t), spikeSize)
 
 	// Wake the feed and let it drain the entire spike from lateLogs. Read across broadcast cycles until the feed
 	// has delivered every late sequence in the spike.
@@ -1116,7 +1118,7 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 
 	// Serving the spike moved the feed's listener to the newest late entry but pruned nothing - reading late
 	// sequences never triggers a purge. The full spike is still resident in lateLogs.
-	require.Equal(t, int64(spikeSize+1), abcCache.lateLogCount(),
+	require.Equal(t, int64(spikeSize+1), abcCache.LateLogCountForTest(t),
 		"serving the spike to the feed must not prune lateLogs - only a new late sequence triggers the purge")
 
 	// Release the extra sentinel listener. Now every entry the feed has already passed carries a zero listener
@@ -1125,7 +1127,7 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	// fire). This is the decisive assertion: absent another skipped sequence, the served spike is not pruned.
 	require.True(t, abcCache.ReleaseLateSequenceClient(pinnedSentinel), "the extra sentinel listener should still be present to release")
 	require.Never(t, func() bool {
-		return abcCache.lateLogCount() < int64(spikeSize+1)
+		return abcCache.LateLogCountForTest(t) < int64(spikeSize+1)
 	}, 1*time.Second, 50*time.Millisecond,
 		"with no new skipped sequence arriving, the served spike must remain in lateLogs (no length cap, no age sweep, no purge trigger)")
 
@@ -1134,21 +1136,21 @@ func TestLateLogsSpikeNotPrunedUntilNewLateSequence(t *testing.T) {
 	// the new arrival.
 	gapWriteSeq2 := uint64(spikeSize + 4)
 	newlySkipped := uint64(spikeSize + 3)
-	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq2)
+	db.WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq2)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, cCache.WasSkipped(newlySkipped), "seq %d should have been pushed to the skipped list", newlySkipped)
 	}, 10*time.Second, 5*time.Millisecond)
-	WriteDirect(t, collection, []string{"ABC"}, newlySkipped)
+	db.WriteDirect(t, collection, []string{"ABC"}, newlySkipped)
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.LessOrEqual(c, abcCache.lateLogCount(), int64(3),
+		assert.LessOrEqual(c, abcCache.LateLogCountForTest(t), int64(3),
 			"the next skipped sequence's AddLateSequence must purge the whole served spike from lateLogs")
 	}, 10*time.Second, 20*time.Millisecond)
 	require.Equal(t, int64(0), forcedRollbacks(),
 		"the feed's parked entry is retained by the purge, so no forced rollback should ever occur")
 
 	t.Logf("after one new late sequence: ABC lateLogs collapsed to %d, forced_rollbacks=%d",
-		abcCache.lateLogCount(), forcedRollbacks())
+		abcCache.LateLogCountForTest(t), forcedRollbacks())
 }
 
 // TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback
@@ -1179,7 +1181,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is stalled. Must
 	// exceed the length cap so the force-prune fires.
 	const spikeSize = 2000
-	require.Greater(t, spikeSize, DefaultChannelCacheMaxLength,
+	require.Greater(t, spikeSize, db.DefaultChannelCacheMaxLength,
 		"the spike must exceed DefaultChannelCacheMaxLength for the length force-prune to fire")
 
 	// In-order writes used only to fill the feed's output buffer so the goroutine blocks. Must exceed the feed's
@@ -1189,20 +1191,20 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// Shipped default late-log caps (DefaultChannelCacheMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
 	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
 	// never fires.
-	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, fastFeedBroadcast(db.ShortWaitCache()))
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user // the feed inherits this user's ABC access via the wildcard, as a real client would
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user) // the feed inherits this user's ABC access via the wildcard, as a real client would
 	collection := collectionWithUser.DatabaseCollection
-	cCache := collection.changeCache()
+	cCache := database.ChangeCacheForTest(t)
 
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 
 	// Prime: start a real continuous feed and let it catch up. On its first iteration it creates ABC's channel
 	// cache (marking it active, so late arrivals are recorded there) and registers a late-sequence listener on
@@ -1217,15 +1219,15 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	collectSeen(drainUntilWait(t, feed)) // initial caught-up marker
 
 	// One in-order write so the feed is streaming normally and the cache's nextSequence advances to 2.
-	WriteDirect(t, collection, []string{"ABC"}, 1)
+	db.WriteDirect(t, collection, []string{"ABC"}, 1)
 	collectSeen(drainUntilWait(t, feed))
 
-	cc, ok := cCache.getChannelCache().(*channelCacheImpl)
+	cc, ok := cCache.GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
-	require.Equal(t, int64(1), abcCache.lateLogCount(), "ABC starts with just its sentinel entry")
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
+	require.Equal(t, int64(1), abcCache.LateLogCountForTest(t), "ABC starts with just its sentinel entry")
 
 	// Stall the feed with its late-sequence listener still on the sentinel. Writing more in-order sequences than
 	// the feed's output buffer holds, and never draining them, blocks the feed goroutine on its output send.
@@ -1233,11 +1235,11 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// the feed's late position - it stays parked on the seq-0 sentinel. We wait until the buffer is provably full
 	// (len==cap) and every filler is cached (nextSequence advanced) before starting the spike.
 	for seq := uint64(2); seq <= bufferFillers+1; seq++ {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, cap(feed), len(feed), "the feed's output buffer must fill so the goroutine blocks with its late listener still on the sentinel")
-		assert.GreaterOrEqual(c, cCache.getNextSequence(), uint64(bufferFillers+2), "all in-order fillers must be cached before the spike")
+		assert.GreaterOrEqual(c, cCache.GetNextSequenceForTest(t), uint64(bufferFillers+2), "all in-order fillers must be cached before the spike")
 	}, 30*time.Second, 20*time.Millisecond)
 	require.Equal(t, int64(0), forcedRollbacks(), "no rollback should have occurred yet - the stalled feed has not read a late sequence")
 
@@ -1247,7 +1249,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	firstSkipped := uint64(bufferFillers + 2)
 	lastSkipped := uint64(bufferFillers + 1 + spikeSize)
 	gapWriteSeq := lastSkipped + 1
-	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
+	db.WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, cCache.WasSkipped(firstSkipped) && cCache.WasSkipped(lastSkipped),
 			"the gap %d..%d should have been pushed to the skipped list", firstSkipped, lastSkipped)
@@ -1258,26 +1260,24 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// the length force-prune keeps the queue bounded and force-drops the sentinel that the stalled feed still
 	// references, since only the length cap can reclaim a referenced entry.
 	for seq := firstSkipped; seq <= lastSkipped; seq++ {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
-		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
+		require.NoError(t, database.WaitForSequenceNotSkipped(ctx, seq))
 		// force a listener on each so compaction won't evict pass max length
-		abcCache.lateLogLock.Lock()
-		abcCache.lateLogs[len(abcCache.lateLogs)-1].addListener()
-		abcCache.lateLogLock.Unlock()
+		abcCache.AddListenerToNewestLateLogForTest(t)
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, uint64(0), cCache.getOldestSkippedSequence(ctx),
+		assert.Equal(c, uint64(0), cCache.GetOldestSkippedSequenceForTest(t, ctx),
 			"all %d skipped sequences should have resolved (arrived late)", spikeSize)
 	}, 60*time.Second, 20*time.Millisecond)
 
 	// FIX 1 - bounded: despite thousands of late arrivals behind a stalled feed, lateLogs never grew past the
 	// length cap. Without compaction (the pre-fix behaviour, TestLateLogsSpikeNotPrunedUntilNewLateSequence) the
 	// stalled feed would have pinned the spike in place and the queue would hold spikeSize+1 entries.
-	require.Equalf(t, abcCache.lateLogCount(), int64(DefaultChannelCacheMaxLength),
+	require.Equalf(t, abcCache.LateLogCountForTest(t), int64(db.DefaultChannelCacheMaxLength),
 		"the length force-prune must bound ABC's lateLogs at DefaultChannelCacheMaxLength (%d) even under a %d-sequence spike behind a stalled feed",
-		DefaultChannelCacheMaxLength, spikeSize)
+		db.DefaultChannelCacheMaxLength, spikeSize)
 	t.Logf("spike resolved with feed stalled: ABC lateLogs bounded at %d (cap %d, spike %d), forced_rollbacks=%d",
-		abcCache.lateLogCount(), DefaultChannelCacheMaxLength, spikeSize, forcedRollbacks())
+		abcCache.LateLogCountForTest(t), db.DefaultChannelCacheMaxLength, spikeSize, forcedRollbacks())
 
 	// FIX 2 - the forced rollback happens inside the real changes loop: the stalled feed's referenced sentinel
 	// was force-compacted away by the length cap. Nothing has rolled back yet (the feed hasn't read a late
@@ -1287,7 +1287,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// left stuck.
 	require.Equal(t, int64(0), forcedRollbacks(), "the stalled feed must not have rolled back before it is drained")
 	finalSeq := gapWriteSeq + 1
-	WriteDirect(t, collection, []string{"ABC"}, finalSeq)
+	db.WriteDirect(t, collection, []string{"ABC"}, finalSeq)
 	drainDeadline := time.After(60 * time.Second)
 	for !seen[finalSeq] {
 		select {
@@ -1301,11 +1301,11 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 		"the feed's sentinel was force-compacted away by the length cap; its getLateFeed must have rolled back inside the changes loop")
 
 	// FIX 3 - lateLogs remain bounded after recovery: the spike left no residue on the channel cache.
-	require.Equal(t, abcCache.lateLogCount(), int64(DefaultChannelCacheMaxLength),
+	require.Equal(t, abcCache.LateLogCountForTest(t), int64(db.DefaultChannelCacheMaxLength),
 		"ABC's lateLogs must remain bounded by the length cap after the feed recovers")
 
 	t.Logf("feed recovered to seq %d; ABC lateLogs=%d, forced_rollbacks=%d",
-		finalSeq, abcCache.lateLogCount(), forcedRollbacks())
+		finalSeq, abcCache.LateLogCountForTest(t), forcedRollbacks())
 }
 
 // TestEvictAllLateWhenFirstIteOnlyItemWithListener:
@@ -1318,7 +1318,7 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// The number of previously-skipped sequences that all resolve (arrive late) while the feed is stalled. Must
 	// exceed the length cap so the force-prune fires.
 	const spikeSize = 2000
-	require.Greater(t, spikeSize, DefaultChannelCacheMaxLength,
+	require.Greater(t, spikeSize, db.DefaultChannelCacheMaxLength,
 		"the spike must exceed DefaultChannelCacheMaxLength for the length force-prune to fire")
 
 	// In-order writes used only to fill the feed's output buffer so the goroutine blocks. Must exceed the feed's
@@ -1328,20 +1328,20 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// Shipped default late-log caps (DefaultChannelCacheMaxLength=500, LateLogAge=5m) - deliberately not overridden. The
 	// length cap is the mechanism under test; the 5-minute age is far longer than this test so the age sweep
 	// never fires.
-	db, ctx := setupTestDBWithCacheOptions(t, fastFeedBroadcast(shortWaitCache()))
-	defer db.Close(ctx)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, fastFeedBroadcast(db.ShortWaitCache()))
+	defer database.Close(ctx)
 
-	authenticator := db.Authenticator(ctx)
+	authenticator := database.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
-	collectionWithUser, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	collectionWithUser.user = user
+	collectionWithUser, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collectionWithUser.SetDatabaseCollectionUserForTest(t, user)
 	collection := collectionWithUser.DatabaseCollection
-	cCache := collection.changeCache()
+	cCache := database.ChangeCacheForTest(t)
 
-	forcedRollbacks := func() int64 { return db.DbStats.Cache().LateFeedForcedRollbacks.Value() }
+	forcedRollbacks := func() int64 { return database.DbStats.Cache().LateFeedForcedRollbacks.Value() }
 	feed := startChangesFeed(ctx, t, collectionWithUser)
 	seen := make(map[uint64]bool) // every sequence the feed delivers across its lifetime
 	collectSeen := func(seqs []uint64) {
@@ -1352,24 +1352,24 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	collectSeen(drainUntilWait(t, feed))
 
 	// One in-order write so the feed is streaming normally and the cache's nextSequence advances to 2.
-	WriteDirect(t, collection, []string{"ABC"}, 1)
+	db.WriteDirect(t, collection, []string{"ABC"}, 1)
 	collectSeen(drainUntilWait(t, feed))
 
-	cc, ok := cCache.getChannelCache().(*channelCacheImpl)
+	cc, ok := cCache.GetChannelCacheForTest(t).(*db.ChannelCacheImplForTest)
 	require.True(t, ok)
-	abcCacheIface, err := cc.getSingleChannelCache(ctx, channels.NewID("ABC", collection.GetCollectionID()))
+	abcCacheIface, err := db.GetSingleChannelCacheForTest(t, ctx, cc, channels.NewID("ABC", collection.GetCollectionID()))
 	require.NoError(t, err)
-	abcCache := abcCacheIface.(*singleChannelCacheImpl)
-	require.Equal(t, int64(1), abcCache.lateLogCount(), "ABC starts with just its sentinel entry")
+	abcCache := abcCacheIface.(*db.SingleChannelCacheImplForTest)
+	require.Equal(t, int64(1), abcCache.LateLogCountForTest(t), "ABC starts with just its sentinel entry")
 
 	// Stall the feed with its late-sequence listener still on the sentinel. Writing more in-order sequences than
 	// the feed's output buffer holds, and never draining them, blocks the feed goroutine on its output send.
 	for seq := uint64(2); seq <= bufferFillers+1; seq++ {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, cap(feed), len(feed), "the feed's output buffer must fill so the goroutine blocks with its late listener still on the sentinel")
-		assert.GreaterOrEqual(c, cCache.getNextSequence(), uint64(bufferFillers+2), "all in-order fillers must be cached before the spike")
+		assert.GreaterOrEqual(c, cCache.GetNextSequenceForTest(t), uint64(bufferFillers+2), "all in-order fillers must be cached before the spike")
 	}, 30*time.Second, 20*time.Millisecond)
 	require.Equal(t, int64(0), forcedRollbacks(), "no rollback should have occurred yet - the stalled feed has not read a late sequence")
 
@@ -1377,7 +1377,7 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	firstSkipped := uint64(bufferFillers + 2)
 	lastSkipped := uint64(bufferFillers + 1 + spikeSize)
 	gapWriteSeq := lastSkipped + 1
-	WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
+	db.WriteDirect(t, collection, []string{"ABC"}, gapWriteSeq)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, cCache.WasSkipped(firstSkipped) && cCache.WasSkipped(lastSkipped),
 			"the gap %d..%d should have been pushed to the skipped list", firstSkipped, lastSkipped)
@@ -1389,16 +1389,16 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// still references. Given all other items in th elate logs list do not have any listeners the compaction process
 	// will also clean all those items leaving only the sentinel item.
 	for seq := firstSkipped; seq <= lastSkipped; seq++ {
-		WriteDirect(t, collection, []string{"ABC"}, seq)
-		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
+		db.WriteDirect(t, collection, []string{"ABC"}, seq)
+		require.NoError(t, database.WaitForSequenceNotSkipped(ctx, seq))
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Equal(c, uint64(0), cCache.getOldestSkippedSequence(ctx),
+		assert.Equal(c, uint64(0), cCache.GetOldestSkippedSequenceForTest(t, ctx),
 			"all %d skipped sequences should have resolved (arrived late)", spikeSize)
 	}, 60*time.Second, 20*time.Millisecond)
 
 	// We should only have the sentinel entry left. Once we went above the max length for late logs and removed the
 	// earliest entry, this entry was the ony entry with a listener so it was safe to remove all other entries until the last entry
-	require.Equal(t, abcCache.lateLogCount(), 1,
+	require.Equal(t, abcCache.LateLogCountForTest(t), 1,
 		"the length force-prune should event down to one item")
 }

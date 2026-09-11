@@ -892,7 +892,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
@@ -949,7 +949,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 func BenchmarkDatabaseGetRev(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
@@ -1007,7 +1007,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 func BenchmarkHandleRevDelta(b *testing.B) {
 	base.DisableTestLogging(b)
 
-	db, ctx := setupTestDB(b)
+	db, ctx := SetupTestDB(b)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, b, db)
 
@@ -1055,7 +1055,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1094,7 +1094,7 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1156,7 +1156,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1407,7 +1407,7 @@ func TestMergeAttachments(t *testing.T) {
 }
 
 func TestGetChannelsAndAccess(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	require.Nil(t, collection.ChannelMapper)
@@ -1471,7 +1471,7 @@ func TestGetChannelsAndAccess(t *testing.T) {
 
 func TestKnownRevsForCheckChangeVersion(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1500,7 +1500,7 @@ func TestPutStampClusterUUID(t *testing.T) {
 		t.Skip("This test only works on Couchbase Server and with XATTRS enabled")
 	}
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -1601,13 +1601,13 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 		ForceTimeoutErrorOnUpdateKeys: []string{timeoutDoc},
 	}
 
-	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), callbackConfig)
+	db, ctx = SetupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), callbackConfig)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
 	// init channel cache, this will make changes call after timeout doc is written below fail pre changes made in CBG-4067,
 	// due to duplicate sequence at the cache with an unused sequence. See steps in ticket CBG-4067 as example.
-	_ = getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	_ = GetChangesForTest(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 
 	assert.Equal(t, uint64(0), db.DbStats.Database().SequenceReleasedCount.Value())
 
@@ -1626,7 +1626,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 	}, time.Second*10, time.Millisecond*100)
 
 	// get cached changes + assert the document is present
-	changes := getChanges(t, collection, base.SetOf("*"), getChangesOptionsWithZeroSeq(t))
+	changes := GetChangesForTest(t, collection, base.SetOf("*"), GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, changes, 1)
 	assert.Equal(t, timeoutDoc, changes[0].ID)
 
@@ -1773,7 +1773,7 @@ func TestDocUpdateCorruptSequence(t *testing.T) {
 
 func TestPutResurrection(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Value()
@@ -1798,7 +1798,7 @@ func TestPutResurrection(t *testing.T) {
 //   - Call PutExistingCurrentVersion simulating doc update arriving over replicator
 //   - Assert that the doc's HLV in the bucket has been updated correctly with the CV, PV and cvCAS
 func TestPutExistingCurrentVersion(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	bucketUUID := db.EncodedSourceID
@@ -1903,7 +1903,7 @@ func TestPutExistingCurrentVersion(t *testing.T) {
 //   - Assert conflict between the local HLV for the doc and the incoming mutation is correctly identified
 //   - Assert that the doc's HLV in the bucket hasn't been updated
 func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	sourceID := db.EncodedSourceID
@@ -1955,7 +1955,7 @@ func TestPutExistingCurrentVersionWithConflict(t *testing.T) {
 //     existing doc is not provided from the bucket into the function simulating a new, not seen
 //     before doc entering this code path
 func TestPutExistingCurrentVersionWithNoExistingDoc(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	bucketUUID := db.BucketUUID
@@ -2029,7 +2029,7 @@ func TestGetRevWithCVDocResidentInCache(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDB(t)
 			defer db.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -2147,7 +2147,7 @@ func TestGetRevWithCVActivePathway(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			db, ctx := setupTestDB(t)
+			db, ctx := SetupTestDB(t)
 			defer db.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 			collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -2496,7 +2496,7 @@ func TestSyncDataCVEqual(t *testing.T) {
 }
 
 func TestProposedRev(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -2670,7 +2670,7 @@ func TestProposedRev(t *testing.T) {
 // ISGR pull replication is written without its channels being persisted (channel_set: null), making it invisible to
 // the changes feed. See https://www.couchbase.com/forums/t/41307
 func TestPutExistingCurrentVersionISGRNewDocChannels(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -2709,7 +2709,7 @@ const isgrScopeSyncFn = `function(doc){ if (doc.channels) { channel(doc.channels
 // TestPutExistingCurrentVersionISGRAccessGrant verifies access() grants from the sync function are persisted
 // for a new document arriving over ISGR. See https://www.couchbase.com/forums/t/41307
 func TestPutExistingCurrentVersionISGRAccessGrant(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, isgrScopeSyncFn, db.Options.JavascriptTimeout)
@@ -2733,7 +2733,7 @@ func TestPutExistingCurrentVersionISGRAccessGrant(t *testing.T) {
 // TestPutExistingCurrentVersionISGRTombstoneChannelRemoval verifies an ISGR tombstone for a live local document
 // records the channel removals, rather than leaving the doc in its previous channels.
 func TestPutExistingCurrentVersionISGRTombstoneChannelRemoval(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -2772,7 +2772,7 @@ func TestPutExistingCurrentVersionISGRTombstoneChannelRemoval(t *testing.T) {
 // TestPutExistingCurrentVersionISGRLegacyDocChannels verifies an ISGR write onto a pre-upgrade document (rev tree,
 // no HLV) persists the channels calculated by the sync function, rather than leaving the legacy channel set in place.
 func TestPutExistingCurrentVersionISGRLegacyDocChannels(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -2812,7 +2812,7 @@ func TestPutExistingCurrentVersionISGRLegacyDocChannels(t *testing.T) {
 // Note the backup is only written when delta sync is off and legacy rev tree data is stored - with delta sync enabled
 // postWriteUpdateHLV writes a CV-keyed backup instead. Both are the defaults for a test database.
 func TestPutExistingCurrentVersionISGROldRevBackup(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
@@ -2948,7 +2948,7 @@ func TestRepairFailureDoesNotLeakSequence(t *testing.T) {
 
 func TestWritePathRepairMouChain(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 

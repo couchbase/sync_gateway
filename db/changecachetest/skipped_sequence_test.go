@@ -8,11 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package changecachetest
 
 import (
 	"testing"
 	"time"
+
+	"github.com/couchbase/sync_gateway/db"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -27,16 +29,16 @@ const multiplier = 8 // used to multiply sequence numbers in benchmarks
 //   - Assert that each one is added in the correct order
 //   - Assert that timestamp is increasing from the last entry (or equal to)
 func TestPushSingleSkippedSequence(t *testing.T) {
-	skippedList := NewSkippedSequenceSkiplist()
+	skippedList := db.NewSkippedSequenceSkiplist()
 
 	for i := range 10 {
-		err := skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(uint64(i * 2)))
+		err := skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(uint64(i * 2)))
 		require.NoError(t, err)
 	}
 
 	var prevTime int64 = 0
 	j := 0
-	for c := skippedList.list.Front(); c != nil; c = c.Next() {
+	for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 		assert.Equal(t, uint64(j*2), c.Key().Start)
 		assert.Equal(t, uint64(j*2), c.Key().End)
 		assert.GreaterOrEqual(t, c.Key().Timestamp, prevTime)
@@ -46,11 +48,11 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 
 	// add a new single entry that is contiguous with end of the slice which should replace last
 	// single entry with a range
-	err := skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(19))
+	err := skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(19))
 	require.NoError(t, err)
 
 	// grab last entry in list
-	elem := skippedList.list.GetLastElement()
+	elem := skippedList.ListForTest(t).GetLastElement()
 	// assert last entry is range entry and start + end sequence on range is as expected
 	assert.False(t, isSingleEntry(elem.Key()))
 	assert.Equal(t, uint64(18), elem.Key().Start)
@@ -61,17 +63,17 @@ func TestPushSingleSkippedSequence(t *testing.T) {
 //   - Create list of range sequence entries and assert contents of list are as expected
 //   - Attempt to add a new range that is contiguous with entry at end of list and assert that item is as expected
 func TestPushSkippedSequenceRange(t *testing.T) {
-	skippedList := NewSkippedSequenceSkiplist()
+	skippedList := db.NewSkippedSequenceSkiplist()
 
 	for i := range 10 {
 		start := i * 10
-		err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(uint64(start), uint64(start+5)))
+		err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(uint64(start), uint64(start+5)))
 		require.NoError(t, err)
 	}
 
 	var prevTime int64 = 0
 	j := 0
-	for c := skippedList.list.Front(); c != nil; c = c.Next() {
+	for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 		start := j * 10
 		end := start + 5
 		assert.Equal(t, uint64(start), c.Key().Start)
@@ -82,26 +84,26 @@ func TestPushSkippedSequenceRange(t *testing.T) {
 	}
 
 	// add a new range entry that is contiguous with end of the slice which should alter range last element in list
-	err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(96, 110))
+	err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(96, 110))
 	require.NoError(t, err)
 	// grab last entry in list
-	elem := skippedList.list.GetLastElement()
+	elem := skippedList.ListForTest(t).GetLastElement()
 	// assert last entry is range entry and start + end sequence on range is as expected
 	assert.False(t, isSingleEntry(elem.Key()))
 	assert.Equal(t, uint64(90), elem.Key().Start)
 	assert.Equal(t, uint64(110), elem.Key().End)
 
 	// add new single entry that is not contiguous with last element on list
-	err = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(500))
+	err = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(500))
 	require.NoError(t, err)
 
 	// add new range that is contiguous with the single entry on the last element of the list + garbage timestamp
 	// for later assertion
 	newTimeStamp := time.Now().Unix() + 10000
-	err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(501, 510, newTimeStamp))
+	err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntryAt(501, 510, newTimeStamp))
 	require.NoError(t, err)
 
-	elem = skippedList.list.GetLastElement()
+	elem = skippedList.ListForTest(t).GetLastElement()
 
 	// assert that last element in list is a range and holds sequences we expect + timestamp
 	// is what the new pushed range above holds
@@ -117,7 +119,7 @@ func BenchmarkPushSkippedSequenceEntryLargeList(b *testing.B) {
 		i = uint64(240)
 	}
 	for b.Loop() {
-		_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i*2, 0))
+		_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(i*2, 0))
 		i++
 	}
 }
@@ -129,7 +131,7 @@ func BenchmarkPushSkippedSequenceEntryLargeListContiguous(b *testing.B) {
 		i = uint64(240)
 	}
 	for b.Loop() {
-		_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i, 0))
+		_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(i, 0))
 		i++
 	}
 }
@@ -144,13 +146,13 @@ func BenchmarkPushSkippedSequenceEntry(b *testing.B) {
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			i := uint64(0)
 			for b.Loop() {
 				if !bm.rangeEntries {
-					_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(i*2, 0))
+					_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(i*2, 0))
 				} else {
-					_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(i*10, (i*10)+5, 0))
+					_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntryAt(i*10, (i*10)+5, 0))
 				}
 				i++
 			}
@@ -184,11 +186,11 @@ func TestIsSequenceSkipped(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
-					err := skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input))
+					err := skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(input))
 					require.NoError(t, err)
 				}
 				for _, v := range testCase.inputList {
@@ -196,7 +198,7 @@ func TestIsSequenceSkipped(t *testing.T) {
 				}
 			} else {
 				for _, input := range testCase.inputList {
-					err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input, input+5))
+					err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(input, input+5))
 					require.NoError(t, err)
 				}
 				for _, v := range testCase.inputList {
@@ -210,12 +212,12 @@ func TestIsSequenceSkipped(t *testing.T) {
 			assert.False(t, skippedList.Contains(550))
 
 			// push this sequence and assert Contains returns true after
-			err := skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(550))
+			err := skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(550))
 			require.NoError(t, err)
 			assert.True(t, skippedList.Contains(550))
 
 			// push another range much higher, assert Contains works as expected
-			err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60000, 70000))
+			err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(60000, 70000))
 			require.NoError(t, err)
 			assert.True(t, skippedList.Contains(60000))
 			assert.True(t, skippedList.Contains(70000))
@@ -227,7 +229,7 @@ func TestIsSequenceSkipped(t *testing.T) {
 func BenchmarkContainsFunction(b *testing.B) {
 	benchmarks := []struct {
 		name      string
-		inputList *SkippedSequenceSkiplist
+		inputList *db.SkippedSequenceSkiplist
 	}{
 		{name: "single_entries_large_slice", inputList: setupBenchmark(true, false)},
 		{name: "single_entries_small_slice", inputList: setupBenchmark(false, false)},
@@ -265,102 +267,102 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 			name:        "list_full_single_items",
 			inputList:   [][]uint64{{2}, {6}, {100}, {200}, {500}},
 			expected:    [][]uint64{{2, 2}, {6, 6}, {200, 200}, {500, 500}},
-			remove:      NewSingleSkippedSequenceEntry(100),
-			errorRemove: NewSingleSkippedSequenceEntry(150),
+			remove:      db.NewSingleSkippedSequenceEntry(100),
+			errorRemove: db.NewSingleSkippedSequenceEntry(150),
 		},
 		{
 			name:        "list_full_range_items",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {25, 26}, {28, 30}, {35, 40}, {45, 50}},
-			remove:      NewSingleSkippedSequenceEntry(27),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(27),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_full_range_items_remove_startSeq",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {26, 30}, {35, 40}, {45, 50}},
-			remove:      NewSingleSkippedSequenceEntry(25),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(25),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_full_range_items_remove_endSeq",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 39}, {45, 50}},
-			remove:      NewSingleSkippedSequenceEntry(40),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(40),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_full_range_items_remove_startSeq+1",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 35}, {37, 40}, {45, 50}},
-			remove:      NewSingleSkippedSequenceEntry(36),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(36),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_full_range_items_remove_endSeq-1",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 38}, {40, 40}, {45, 50}},
-			remove:      NewSingleSkippedSequenceEntry(39),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(39),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_with_length_1_range_removal",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {22}, {25, 30}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {25, 30}},
-			remove:      NewSingleSkippedSequenceEntry(22),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(22),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_with_length_2_range_removal_startSeq",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {22, 23}, {26, 27}, {35, 40}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {23, 23}, {26, 27}, {35, 40}},
-			remove:      NewSingleSkippedSequenceEntry(22),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(22),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 		{
 			name:        "list_with_length_2_range_removal_lastSeq",
 			inputList:   [][]uint64{{5, 10}, {15, 20}, {22, 23}, {26, 27}, {35, 40}},
 			expected:    [][]uint64{{5, 10}, {15, 20}, {22, 23}, {26, 26}, {35, 40}},
-			remove:      NewSingleSkippedSequenceEntry(27),
-			errorRemove: NewSingleSkippedSequenceEntry(500),
+			remove:      db.NewSingleSkippedSequenceEntry(27),
+			errorRemove: db.NewSingleSkippedSequenceEntry(500),
 			rangeItems:  true,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
-					err := skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input[0]))
+					err := skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(input[0]))
 					require.NoError(t, err)
 				}
 			} else {
 				var err error
 				for _, input := range testCase.inputList {
 					if len(input) == 1 {
-						err = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input[0]))
+						err = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(input[0]))
 						require.NoError(t, err)
 					} else {
-						err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input[0], input[1]))
+						err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(input[0], input[1]))
 						require.NoError(t, err)
 					}
 				}
 			}
 
-			elem, _, err := skippedList.list.Remove(testCase.remove)
+			elem, _, err := skippedList.ListForTest(t).Remove(testCase.remove)
 			require.NoError(t, err)
 			require.NotNil(t, elem)
 
 			i := 0
 			var prevTime int64
-			for c := skippedList.list.Front(); c != nil; c = c.Next() {
+			for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 				// if we have expected entry of just {{x, x}}, then we expect this entry to be single skipped entry
 				if testCase.expected[i][0] == testCase.expected[i][1] {
 					assert.True(t, isSingleEntry(c.Key()))
@@ -375,7 +377,7 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 			}
 
 			// attempt remove on non existent sequence
-			elem, _, err = skippedList.list.Remove(testCase.errorRemove)
+			elem, _, err = skippedList.ListForTest(t).Remove(testCase.errorRemove)
 			require.Error(t, err)
 			require.Nil(t, elem)
 		})
@@ -392,32 +394,32 @@ func TestRemoveSeqFromSkipped(t *testing.T) {
 //   - Assert the resulting list is as expected
 func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 
-	skippedList := NewSkippedSequenceSkiplist()
+	skippedList := db.NewSkippedSequenceSkiplist()
 	inputList := [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}}
 	expected := [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}, {60, 60}, {62, 62}, {70, 75}}
 
 	for _, v := range inputList {
-		err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(v[0], v[1]))
+		err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(v[0], v[1]))
 		require.NoError(t, err)
 	}
-	err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60, 62))
+	err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(60, 62))
 	require.NoError(t, err)
-	err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(70, 75))
+	err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(70, 75))
 	require.NoError(t, err)
 
-	elem := skippedList.list.Get(NewSingleSkippedSequenceEntry(60))
+	elem := skippedList.ListForTest(t).Get(db.NewSingleSkippedSequenceEntry(60))
 	assert.NotNil(t, elem)
 
 	// grab timestamp from range that is getting split
 	timestampAtSequence := elem.Key().Timestamp
 
 	// remove seq in middle of above range
-	elem, _, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(61))
+	elem, _, err = skippedList.ListForTest(t).Remove(db.NewSingleSkippedSequenceEntry(61))
 	require.NoError(t, err)
 	require.NotNil(t, elem)
 
 	i := 0
-	for c := skippedList.list.Front(); c != nil; c = c.Next() {
+	for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 		if expected[i][0] == expected[i][1] {
 			assert.True(t, isSingleEntry(c.Key()))
 		} else {
@@ -429,31 +431,31 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 	}
 
 	// assert that items second and third from last timestamps are preserved
-	elem = skippedList.list.Get(NewSingleSkippedSequenceEntry(60))
+	elem = skippedList.ListForTest(t).Get(db.NewSingleSkippedSequenceEntry(60))
 	assert.Equal(t, timestampAtSequence, elem.Key().Timestamp)
-	elem = skippedList.list.Get(NewSingleSkippedSequenceEntry(62))
+	elem = skippedList.ListForTest(t).Get(db.NewSingleSkippedSequenceEntry(62))
 	assert.Equal(t, timestampAtSequence, elem.Key().Timestamp)
 
 	// push two new three seq ranges and remove the start seq from one of those ranges,
 	// then last seq from the other range
 	expected = [][]uint64{{5, 10}, {15, 20}, {25, 30}, {35, 40}, {45, 50}, {60, 60}, {62, 62}, {70, 75}, {81, 82}, {85, 86}}
-	err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(80, 82))
+	err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(80, 82))
 	require.NoError(t, err)
 
-	err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(85, 87))
+	err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(85, 87))
 	require.NoError(t, err)
 
 	// remove start seq from range 80-32
-	elem, _, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(80))
+	elem, _, err = skippedList.ListForTest(t).Remove(db.NewSingleSkippedSequenceEntry(80))
 	require.NoError(t, err)
 	require.NotNil(t, elem)
 	// remove last seq from range 85-87
-	elem, _, err = skippedList.list.Remove(NewSingleSkippedSequenceEntry(87))
+	elem, _, err = skippedList.ListForTest(t).Remove(db.NewSingleSkippedSequenceEntry(87))
 	require.NoError(t, err)
 	require.NotNil(t, elem)
 
 	j := 0
-	for c := skippedList.list.Front(); c != nil; c = c.Next() {
+	for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 		if expected[j][0] == expected[j][1] {
 			assert.True(t, isSingleEntry(c.Key()))
 		} else {
@@ -468,7 +470,7 @@ func TestRemoveSeqFromThreeSequenceRange(t *testing.T) {
 func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 	benchmarks := []struct {
 		name      string
-		inputList *SkippedSequenceSkiplist
+		inputList *db.SkippedSequenceSkiplist
 	}{
 		{name: "single_entries_large_slice", inputList: setupBenchmark(true, false)},
 		{name: "single_entries_small_slice", inputList: setupBenchmark(false, false)},
@@ -479,7 +481,7 @@ func BenchmarkRemoveSeqFromSkippedList(b *testing.B) {
 		b.Run(bm.name, func(b *testing.B) {
 			i := uint64(1)
 			for b.Loop() {
-				_, _, _ = bm.inputList.list.Remove(NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
+				_, _, _ = bm.inputList.ListForTest(b).Remove(db.NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
 				i++
 			}
 		})
@@ -490,7 +492,7 @@ func BenchmarkRemoveSeqRangeFromSkippedList(b *testing.B) {
 	skipedList := setupBenchmark(true, true)
 	i := uint64(1)
 	for b.Loop() {
-		_, _, _ = skipedList.list.Remove(NewSkippedSequenceRangeEntryAt(i*multiplier, (i*multiplier)+1, 0))
+		_, _, _ = skipedList.ListForTest(b).Remove(db.NewSkippedSequenceRangeEntryAt(i*multiplier, (i*multiplier)+1, 0))
 		i++
 	}
 }
@@ -527,28 +529,28 @@ func TestInsertItemInSkipped(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			var err error
 
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
-					err = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input[0]))
+					err = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(input[0]))
 					require.NoError(t, err)
 				}
 			} else {
 				for _, input := range testCase.inputList {
-					err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input[0], input[1]))
+					err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(input[0], input[1]))
 					require.NoError(t, err)
 				}
 			}
 
 			// attempt to insert at test case index to keep order
-			elem, err := skippedList.list.Set(NewSingleSkippedSequenceEntry(testCase.insert))
+			elem, err := skippedList.ListForTest(t).Set(db.NewSingleSkippedSequenceEntry(testCase.insert))
 			require.NoError(t, err)
 			require.NotNil(t, elem)
 
 			i := 0
-			for c := skippedList.list.Front(); c != nil; c = c.Next() {
+			for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 				if testCase.expected[i][0] == testCase.expected[i][1] {
 					assert.True(t, isSingleEntry(c.Key()))
 				} else {
@@ -567,21 +569,21 @@ func BenchmarkInsertSkippedItem(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
-		inputSlice   *SkippedSequenceSkiplist
+		inputSlice   *db.SkippedSequenceSkiplist
 	}{
-		{name: "single_entries_large_slice", rangeEntries: false, inputSlice: setupBenchmarkForInsert(true, false)},
-		{name: "single_entries_small_slice", rangeEntries: false, inputSlice: setupBenchmarkForInsert(false, false)},
-		{name: "range_entries_large_slice", rangeEntries: true, inputSlice: setupBenchmarkForInsert(true, true)},
-		{name: "range_entries_small_slice", rangeEntries: true, inputSlice: setupBenchmarkForInsert(false, true)},
+		{name: "single_entries_large_slice", rangeEntries: false, inputSlice: setupBenchmarkForInsert(b, true, false)},
+		{name: "single_entries_small_slice", rangeEntries: false, inputSlice: setupBenchmarkForInsert(b, false, false)},
+		{name: "range_entries_large_slice", rangeEntries: true, inputSlice: setupBenchmarkForInsert(b, true, true)},
+		{name: "range_entries_small_slice", rangeEntries: true, inputSlice: setupBenchmarkForInsert(b, false, true)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			i := uint64(2)
 			for b.Loop() {
 				if !bm.rangeEntries {
-					_, _ = bm.inputSlice.list.Set(NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
+					_, _ = bm.inputSlice.ListForTest(b).Set(db.NewSingleSkippedSequenceEntryAt(multiplier*i, 0))
 				} else {
-					_, _ = bm.inputSlice.list.Set(NewSkippedSequenceRangeEntryAt(multiplier*i, (multiplier*i)+2, 0))
+					_, _ = bm.inputSlice.ListForTest(b).Set(db.NewSkippedSequenceRangeEntryAt(multiplier*i, (multiplier*i)+2, 0))
 				}
 				i++
 			}
@@ -622,20 +624,20 @@ func TestCompactSkippedList(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			inputTime := time.Now().Unix() - 1000
 			var err error
 
 			if !testCase.rangeItems {
 				for _, input := range testCase.inputList {
 					// add single entries with old timestamps for compaction
-					err = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(input[0], inputTime))
+					err = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(input[0], inputTime))
 					require.NoError(t, err)
 				}
 			} else {
 				for _, input := range testCase.inputList {
 					// add range entries with old timestamps for compaction
-					err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(input[0], input[1], inputTime))
+					err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntryAt(input[0], input[1], inputTime))
 					require.NoError(t, err)
 				}
 			}
@@ -644,19 +646,19 @@ func TestCompactSkippedList(t *testing.T) {
 			var entry skiplist.SkippedSequenceEntry
 			futureTime := time.Now().Unix() + 10000
 			if !testCase.rangeItems {
-				entry = NewSingleSkippedSequenceEntryAt(600, futureTime)
+				entry = db.NewSingleSkippedSequenceEntryAt(600, futureTime)
 			} else {
-				entry = NewSkippedSequenceRangeEntryAt(600, 605, futureTime)
+				entry = db.NewSkippedSequenceRangeEntryAt(600, 605, futureTime)
 			}
 			err = skippedList.PushSkippedSequenceEntry(entry)
 			require.NoError(t, err)
 
 			numRemoved, numSeqsLeft := skippedList.SkippedSequenceCompact(base.TestCtx(t), 1)
 
-			require.Equal(t, skippedList.list.GetLength(), 1)
+			require.Equal(t, skippedList.ListForTest(t).GetLength(), 1)
 			assert.Equal(t, testCase.numLeft, numSeqsLeft)
-			assert.Equal(t, testCase.expected[0][0], skippedList.list.Front().Key().Start)
-			assert.Equal(t, testCase.expected[0][1], skippedList.list.Front().Key().End)
+			assert.Equal(t, testCase.expected[0][0], skippedList.ListForTest(t).Front().Key().Start)
+			assert.Equal(t, testCase.expected[0][1], skippedList.ListForTest(t).Front().Key().End)
 
 			// assert on num sequences removed
 			assert.Equal(t, testCase.numRemoved, numRemoved)
@@ -668,12 +670,12 @@ func BenchmarkCompactSkippedList(b *testing.B) {
 	benchmarks := []struct {
 		name         string
 		rangeEntries bool
-		inputList    *SkippedSequenceSkiplist
+		inputList    *db.SkippedSequenceSkiplist
 	}{
-		{name: "single_entries_large_slice", rangeEntries: false, inputList: setupBenchmarkToCompact(true, false)},
-		{name: "single_entries_small_slice", rangeEntries: false, inputList: setupBenchmarkToCompact(false, false)},
-		{name: "range_entries_large_slice", rangeEntries: true, inputList: setupBenchmarkToCompact(true, true)},
-		{name: "range_entries_small_slice", rangeEntries: true, inputList: setupBenchmarkToCompact(false, true)},
+		{name: "single_entries_large_slice", rangeEntries: false, inputList: setupBenchmarkToCompact(b, true, false)},
+		{name: "single_entries_small_slice", rangeEntries: false, inputList: setupBenchmarkToCompact(b, false, false)},
+		{name: "range_entries_large_slice", rangeEntries: true, inputList: setupBenchmarkToCompact(b, true, true)},
+		{name: "range_entries_small_slice", rangeEntries: true, inputList: setupBenchmarkToCompact(b, false, true)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
@@ -714,22 +716,22 @@ func TestGetOldestSkippedSequence(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			var err error
 			if !testCase.empty {
 				if !testCase.rangeItems {
 					for _, v := range testCase.inputList {
-						err = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(v[0]))
+						err = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(v[0]))
 						require.NoError(t, err)
 					}
 				} else {
 					for _, v := range testCase.inputList {
-						err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(v[0], v[1]))
+						err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(v[0], v[1]))
 						require.NoError(t, err)
 					}
 				}
 			}
-			assert.Equal(t, testCase.expected, skippedList.getOldest())
+			assert.Equal(t, testCase.expected, skippedList.GetOldestForTest(t))
 		})
 	}
 }
@@ -830,19 +832,19 @@ func TestRemoveSequenceRange(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			var err error
 			for _, input := range testCase.inputList {
 				if len(input) == 1 {
-					err = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(input[0]))
+					err = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(input[0]))
 					require.NoError(t, err)
 				} else {
-					err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(input[0], input[1]))
+					err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(input[0], input[1]))
 					require.NoError(t, err)
 				}
 			}
 
-			elem, _, err := skippedList.list.Remove(NewSkippedSequenceRangeEntry(testCase.rangeToRemove[0], testCase.rangeToRemove[1]))
+			elem, _, err := skippedList.ListForTest(t).Remove(db.NewSkippedSequenceRangeEntry(testCase.rangeToRemove[0], testCase.rangeToRemove[1]))
 			if testCase.errorCase {
 				require.Error(t, err)
 				require.Nil(t, elem)
@@ -852,7 +854,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 			}
 
 			i := 0
-			for c := skippedList.list.Front(); c != nil; c = c.Next() {
+			for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 				if testCase.expected[i][0] == testCase.expected[i][1] {
 					assert.True(t, isSingleEntry(c.Key()))
 				} else {
@@ -864,7 +866,7 @@ func TestRemoveSequenceRange(t *testing.T) {
 				i++
 			}
 			// assert on current count of skipped sequences
-			assert.Equal(t, testCase.expectedNumSequencesInSlice, skippedList.list.NumSequencesInList)
+			assert.Equal(t, testCase.expectedNumSequencesInSlice, skippedList.ListForTest(t).NumSequencesInList)
 		})
 	}
 
@@ -936,22 +938,22 @@ func TestProcessUnusedSequenceRangeAtSkipped(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			skippedList := NewSkippedSequenceSkiplist()
+			skippedList := db.NewSkippedSequenceSkiplist()
 			ctx := base.TestCtx(t)
 
 			// fill list with some ranges
-			err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(10, 30))
+			err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(10, 30))
 			require.NoError(t, err)
-			err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(60, 100))
+			err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(60, 100))
 			require.NoError(t, err)
-			err = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(120, 150))
+			err = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(120, 150))
 			require.NoError(t, err)
 
 			// run processUnusedSequenceRangeAtSkipped and assert that sequences are removed as expected
-			skippedList.processUnusedSequenceRangeAtSkipped(ctx, testCase.removalSeqs[0], testCase.removalSeqs[1])
+			skippedList.ProcessUnusedSequenceRangeAtSkippedForTest(t, ctx, testCase.removalSeqs[0], testCase.removalSeqs[1])
 
 			i := 0
-			for c := skippedList.list.Front(); c != nil; c = c.Next() {
+			for c := skippedList.ListForTest(t).Front(); c != nil; c = c.Next() {
 				assert.Equal(t, testCase.expected[i][0], c.Key().Start)
 				assert.Equal(t, testCase.expected[i][1], c.Key().End)
 				i++
@@ -961,9 +963,9 @@ func TestProcessUnusedSequenceRangeAtSkipped(t *testing.T) {
 }
 
 // setupBenchmark sets up a skipped sequence list for benchmark tests
-func setupBenchmark(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist {
-	skippedList := NewSkippedSequenceSkiplist()
-	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
+func setupBenchmark(largeSlice bool, rangeEntries bool) *db.SkippedSequenceSkiplist {
+	skippedList := db.NewSkippedSequenceSkiplist()
+	_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(1, 0))
 	if largeSlice {
 		size := uint64(30_000_000)
 		if testing.Short() {
@@ -971,48 +973,48 @@ func setupBenchmark(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist
 		}
 		for i := uint64(1); i < size; i++ {
 			if rangeEntries {
-				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+2))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+2))
 			} else {
-				_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(i * multiplier))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(i * multiplier))
 			}
 		}
 	} else {
 		for i := uint64(1); i < 1000; i++ {
 			if rangeEntries {
-				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+2))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(i*multiplier, (i*multiplier)+2))
 			} else {
-				_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(i * multiplier))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(i * multiplier))
 			}
 		}
 	}
 	return skippedList
 }
 
-func setupBenchmarkForInsert(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist {
-	skippedList := NewSkippedSequenceSkiplist()
+func setupBenchmarkForInsert(tb testing.TB, largeSlice bool, rangeEntries bool) *db.SkippedSequenceSkiplist {
+	skippedList := db.NewSkippedSequenceSkiplist()
 	// add low entry and very high entries then benchmark will insert in middle of these values high and low values
-	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, 0))
-	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(200000000, 0))
+	_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(1, 0))
+	_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(200000000, 0))
 	if largeSlice {
 		size := 30_000_000
 		if testing.Short() {
 			size = 300
 		}
 		for range size {
-			startSeq := skippedList.list.GetLastElement().Key().End
+			startSeq := skippedList.ListForTest(tb).GetLastElement().Key().End
 			if rangeEntries {
-				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
 			} else {
-				_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(startSeq + 2))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(startSeq + 2))
 			}
 		}
 	} else {
 		for i := 1000; i < 2000; i++ {
-			startSeq := skippedList.list.GetLastElement().Key().End
+			startSeq := skippedList.ListForTest(tb).GetLastElement().Key().End
 			if rangeEntries {
-				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(startSeq+2, startSeq+5))
 			} else {
-				_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(startSeq + 2))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(startSeq + 2))
 			}
 		}
 	}
@@ -1020,46 +1022,46 @@ func setupBenchmarkForInsert(largeSlice bool, rangeEntries bool) *SkippedSequenc
 }
 
 // setupBenchmarkToCompact sets up a skipped sequence list for compaction based benchmark tests
-func setupBenchmarkToCompact(largeSlice bool, rangeEntries bool) *SkippedSequenceSkiplist {
-	skippedList := NewSkippedSequenceSkiplist()
+func setupBenchmarkToCompact(tb testing.TB, largeSlice bool, rangeEntries bool) *db.SkippedSequenceSkiplist {
+	skippedList := db.NewSkippedSequenceSkiplist()
 	inputTime := time.Now().Unix() - 1000
-	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(1, inputTime))
+	_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(1, inputTime))
 	if largeSlice {
 		size := 30_000_000
 		if testing.Short() {
 			size = 100_000
 		}
 		for range size {
-			startSeq := skippedList.list.GetLastElement().Key().End
+			startSeq := skippedList.ListForTest(tb).GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction
-				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(startSeq+2, startSeq+5, inputTime))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntryAt(startSeq+2, startSeq+5, inputTime))
 			} else {
 				// add single entries with old timestamps for compaction
-				_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(startSeq+2, inputTime))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(startSeq+2, inputTime))
 			}
 		}
 	} else {
 		for range 1000 {
-			startSeq := skippedList.list.GetLastElement().Key().End
+			startSeq := skippedList.ListForTest(tb).GetLastElement().Key().End
 			if rangeEntries {
 				// add range entries with old timestamps for compaction
-				_ = skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntryAt(startSeq+2, startSeq+5, inputTime))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntryAt(startSeq+2, startSeq+5, inputTime))
 			} else {
 				// add single entries with old timestamps for compaction
-				_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntryAt(startSeq+2, inputTime))
+				_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntryAt(startSeq+2, inputTime))
 			}
 		}
 	}
 	// have one entry to not be compacted
-	_ = skippedList.PushSkippedSequenceEntry(NewSingleSkippedSequenceEntry(100000000))
+	_ = skippedList.PushSkippedSequenceEntry(db.NewSingleSkippedSequenceEntry(100000000))
 	return skippedList
 }
 
 func TestContainsAcrossRange(t *testing.T) {
-	skippedList := NewSkippedSequenceSkiplist()
+	skippedList := db.NewSkippedSequenceSkiplist()
 
-	err := skippedList.PushSkippedSequenceEntry(NewSkippedSequenceRangeEntry(10, 15))
+	err := skippedList.PushSkippedSequenceEntry(db.NewSkippedSequenceRangeEntry(10, 15))
 	require.NoError(t, err)
 
 	// run contains on each seq in above range and assert it returns true

@@ -22,7 +22,7 @@ import (
 )
 
 func TestAttachmentMigrationTaskMixMigratedAndNonMigratedDocs(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -86,7 +86,7 @@ func waitForAttachmentMigrationDocsProcessed(t testing.TB, db *Database, count i
 }
 
 func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -140,7 +140,7 @@ func TestAttachmentMigrationManagerResumeStoppedMigration(t *testing.T) {
 }
 
 func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -174,7 +174,7 @@ func TestAttachmentMigrationManagerNoDocsToMigrate(t *testing.T) {
 }
 
 func TestMigrationManagerDocWithSyncAndGlobalAttachmentMetadata(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -318,7 +318,7 @@ func TestAttachmentMigrationCheckpointPrefix(t *testing.T) {
 // base.SetSyncInfoMetaVersion — when ccv>=4.1 the syncInfo doc is written with the V1
 // version-byte prefix.
 func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	ccv := base.NewClusterCompatVersion(4, 1)

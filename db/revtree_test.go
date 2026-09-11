@@ -2009,7 +2009,7 @@ func TestNonIncreasingGenerationsHistoryEncoding(t *testing.T) {
 // see TestInvalidRevTreePullRepairsAndRedelivers for that end of it.
 func TestInvalidRevTreeRepairedOnLoad(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -2089,7 +2089,7 @@ func TestInvalidRevTreeRepairedOnLoad(t *testing.T) {
 // what sendRevision turns into a replacement rev or a norev.
 func TestInvalidRevTreeGetReturnsRepairedDoc(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -2190,7 +2190,7 @@ func TestInvalidRevTreePushWithFabricatedHistory(t *testing.T) {
 	repairedTree := map[string]string{"1-abc": "", "10-abc": "1-abc", "11-def": "10-abc"}
 
 	t.Run("push against a corrupt tree repairs it and is then rejected", func(t *testing.T) {
-		dbCtx, ctx := setupTestDB(t)
+		dbCtx, ctx := SetupTestDB(t)
 		defer dbCtx.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
@@ -2221,7 +2221,7 @@ func TestInvalidRevTreePushWithFabricatedHistory(t *testing.T) {
 	})
 
 	t.Run("push after the tree has already been repaired is rejected and changes nothing", func(t *testing.T) {
-		dbCtx, ctx := setupTestDB(t)
+		dbCtx, ctx := SetupTestDB(t)
 		defer dbCtx.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
@@ -2246,7 +2246,7 @@ func TestInvalidRevTreePushWithFabricatedHistory(t *testing.T) {
 	})
 
 	t.Run("control - push with no known ancestor and no repair involved", func(t *testing.T) {
-		dbCtx, ctx := setupTestDB(t)
+		dbCtx, ctx := SetupTestDB(t)
 		defer dbCtx.Close(ctx)
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 		invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
@@ -2348,7 +2348,7 @@ func TestRepairFailureDoesNotReturnPhantomRev(t *testing.T) {
 // no longer selects, and the next write would silently move the document onto the losing branch.
 func TestInvalidRevTreeRepairKeepsWinningBranch(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -2406,7 +2406,7 @@ func TestInvalidRevTreeRepairKeepsWinningBranch(t *testing.T) {
 // renumbered onto a branch of the repair's choosing.
 func TestInvalidRevTreeRepairAbandonedWhenCurrentRevIsNotWinner(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
@@ -2439,7 +2439,7 @@ func TestInvalidRevTreeRepairAbandonedWhenCurrentRevIsNotWinner(t *testing.T) {
 // repair is a metadata-only xattr write, so it has to reach a document with no body.
 func TestInvalidRevTreeRepairOfTombstonedDoc(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
-	dbCtx, ctx := setupTestDB(t)
+	dbCtx, ctx := SetupTestDB(t)
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 

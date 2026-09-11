@@ -269,7 +269,7 @@ func TestHLVImport(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -524,7 +524,7 @@ func TestHLVImport(t *testing.T) {
 // TestHLVVersionAheadOfCASCorrection exercises correctVersionAheadOfCAS by simulating the Sync Gateway
 // clock running ahead of the server, so the generated current version exceeds the committed CAS.
 func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -567,7 +567,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 // has moved on since the write it was asked to correct. The correction applies to that write only, and the
 // concurrent writer is the one that has to satisfy cv.ver <= cas for its own mutation.
 func TestRestampVersionCASSkipsConcurrentWrite(t *testing.T) {
-	dbc, ctx := setupTestDB(t)
+	dbc, ctx := SetupTestDB(t)
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
@@ -620,7 +620,7 @@ func TestRestampVersionCASMou(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			dbc, ctx := setupTestDB(t)
+			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 

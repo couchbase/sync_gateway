@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package rest
+package changestest
 
 import (
 	"fmt"
@@ -25,69 +25,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
-
-func TestReadChangesOptionsFromJSON(t *testing.T) {
-
-	ctx := base.TestCtx(t)
-	h := &handler{}
-	h.server = NewServerContext(ctx, &StartupConfig{}, false)
-	defer h.server.Close(ctx)
-
-	// Basic case, no heartbeat, no timeout
-	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
-				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
-	feed, options, filter, channelsArray, _, _, err := h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.NoError(t, err)
-	assert.Equal(t, "longpoll", feed)
-
-	assert.Equal(t, uint64(78), options.Since.Seq)
-	assert.Equal(t, uint64(123456), options.Since.TriggeredBy)
-	assert.Equal(t, 123, options.Limit)
-	assert.Equal(t, true, options.Conflicts)
-	assert.Equal(t, true, options.IncludeDocs)
-	assert.Equal(t, uint64(kDefaultHeartbeatMS), options.HeartbeatMs)
-	assert.Equal(t, uint64(kDefaultTimeoutMS), options.TimeoutMs)
-
-	assert.Equal(t, "Melitta", filter)
-	assert.Equal(t, []string{"ABC", "BBC"}, channelsArray)
-
-	// Attempt to set heartbeat, timeout to valid values
-	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
-	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(30000), options.HeartbeatMs)
-	assert.Equal(t, uint64(60000), options.TimeoutMs)
-
-	// Attempt to set valid timeout, no heartbeat
-	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
-	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(2000), options.TimeoutMs)
-
-	// Disable heartbeat, timeout by explicitly setting to zero
-	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
-	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(0), options.HeartbeatMs)
-	assert.Equal(t, uint64(0), options.TimeoutMs)
-
-	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
-	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
-	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(kMinHeartbeatMS), options.HeartbeatMs)
-	assert.Equal(t, uint64(kMaxTimeoutMS), options.TimeoutMs)
-
-	// Set max heartbeat in server context, attempt to set heartbeat greater than max
-	h.server.Config.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Minute)
-	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
-	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(60000), options.HeartbeatMs)
-}
 
 // TestChangesSinceLogging drives a range of since values through every changes entry point SGW exposes -
 // GET, POST, longpoll, continuous, admin, websocket and BLIP subChanges - and asserts the existing changes
@@ -147,7 +88,7 @@ func TestChangesSinceLogging(t *testing.T) {
 		return fmt.Sprintf("Type:subChanges Since:%s ", wantSince)
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	})
 	defer rt.Close()
@@ -196,57 +137,57 @@ func TestChangesSinceLogging(t *testing.T) {
 			// That's also why these use SendUserRequest rather than rt.GetChanges/PostChanges, which
 			// assert status internally.
 			t.Run("GET normal", func(t *testing.T) {
-				var resp *TestResponse
+				var resp *rest.TestResponse
 				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodGet,
 						"/{{.keyspace}}/_changes?since="+tc.rawSince, "", username)
 				})
-				RequireStatus(t, resp, http.StatusOK)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			})
 
 			t.Run("POST normal", func(t *testing.T) {
-				var resp *TestResponse
+				var resp *rest.TestResponse
 				body := fmt.Sprintf(`{"since":%q}`, tc.rawSince)
 				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", body, username)
 				})
-				RequireStatus(t, resp, http.StatusOK)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			})
 
 			t.Run("GET longpoll", func(t *testing.T) {
-				var resp *TestResponse
+				var resp *rest.TestResponse
 				uri := fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=longpoll&timeout=100", tc.rawSince)
 				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodGet, uri, "", username)
 				})
-				RequireStatus(t, resp, http.StatusOK)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			})
 
 			t.Run("POST longpoll", func(t *testing.T) {
-				var resp *TestResponse
+				var resp *rest.TestResponse
 				body := fmt.Sprintf(`{"since":%q,"feed":"longpoll","timeout":100}`, tc.rawSince)
 				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", body, username)
 				})
-				RequireStatus(t, resp, http.StatusOK)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			})
 
 			t.Run("GET continuous", func(t *testing.T) {
-				var resp *TestResponse
+				var resp *rest.TestResponse
 				uri := fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&feed=continuous&timeout=100", tc.rawSince)
 				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendUserRequest(http.MethodGet, uri, "", username)
 				})
-				RequireStatus(t, resp, http.StatusOK)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			})
 
 			t.Run("GET admin", func(t *testing.T) {
-				var resp *TestResponse
+				var resp *rest.TestResponse
 				base.AssertLogContains(t, wantREST(tc.wantSince), func() {
 					resp = rt.SendAdminRequest(http.MethodGet,
 						"/{{.keyspace}}/_changes?since="+tc.rawSince, "")
 				})
-				RequireStatus(t, resp, http.StatusOK)
+				rest.RequireStatus(t, resp, http.StatusOK)
 			})
 
 			// The websocket feed reads its options - including since - from the first websocket message,
@@ -280,10 +221,10 @@ func TestChangesSinceLogging(t *testing.T) {
 	// once per subprotocol, and the REST logging path has no subprotocol dependency, so nesting would
 	// double every REST case for no coverage.  It's also structurally required - Run fails if already
 	// inside one, and NewBlipTesterClientOptsWithRT fails if not inside one.
-	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner := rest.NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T) {
 		// A separate RestTester from the REST phase above, so the two phases cannot disturb each other.
-		blipRT := NewRestTester(t, &RestTesterConfig{
+		blipRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 			SyncFn: `function(doc) {channel(doc.channels)}`,
 		})
 		defer blipRT.Close()
@@ -300,7 +241,7 @@ func TestChangesSinceLogging(t *testing.T) {
 				// A client per case: the previous case's revs land on a connection that is already
 				// closed, so no case is answered from a client that has not stored them yet, and the
 				// second copy of a revision it already holds cannot fail its conflict check.
-				btc := btcRunner.NewBlipTesterClientOptsWithRT(blipRT, &BlipTesterClientOpts{Username: username})
+				btc := btcRunner.NewBlipTesterClientOptsWithRT(blipRT, &rest.BlipTesterClientOpts{Username: username})
 				defer btc.Close()
 
 				defer func() {
@@ -312,7 +253,7 @@ func TestChangesSinceLogging(t *testing.T) {
 				// handleSubChanges has returned - so the log line is already emitted.  Deliberately no
 				// WaitForDoc: cases like 999 deliver nothing, and it would spin for its full timeout.
 				base.AssertLogContains(t, wantBLIP(tc.wantSince), func() {
-					btcRunner.StartPullSince(btc.id, BlipTesterPullOptions{Since: tc.rawSince})
+					btcRunner.StartPullSince(btc.ID(), rest.BlipTesterPullOptions{Since: tc.rawSince})
 				})
 			})
 		}
@@ -324,10 +265,10 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -343,7 +284,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	// Create 100 docs
 	for i := range 100 {
 		docpath := fmt.Sprintf("/{{.keyspace}}/doc%d", i)
-		RequireStatus(t, rt.SendRequest("PUT", docpath, `{"foo": "bar", "channels":["alpha"]}`), 201)
+		rest.RequireStatus(t, rt.SendRequest("PUT", docpath, `{"foo": "bar", "channels":["alpha"]}`), 201)
 	}
 
 	limit := 50
@@ -364,7 +305,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rt.CreateUser("user3", []string{"alpha"})
 
 	getUserResponse := rt.SendAdminRequest("GET", "/db/_user/user3", "")
-	RequireStatus(t, getUserResponse, 200)
+	rest.RequireStatus(t, getUserResponse, 200)
 	log.Printf("create user response: %s", getUserResponse.Body.Bytes())
 
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
@@ -431,10 +372,10 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(handler))
 	defer s.Close()
 
-	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			EventHandlers: &EventHandlerConfig{
-				DocumentChanged: []*EventConfig{
+	rtConfig := &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			EventHandlers: &rest.EventHandlerConfig{
+				DocumentChanged: []*rest.EventConfig{
 					{Url: s.URL + "?event=DocumentChanged", Filter: "function(doc){return true;}", HandlerType: "webhook"},
 					{Url: s.URL + "?event=WinningRevChanged", Filter: "function(doc){return true;}", HandlerType: "webhook",
 						Options: map[string]any{db.EventOptionDocumentChangedWinningRevOnly: true},
@@ -443,7 +384,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 			},
 		},
 		}}
-	rt := NewRestTester(t, rtConfig)
+	rt := rest.NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	rt.GetDatabase().EnableAllowConflicts(rt.TB())
@@ -455,13 +396,13 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	// push winning branch
 	wg.Add(2)
 	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+version1.RevTreeID+`"]}}`)
-	RequireStatus(t, res, http.StatusCreated)
-	winningVersion := DocVersionFromPutResponse(t, res)
+	rest.RequireStatus(t, res, http.StatusCreated)
+	winningVersion := rest.DocVersionFromPutResponse(t, res)
 
 	// push non-winning branch
 	wg.Add(1)
-	_ = rt.PutNewEditsFalse(docID, NewDocVersionFromFakeRev("2-buzzzzz"), &version1, `{"foo":"buzzzzz"}`)
-	RequireStatus(t, res, http.StatusCreated)
+	_ = rt.PutNewEditsFalse(docID, rest.NewDocVersionFromFakeRev("2-buzzzzz"), &version1, `{"foo":"buzzzzz"}`)
+	rest.RequireStatus(t, res, http.StatusCreated)
 
 	wg.Wait()
 	assert.Equal(t, 2, int(atomic.LoadUint32(&WinningRevChangedCount)))
@@ -478,8 +419,8 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	// push a separate winning branch
 	wg.Add(2)
 	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+version1.RevTreeID+`"]}}`)
-	RequireStatus(t, res, http.StatusCreated)
-	newWinningVersion := DocVersionFromPutResponse(t, res)
+	rest.RequireStatus(t, res, http.StatusCreated)
+	newWinningVersion := rest.DocVersionFromPutResponse(t, res)
 
 	// tombstone the winning branch, we should get a second webhook fired for rev 2-buzzzzz now it's been resurrected
 	wg.Add(2)
@@ -500,11 +441,11 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
-			CacheConfig: &CacheConfig{
-				ChannelCacheConfig: &ChannelCacheConfig{
+			CacheConfig: &rest.CacheConfig{
+				ChannelCacheConfig: &rest.ChannelCacheConfig{
 					MaxWaitPending: base.Ptr(uint32(10)),
 				},
 			},
@@ -516,7 +457,7 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 	vrs := rt.PutDoc("doc", `{"prop":true}`)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	ds := rt.GetSingleDataStore()
 	xattrs, cas, err := ds.GetXattrs(ctx, "doc", []string{base.SyncXattrName})
@@ -565,11 +506,11 @@ func TestJumpInSequencesAtAllocatorSkippedSequenceFill(t *testing.T) {
 //   - Write another doc and assert that the changes feed returns all expected docs
 func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
-			CacheConfig: &CacheConfig{
-				ChannelCacheConfig: &ChannelCacheConfig{
+			CacheConfig: &rest.CacheConfig{
+				ChannelCacheConfig: &rest.ChannelCacheConfig{
 					MaxWaitPending: base.Ptr(uint32(1500)),
 				},
 			},
@@ -581,7 +522,7 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 	vrs := rt.PutDoc("doc", `{"prop":true}`)
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes", "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 	ds := rt.GetSingleDataStore()
 	xattrs, cas, err := ds.GetXattrs(ctx, "doc", []string{base.SyncXattrName})
@@ -620,10 +561,10 @@ func TestJumpInSequencesAtAllocatorRangeInPending(t *testing.T) {
 }
 
 func TestCVPopulationOnChangesViaAPI(t *testing.T) {
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	bucketUUID := rt.GetDatabase().EncodedSourceID
@@ -633,7 +574,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	_ = rt.WaitForChanges(0, "/{{.keyspace}}/_changes", "", true)
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	rt.WaitForPendingChanges()
 
@@ -649,10 +590,10 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 }
 
 func TestCVPopulationOnDocIDChanges(t *testing.T) {
-	rtConfig := RestTesterConfig{
+	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection, ctx := rt.GetSingleTestDatabaseCollection()
 	bucketUUID := rt.GetDatabase().EncodedSourceID
@@ -662,7 +603,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	_ = rt.WaitForChanges(0, "/{{.keyspace}}/_changes", "", true)
 
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	rt.WaitForPendingChanges()
 
@@ -679,7 +620,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 
 // TestChangesVersionType tests the /_changes REST endpoint with different version_type parameters for each possible underlying feed type and HTTP method.
 func TestChangesVersionType(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	doc1 := "doc1"
@@ -781,13 +722,13 @@ func TestChangesVersionType(t *testing.T) {
 
 			if test.expectedStatus != http.StatusOK {
 				resp := rt.SendAdminRequest(test.changesRequestMethod, fmt.Sprintf("/{{.keyspace}}/_changes%s", test.changesRequestQueryParams), test.changesRequestBody)
-				RequireStatus(t, resp, test.expectedStatus)
+				rest.RequireStatus(t, resp, test.expectedStatus)
 				return
 			}
 
 			resp := rt.SendAdminRequest(test.changesRequestMethod, fmt.Sprintf("/{{.keyspace}}/_changes%s", test.changesRequestQueryParams), test.changesRequestBody)
-			RequireStatus(t, resp, test.expectedStatus)
-			var changesResults ChangesResults
+			rest.RequireStatus(t, resp, test.expectedStatus)
+			var changesResults rest.ChangesResults
 			require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &changesResults))
 			require.Len(t, changesResults.Results, test.expectedDocs)
 			for _, changeEntry := range changesResults.Results {
@@ -814,7 +755,7 @@ func TestChangesVersionType(t *testing.T) {
 }
 
 func TestDocIDChangesVersionCVWithLegacyRev(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	docID1 := "doc1"
@@ -829,9 +770,9 @@ func TestDocIDChangesVersionCVWithLegacyRev(t *testing.T) {
 
 	// issue docID changes feed
 	resp := rt.SendAdminRequest(http.MethodGet, `/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=["doc1","doc2"]&include_docs=true`, "")
-	RequireStatus(t, resp, http.StatusOK)
+	rest.RequireStatus(t, resp, http.StatusOK)
 
-	var changesResults ChangesResults
+	var changesResults rest.ChangesResults
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &changesResults))
 	require.Len(t, changesResults.Results, 2)
 	for _, changeEntry := range changesResults.Results {
@@ -852,7 +793,7 @@ func TestDocIDChangesVersionCVWithLegacyRev(t *testing.T) {
 
 func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
 	ctx := base.TestCtx(t)
-	rt := NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	seq, err := db.AllocateTestSequence(ctx, rt.GetDatabase())
@@ -870,8 +811,8 @@ func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?version_type=cv&include_docs=true", "")
-	RequireStatus(t, resp, http.StatusOK)
-	var changesResults ChangesResults
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var changesResults rest.ChangesResults
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &changesResults))
 	require.Len(t, changesResults.Results, 2)
 	for i, changeEntry := range changesResults.Results {
@@ -903,7 +844,7 @@ func TestChangesFeedCVWithOldRevOnlyData(t *testing.T) {
 // TestContinuousChangesUserDeleted ensures that deleting a user terminates a continuous _changes feed
 // running for that user.
 func TestContinuousChangesUserDeleted(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	const (
@@ -921,7 +862,7 @@ func TestContinuousChangesUserDeleted(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	rt.DeleteUser(username)
-	RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes", "", username), http.StatusUnauthorized)
+	rest.RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes", "", username), http.StatusUnauthorized)
 
 	changes := feed.RequireEnded("continuous changes feed still running after user delete")
 	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value, 0)
@@ -933,7 +874,7 @@ func TestContinuousChangesUserDeleted(t *testing.T) {
 
 // TestLongpollChangesUserDeleted is the longpoll counterpart to TestContinuousChangesUserDeleted.
 func TestLongpollChangesUserDeleted(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	const (
@@ -946,7 +887,7 @@ func TestLongpollChangesUserDeleted(t *testing.T) {
 	since := rt.GetChanges("/{{.keyspace}}/_changes", username).Last_Seq
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
-	var changes ChangesResults
+	var changes rest.ChangesResults
 	feedDone := make(chan struct{})
 	go func() {
 		defer close(feedDone)
@@ -966,7 +907,7 @@ func TestLongpollChangesUserDeleted(t *testing.T) {
 // continuous _changes feed already running for a user who holds that role.  limit=1 terminates the feed
 // after the next change it sends, so the test can assert on which document that was.
 func TestContinuousChangesRolePurge(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	const (
@@ -996,7 +937,7 @@ func TestContinuousChangesRolePurge(t *testing.T) {
 	// The purge has to be notified before the writes below, otherwise the feed wakes on the document
 	// notification alone and is still holding the stale channel set.
 	userWaiter := rt.NewUserWaiter(username)
-	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
+	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
 	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// The feed sends in sequence order, so a feed still serving the revoked channel would send
