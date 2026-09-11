@@ -2665,13 +2665,12 @@ func TestMigrationOfAttachmentsOnImport(t *testing.T) {
 
 	// retry loop to wait for import event to arrive over dcp, as doc won't be 'imported' we can't wait for import stat
 	var retryXattrs map[string][]byte
-	err = rt.WaitForCondition(func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		retryXattrs, _, err = dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName, base.GlobalXattrName})
-		require.NoError(t, err)
+		assert.NoError(c, err)
 		_, ok := retryXattrs[base.GlobalXattrName]
-		return ok
-	})
-	require.NoError(t, err)
+		assert.True(c, ok, "%s xattr not present on %s", base.GlobalXattrName, key)
+	}, 20*time.Second, 100*time.Millisecond)
 
 	syncXattr, ok := retryXattrs[base.SyncXattrName]
 	require.True(t, ok)
