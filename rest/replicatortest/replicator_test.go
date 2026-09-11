@@ -2066,6 +2066,99 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 }
 
+// TestActiveReplicatorCheckpointAdvancesPastRevError covers a revision that the receiving peer's sync
+// function rejects. The revision is never stored, but its sequence is recorded as processed, so the
+// safe-sequence scan does not stop at it and the checkpoint keeps moving with later revisions.
+func TestActiveReplicatorCheckpointAdvancesPastRevError(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeySync, base.KeySyncMsg)
+
+	const rejectSyncFn = `function(doc){ if (doc.rejectDoc) { throw({forbidden: "rejected by the receiving peer"}); } channel(doc.channels); }`
+	testCases := []struct {
+		direction db.ActiveReplicatorDirection
+		peerOpts  rest.TestISGRPeerOpts
+	}{
+		{
+			direction: db.ActiveReplicatorTypePull,
+			peerOpts:  rest.TestISGRPeerOpts{ActiveSyncFn: rejectSyncFn},
+		},
+		{
+			direction: db.ActiveReplicatorTypePush,
+			peerOpts:  rest.TestISGRPeerOpts{PassiveSyncFn: rejectSyncFn},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(string(testCase.direction), func(t *testing.T) {
+			sgrRunner := rest.NewSGRTestRunner(t)
+			sgrRunner.Run(func(t *testing.T) {
+				peers := sgrRunner.SetupSGRPeersWithOptions(t, testCase.peerOpts)
+				rt1 := peers.ActiveRT
+
+				// revisions always flow towards the peer running the rejecting sync function
+				isPush := testCase.direction == db.ActiveReplicatorTypePush
+				source, target := peers.PassiveRT, peers.ActiveRT
+				waitForLastSeq := rt1.WaitForLastSeqPull
+				if isPush {
+					source, target = peers.ActiveRT, peers.PassiveRT
+					waitForLastSeq = rt1.WaitForLastSeqPush
+				}
+
+				const username = "alice"
+				docIDPrefix := rest.SafeDocumentName(t, t.Name())
+				firstDocID := docIDPrefix + "first"
+				blockingDocID := docIDPrefix + "blocking"
+				laterDocID := docIDPrefix + "later"
+
+				// blockingDoc sits between two replicable docs, so its sequence lands in the middle of expectedSeqs
+				firstVersion := source.PutDoc(firstDocID, `{"channels":["`+username+`"]}`)
+				_ = source.PutDoc(blockingDocID, `{"channels":["`+username+`"],"rejectDoc":true}`)
+				laterVersion := source.PutDoc(laterDocID, `{"channels":["`+username+`"]}`)
+
+				sourceCollection, sourceCtx := source.GetSingleTestDatabaseCollection()
+				sourceSeq := func(docID string) string {
+					doc, err := sourceCollection.GetDocument(sourceCtx, docID, db.DocUnmarshalSync)
+					require.NoError(t, err)
+					return strconv.FormatUint(doc.Sequence, 10)
+				}
+
+				replicationID := rest.SafeDocumentName(t, t.Name())
+				rt1.CreateReplication(replicationID, peers.PassiveDBURL, testCase.direction, nil, true, db.ConflictResolverDefault, "")
+				rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+				dbstats := rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID)
+				rejectedCount := dbstats.FailedToPullCount.Value
+				if isPush {
+					rejectedCount = dbstats.PushRejectedCount.Value
+				}
+
+				// the two writable docs replicate, and the rejected one is counted but never stored
+				sgrRunner.WaitForVersion(firstDocID, target, firstVersion)
+				sgrRunner.WaitForVersion(laterDocID, target, laterVersion)
+				base.RequireWaitForStat(t, rejectedCount, 1)
+				target.RequireDocNotFound(blockingDocID)
+
+				// the rejected sequence does not hold the checkpoint back
+				waitForLastSeq(replicationID, sourceSeq(laterDocID))
+
+				// later revisions keep moving the checkpoint
+				afterDocID := docIDPrefix + "after"
+				afterVersion := source.PutDoc(afterDocID, `{"channels":["`+username+`"]}`)
+				sgrRunner.WaitForVersion(afterDocID, target, afterVersion)
+				waitForLastSeq(replicationID, sourceSeq(afterDocID))
+
+				status := rt1.GetReplicationStatus(replicationID)
+				if isPush {
+					assert.Equal(t, int64(1), status.RejectedRemote)
+					assert.Equal(t, int64(3), status.DocsWritten, "the rejected revision is not counted as written")
+					return
+				}
+				assert.Equal(t, int64(1), status.RejectedLocal)
+				assert.Equal(t, int64(3), status.DocsRead, "the rejected revision is not counted as read")
+			})
+		})
+	}
+}
+
 // TestActiveReplicatorPullSkippedSequence ensures that ISGR and the checkpointer are able to handle the compound sequence format appropriately.
 // - Creates several documents on rt2, separated by a skipped sequence, and rt1 pulls them.
 //   - rt2 seq 1 _user    rt1 seq n/a

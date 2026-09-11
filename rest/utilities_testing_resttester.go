@@ -432,6 +432,22 @@ func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatu
 	rt.WaitForReplicationStatusForDB("{{.db}}", replicationID, targetStatus)
 }
 
+// WaitForLastSeqPull waits for the pull checkpoint of a replication to reach expectedSeq.
+func (rt *RestTester) WaitForLastSeqPull(replicationID string, expectedSeq string) {
+	rt.TB().Helper()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, expectedSeq, rt.GetReplicationStatus(replicationID).LastSeqPull)
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
+// WaitForLastSeqPush waits for the push checkpoint of a replication to reach expectedSeq.
+func (rt *RestTester) WaitForLastSeqPush(replicationID string, expectedSeq string) {
+	rt.TB().Helper()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, expectedSeq, rt.GetReplicationStatus(replicationID).LastSeqPush)
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
 	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
