@@ -1549,12 +1549,12 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Pre-delete changes
-	changesJSON := `{"style":"all_docs"}`
-	err = rt.WaitForCondition(func() bool {
-		changes := rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-		return len(changes.Results) == 5
+	rt.WaitForChangesWithOptions(5, rest.WaitForChangesOptions{
+		Method:   http.MethodPost,
+		URL:      "/{{.keyspace}}/_changes",
+		Username: "bernard",
+		Body:     `{"style":"all_docs"}`,
 	})
-	assert.NoError(t, err)
 
 	// Delete
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/deletedDoc?rev="+deletedRev, "")
@@ -1570,47 +1570,31 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	rt.WaitForPendingChanges()
 
 	// Normal changes
-	changesJSON = `{"style":"all_docs"}`
-	var changes rest.ChangesResults
-	err = rt.WaitForCondition(func() bool {
-		changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-		return len(changes.Results) == 5
+	changes := rt.WaitForChangesWithOptions(5, rest.WaitForChangesOptions{
+		Method:   http.MethodPost,
+		URL:      "/{{.keyspace}}/_changes",
+		Username: "bernard",
+		Body:     `{"style":"all_docs"}`,
 	})
-	assert.NoError(t, err)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-		if entry.ID == "conflictedDoc" {
-			require.Len(t, entry.Changes, 3)
-		}
-	}
+	require.Len(t, changes.GetChangeEntry(t, "conflictedDoc").Changes, 3)
 
 	// Active only, POST
-	changesJSON = `{"style":"all_docs", "active_only":true}`
-	err = rt.WaitForCondition(func() bool {
-		changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-		return len(changes.Results) == 3
+	changes = rt.WaitForChangesWithOptions(3, rest.WaitForChangesOptions{
+		Method:   http.MethodPost,
+		URL:      "/{{.keyspace}}/_changes",
+		Username: "bernard",
+		Body:     `{"style":"all_docs", "active_only":true}`,
 	})
-	require.NoError(t, err)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-		// validate conflicted handling
-		if entry.ID == "conflictedDoc" {
-			require.Len(t, entry.Changes, 2)
-		}
-	}
+	// validate conflicted handling
+	require.Len(t, changes.GetChangeEntry(t, "conflictedDoc").Changes, 2)
 
 	// Active only, GET
-	err = rt.WaitForCondition(func() bool {
-		changes = rt.GetChanges("/{{.keyspace}}/_changes?style=all_docs&active_only=true", "bernard")
-		return len(changes.Results) == 3
+	changes = rt.WaitForChangesWithOptions(3, rest.WaitForChangesOptions{
+		Method:   http.MethodGet,
+		URL:      "/{{.keyspace}}/_changes?style=all_docs&active_only=true",
+		Username: "bernard",
 	})
-	require.NoError(t, err)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-		if entry.ID == "conflictedDoc" {
-			require.Len(t, entry.Changes, 2)
-		}
-	}
+	require.Len(t, changes.GetChangeEntry(t, "conflictedDoc").Changes, 2)
 }
 
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
