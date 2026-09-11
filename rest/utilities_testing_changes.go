@@ -154,7 +154,9 @@ func (rt *RestTester) WaitForChangesWithOptions(numChangesExpected int, options 
 		} else {
 			response = rt.Send(RequestByUser(options.Method, url, options.Body, options.Username))
 		}
-		assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes))
+		if !assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &changes), "Could not unmarshal %s", response.BodyString()) {
+			return
+		}
 		assert.Len(c, changes.Results, numChangesExpected, "Expected %d changes, got %s changes", numChangesExpected, changes.Summary())
 	}, waitTime, 10*time.Millisecond)
 	return *changes
