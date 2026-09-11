@@ -135,17 +135,14 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 }
 
 func (tester *ChannelRevocationTester) getChanges(sinceSeq any, expectedLength int) ChangesResults {
-	var changes ChangesResults
-
 	// Ensure any previous mutations have caught up before issuing changes request
 	tester.restTester.WaitForPendingChanges()
 
-	err := tester.restTester.WaitForCondition(func() bool {
-		changes = tester.restTester.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true", sinceSeq), "user")
-		return len(changes.Results) == expectedLength
+	return tester.restTester.WaitForChangesWithOptions(expectedLength, WaitForChangesOptions{
+		Method:   http.MethodGet,
+		URL:      fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true", sinceSeq),
+		Username: "user",
 	})
-	require.NoError(tester.test, err, fmt.Sprintf("Unexpected: %d. Expected %d", len(changes.Results), expectedLength))
-	return changes
 }
 
 func InitScenario(t testing.TB, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
@@ -1198,13 +1195,11 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 
 	rt.WaitForPendingChanges()
 	waitForUserChangesWithLimit := func(sinceVal any, limit int) ChangesResults {
-		var changesRes ChangesResults
-		err := rt.WaitForCondition(func() bool {
-			changesRes = rt.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true&limit=%d", sinceVal, limit), "user")
-			return len(changesRes.Results) == limit
+		return rt.WaitForChangesWithOptions(limit, WaitForChangesOptions{
+			Method:   http.MethodGet,
+			URL:      fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true&limit=%d", sinceVal, limit),
+			Username: "user",
 		})
-		assert.NoError(t, err)
-		return changesRes
 	}
 
 	sinceVal := changes.Last_Seq
