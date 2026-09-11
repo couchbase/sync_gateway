@@ -1482,7 +1482,7 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rt.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+	rt.WaitForLocalReplicationStatus("replication1", db.ReplicationStateRunning)
 
 	replicationConfigUpdate := fmt.Sprintf(`{
 		"replication_id": "replication1",
@@ -7839,7 +7839,7 @@ func TestReplicationConfigUpdatedAt(t *testing.T) {
 		// create a replication and assert the updated at field is present in the config
 		activeRT.CreateReplication("replication1", remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 
-		activeRT.WaitForReplicationStatus("replication1", db.ReplicationStateRunning)
+		activeRT.WaitForLocalReplicationStatus("replication1", db.ReplicationStateRunning)
 
 		resp := activeRT.SendAdminRequest(http.MethodGet, "/{{.db}}/_replication/replication1", "")
 		var configResponse db.ReplicationConfig

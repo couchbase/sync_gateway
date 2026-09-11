@@ -432,6 +432,32 @@ func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatu
 	rt.WaitForReplicationStatusForDB("{{.db}}", replicationID, targetStatus)
 }
 
+// WaitForLocalReplicationStatus waits for the replicator on this node to reach targetStatus.
+//
+// Prefer it to WaitForReplicationStatus, which can return before anything has happened: while no
+// replicator is running here, _replicationStatus reports the state the cfg asks for rather than one
+// something reached.  A wait for stopped is then satisfied by the stop request alone, while a start is
+// still on its way, and the replication starts moments later.
+//
+// The cost is that this helper times out if no replicator ever appears here.  Use
+// WaitForReplicationStatus for those cases:
+//   - the replication is assigned to another node
+//   - it failed to initialize, so the error was persisted rather than held by a replicator
+//   - the RestTester has more than one database, which rt.GetDatabase rejects
+func (rt *RestTester) WaitForLocalReplicationStatus(replicationID string, targetStatus string) {
+	rt.TB().Helper()
+	ctx := base.TestCtx(rt.TB())
+	mgr := rt.GetDatabase().SGReplicateMgr
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		ar, ok := mgr.GetLocalActiveReplicatorForTest(rt.TB(), replicationID)
+		if !assert.True(c, ok, "replication %s is not assigned to this node", replicationID) {
+			return
+		}
+		state, _ := ar.State(ctx)
+		assert.Equal(c, targetStatus, state)
+	}, 10*time.Second, 10*time.Millisecond, "Expected local replication status: %s", targetStatus)
+}
+
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
 	rt.TB().Helper()
 	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
