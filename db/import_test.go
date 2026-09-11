@@ -1971,7 +1971,7 @@ func TestMetadataOnlyUpdateWritePaths(t *testing.T) {
 
 	for _, tc := range paths {
 		t.Run(tc.name, func(t *testing.T) {
-			dbc, ctx := setupTestDB(t)
+			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
@@ -2015,7 +2015,7 @@ func TestMetadataOnlyUpdateWritePaths(t *testing.T) {
 // cluster that had not migrated its attachment metadata. The migration has to carry the previous values
 // forward from that update rather than naming it, so they keep describing the last write to the body.
 func TestAttachmentMigrationMouCarriedForward(t *testing.T) {
-	dbc, ctx := setupTestDB(t)
+	dbc, ctx := SetupTestDB(t)
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 	ds := collection.GetCollectionDatastore()

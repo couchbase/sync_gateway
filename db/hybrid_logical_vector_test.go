@@ -567,7 +567,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 // has moved on since the write it was asked to correct. The correction applies to that write only, and the
 // concurrent writer is the one that has to satisfy cv.ver <= cas for its own mutation.
 func TestRestampVersionCASSkipsConcurrentWrite(t *testing.T) {
-	dbc, ctx := setupTestDB(t)
+	dbc, ctx := SetupTestDB(t)
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
@@ -620,7 +620,7 @@ func TestRestampVersionCASMou(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			dbc, ctx := setupTestDB(t)
+			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
