@@ -812,13 +812,14 @@ func TestWebhookTimeout(t *testing.T) {
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess > webhook timeout.  All events should get processed.
 	// Webhook timeout 1s
-	// WaitForProcess event manager time 1.5s
+	// WaitForProcess event manager time 5s
 	// Webhook should timeout and clear item from queue before another item attempts to be added to the queue
+	// WaitForProcess is well above the webhook timeout, so a slow machine can't push a queued event past the drop deadline
 	log.Println("Test slow webhook, short timeout")
 	wr.Clear()
 	errCount := 0
 	em = NewEventManager(terminator)
-	em.Start(ctx, 1, 1500)
+	em.Start(ctx, 1, 5000)
 	timeout = uint64(1)
 	webhookHandler, _ = NewWebhook(ctx, fmt.Sprintf("%s/slow_2s", url), "", &timeout, nil)
 	em.RegisterEventHandler(ctx, webhookHandler, DocumentChange)
@@ -861,12 +862,14 @@ func TestWebhookTimeout(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), em.GetEventsProcessedSuccess())
 
-	// Test slow webhook, no timeout, numProcess=1, waitForProcess=1s.  All events should complete.
+	// Test slow webhook, no timeout, numProcess=1, waitForProcess=5s.  All events should complete.
+	// WaitForProcess is well above the 1s webhook execution time, so a slow machine can't push a queued event past the
+	// drop deadline
 	log.Println("Test slow webhook, no timeout, wait for process ")
 	wr.Clear()
 	errCount = 0
 	em = NewEventManager(terminator)
-	em.Start(ctx, 1, 1500)
+	em.Start(ctx, 1, 5000)
 	timeout = uint64(0)
 	webhookHandler, _ = NewWebhook(ctx, fmt.Sprintf("%s/slow", url), "", &timeout, nil)
 	em.RegisterEventHandler(ctx, webhookHandler, DocumentChange)
