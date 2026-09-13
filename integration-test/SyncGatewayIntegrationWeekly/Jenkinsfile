@@ -109,8 +109,8 @@ pipeline {
                         [server: tip76],
                         [server: tip80],
                         [server: tip85],
-                        [server: 'enterprise-7.6.4', sgEdition: 'CE'],
-                        [server: 'enterprise-7.6.4', disableRevCache: true],
+                        [server: ga76, sgEdition: 'CE'],
+                        [server: ga76, disableRevCache: true],
                     ]
 
                     parallel(combinations.collectEntries { combo ->
