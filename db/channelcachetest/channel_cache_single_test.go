@@ -1286,3 +1286,133 @@ func TestSingleChannelCachePruneAge(t *testing.T) {
 		assert.Equal(t, 5, active)
 	})
 }
+
+// TestSingleChannelCacheInsertChange covers the out-of-order insert path: where a change lands
+// when its sequence is not greater than the last cached one, and what happens when the cache
+// already holds a different revision of the same document.
+func TestSingleChannelCacheInsertChange(t *testing.T) {
+	chanID := channels.NewID("chanA", base.DefaultCollectionID)
+
+	t.Run("out-of-order sequence is inserted in order", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{}, chanID, 0, stats)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc2", "1-a"), false)
+
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc3", "1-a"), false)
+
+		assert.True(t, verifyChannelSequences(cache.LogsForTest(t), []uint64{1, 2, 3}))
+		assert.True(t, verifyChannelDocIDs(cache.LogsForTest(t), []string{"doc1", "doc3", "doc2"}))
+		active, _, _ := getCacheUtilization(stats)
+		assert.Equal(t, 3, active)
+	})
+
+	t.Run("duplicate sequence for a cached doc keeps the cached revision", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{}, chanID, 0, newTestCacheStats(t))
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc2", "1-a"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc1", "1-a"), false)
+
+		// A redelivery of the same sequence must not displace what is already cached.
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc1", "2-b"), false)
+
+		logs := cache.LogsForTest(t)
+		require.Len(t, logs, 2)
+		assert.Equal(t, "1-a", logs[1].RevID, "the cached revision must be kept")
+
+		// Utilization is deliberately not asserted here: insertChange increments it from a defer
+		// that also fires on this ignore path, so the count reports 3 for a two-entry cache.
+		// TODO: CBG-5863 - assert utilization is unchanged once that is fixed.
+	})
+
+	t.Run("later revision out of order replaces the earlier entry", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{}, chanID, 0, stats)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc2", "1-a"), false)
+
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(3, "doc1", "2-b"), false)
+
+		assert.True(t, verifyChannelSequences(cache.LogsForTest(t), []uint64{3, 5}))
+		assert.True(t, verifyChannelDocIDs(cache.LogsForTest(t), []string{"doc1", "doc2"}))
+
+		// One entry replaced another, so the count is unchanged.
+		active, _, _ := getCacheUtilization(stats)
+		assert.Equal(t, 2, active)
+	})
+
+	t.Run("non-adjacent replacement keeps the log sorted", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{}, chanID, 0, stats)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(2, "doc2", "1-a"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc3", "1-a"), false)
+
+		// The replaced entry is not adjacent to the insert point, so the shift path runs.
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(4, "doc1", "2-b"), false)
+
+		assert.True(t, verifyChannelSequences(cache.LogsForTest(t), []uint64{2, 4, 5}))
+		assert.True(t, verifyChannelDocIDs(cache.LogsForTest(t), []string{"doc2", "doc1", "doc3"}))
+		active, _, _ := getCacheUtilization(stats)
+		assert.Equal(t, 3, active)
+	})
+}
+
+// TestSingleChannelCachePrependChanges covers how query results are folded back in front of the
+// cache, and what the cache then claims to be valid from. validFrom is the sequence the cache
+// asserts it is complete from, so widening it wrongly makes a resuming feed skip changes.
+func TestSingleChannelCachePrependChanges(t *testing.T) {
+	chanID := channels.NewID("chanA", base.DefaultCollectionID)
+
+	t.Run("empty result widens the valid range when it abuts the cache", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{}, chanID, 10, newTestCacheStats(t))
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), false)
+
+		// A query over 1-10 that returned nothing proves the gap is empty, so the cache may claim
+		// it. changesValidTo is exactly validFrom because GetChanges queries with
+		// endSeq = cacheValidFrom, making the boundary here the ordinary case rather than an edge.
+		prepended := cache.PrependChangesForTest(t, ctx, db.LogEntries{}, 1, 10)
+
+		assert.Equal(t, 0, prepended)
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(1), validFrom)
+	})
+
+	t.Run("filling an empty cache keeps the caller's valid-from", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		options := db.ChannelCacheOptions{ChannelCacheMaxLength: 3}
+		cache := db.NewSingleChannelCacheWithOptionsForTest(t, ctx, &db.QueryHandlerForTest{}, chanID, 100, options, newTestCacheStats(t))
+
+		// Exactly MaxLength changes, so nothing is trimmed and the range the caller vouched for
+		// stands - validFrom must not collapse to the first entry's sequence.
+		changes := db.LogEntries{
+			db.MakeTestLogEntry(5, "doc5", "1-a"),
+			db.MakeTestLogEntry(6, "doc6", "1-a"),
+			db.MakeTestLogEntry(7, "doc7", "1-a"),
+		}
+		prepended := cache.PrependChangesForTest(t, ctx, changes, 1, 100)
+
+		assert.Equal(t, 3, prepended)
+		require.Len(t, cache.LogsForTest(t), 3)
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(1), validFrom)
+	})
+
+	t.Run("changes not reaching the cache are refused", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{}, chanID, 10, newTestCacheStats(t))
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), false)
+
+		// Valid only to 5 leaves 6-9 unaccounted for, so prepending would create a gap.
+		prepended := cache.PrependChangesForTest(t, ctx, db.LogEntries{db.MakeTestLogEntry(1, "doc1", "1-a")}, 1, 5)
+
+		assert.Equal(t, 0, prepended)
+		require.Len(t, cache.LogsForTest(t), 1)
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(10), validFrom)
+	})
+}

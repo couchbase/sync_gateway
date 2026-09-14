@@ -1446,3 +1446,60 @@ func TestChannelCacheLateLogAgeFallback(t *testing.T) {
 	// The other side: a configured value is passed through and is a valid interval.
 	require.NoError(t, newCacheWithLateLogAge(t, 30*time.Second), "a positive LateLogAge must be accepted")
 }
+
+// TestLateLogsAfterEviction covers the late-log queue on a cache that compaction has detached.
+// releaseLateLogsForEviction sets lateLogs to nil, and both the counted-entry total and the
+// listener registration have explicit handling for that state which nothing exercised.
+func TestLateLogsAfterEviction(t *testing.T) {
+	stats := newTestCacheStats(t)
+	cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{},
+		channels.NewID("chanA", base.DefaultCollectionID), 0, stats)
+	// A registered feed keeps the sentinel from being purged on the next add.
+	cache.RegisterLateSequenceClient()
+	cache.AddLateSequence(db.MakeTestLogEntry(10, "doc10", "1-a"))
+	require.Equal(t, int64(1), cache.CountedLateLogCountForTest(t))
+
+	cache.ReleaseLateLogsForEvictionForTest(t)
+
+	// A detached queue holds nothing. Reporting -1 here would make the next eviction *add* to
+	// NumEntriesInLateFeed - the upward leak this release path exists to prevent.
+	assert.Equal(t, int64(0), cache.CountedLateLogCountForTest(t))
+	assert.Equal(t, int64(0), stats.NumEntriesInLateFeed.Value())
+
+	// A feed still holding this reference must be turned away rather than registered against an
+	// empty queue; it re-registers on a fresh cache after the UUID-mismatch rollback.
+	assert.Equal(t, uint64(0), cache.RegisterLateSequenceClient())
+}
+
+// TestGetLateSequencesSinceAllocation pins the result capacity of GetLateSequencesSince: exactly
+// the entries from the caller's last-seen position to the end of the queue. The sizing only
+// differs from a naive one when an entry sits ahead of the caller's position, which happens when
+// a slower feed is still parked further back.
+func TestGetLateSequencesSinceAllocation(t *testing.T) {
+	cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{},
+		channels.NewID("chanA", base.DefaultCollectionID), 0, newTestCacheStats(t))
+
+	// Two feeds register on the sentinel; the slower one never advances, so it pins the front of
+	// the queue and keeps later positions at a non-zero index.
+	slowFeedSince := cache.RegisterLateSequenceClient()
+	fastFeedSince := cache.RegisterLateSequenceClient()
+	require.Equal(t, uint64(0), slowFeedSince)
+
+	for seq := uint64(10); seq <= 12; seq++ {
+		cache.AddLateSequence(db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"))
+	}
+
+	entries, lastSequence, err := cache.GetLateSequencesSince(fastFeedSince)
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	assert.Equal(t, uint64(12), lastSequence)
+
+	cache.AddLateSequence(db.MakeTestLogEntry(13, "doc13", "1-a"))
+	require.Len(t, cache.LateLogsForTest(t), 5, "the slow feed keeps the earlier entries alive")
+
+	// The queue holds 5 entries and the fast feed is at index 3, so exactly 2 slots are needed.
+	entries, _, err = cache.GetLateSequencesSince(lastSequence)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, 2, cap(entries), "allocated for the entries from the caller's position to the end")
+}

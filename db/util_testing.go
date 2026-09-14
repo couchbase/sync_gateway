@@ -1823,6 +1823,11 @@ func (c *singleChannelCacheImpl) PruneCacheAgeForTest(_ testing.TB, ctx context.
 	c.pruneCacheAge(ctx)
 }
 
+// ReleaseLateLogsForEvictionForTest detaches the cache's late logs, as compaction does on eviction.
+func (c *singleChannelCacheImpl) ReleaseLateLogsForEvictionForTest(_ testing.TB) {
+	c.releaseLateLogsForEviction()
+}
+
 // PruneLateLogAgeForTest drops late log entries older than the configured age.
 func (c *singleChannelCacheImpl) PruneLateLogAgeForTest(_ testing.TB, ctx context.Context) {
 	c.pruneLateLogAge(ctx)
