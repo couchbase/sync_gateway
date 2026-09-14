@@ -219,6 +219,61 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 		}
 	}
 
+	// All nine evictions were inactive, so the NRU counter must not move.
+	assert.Equal(t, 9, testStats.ChannelCacheChannelsEvictedInactive.Value())
+	assert.Equal(t, 0, testStats.ChannelCacheChannelsEvictedNRU.Value())
+	assert.Equal(t, 10, testStats.ChannelCacheNumChannels.Value())
+}
+
+// TestChannelCacheCompactMixedEviction covers a compaction that has to draw on both candidate
+// pools: too few inactive channels to reach the target, so the remainder comes from NRU. Neither
+// existing compaction test creates this - both have enough inactive channels to fill the target on
+// their own - which leaves the split between the two eviction counters unasserted.
+func TestChannelCacheCompactMixedEviction(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+
+	// Max 20, hwm 18, lwm 10: 19 channels means a target of 9 to evict.
+	options := db.DefaultCacheOptions().ChannelCacheOptions
+	options.MaxNumChannels = 20
+	options.CompactHighWatermarkPercent = 90
+	options.CompactLowWatermarkPercent = 50
+
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
+	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
+
+	ctx := base.TestCtx(t)
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options, db.QueryHandlerFactoryForTest, activeChannels, testStats)
+	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop(ctx)
+
+	// Channels 1-15 active, 16-18 inactive. Only three inactive candidates against a target of
+	// nine, so six must come from the active-but-not-recently-used pool.
+	for i := 1; i <= 18; i++ {
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		cache.AddChannelCacheForTest(t, ctx, channel)
+		if i <= 15 {
+			activeChannels.IncrChannel(channel)
+		}
+	}
+	assert.Equal(t, 18, cache.ChannelCachesForTest(t).Length())
+
+	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
+	activeChannels.IncrChannel(channels.NewID("chan_19", base.DefaultCollectionID))
+
+	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+
+	assert.Equal(t, 10, cache.ChannelCachesForTest(t).Length())
+
+	// Inactive channels are evicted first, so the split is fixed: 3 inactive, then 6 NRU to
+	// reach the target of 9.
+	assert.Equal(t, int64(3), testStats.ChannelCacheChannelsEvictedInactive.Value())
+	assert.Equal(t, int64(6), testStats.ChannelCacheChannelsEvictedNRU.Value())
+	assert.Equal(t, int64(10), testStats.ChannelCacheNumChannels.Value())
 }
 
 // TestChannelCacheCompactNRU tests compaction where a subset of the channels are marked as recently used

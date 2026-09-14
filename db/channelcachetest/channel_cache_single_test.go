@@ -1166,7 +1166,7 @@ func TestSingleChannelCacheGetChangesComposition(t *testing.T) {
 		assert.Equal(t, uint64(10), validFrom, "a limited query must not extend the cache's valid range")
 	})
 
-	t.Run("full cache is not prepended to", func(t *testing.T) {
+	t.Run("full cache does not widen its valid range", func(t *testing.T) {
 		ctx := base.TestCtx(t)
 		options := db.ChannelCacheOptions{ChannelCacheMaxLength: 2}
 		queryHandler := &db.QueryHandlerForTest{}
@@ -1174,8 +1174,10 @@ func TestSingleChannelCacheGetChangesComposition(t *testing.T) {
 		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), false)
 		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(11, "doc11", "1-a"), false)
 
-		// The query finds nothing, and the cache is already at its maximum length. Prepending an
-		// empty result set would still move validFrom backwards, claiming a range never read.
+		// An empty query result still widens validFrom - prependChanges treats "found nothing"
+		// as proof the gap is empty - so the full-cache guard is what holds the range here.
+		// This pins that coupling of "room to cache" and "may widen the range" rather than
+		// catching an error: widening would not itself be wrong.
 		entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 		require.NoError(t, err)
 		assert.True(t, verifyChannelSequences(entries, []uint64{10, 11}))
