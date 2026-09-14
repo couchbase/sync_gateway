@@ -2987,3 +2987,431 @@ func TestChangeCacheLastSequence(t *testing.T) {
 		})
 	}
 }
+
+// feedEventForTest builds a DCP feed event carrying a document's _sync xattr, as the caching feed
+// delivers it. Extra xattrs (a vv, a user xattr) are appended alongside.
+func feedEventForTest(t *testing.T, docID string, collectionID uint32, syncData db.SyncData, extraXattrs ...sgbucket.Xattr) sgbucket.FeedEvent {
+	doc := db.Document{ID: docID}
+	doc.SyncData = syncData
+	body, syncXattr, _, _, _, err := doc.MarshalWithXattrs()
+	require.NoError(t, err)
+
+	xattrs := append([]sgbucket.Xattr{{Name: base.SyncXattrName, Value: syncXattr}}, extraXattrs...)
+	return sgbucket.FeedEvent{
+		Synchronous:  true,
+		Key:          []byte(docID),
+		Value:        sgbucket.EncodeValueWithXattrs(body, xattrs...),
+		CollectionID: collectionID,
+		DataType:     base.MemcachedDataTypeJSON | base.MemcachedDataTypeXattr,
+	}
+}
+
+// TestDocChangedStartupSequenceFilter pins the guard that drops mutations DCP replays from before
+// the cache started. A document at exactly initialSequence is old news; one above it is not.
+func TestDocChangedStartupSequenceFilter(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+	collectionID := collection.GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	revTree := db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}}
+	syncDataFor := func(seq uint64) db.SyncData {
+		return db.SyncData{
+			RevAndVersion: channels.RevAndVersion{RevTreeID: "1-abc"},
+			Sequence:      seq,
+			Channels:      channels.ChannelMap{"ABC": nil},
+			History:       revTree,
+		}
+	}
+
+	// The channel has to exist before the feed event or nothing lands in it.
+	abcChannel := channels.NewID("ABC", collectionID)
+	_, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+
+	// At the boundary: the cache was started at 100, so sequence 100 has already been accounted
+	// for. LastSequence alone cannot show this - a dropped doc and a non-contiguous one both leave
+	// it where it was - so assert the channel never received it.
+	changeCache.DocChanged(feedEventForTest(t, "atInitial", collectionID, syncDataFor(initialSequence)), db.DocTypeDocument)
+	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	assert.Empty(t, cached, "a doc at initialSequence is a DCP replay and must be dropped")
+	assert.Equal(t, int64(0), database.DbStats.Database().DCPReceivedCount.Value(),
+		"a dropped replay is never counted as received")
+
+	// One above it is new and must be cached.
+	changeCache.DocChanged(feedEventForTest(t, "aboveInitial", collectionID, syncDataFor(initialSequence+1)), db.DocTypeDocument)
+	assert.Equal(t, uint64(initialSequence+1), changeCache.LastSequence())
+	cached, err = database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	require.Len(t, cached, 1)
+	assert.Equal(t, "aboveInitial", cached[0].DocID)
+}
+
+// TestDocChangedRecentSequences covers how DocChanged backfills sequences that DCP deduplicated
+// away. A document's recent_sequences carry the sequences it consumed but never emitted; the cache
+// has to synthesise entries for them or sequence buffering stalls. A sequence at which the document
+// left a channel must be recorded as a removal, not as an unused sequence, or subscribers to that
+// channel never learn it went.
+func TestDocChangedRecentSequences(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+	collectionID := collection.GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// The document is at 103, having consumed 101 (a plain dedup) and 102 (where it left "ABC").
+	// The sequences must run on from initialSequence or they sit in the pending buffer instead.
+	removal := &channels.ChannelRemoval{Seq: 102, Rev: channels.RevAndVersion{RevTreeID: "2-def"}}
+	syncData := db.SyncData{
+		RevAndVersion:   channels.RevAndVersion{RevTreeID: "3-ghi"},
+		Sequence:        103,
+		RecentSequences: []uint64{101, 102},
+		Channels:        channels.ChannelMap{"XYZ": nil, "ABC": removal},
+		History:         db.RevTree{"3-ghi": &db.RevInfo{ID: "3-ghi", Channels: base.SetOf("XYZ")}},
+	}
+
+	// A channel cache is only populated from the feed once it exists, so instantiate it first -
+	// the production equivalent is a changes feed already watching the channel.
+	abcChannel := channels.NewID("ABC", collectionID)
+	_, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	// The star channel receives every document, so it is where a sequence wrongly treated as a
+	// document rather than an unused sequence would show up.
+	starChannel := channels.NewID(channels.UserStarChannel, collectionID)
+	_, err = database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, starChannel)
+	require.NoError(t, err)
+
+	changeCache.DocChanged(feedEventForTest(t, "dedupedDoc", collectionID, syncData), db.DocTypeDocument)
+
+	// All three sequences are contiguous, so the feed advances past the deduplicated pair.
+	assert.Equal(t, uint64(103), changeCache.LastSequence())
+
+	// The removal sequence carries the doc and the revision it was removed at; subscribers to "ABC"
+	// need both to emit a removal notice.
+	abcChanges, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	require.Len(t, abcChanges, 1, "the removal must reach the channel it was removed from")
+	assert.Equal(t, uint64(102), abcChanges[0].Sequence)
+	assert.Equal(t, "dedupedDoc", abcChanges[0].DocID)
+	assert.Equal(t, "2-def", abcChanges[0].RevID)
+	assert.False(t, abcChanges[0].UnusedSequence, "a channel removal is not an unused sequence")
+
+	// 101 was consumed without leaving any channel, so it is an unused sequence: it exists only to
+	// keep the sequence run contiguous and must not surface as a document anywhere.
+	starChanges, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, starChannel)
+	require.NoError(t, err)
+	starSeqs := make([]uint64, 0, len(starChanges))
+	for _, entry := range starChanges {
+		starSeqs = append(starSeqs, entry.Sequence)
+	}
+	assert.Equal(t, []uint64{103}, starSeqs, "only the document itself is a document")
+}
+
+// TestDocChangedFeedLatencyStat pins that feed latency is recorded. TimeSaved is the write time
+// carried on the document, so any positive elapsed time since it must land on the stat.
+func TestDocChangedFeedLatencyStat(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+	collectionID := collection.GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(0))
+	defer changeCache.Stop(ctx)
+
+	require.Equal(t, int64(0), database.DbStats.Database().DCPReceivedTime.Value())
+
+	syncData := db.SyncData{
+		RevAndVersion: channels.RevAndVersion{RevTreeID: "1-abc"},
+		Sequence:      1,
+		Channels:      channels.ChannelMap{"ABC": nil},
+		History:       db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
+		TimeSaved:     time.Now(),
+	}
+	changeCache.DocChanged(feedEventForTest(t, "latencyDoc", collectionID, syncData), db.DocTypeDocument)
+
+	assert.Positive(t, database.DbStats.Database().DCPReceivedTime.Value(), "feed latency must be recorded")
+	assert.Equal(t, int64(1), database.DbStats.Database().DCPReceivedCount.Value())
+}
+
+// TestDocChangedUnusedSequences covers the sequences a write consumed but never used, which a
+// conflicting update leaves behind. The cache has to place entries for them or sequence buffering
+// stalls waiting for numbers that will never arrive.
+func TestDocChangedUnusedSequences(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	syncData := db.SyncData{
+		RevAndVersion:   channels.RevAndVersion{RevTreeID: "1-abc"},
+		Sequence:        103,
+		UnusedSequences: []uint64{101, 102},
+		Channels:        channels.ChannelMap{"ABC": nil},
+		History:         db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
+	}
+	changeCache.DocChanged(feedEventForTest(t, "wastedSeqDoc", collectionID, syncData), db.DocTypeDocument)
+
+	// Without entries for 101 and 102 the cache would still be waiting for them, and 103 would sit
+	// in the pending buffer rather than advancing the feed.
+	assert.Equal(t, uint64(103), changeCache.LastSequence())
+}
+
+// TestDocChangedVersionVector covers what a cache entry carries when the document has an HLV. The
+// source and version come from the document's sync metadata, but only when the _vv xattr is
+// actually present on the mutation.
+func TestDocChangedVersionVector(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(0))
+	defer changeCache.Stop(ctx)
+
+	abcChannel := channels.NewID("ABC", collectionID)
+	_, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+
+	syncData := db.SyncData{
+		RevAndVersion: channels.RevAndVersion{
+			RevTreeID:      "1-abc",
+			CurrentSource:  "sourceA",
+			CurrentVersion: "0x1234",
+		},
+		Sequence: 1,
+		Channels: channels.ChannelMap{"ABC": nil},
+		History:  db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
+	}
+	vvXattr := sgbucket.Xattr{Name: base.VvXattrName, Value: []byte(`{"src":"sourceA","ver":"0x1234"}`)}
+	changeCache.DocChanged(feedEventForTest(t, "hlvDoc", collectionID, syncData, vvXattr), db.DocTypeDocument)
+
+	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	require.Len(t, cached, 1)
+	assert.Equal(t, "sourceA", cached[0].SourceID, "an HLV mutation carries its source into the cache")
+	assert.Equal(t, base.HexCasToUint64("0x1234"), cached[0].Version)
+}
+
+// TestDocChangedSGCfgDoc covers the SG config doc arm. The callback is optional - a database with
+// no config listener still receives these mutations on the feed - so the nil case has to be safe.
+func TestDocChangedSGCfgDoc(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(0))
+	defer changeCache.Stop(ctx)
+
+	event := sgbucket.FeedEvent{
+		Synchronous:  true,
+		Key:          []byte("_sync:cfg:someKey"),
+		Value:        []byte(`{}`),
+		CollectionID: collectionID,
+		Cas:          1234,
+		DataType:     base.MemcachedDataTypeJSON,
+	}
+
+	// No callback is installed, so this must return without invoking one.
+	assert.NotPanics(t, func() { changeCache.DocChanged(event, db.DocTypeSGCfg) })
+
+	// A cfg doc is not a document mutation and must not reach the cache.
+	assert.Equal(t, uint64(0), changeCache.LastSequence())
+	assert.Equal(t, int64(0), database.DbStats.Database().DCPReceivedCount.Value())
+}
+
+// TestDocChangedSkippedRecentSequence covers the isSkipped arm of recent-sequence handling. A
+// sequence that never arrived over the feed sits in the skipped list; when the document finally
+// turns up carrying that sequence as its own, it must be cached as the document rather than
+// consumed as a placeholder - consuming it drops the real entry as a duplicate.
+func TestDocChangedSkippedRecentSequence(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// The channel cache must exist before the sequences it needs to hold - it is created valid from
+	// the current high sequence, so a cache made later would not accept an earlier entry.
+	abcChannel := channels.NewID("ABC", collectionID)
+	_, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+
+	// Arrive at 103 out of order, leaving 101 and 102 to be given up on and pushed to skipped.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "otherDoc", "1-a"))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, changeCache.WasSkipped(101), "101 should have been given up on")
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// The document is at 101 - one of the skipped sequences - and lists it among its own recent
+	// sequences. Treating it as a consumed placeholder would swallow the sequence, and the real
+	// entry that follows would then be discarded as a duplicate.
+	syncData := db.SyncData{
+		RevAndVersion:   channels.RevAndVersion{RevTreeID: "1-abc"},
+		Sequence:        101,
+		RecentSequences: []uint64{101},
+		Channels:        channels.ChannelMap{"ABC": nil},
+		History:         db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
+	}
+	changeCache.DocChanged(feedEventForTest(t, "skippedDoc", collectionID, syncData), db.DocTypeDocument)
+
+	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	require.Len(t, cached, 1, "the document must reach its channel, not be consumed as a placeholder")
+	assert.Equal(t, uint64(101), cached[0].Sequence)
+	assert.Equal(t, "skippedDoc", cached[0].DocID)
+}
+
+// TestChangeCacheNotifiesChangedChannels covers the notification that wakes a changes feed. A
+// suppressed notification stalls replication without failing anything, and a spurious one wakes
+// every feed for nothing - so both directions matter, and only the suppressed direction is caught
+// today (by tests hanging).
+func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
+	const initialSequence = 100
+
+	syncDataFor := func(seq uint64, channelNames ...string) db.SyncData {
+		channelMap := channels.ChannelMap{}
+		for _, name := range channelNames {
+			channelMap[name] = nil
+		}
+		return db.SyncData{
+			RevAndVersion: channels.RevAndVersion{RevTreeID: "1-abc"},
+			Sequence:      seq,
+			Channels:      channelMap,
+			History:       db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf(channelNames...)}},
+		}
+	}
+
+	t.Run("a write notifies exactly the channels it touched", func(t *testing.T) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+		cacheOptions := db.DefaultCacheOptions()
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		var notified []channels.Set
+		changeCache.SetNotifyChangeFuncForTest(t, func(_ context.Context, channelSet channels.Set) {
+			notified = append(notified, channelSet)
+		})
+		require.NoError(t, changeCache.Start(initialSequence))
+		defer changeCache.Stop(ctx)
+
+		changeCache.DocChanged(feedEventForTest(t, "twoChannelDoc", collectionID, syncDataFor(101, "ABC", "XYZ")), db.DocTypeDocument)
+
+		require.Len(t, notified, 1, "one write is one notification")
+		_, hasABC := notified[0][channels.NewID("ABC", collectionID)]
+		_, hasXYZ := notified[0][channels.NewID("XYZ", collectionID)]
+		assert.True(t, hasABC)
+		assert.True(t, hasXYZ)
+	})
+
+	t.Run("a buffered write notifies nothing", func(t *testing.T) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+		cacheOptions := db.DefaultCacheOptions()
+		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		var notified []channels.Set
+		changeCache.SetNotifyChangeFuncForTest(t, func(_ context.Context, channelSet channels.Set) {
+			notified = append(notified, channelSet)
+		})
+		require.NoError(t, changeCache.Start(initialSequence))
+		defer changeCache.Stop(ctx)
+
+		// 102 arrives before 101, so it is held and nothing is visible to a feed yet. Waking every
+		// feed for a change they cannot see is a wasted broadcast across the whole database.
+		changeCache.DocChanged(feedEventForTest(t, "pendingDoc", collectionID, syncDataFor(102, "ABC")), db.DocTypeDocument)
+
+		assert.Empty(t, notified, "a change still buffered notifies nobody")
+	})
+
+	t.Run("releasing an unused sequence notifies the channels it unblocks", func(t *testing.T) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+		cacheOptions := db.DefaultCacheOptions()
+		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		var notified []channels.Set
+		changeCache.SetNotifyChangeFuncForTest(t, func(_ context.Context, channelSet channels.Set) {
+			notified = append(notified, channelSet)
+		})
+		require.NoError(t, changeCache.Start(initialSequence))
+		defer changeCache.Stop(ctx)
+
+		// 102 waits on 101. Releasing 101 as unused lets 102 through, so the notification has to
+		// carry 102's channels - a feed on "ABC" is what needs waking, not just the unused-seq marker.
+		changeCache.DocChanged(feedEventForTest(t, "blockedDoc", collectionID, syncDataFor(102, "ABC")), db.DocTypeDocument)
+		require.Empty(t, notified)
+
+		unusedSeqKey := database.DatabaseContext.MetadataKeys.UnusedSeqKey(101)
+		changeCache.DocChanged(sgbucket.FeedEvent{
+			Synchronous:  true,
+			Key:          []byte(unusedSeqKey),
+			CollectionID: collectionID,
+		}, db.DocTypeUnusedSeq)
+
+		require.Len(t, notified, 1)
+		_, hasABC := notified[0][channels.NewID("ABC", collectionID)]
+		assert.True(t, hasABC,
+			"the unblocked document's channels must be notified, not only the unused-sequence marker")
+	})
+}
