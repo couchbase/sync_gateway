@@ -13,8 +13,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -911,36 +909,6 @@ func GetVbucketForKey(ctx context.Context, bucket Bucket, key string) (uint32, e
 		return 0, err
 	}
 	return sgbucket.VBHash(key, maxVbNo), nil
-}
-
-// VBucket0AttachmentBodies returns count attachment body byte slices whose v1 attachment data
-// keys (_sync:att:sha1-<digest>) all hash to vBucket 0 for every supported vBucket count
-// (32, 64, 100, 128, 1024). Using these bodies with CreateLegacyAttachmentDoc ensures the
-// SetXattrs calls made by the compaction mark phase are processed by a single DCP worker,
-// preventing concurrent double-close of test synchronisation channels.
-//
-// Bodies were pre-computed by brute-force search. On CBS, each derived key is verified at runtime.
-// count must be between 1 and 5 inclusive.
-func VBucket0AttachmentBodies(t testing.TB, bucket Bucket, count int) [][]byte {
-	all := [][]byte{
-		[]byte("att1224"),
-		[]byte("att1231"),
-		[]byte("att1763"),
-		[]byte("att1906"),
-		[]byte("att2328"),
-	}
-	require.GreaterOrEqual(t, count, 1, "VBucket0AttachmentBodies: count must be at least 1")
-	require.LessOrEqual(t, count, len(all), "VBucket0AttachmentBodies: count %d exceeds the %d pre-computed bodies", count, len(all))
-	bodies := all[:count]
-	ctx := TestCtx(t)
-	for _, body := range bodies {
-		h := sha1.Sum(body)
-		attKey := AttPrefix + "sha1-" + base64.StdEncoding.EncodeToString(h[:])
-		vbNo, err := GetVbucketForKey(ctx, bucket, attKey)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), vbNo, "attachment key %q should map to vBucket 0 (got %d)", attKey, vbNo)
-	}
-	return bodies
 }
 
 // MoveDocument moves the document from src to dst

@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -335,8 +336,8 @@ func addDocsForMigrationProcess(t *testing.T, ctx context.Context, collection *d
 	return numDocs, legacyKeys
 }
 
-// migrationPauser blocks attachment migration at a specific document. Can be Paused and
-// Released multiple times across a test.
+// migrationPauser blocks attachment migration at a specific document, until Release is called.
+// Can be Paused and Released multiple times across a test.
 type migrationPauser struct {
 	t           testing.TB
 	blocked     chan struct{}
@@ -359,15 +360,20 @@ func (p *migrationPauser) Pause(docID string) {
 	if !p.callbackSet.CompareAndSwap(false, true) {
 		require.FailNow(p.t, "migrationPauser.Pause called while already paused; call Release first")
 	}
-	p.blocked = make(chan struct{})
-	p.blockCh = make(chan struct{})
+	blocked := make(chan struct{})
+	blockCh := make(chan struct{})
+	p.blocked, p.blockCh = blocked, blockCh
+	// Callbacks read the channels they were created with, so a later Pause can't race with a
+	// migration goroutine still inside the previous callback, and a retried write for docID
+	// can't close blocked twice.
+	var blockedOnce sync.Once
 	p.ds.SetUpdateXattrsCallback(func(key string) {
 		if key != docID {
 			return
 		}
-		close(p.blocked)
+		blockedOnce.Do(func() { close(blocked) })
 		// Runs on the migration job's goroutine, so use the goroutine-safe wait.
-		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
+		sgtest.RequireChanClosedFromCallback(p.t, blockCh)
 	})
 }
 
