@@ -301,11 +301,6 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.setStartTime(previousStatus.StartTime)
 	}
 
-	// Capture the terminator markStart just created rather than reading the mutable b.terminator field later on -
-	// a subsequent Start() call can reassign b.terminator once this one returns, and this goroutine tree must keep
-	//operating on the instance created for THIS run, not whatever b.terminator happens to be by the time it runs.
-	//terminator := b.terminator
-
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
 		b.SetError(err)
@@ -314,24 +309,9 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	}
 
 	if b.mode() == backgroundManagerModeSingleNode {
-		b.backgroundManagerStatusUpdateWaitGroup.Add(1)
-		go func(terminator *base.SafeTerminator) {
-			defer b.backgroundManagerStatusUpdateWaitGroup.Done()
-			ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					err := b.UpdateSingleNodeClusterAwareStatus(ctx)
-					if err != nil {
-						base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
-					}
-				case <-terminator.Done():
-					ticker.Stop()
-					return
-				}
-			}
-		}(b.terminator)
-
+		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
+			b.startPollingSingleNodeStatus(ctx, b.terminator)
+		})
 	}
 	if b.mode() == backgroundManagerModeMultiNode {
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
@@ -346,18 +326,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		}
 
 		b.Terminate()
-
-		b.statusLock.Lock()
-		if b.status.State == BackgroundProcessStateStopping {
-			b.status.State = BackgroundProcessStateStopped
-		} else if b.status.State == BackgroundProcessStateRunning {
-			b.status.State = BackgroundProcessStateCompleted
-		}
-		b.statusLock.Unlock()
-
-		// Once our background process run has completed we should update the completed status and delete the heartbeat
-		// doc
-		b.updateTerminalStatus(ctx)
+		b.finishRun(ctx)
 	}()
 
 	if b.mode() != backgroundManagerModeLocal {
@@ -407,28 +376,13 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 			return errBackgroundManagerProcessAlreadyRunning
 		}
 
-		// Now we know that we're the only running process we should instantiate these values
-		// We need to instantiate these before we setup the below goroutine as it relies upon the terminator
+		// Now we know we're the only running process, so create the terminator the heartbeat goroutine below relies on.
 		b.terminator = base.NewSafeTerminator()
 
+		// The heartbeat write above seeds the grace period check in UpdateHeartbeatDocClusterAware.
 		b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Set(time.Now().Unix())
 
-		go func(terminator *base.SafeTerminator) {
-			ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					err = b.UpdateHeartbeatDocClusterAware(ctx)
-					if err != nil {
-						base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
-						b.SetError(err)
-					}
-				case <-terminator.Done():
-					ticker.Stop()
-					return
-				}
-			}
-		}(b.terminator)
+		go b.updateHeartbeatDocPeriodically(ctx, b.terminator)
 
 		b.setRunState(BackgroundProcessStateRunning)
 		return nil
@@ -453,6 +407,19 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 	b.setRunState(BackgroundProcessStateRunning)
 	return nil
+}
+
+// finishRun records the terminal state once the process has stopped, then publishes it.
+func (b *BackgroundManager[O]) finishRun(ctx context.Context) {
+	b.statusLock.Lock()
+	if b.status.State == BackgroundProcessStateStopping {
+		b.status.State = BackgroundProcessStateStopped
+	} else if b.status.State == BackgroundProcessStateRunning {
+		b.status.State = BackgroundProcessStateCompleted
+	}
+	b.statusLock.Unlock()
+
+	b.updateTerminalStatus(ctx)
 }
 
 // updateTerminalStatus persists the current (terminal) status and removes the heartbeat doc to allow a subsequent run.
@@ -869,6 +836,38 @@ func (b *BackgroundManager[O]) UpdateHeartbeatDocClusterAware(ctx context.Contex
 	return nil
 }
 
+// updateHeartbeatDocPeriodically refreshes the heartbeat doc until the terminator closes, keeping other nodes from
+// starting the same process.
+func (b *BackgroundManager[O]) updateHeartbeatDocPeriodically(ctx context.Context, terminator *base.SafeTerminator) {
+	ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			if err := b.UpdateHeartbeatDocClusterAware(ctx); err != nil {
+				base.ErrorfCtx(ctx, "Failed to update expiry on heartbeat doc: %v", err)
+				b.SetError(err)
+			}
+		case <-terminator.Done():
+			return
+		}
+	}
+}
+
+// startPollingSingleNodeStatus starts a loop which writes the local status to the bucket until the terminator closes.
+func (b *BackgroundManager[O]) startPollingSingleNodeStatus(ctx context.Context, terminator *base.SafeTerminator) {
+	ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			if err := b.UpdateSingleNodeClusterAwareStatus(ctx); err != nil {
+				base.WarnfCtx(ctx, "Failed to update background manager status in periodic polling: %v, will retry", err)
+			}
+		case <-terminator.Done():
+			return
+		}
+	}
+}
+
 // startPollingMultiNodeStatus starts a loop which polls the status document for changes. If the status document
 // indicates that the process should stop, then this will trigger a stop of the local process. This is used for
 // multi-node cluster aware background managers where we want all nodes to stop if any node triggers a stop.
@@ -886,7 +885,6 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 				base.DebugfCtx(ctx, base.KeyAll, "Failed to update multi node cluster aware status: %v, will retry", err)
 			}
 		case <-terminator.Done():
-			ticker.Stop()
 			return
 		}
 	}
