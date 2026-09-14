@@ -44,24 +44,16 @@ def notifySlack(String status) {
     slackSend(channel: 'syncgatewaybot', color: color, message: slackUtils.slackMessage('SyncGatewayIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
 }
 
-// Posts the sgw-jenkins-integration-test status that shows up on PRs: PENDING once the commit is known,
-// then SUCCESS, FAILURE for unstable, or ERROR. An aborted run reports ERROR too - GitHub has no cancelled
-// state, and staying quiet would strand the pending status on that commit forever. Account, repo and sha
-// are passed explicitly because githubNotify can't reliably infer them from an explicit checkout.
+// Reports this job's result as the sgw-jenkins-integration-test commit status that shows up on PRs (see
+// integration-test/githubUtils.groovy). That file is fetched in the Checkout stage, so it can be absent if
+// the build failed before that point - skip rather than throwing out of a post block, which would leave the
+// result unreported entirely.
 def notifyGitHub(String status) {
-    if (!env.GIT_COMMIT) {
-        echo('No GIT_COMMIT captured (checkout failed) - skipping GitHub commit status')
+    if (!fileExists('integration-test/githubUtils.groovy')) {
+        echo('integration-test/githubUtils.groovy not present - skipping GitHub commit status')
         return
     }
-    githubNotify(
-        credentialsId: 'github_cb-robot-sg_access_token',
-        account: 'couchbase',
-        repo: 'sync_gateway',
-        sha: env.GIT_COMMIT,
-        context: 'sgw-jenkins-integration-test',
-        description: "Integration tests ${status}",
-        status: ['running': 'PENDING', 'passed': 'SUCCESS', 'unstable': 'FAILURE'].get(status, 'ERROR')
-    )
+    load('integration-test/githubUtils.groovy').notifyCommitStatus('sgw-jenkins-integration-test', 'Integration tests', status)
 }
 
 pipeline {
@@ -150,14 +142,18 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     ))
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
                     env.GIT_BRANCH = scmVars.GIT_BRANCH
-                    // Posted here rather than before the checkout, since the commit status needs a SHA.
-                    notifyGitHub('running')
                 }
-                // SG_COMMIT can be an arbitrary developer branch, whose copy of slackUtils.groovy may be
-                // stale or missing helpers the post blocks below need - always load the current one from
-                // main instead (same fix as integration-test/e2e/Jenkinsfile uses for the same reason).
-                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
+                // SG_COMMIT can be an arbitrary developer branch, whose copies of these helpers may be
+                // stale or missing methods the steps below need - always load the current ones from main
+                // instead.
+                sh '''
+                    set -eu
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/githubUtils.groovy -o integration-test/githubUtils.groovy
+                '''
                 script {
+                    // Posted after the fetch above, and after the checkout since the status needs a SHA.
+                    notifyGitHub('running')
                     // "<branch> for <whoever triggered it> on <server version>". PARENT_JOB_NAME is only
                     // set for an upstream-triggered build and the build user only for a manual one, so at
                     // most one of the two is present and the space between them collapses when it isn't.
