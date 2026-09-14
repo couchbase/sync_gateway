@@ -1097,3 +1097,124 @@ func TestSingleChannelCacheOptionResolution(t *testing.T) {
 		assert.Equal(t, db.DefaultLateLogAge, resolved.LateLogAge)
 	})
 }
+
+// newTestCacheStats returns a fresh CacheStats, the three-line preamble every cache test needs.
+func newTestCacheStats(t *testing.T) *base.CacheStats {
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	return dbstats.Cache()
+}
+
+// TestSingleChannelCacheGetChangesComposition covers how GetChanges decides between the cache and
+// a query, and how it stitches the two result sets together. The suite asserts that entries come
+// back, never how many, from where, or what range the cache claims to be valid for - so every
+// threshold in the compose step is unpinned.
+func TestSingleChannelCacheGetChangesComposition(t *testing.T) {
+	const channelName = "chanA"
+	chanID := channels.NewID(channelName, base.DefaultCollectionID)
+	queryEntry := func(seq int) *db.LogEntry { return db.MakeTestLogEntryForChannels(seq, []string{channelName}) }
+
+	t.Run("cache valid from exactly startSeq is a hit", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		queryHandler := &db.QueryHandlerForTest{}
+		cache := db.NewSingleChannelCacheForTest(t, queryHandler, chanID, 6, stats)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(6, "doc6", "1-a"), false)
+
+		// since=5 makes startSeq 6, equal to validFrom: the cache covers the request exactly.
+		entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithSeq(t, db.SequenceID{Seq: 5}))
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		assert.Equal(t, 0, queryHandler.QueryCount(), "an exact cache match must not query")
+		assert.Equal(t, int64(1), stats.ChannelCacheHits.Value())
+	})
+
+	t.Run("query path leaves pending queries balanced", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		queryHandler := &db.QueryHandlerForTest{}
+		queryHandler.SeedEntries(db.LogEntries{queryEntry(1), queryEntry(2)})
+		cache := db.NewSingleChannelCacheForTest(t, queryHandler, chanID, 10, stats)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), false)
+
+		_, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
+		require.NoError(t, err)
+		assert.Equal(t, 1, queryHandler.QueryCount())
+		assert.Equal(t, int64(1), stats.ChannelCacheMisses.Value())
+		assert.Equal(t, int64(0), stats.ChannelCachePendingQueries.Value(), "the gauge must return to zero")
+	})
+
+	t.Run("query that hit its limit is not cached beyond its last result", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		queryHandler := &db.QueryHandlerForTest{}
+		queryHandler.SeedEntries(db.LogEntries{queryEntry(1), queryEntry(2), queryEntry(3)})
+		cache := db.NewSingleChannelCacheForTest(t, queryHandler, chanID, 10, newTestCacheStats(t))
+		for seq := 10; seq <= 12; seq++ {
+			cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(uint64(seq), fmt.Sprintf("doc%d", seq), "1-a"), false)
+		}
+
+		// The query stops at its limit, so it has not seen 3..9. Treating the results as valid
+		// all the way to endSeq would cache that gap and silently lose those sequences.
+		options := db.GetChangesOptionsWithZeroSeq(t)
+		options.Limit = 2
+		_, err := cache.GetChanges(ctx, options)
+		require.NoError(t, err)
+
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(10), validFrom, "a limited query must not extend the cache's valid range")
+	})
+
+	t.Run("full cache is not prepended to", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		options := db.ChannelCacheOptions{ChannelCacheMaxLength: 2}
+		queryHandler := &db.QueryHandlerForTest{}
+		cache := db.NewSingleChannelCacheWithOptionsForTest(t, base.TestCtx(t), queryHandler, chanID, 10, options, newTestCacheStats(t))
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(11, "doc11", "1-a"), false)
+
+		// The query finds nothing, and the cache is already at its maximum length. Prepending an
+		// empty result set would still move validFrom backwards, claiming a range never read.
+		entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
+		require.NoError(t, err)
+		assert.True(t, verifyChannelSequences(entries, []uint64{10, 11}))
+
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(10), validFrom, "a full cache must keep its valid range")
+	})
+
+	t.Run("limit truncates the combined result", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		queryHandler := &db.QueryHandlerForTest{}
+		queryHandler.SeedEntries(db.LogEntries{queryEntry(1), queryEntry(2)})
+		cache := db.NewSingleChannelCacheForTest(t, queryHandler, chanID, 10, newTestCacheStats(t))
+		for seq := 10; seq <= 14; seq++ {
+			cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(uint64(seq), fmt.Sprintf("doc%d", seq), "1-a"), false)
+		}
+
+		// 2 from the query plus 5 cached is 7, but only 4 were asked for.
+		options := db.GetChangesOptionsWithZeroSeq(t)
+		options.Limit = 4
+		entries, err := cache.GetChanges(ctx, options)
+		require.NoError(t, err)
+		require.Len(t, entries, 4)
+		assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 10, 11}))
+	})
+
+	t.Run("overlapping sequence appears once", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		queryHandler := &db.QueryHandlerForTest{}
+		for seq := 1; seq <= 10; seq++ {
+			queryHandler.SeedEntries(db.LogEntries{queryEntry(seq)})
+		}
+		cache := db.NewSingleChannelCacheForTest(t, queryHandler, chanID, 10, newTestCacheStats(t))
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc_10", "1-abc"), false)
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(11, "doc_11", "1-abc"), false)
+
+		// endSeq is set to cacheValidFrom deliberately, so seq 10 comes back from both sides.
+		entries, err := cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
+		require.NoError(t, err)
+		assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}))
+	})
+}
