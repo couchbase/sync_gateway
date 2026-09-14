@@ -1,7 +1,6 @@
 // Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
-// The 'Run E2E Tests' stage overwrites integration-test/slackUtils.groovy and .github/slack_usernames.yaml
-// with the latest versions from main before this runs, so both stay current regardless of which SG_COMMIT
-// is under test.
+// The Checkout stage overwrites integration-test/slackUtils.groovy and .github/slack_usernames.yaml with
+// the latest versions from main, so both stay current regardless of which SG_COMMIT is under test.
 def e2eDetails(slackUtils) {
     return [
         SG_COMMIT: slackUtils.refLink(params.SG_COMMIT),
@@ -12,10 +11,24 @@ def e2eDetails(slackUtils) {
     ]
 }
 
+// Reports this job's result as the sgw-jenkins-e2e-test-<backing store> commit status on GitHub (see
+// integration-test/githubUtils.groovy). BACKING_STORE is part of the context so a rosmar run and a cbs run
+// of the same commit don't overwrite each other. githubUtils.groovy is fetched in the Checkout stage, so it
+// can be absent if the build failed before that point - skip rather than throwing out of a post block,
+// which would leave the result unreported entirely.
+def notifyGitHub(String status) {
+    if (!fileExists('integration-test/githubUtils.groovy')) {
+        echo('integration-test/githubUtils.groovy not present - skipping GitHub commit status')
+        return
+    }
+    load('integration-test/githubUtils.groovy').notifyCommitStatus("sgw-jenkins-e2e-test-${params.BACKING_STORE}", 'E2E tests', status)
+}
+
 pipeline {
     agent any
     options {
         skipDefaultCheckout()
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
     parameters {
         choice(
@@ -117,18 +130,41 @@ pipeline {
         stage('Checkout Scm') {
             steps {
                 cleanWs(disableDeferredWipeout: false)
-                // SG_COMMIT may be an arbitrary commit SHA rather than a branch name. The build
-                // chooser only resolves a branch spec against existing remote-tracking refs, so a
-                // bare SHA won't resolve unless it's fetched into a ref of the same name.
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: params.SG_COMMIT]],
-                    userRemoteConfigs: [[
-                        url: 'git@github.com:couchbase/sync_gateway.git',
-                        credentialsId: 'CB_SG_Robot_Github_SSH_Key',
-                        refspec: "+${params.SG_COMMIT}:refs/remotes/origin/${params.SG_COMMIT}"
-                    ]]
-                ])
+                script {
+                    // SG_COMMIT may be an arbitrary commit SHA rather than a branch name. The build
+                    // chooser only resolves a branch spec against existing remote-tracking refs, so a
+                    // bare SHA won't resolve unless it's fetched into a ref of the same name.
+                    // checkout returns GIT_COMMIT rather than populating env, so assign it manually for
+                    // the commit statuses posted here and from the post blocks.
+                    def scmVars = checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: params.SG_COMMIT]],
+                        userRemoteConfigs: [[
+                            url: 'git@github.com:couchbase/sync_gateway.git',
+                            credentialsId: 'CB_SG_Robot_Github_SSH_Key',
+                            refspec: "+${params.SG_COMMIT}:refs/remotes/origin/${params.SG_COMMIT}"
+                        ]]
+                    ])
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                }
+                // SG_COMMIT can be an arbitrary developer branch, whose copies of these helpers and of the
+                // test runner may be stale or missing what the steps below need - always fetch the current
+                // ones from main instead.
+                sh '''
+                    set -eu
+                    mkdir -p integration-test/e2e .github .ci
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                    # run_e2e_tests.sh calls this, and SG_COMMIT may predate it, so take it from main too
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
+                    chmod +x .ci/retry.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/githubUtils.groovy -o integration-test/githubUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
+                '''
+                script {
+                    // Posted after the fetch above, and after the checkout since the status needs a SHA.
+                    notifyGitHub('running')
+                }
             }
         }
         stage('Run E2E Tests') {
@@ -138,17 +174,7 @@ pipeline {
                         // run_e2e_tests.sh separates test failures (exit 50 -> UNSTABLE) from anything
                         // that stopped the suite running at all (-> FAILURE). A plain sh step would collapse
                         // both into FAILURE, so the unstable post block below would never run.
-                        def exitCode = sh(returnStatus: true, script: '''
-                            set -eu
-                            mkdir -p integration-test/e2e .github .ci
-                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
-                            # run_e2e_tests.sh calls this, and SG_COMMIT may predate it, so take it from main too
-                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
-                            chmod +x .ci/retry.sh
-                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
-                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
-                            /bin/bash integration-test/e2e/run_e2e_tests.sh
-                        ''')
+                        def exitCode = sh(returnStatus: true, script: '/bin/bash integration-test/e2e/run_e2e_tests.sh')
                         if (exitCode == 50) {
                             unstable('At least one e2e test failed')
                         } else if (exitCode != 0) {
@@ -171,6 +197,7 @@ pipeline {
         }
         success {
             script {
+                notifyGitHub('passed')
                 def slackUtils = load('integration-test/slackUtils.groovy')
                 def message = slackUtils.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails(slackUtils))
                 slackSend(channel: 'syncgatewaybot', color: 'good', message: message)
@@ -182,14 +209,21 @@ pipeline {
         }
         unstable {
             script {
+                notifyGitHub('unstable')
                 def slackUtils = load('integration-test/slackUtils.groovy')
                 slackUtils.slackSendFailure('E2E tests', 'unstable', env.BUILD_URL, e2eDetails(slackUtils))
             }
         }
         failure {
             script {
+                notifyGitHub('build failure')
                 def slackUtils = load('integration-test/slackUtils.groovy')
                 slackUtils.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails(slackUtils))
+            }
+        }
+        aborted {
+            script {
+                notifyGitHub('aborted')
             }
         }
         cleanup {

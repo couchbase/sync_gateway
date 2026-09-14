@@ -39,6 +39,18 @@ def notifySlack(String status) {
     slackSend(channel: 'syncgatewaybot', color: color, message: slackUtils.slackMessage('MainIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
 }
 
+// Reports this job's result as the sgw-jenkins-main-integration-test commit status on GitHub (see
+// integration-test/githubUtils.groovy). That file is fetched in the Checkout stage, so it can be absent if
+// the build failed before that point - skip rather than throwing out of a post block, which would leave the
+// result unreported entirely.
+def notifyGitHub(String status) {
+    if (!fileExists('integration-test/githubUtils.groovy')) {
+        echo('integration-test/githubUtils.groovy not present - skipping GitHub commit status')
+        return
+    }
+    load('integration-test/githubUtils.groovy').notifyCommitStatus('sgw-jenkins-main-integration-test', 'Integration tests', status)
+}
+
 pipeline {
     agent { label 'integration-test' }
 
@@ -74,11 +86,18 @@ pipeline {
                     )
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
                 }
-                // SG_COMMIT can in principle be overridden to an arbitrary branch, whose copy of
-                // slackUtils.groovy may be stale or missing helpers the post blocks below need - always
-                // load the current one from main instead (same fix as integration-test/e2e/Jenkinsfile
-                // uses for the same reason).
-                sh 'curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy'
+                // SG_COMMIT can in principle be overridden to an arbitrary branch, whose copies of these
+                // helpers may be stale or missing methods the steps below need - always load the current
+                // ones from main instead.
+                sh '''
+                    set -eu
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/githubUtils.groovy -o integration-test/githubUtils.groovy
+                '''
+                script {
+                    // Posted after the fetch above, and after the checkout since the status needs a SHA.
+                    notifyGitHub('running')
+                }
             }
         }
         stage('Integration Tests') {
@@ -111,21 +130,25 @@ pipeline {
         }
         success {
             script {
+                notifyGitHub('passed')
                 notifySlack('passed')
             }
         }
         unstable {
             script {
+                notifyGitHub('unstable')
                 notifySlack('unstable')
             }
         }
         failure {
             script {
+                notifyGitHub('build failure')
                 notifySlack('build failure')
             }
         }
         aborted {
             script {
+                notifyGitHub('aborted')
                 notifySlack('aborted')
             }
         }
