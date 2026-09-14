@@ -1164,7 +1164,6 @@ func TestResyncManagerDCPJoinRoundTripsOptions(t *testing.T) {
 				processSuffix: "resync",
 				multiNode:     true,
 			},
-			terminator: base.NewSafeTerminator(),
 		}
 	}
 

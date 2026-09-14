@@ -68,7 +68,6 @@ func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base
 			metaKeys:      metaKeys,
 			processSuffix: "compact",
 		},
-		terminator: base.NewSafeTerminator(),
 	}
 }
 

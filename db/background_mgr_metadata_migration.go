@@ -57,7 +57,6 @@ func NewMetadataMigrationManager(dbContext *DatabaseContext) *BackgroundManager[
 			metaKeys:      dbContext.MetadataKeys,
 			processSuffix: MetadataMigrationManagerName,
 		},
-		terminator: base.NewSafeTerminator(),
 	}
 }
 

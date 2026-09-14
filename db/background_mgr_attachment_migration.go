@@ -55,7 +55,6 @@ func NewAttachmentMigrationManager(database *DatabaseContext) *BackgroundManager
 			metaKeys:      metaKeys,
 			processSuffix: "attachment_migration",
 		},
-		terminator: base.NewSafeTerminator(),
 	}
 }
 
