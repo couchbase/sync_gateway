@@ -54,12 +54,18 @@ export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 SG_COMMIT_HASH=$(git rev-parse HEAD)
 echo "Sync Gateway git commit hash: $SG_COMMIT_HASH"
 
-GO_VERSION=go$(go list -m -f '{{.GoVersion}}')
+GO_VERSION=go$(./.ci/retry.sh go list -m -f '{{.GoVersion}}')
 echo "Sync Gateway go.mod version is ${GO_VERSION}"
-go install "golang.org/dl/${GO_VERSION}@latest"
-~/go/bin/"${GO_VERSION}" download
+./.ci/retry.sh go install "golang.org/dl/${GO_VERSION}@latest"
+./.ci/retry.sh ~/go/bin/"${GO_VERSION}" download
 GOROOT=$(~/go/bin/"${GO_VERSION}" env GOROOT)
 PATH=${GOROOT}/bin:$PATH
+
+# Warm both module caches up front, so a flaky module proxy fails here where it is retried rather
+# than part-way through a test run. integration-test/tools is a separate module pinning
+# cbdinocluster, which start_cbs.py and the collect-logs call below both reach for.
+./.ci/retry.sh go mod download
+./.ci/retry.sh go -C integration-test/tools mod download
 
 if [ "${SG_TEST_X509:-}" == "true" ] && [ "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
     echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"

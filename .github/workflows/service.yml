@@ -53,6 +53,10 @@ jobs:
       - uses: *actions_setup_go_version
         with:
           go-version-file: go.mod
+      # go mod download would try to fetch the private EE module, which public runners can't reach
+      - name: Download Go modules
+        shell: bash
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
       - name: "Build Sync Gateway"
         run: mkdir -p ./bin && go build -o ./bin ./...
       - name: "Run test scripts"

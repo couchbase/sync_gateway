@@ -28,6 +28,9 @@ fi
 if [[ "$BACKING_STORE" == "cbs" ]]; then
     : "${COUCHBASE_SERVER_VERSION:?COUCHBASE_SERVER_VERSION must be set when BACKING_STORE=cbs}"
     CBS_ENV_FILE="$(mktemp)"
+    # start_cbs.py runs cbdinocluster out of the integration-test/tools module, so warm that
+    # module cache here where a flaky proxy is retried rather than failing the whole run
+    "${REPO_DIR}/.ci/retry.sh" go -C "${REPO_DIR}/integration-test/tools" mod download
     "${REPO_DIR}/integration-test/start_cbs.py" --version "${COUCHBASE_SERVER_VERSION}" --purpose sync_gateway_e2e --env-file "${CBS_ENV_FILE}"
     # shellcheck disable=SC1090
     source "${CBS_ENV_FILE}"

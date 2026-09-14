@@ -38,7 +38,7 @@ pipeline {
                             env.GO_VERSION = 'go' + sh(
                               returnStdout: true,
                               script: '''
-                                go list -m -f '{{.GoVersion}}'
+                                .ci/retry.sh go list -m -f '{{.GoVersion}}'
                               '''
                             ).trim()
                             // go fetches the toolchain named in go.mod on demand
@@ -46,8 +46,8 @@ pipeline {
                               set -eux
 
                               echo "Sync Gateway go.mod version is $GO_VERSION"
-                              go install "golang.org/dl/$GO_VERSION@latest"
-                              ~/go/bin/$GO_VERSION download
+                              .ci/retry.sh go install "golang.org/dl/$GO_VERSION@latest"
+                              .ci/retry.sh ~/go/bin/$GO_VERSION download
                             '''
                             env.GOROOT = sh(
                               returnStdout: true,
@@ -68,7 +68,7 @@ pipeline {
                                 [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
                                 ssh-keyscan -t rsa,dsa github.com >> ~/.ssh/known_hosts
                             '''
-                                sh "go get -v -tags ${EE_BUILD_TAG} ./..."
+                                sh '.ci/retry.sh go mod download'
                             }
                         }
                     }
