@@ -333,6 +333,11 @@ func (cd *clientDoc) _alreadyHasIncomingRev(t testing.TB, incomingHLV *db.Hybrid
 		return false
 	}
 	latestRev := cd._latestRev(t)
+	if latestRev.noRev {
+		// a norev names the version Sync Gateway could not send but carries no body, so the client does
+		// not hold that revision and a rev for the same cv is new content rather than a duplicate
+		return false
+	}
 	if latestRev.version.RevTreeID != "" {
 		// revtree clients identify a revision by its rev ID rather than its cv
 		return false
@@ -346,6 +351,10 @@ func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVec
 		return false
 	}
 	latestRev := cd._latestRev(t)
+	if latestRev.noRev {
+		// a norev placeholder holds no body, so there is nothing for the incoming revision to conflict with
+		return false
+	}
 	if latestRev.version.RevTreeID != "" {
 		// currently no conflict detection or resolution for revtree clients.
 		return false
@@ -696,7 +705,6 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 		}
 
 		docID := msg.Properties[db.RevMessageID]
-		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
 		replacedRev := msg.Properties[db.RevMessageReplacedRev]
 
@@ -720,7 +728,7 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 					require.NoError(btr.TB(), err, "error parsing version %q: %v", replacedRev, err)
 					replacedVersion = &DocVersion{CV: v}
 				} else {
-					replacedVersion = &DocVersion{RevTreeID: revID}
+					replacedVersion = &DocVersion{RevTreeID: replacedRev}
 				}
 				rev.replacedVersion = replacedVersion
 			}
@@ -2380,7 +2388,6 @@ type revOptions struct {
 func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string, opts revOptions) (alreadyExisted bool) {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
-	newClientSeq := btcc._nextSequence()
 
 	newBody := opts.body
 	newVersion := opts.incomingVersion
@@ -2416,6 +2423,9 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		return
 	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
+	// allocated only now that the revision is stored: a sequence with no document behind it makes the
+	// push changes feed iterate instead of waiting for real work
+	newClientSeq := btcc._nextSequence()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
 		clientSeq:   newClientSeq,
