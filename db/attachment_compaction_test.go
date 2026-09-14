@@ -815,69 +815,62 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	// Start marking stage
 	terminator := base.NewSafeTerminator()
 	stat := &base.AtomicInt{}
-	count := int64(0)
+	count := &atomic.Int64{}
 	go func() {
 		attachmentCount, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
-		atomic.StoreInt64(&count, attachmentCount)
-		require.NoError(t, err)
-		require.NotNil(t, dcpClient)
-		require.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
+		count.Store(attachmentCount)
+		assert.NoError(t, err)
+		if assert.NotNil(t, dcpClient) {
+			assert.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
+		}
 	}()
 
-	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value any) {
-		if stat.Value() == 0 {
-			return true, nil, nil
-		}
-		return false, nil, nil
-	}
-
-	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value any) {
-		if atomic.LoadInt64(&count) == 0 {
-			return true, nil, nil
-		}
-		return false, nil, nil
-	}
-
 	const (
-		maxAttempts = 3_000
-		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
-		timeToSleepMs = 10
+		waitForPhase = 30 * time.Second
+		// The tick here is short to ensure that the wait finishes after the phase starts, but before it has time to finish
+		tick = 10 * time.Millisecond
 	)
-	err, _ := base.RetryLoop(ctx, "wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	requirePhaseStarted := func(phase string) {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.NotZero(c, stat.Value())
+		}, waitForPhase, tick, "%s did not start", phase)
+	}
+	requirePhaseReturned := func(phase string) {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.NotZero(c, count.Load())
+		}, waitForPhase, tick, "%s function did not return", phase)
+	}
+
+	requirePhaseStarted("marking")
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop(ctx, "wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	requirePhaseReturned("marking")
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	require.Equal(t, count, stat.Value())
-	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+	require.Equal(t, count.Load(), stat.Value())
+	require.False(t, count.Load() == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 
 	// Start sweeping with different compact ID so all documents get swept
 	stat = &base.AtomicInt{}
-	count = 0
+	count = &atomic.Int64{}
 	terminator = base.NewSafeTerminator()
 	go func() {
 		attachmentCount, checkpointPrefix, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, "sweep", nil, false, terminator, stat)
-		atomic.StoreInt64(&count, attachmentCount)
-		require.NoError(t, err)
-		require.NotEmpty(t, checkpointPrefix)
+		count.Store(attachmentCount)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, checkpointPrefix)
 	}()
 
-	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
-	err, _ = base.RetryLoop(ctx, "wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	requirePhaseStarted("sweeping")
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop(ctx, "wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	requirePhaseReturned("sweeping")
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	require.Equal(t, count, stat.Value())
-	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+	require.Equal(t, count.Load(), stat.Value())
+	require.False(t, count.Load() == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 }
