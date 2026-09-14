@@ -1492,7 +1492,7 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 				return terminator != nil && terminator.IsClosed()
 			}, 10*time.Second, 100*time.Millisecond, "expected mgr2 terminator to be closed after polling detects "+string(test.externalState)+" status")
 
-			// mgr2 adopts the external state when its process goroutine finishes, which is shortly after the
+			// mgr2 adopts the external state when its process goroutine finishes, shortly after the
 			// terminator closes.
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				assert.Equal(c, test.externalState, mgr2.GetRunState(), "mgr2 should adopt the real external state")
@@ -1852,7 +1852,7 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 	}
 }
 
-// gatedInitProcess holds a run inside Init until the test releases it, and then runs until its terminator closes.
+// gatedInitProcess holds a run inside Init until the test releases it, then runs until its terminator closes.
 type gatedInitProcess struct {
 	t           testing.TB
 	initEntered chan struct{}
@@ -1887,10 +1887,9 @@ func (p *gatedInitProcess) SetProcessStatus(context.Context, []byte, []byte) {}
 
 func (p *gatedInitProcess) ResetStatus() {}
 
-// TestBackgroundManagerJoinDoesNotResurrectStoppedProcess covers a Join that is admitted against a running cluster
-// status document and only gets as far as writing its own status after the process has been stopped everywhere.
-// The joining node has to end its run rather than put the cluster back to running, which would draw the other
-// nodes back into a process that is over.
+// TestBackgroundManagerJoinDoesNotResurrectStoppedProcess covers a Join admitted against a running status document
+// that only writes its own status after the process has been stopped everywhere. The joining node has to end its
+// run rather than put the cluster back to running.
 func TestBackgroundManagerJoinDoesNotResurrectStoppedProcess(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -1955,9 +1954,8 @@ func TestBackgroundManagerJoinDoesNotResurrectStoppedProcess(t *testing.T) {
 	}, 2*BackgroundManagerStatusUpdateIntervalSecs*time.Second, 50*time.Millisecond)
 }
 
-// staleRunningStatusProcess reports a running status whatever state the manager passes in. It stands in for an update
-// whose status bytes were built while the run was still running, and which reaches the guard after the run state has
-// moved to terminal.
+// staleRunningStatusProcess reports a running status whatever state the manager passes in, standing in for an
+// update whose bytes were built before the run state moved to terminal.
 type staleRunningStatusProcess struct {
 	MockProcess
 }
@@ -1969,8 +1967,8 @@ func (p *staleRunningStatusProcess) GetProcessStatus(status BackgroundManagerSta
 }
 
 // TestBackgroundManagerUpdateGuardUsesStatusBeingWritten covers a status update that serialized a running status
-// before another node ended the process and this node adopted that state. The update must be refused on the strength
-// of the status it is about to write, rather than a run state read afterwards, or it puts the cluster back to running.
+// before this node adopted the terminal state another node reached. The guard has to refuse it on the status being
+// written, not on a run state read afterwards.
 func TestBackgroundManagerUpdateGuardUsesStatusBeingWritten(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -2004,8 +2002,8 @@ func TestBackgroundManagerUpdateGuardUsesStatusBeingWritten(t *testing.T) {
 	require.Equal(t, BackgroundProcessStateStopped, state)
 }
 
-// gatedInitReturningProcess holds a run inside Init like gatedInitProcess, but returns from Run at once, so that a run
-// which reaches Run despite being refused entry goes on to write its own terminal status.
+// gatedInitReturningProcess holds a run inside Init like gatedInitProcess, but returns from Run at once, so a run
+// that reaches Run despite being refused entry writes its own terminal status.
 type gatedInitReturningProcess struct {
 	gatedInitProcess
 	runCalled atomic.Bool
@@ -2016,9 +2014,9 @@ func (p *gatedInitReturningProcess) Run(context.Context, MockProcessOptions, upd
 	return nil
 }
 
-// TestBackgroundManagerRefusedJoinDoesNotRunProcess covers a Join that is refused because the cluster ended the
-// process while this node was joining it. The node must not reach Process.Run at all: a run that got that far would
-// carry itself to a terminal state of its own and write that over the state the cluster reached.
+// TestBackgroundManagerRefusedJoinDoesNotRunProcess covers a Join refused because the cluster ended the process
+// while this node was joining. The node must not reach Process.Run, which would write a terminal state of its own
+// over the one the cluster reached.
 func TestBackgroundManagerRefusedJoinDoesNotRunProcess(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -2080,8 +2078,8 @@ func TestBackgroundManagerRefusedJoinDoesNotRunProcess(t *testing.T) {
 	}, 2*BackgroundManagerStatusUpdateIntervalSecs*time.Second, 50*time.Millisecond)
 }
 
-// gatedProcess is a BackgroundManagerProcessI whose first Run can be held open after its terminator closes.
-// This lets a test observe the BackgroundManager while the goroutines of a previous run are still alive.
+// gatedProcess is a BackgroundManagerProcessI whose first Run can be held open after its terminator closes, so a
+// test can observe the manager while a previous run's goroutines are still alive.
 type gatedProcess struct {
 	t           testing.TB
 	runCount    atomic.Int64
@@ -2122,16 +2120,14 @@ func (p *gatedProcess) SetProcessStatus(context.Context, []byte, []byte) {}
 func (p *gatedProcess) ResetStatus() { p.resetCount.Add(1) }
 
 // parkedRun is a multi node background manager whose first run is held inside its terminal status update, with the
-// run state already stopped. It lets a test act on the manager over the window where the run looks finished but its
-// goroutine is still alive.
+// run state already stopped, so a test can act while the run looks finished but its goroutine is still alive.
 type parkedRun struct {
 	mgr     *BackgroundManager[MockProcessOptions]
 	process *gatedProcess
-	// databaseStateWrites counts every mirror of the run state into the database state document, so a test can tell
-	// that a status write happened without unparking the run.
+	// databaseStateWrites counts every mirror into the database state document, so a test can tell that a status
+	// write happened without unparking the run.
 	databaseStateWrites atomic.Int64
-	// release lets the parked goroutine finish. Safe to call more than once, and called on test cleanup so that a
-	// failed assertion does not leave a goroutine wedged in the data store.
+	// release lets the parked goroutine finish. Safe to call more than once, and called on test cleanup.
 	release func()
 }
 
@@ -2153,8 +2149,7 @@ func startParkedRun(t *testing.T, ctx context.Context, name string) *parkedRun {
 		},
 	}
 
-	// blockTerminalUpdate arms the park once the run is on its way out, so that Stop's own status updates are not
-	// caught by it.
+	// blockTerminalUpdate arms the park once the run is on its way out, so Stop's own status updates go through.
 	var blockTerminalUpdate atomic.Bool
 	parked := make(chan struct{})
 	unpark := make(chan struct{})
@@ -2199,8 +2194,8 @@ func requireRunEnded(t *testing.T, mgr *BackgroundManager[MockProcessOptions]) {
 }
 
 // TestBackgroundManagerStartWaitsForPreviousRunGoroutine asserts that Start does not replace b.terminator while the
-// goroutine of the previous run is still alive. That goroutine reports a terminal state before its terminal status
-// update, so the manager looks stopped while the run still uses the terminator and the metadata store.
+// previous run's goroutine is still alive. That goroutine reports its terminal state before its last status update,
+// so the manager looks stopped while the run still uses the terminator.
 func TestBackgroundManagerStartWaitsForPreviousRunGoroutine(t *testing.T) {
 	ctx := base.TestCtx(t)
 	run := startParkedRun(t, ctx, "start-waits-for-previous-run")
@@ -2231,8 +2226,7 @@ func TestBackgroundManagerStartWaitsForPreviousRunGoroutine(t *testing.T) {
 }
 
 // TestBackgroundManagerStartWaitsForHeartbeatGoroutine asserts the same invariant for the heartbeat goroutine of a
-// single node cluster aware manager: a second Start must not replace b.terminator, or launch a second heartbeat
-// goroutine, while the first is still in a metadata store call.
+// single node cluster aware manager, which outlives the run state in the same way.
 func TestBackgroundManagerStartWaitsForHeartbeatGoroutine(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -2282,8 +2276,8 @@ func TestBackgroundManagerStartWaitsForHeartbeatGoroutine(t *testing.T) {
 
 	require.NoError(t, mgr.Stop(ctx))
 
-	// Wait for the heartbeat doc to go, not just for the run state: markStart rejects a Start outright while the doc
-	// is still there, which is a different window from the goroutine wait under test.
+	// Wait for the heartbeat doc to go, not just the run state: while it is there markStart rejects a Start
+	// outright, which is a different window from the goroutine wait under test.
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Contains(c, []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted}, mgr.GetRunState())
 		_, _, err := metadataStore.GetRaw(ctx, heartbeatDocID)
@@ -2316,10 +2310,9 @@ func TestBackgroundManagerStartWaitsForHeartbeatGoroutine(t *testing.T) {
 	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
 }
 
-// TestBackgroundManagerStopDuringStartWait covers a Stop that lands while Start is waiting for the goroutines of the
-// previous run. markStart has already admitted the new run, so Stop closes the terminator of the previous run rather
-// than the one the new run is about to install. start must carry that stop over instead of leaving the new run going,
-// and must do so before it touches anything the previous run left behind.
+// TestBackgroundManagerStopDuringStartWait covers a Stop landing while Start waits for the previous run's
+// goroutines, so it closes that run's terminator rather than the one the new run is about to install. start has to
+// carry the stop over, and before it resets anything the previous run left behind.
 func TestBackgroundManagerStopDuringStartWait(t *testing.T) {
 	ctx := base.TestCtx(t)
 	run := startParkedRun(t, ctx, "stop-during-start-wait")
@@ -2349,15 +2342,14 @@ func TestBackgroundManagerStopDuringStartWait(t *testing.T) {
 	// The second run must honour the stop rather than run on with a terminator nothing closed.
 	requireRunEnded(t, run.mgr)
 
-	// The stop was carried over before the run was set up, so the process was never reset, the start time is still
-	// the one of the run that did happen, and the process was not run a second time.
+	// The stop was carried over before the run was set up, so nothing of the previous run was reset.
 	require.Equal(t, int64(1), run.process.resetCount.Load(), "a run that never started reset the previous run's stats")
 	require.Equal(t, startTime, run.mgr.getStartTime())
 	require.Equal(t, int64(1), run.process.runCount.Load())
 }
 
-// slowToStopProcess is a BackgroundManagerProcessI that keeps working after its terminator closes, until the test
-// releases it. It models a process that is slow to notice a stop.
+// slowToStopProcess keeps working after its terminator closes, until the test releases it. It models a process
+// that is slow to notice a stop.
 type slowToStopProcess struct {
 	t           testing.TB
 	runCount    atomic.Int64
@@ -2387,8 +2379,8 @@ func (p *slowToStopProcess) SetProcessStatus(context.Context, []byte, []byte) {}
 func (p *slowToStopProcess) ResetStatus() {}
 
 // TestSetErrorKeepsRunStateRunningUntilProcessStops covers a SetError raised while Process.Run is still working.
-// The run state must stay running until the process actually stops, so that markStart rejects a Start outright
-// rather than admitting a second run alongside the first. It moves to error only once the run has finished.
+// The run state stays running until the process stops, so that markStart rejects a Start rather than admitting a
+// second run alongside the first.
 func TestSetErrorKeepsRunStateRunningUntilProcessStops(t *testing.T) {
 	ctx := base.TestCtx(t)
 
@@ -2429,8 +2421,8 @@ func TestSetErrorKeepsRunStateRunningUntilProcessStops(t *testing.T) {
 }
 
 // TestMarkStopAdmitsStopDuringStartWait covers a Stop arriving while Start waits for the previous run's goroutines.
-// markStop does not short circuit it: markStart sets the run state to running before start installs the terminator, so
-// the stop is admitted and stopProcess reads the terminator start is about to write. Hence the atomic pointer.
+// markStart has set the run state to running, so markStop admits the stop and stopProcess reads the terminator start
+// is about to write. Hence the atomic pointer.
 func TestMarkStopAdmitsStopDuringStartWait(t *testing.T) {
 	ctx := base.TestCtx(t)
 	run := startParkedRun(t, ctx, "markstop-during-start-wait")
@@ -2463,9 +2455,8 @@ func TestMarkStopAdmitsStopDuringStartWait(t *testing.T) {
 	requireRunEnded(t, run.mgr)
 }
 
-// TestStartStatusFailureEndsRunBeforeProcessRuns covers a failure persisting the initial cluster status. The claim
-// is written before anything local is launched, so there is no Process.Run goroutine to carry the run to a terminal
-// state: start has to end the run itself and leave the manager free to start again.
+// TestStartStatusFailureEndsRunBeforeProcessRuns covers a failure persisting the initial cluster status. No
+// Process.Run goroutine has been launched at that point, so start has to end the run itself.
 func TestStartStatusFailureEndsRunBeforeProcessRuns(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -2525,8 +2516,7 @@ func (p *failingInitProcess) Init(ctx context.Context, options MockProcessOption
 }
 
 // TestBackgroundManagerStartWaitsForRunThatFailedInit covers a run that ends inside start itself, because Init
-// failed. No Process.Run goroutine is launched, so nothing else registers that run's terminal status update with
-// runWaitGroup, and the next Start would otherwise start up alongside it.
+// failed. Its terminal status update still has to join runWaitGroup, or the next Start starts alongside it.
 func TestBackgroundManagerStartWaitsForRunThatFailedInit(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -2544,8 +2534,7 @@ func TestBackgroundManagerStartWaitsForRunThatFailedInit(t *testing.T) {
 		},
 	}
 
-	// Park the failed run inside its terminal status update. Only that run reaches the error state, so a later run
-	// cannot trip this.
+	// Park the failed run inside its terminal status update. Only that run reaches the error state.
 	parked := make(chan struct{})
 	unpark := make(chan struct{})
 	var parkOnce, unparkOnce sync.Once
@@ -2608,13 +2597,13 @@ func TestBackgroundManagerStartWaitsForRunThatFailedInit(t *testing.T) {
 }
 
 // secondRunGatedProcess completes its first run at once, and holds the Init of its second run until the test
-// releases it, so that a test can read the cluster status document in between the two runs.
+// releases it, so the cluster status document can be read in between the two runs.
 type secondRunGatedProcess struct {
 	t         testing.TB
 	initCount atomic.Int64
 	runCount  atomic.Int64
-	// initClusterStatus is the status document the second run was initialized from. Written before secondInit is
-	// closed, so a test that waits on that channel can read it.
+	// initClusterStatus is the status document the second run was initialized from, written before secondInit is
+	// closed so that a test waiting on that channel can read it.
 	initClusterStatus []byte
 	secondInit        chan struct{} // closed when the second run enters Init
 	releaseInit       chan struct{} // the second Init returns when this is closed
@@ -2654,16 +2643,16 @@ func (p *secondRunGatedProcess) SetProcessStatus(context.Context, []byte, []byte
 
 func (p *secondRunGatedProcess) ResetStatus() {}
 
-// statusWritePark holds one write of the cluster status document: the first one made while the manager reports a
-// given run state. It lets a test act in the window between a run settling its terminal state and publishing it.
+// statusWritePark holds the first write of the cluster status document made while the manager reports a given run
+// state, so a test can act between a run settling its terminal state and publishing it.
 type statusWritePark struct {
 	dataStore base.DataStore
 	parked    chan struct{}
 	release   func() // safe to call more than once, and called on cleanup
 }
 
-// parkStatusWriteInState clones testBucket into a data store that holds that write. Every other write goes through,
-// and runState is read on each write rather than captured, so the caller can pass a manager it builds afterwards.
+// parkStatusWriteInState clones testBucket into a data store that holds that write. runState is read on each write
+// rather than captured, so the caller can pass a manager it builds afterwards.
 func parkStatusWriteInState(t *testing.T, ctx context.Context, testBucket *base.TestBucket, statusDocID string, runState func() BackgroundProcessState, state BackgroundProcessState) *statusWritePark {
 	parked := make(chan struct{})
 	unpark := make(chan struct{})
@@ -2699,10 +2688,9 @@ func (p *statusWritePark) requireParked(t *testing.T) {
 	}
 }
 
-// TestBackgroundManagerTerminalStatusSurvivesNextRun covers the terminal status of a run that finishes while the next
-// one is being admitted. Settling the terminal state is what admits that next run, and the next run reports itself as
-// running: the finishing run has to publish the state it settled on rather than whatever it finds at write time,
-// or a user polling the process never sees it finish.
+// TestBackgroundManagerTerminalStatusSurvivesNextRun covers the terminal status of a run that finishes while the
+// next one is being admitted. Settling the terminal state is what admits that next run, so the finishing run has to
+// publish the state it settled on rather than the running one it would find at write time.
 func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -2710,8 +2698,8 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 	metaKeys := base.NewMetadataKeys("test-terminal-status-survives")
 	processSuffix := "terminal-status-survives"
 
-	// Hold the first run before it writes its terminal status. Only that write is made with the run state already
-	// completed: every other write of this run is made while it is running.
+	// Hold the first run before it writes its terminal status, the only write it makes with the run state already
+	// completed.
 	var mgr *BackgroundManager[MockProcessOptions]
 	park := parkStatusWriteInState(t, ctx, testBucket, metaKeys.BackgroundProcessStatusPrefix(processSuffix),
 		func() BackgroundProcessState { return mgr.GetRunState() }, BackgroundProcessStateCompleted)
@@ -2743,8 +2731,7 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 
 	park.release()
 
-	// The next run is held in Init, which it reaches after the first run has written, and before it claims the run
-	// in the cluster itself.
+	// The next run is held in Init, which it reaches after the first run has written and before it claims the run.
 	base.RequireChanClosed(t, process.secondInit, "the next run did not reach Init")
 	state, err := mgr.getClusterStatusState(ctx)
 	require.NoError(t, err)
@@ -2762,9 +2749,9 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 	requireRunEnded(t, mgr)
 }
 
-// TestBackgroundManagerStartReadsClusterStatusAfterPreviousRun covers the status document a run is initialized from.
-// Start reads it before it waits for the previous run, so those bytes can describe a run that has finished in the
-// meantime. Init decides from them whether to resume, and would carry on the run that has just completed.
+// TestBackgroundManagerStartReadsClusterStatusAfterPreviousRun covers the status document a run is initialized
+// from. Start reads it before waiting for the previous run, so a re-read is needed, or Init resumes the run that has
+// just completed.
 func TestBackgroundManagerStartReadsClusterStatusAfterPreviousRun(t *testing.T) {
 	ctx := base.TestCtx(t)
 	testBucket := base.GetTestBucket(t)
@@ -2819,7 +2806,7 @@ func TestBackgroundManagerStartReadsClusterStatusAfterPreviousRun(t *testing.T) 
 	requireRunEnded(t, mgr)
 }
 
-// terminatedWriterProcess writes one status update after its terminator closes, and then holds the run open until the
+// terminatedWriterProcess writes one status update after its terminator closes, then holds the run open until the
 // test releases it. It stands in for a process that is slow to notice that the run is over.
 type terminatedWriterProcess struct {
 	t       testing.TB
@@ -2856,10 +2843,9 @@ func (p *terminatedWriterProcess) SetProcessStatus(context.Context, []byte, []by
 
 func (p *terminatedWriterProcess) ResetStatus() {}
 
-// TestMultiNodeDatabaseStateFollowsPublishedStatus covers the database state a node mirrors once it has learned that
-// the cluster ended the run. Its process keeps working until it notices the terminator, and the status writes it
-// makes in the meantime must report the state the node has adopted: mirroring the run as still running puts the
-// database state document back to running, which draws the other nodes into starting the process again.
+// TestMultiNodeDatabaseStateFollowsPublishedStatus covers the database state a node mirrors once it has learned
+// that the cluster ended the run. Its process keeps working until it notices the terminator, and mirroring that as
+// running would draw the other nodes into starting the process again.
 func TestMultiNodeDatabaseStateFollowsPublishedStatus(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
