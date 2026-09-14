@@ -2610,11 +2610,14 @@ func TestBackgroundManagerStartWaitsForRunThatFailedInit(t *testing.T) {
 // secondRunGatedProcess completes its first run at once, and holds the Init of its second run until the test
 // releases it, so that a test can read the cluster status document in between the two runs.
 type secondRunGatedProcess struct {
-	t           testing.TB
-	initCount   atomic.Int64
-	runCount    atomic.Int64
-	secondInit  chan struct{} // closed when the second run enters Init
-	releaseInit chan struct{} // the second Init returns when this is closed
+	t         testing.TB
+	initCount atomic.Int64
+	runCount  atomic.Int64
+	// initClusterStatus is the status document the second run was initialized from. Written before secondInit is
+	// closed, so a test that waits on that channel can read it.
+	initClusterStatus []byte
+	secondInit        chan struct{} // closed when the second run enters Init
+	releaseInit       chan struct{} // the second Init returns when this is closed
 }
 
 func newSecondRunGatedProcess(t testing.TB) *secondRunGatedProcess {
@@ -2625,8 +2628,9 @@ func newSecondRunGatedProcess(t testing.TB) *secondRunGatedProcess {
 	}
 }
 
-func (p *secondRunGatedProcess) Init(context.Context, MockProcessOptions, []byte) (backgroundManagerInitMode, error) {
+func (p *secondRunGatedProcess) Init(_ context.Context, _ MockProcessOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
 	if p.initCount.Add(1) == 2 {
+		p.initClusterStatus = clusterStatus
 		close(p.secondInit)
 		sgtest.RequireChanClosedFromCallback(p.t, p.releaseInit)
 	}
@@ -2650,31 +2654,30 @@ func (p *secondRunGatedProcess) SetProcessStatus(context.Context, []byte, []byte
 
 func (p *secondRunGatedProcess) ResetStatus() {}
 
-// TestBackgroundManagerTerminalStatusSurvivesNextRun covers the terminal status of a run that finishes while the next
-// one is being admitted. Settling the terminal state is what admits that next run, and the next run reports itself as
-// running: the finishing run has to publish the state it settled on rather than whatever it finds at write time,
-// or a user polling the process never sees it finish.
-func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
-	defer testBucket.Close(ctx)
+// statusWritePark holds one write of the cluster status document: the first one made while the manager reports a
+// given run state. It lets a test act in the window between a run settling its terminal state and publishing it.
+type statusWritePark struct {
+	dataStore base.DataStore
+	parked    chan struct{}
+	release   func() // safe to call more than once, and called on cleanup
+}
 
-	metaKeys := base.NewMetadataKeys("test-terminal-status-survives")
-	processSuffix := "terminal-status-survives"
-	statusDocID := metaKeys.BackgroundProcessStatusPrefix(processSuffix)
-
-	var mgr *BackgroundManager[MockProcessOptions]
-	// Park the first run before it writes its terminal status. Only that write is made with the run state already
-	// completed: every other write of this run is made while it is running.
+// parkStatusWriteInState clones testBucket into a data store that holds that write. Every other write goes through,
+// and runState is read on each write rather than captured, so the caller can pass a manager it builds afterwards.
+func parkStatusWriteInState(t *testing.T, ctx context.Context, testBucket *base.TestBucket, statusDocID string, runState func() BackgroundProcessState, state BackgroundProcessState) *statusWritePark {
 	parked := make(chan struct{})
 	unpark := make(chan struct{})
 	var parkOnce, unparkOnce sync.Once
-	// Released on every path: a failed assertion below must not leave a goroutine wedged in the data store.
-	releaseParked := func() { unparkOnce.Do(func() { close(unpark) }) }
-	defer releaseParked()
+	park := &statusWritePark{
+		parked: parked,
+		// Released on every path: a failed assertion must not leave a goroutine wedged in the data store.
+		release: func() { unparkOnce.Do(func() { close(unpark) }) },
+	}
+	t.Cleanup(park.release)
+
 	leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
 		PreUpdateCallback: func(key string) error {
-			if key != statusDocID || mgr.GetRunState() != BackgroundProcessStateCompleted {
+			if key != statusDocID || runState() != state {
 				return nil
 			}
 			parkOnce.Do(func() { close(parked) })
@@ -2682,14 +2685,43 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 			return nil
 		},
 	})
-	defer leakyBucket.Close(ctx)
+	t.Cleanup(func() { leakyBucket.Close(ctx) })
+	park.dataStore = leakyBucket.DefaultDataStore(ctx)
+	return park
+}
+
+// requireParked waits for the held write to be reached.
+func (p *statusWritePark) requireParked(t *testing.T) {
+	select {
+	case <-p.parked:
+	case <-time.After(sgtest.GetBackgroundManagerStatusTransitionTimeout(t)):
+		require.FailNow(t, "the run did not reach the status write being held")
+	}
+}
+
+// TestBackgroundManagerTerminalStatusSurvivesNextRun covers the terminal status of a run that finishes while the next
+// one is being admitted. Settling the terminal state is what admits that next run, and the next run reports itself as
+// running: the finishing run has to publish the state it settled on rather than whatever it finds at write time,
+// or a user polling the process never sees it finish.
+func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+
+	metaKeys := base.NewMetadataKeys("test-terminal-status-survives")
+	processSuffix := "terminal-status-survives"
+
+	// Hold the first run before it writes its terminal status. Only that write is made with the run state already
+	// completed: every other write of this run is made while it is running.
+	var mgr *BackgroundManager[MockProcessOptions]
+	park := parkStatusWriteInState(t, ctx, testBucket, metaKeys.BackgroundProcessStatusPrefix(processSuffix),
+		func() BackgroundProcessState { return mgr.GetRunState() }, BackgroundProcessStateCompleted)
 
 	process := newSecondRunGatedProcess(t)
 	mgr = &BackgroundManager[MockProcessOptions]{
 		name:    "terminal-status-survives",
 		Process: process,
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			metadataStore: leakyBucket.DefaultDataStore(ctx),
+			metadataStore: park.dataStore,
 			metaKeys:      metaKeys,
 			processSuffix: processSuffix,
 			multiNode:     true,
@@ -2697,12 +2729,7 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 	}
 
 	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
-
-	select {
-	case <-parked:
-	case <-time.After(sgtest.GetBackgroundManagerStatusTransitionTimeout(t)):
-		require.FailNow(t, "first run did not reach its terminal status write")
-	}
+	park.requireParked(t)
 
 	// The next run is admitted while the first run holds its terminal status write, and puts the run state back to
 	// running.
@@ -2714,7 +2741,7 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
 
-	releaseParked()
+	park.release()
 
 	// The next run is held in Init, which it reaches after the first run has written, and before it claims the run
 	// in the cluster itself.
@@ -2722,6 +2749,63 @@ func TestBackgroundManagerTerminalStatusSurvivesNextRun(t *testing.T) {
 	state, err := mgr.getClusterStatusState(ctx)
 	require.NoError(t, err)
 	require.Equal(t, BackgroundProcessStateCompleted, state, "the next run's state was published as the terminal status of the run that finished")
+
+	close(process.releaseInit)
+	select {
+	case err := <-secondStart:
+		require.NoError(t, err)
+	case <-time.After(sgtest.GetBackgroundManagerStatusTransitionTimeout(t)):
+		require.FailNow(t, "Start did not return after the previous run's goroutine exited")
+	}
+
+	require.NoError(t, mgr.Stop(ctx))
+	requireRunEnded(t, mgr)
+}
+
+// TestBackgroundManagerStartReadsClusterStatusAfterPreviousRun covers the status document a run is initialized from.
+// Start reads it before it waits for the previous run, so those bytes can describe a run that has finished in the
+// meantime. Init decides from them whether to resume, and would carry on the run that has just completed.
+func TestBackgroundManagerStartReadsClusterStatusAfterPreviousRun(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+
+	metaKeys := base.NewMetadataKeys("test-status-read-after-wait")
+	processSuffix := "status-read-after-wait"
+
+	var mgr *BackgroundManager[MockProcessOptions]
+	park := parkStatusWriteInState(t, ctx, testBucket, metaKeys.BackgroundProcessStatusPrefix(processSuffix),
+		func() BackgroundProcessState { return mgr.GetRunState() }, BackgroundProcessStateCompleted)
+
+	process := newSecondRunGatedProcess(t)
+	mgr = &BackgroundManager[MockProcessOptions]{
+		name:    "status-read-after-wait",
+		Process: process,
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: park.dataStore,
+			metaKeys:      metaKeys,
+			processSuffix: processSuffix,
+			multiNode:     true,
+		},
+	}
+
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	park.requireParked(t)
+
+	// This Start reads the status document while it still says running, and is then admitted and made to wait.
+	secondStart := make(chan error, 1)
+	go func() {
+		secondStart <- mgr.Start(ctx, MockProcessOptions{})
+	}()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+
+	park.release()
+	base.RequireChanClosed(t, process.secondInit, "the next run did not reach Init")
+
+	initStatus, err := unmarshalBackgroundManagerStatus(process.initClusterStatus)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateCompleted, initStatus.State, "the next run was initialized from a status document read before the previous run finished")
 
 	close(process.releaseInit)
 	select {

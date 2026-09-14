@@ -358,6 +358,17 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		return nil
 	}
 
+	// The status read before the wait can describe a run that has finished since, and Init decides from these bytes
+	// whether to resume - so read them again now that the previous run has published its terminal status.
+	if mode != backgroundManagerModeLocal {
+		processClusterStatus, err = b.readClusterStatus(ctx)
+		if err != nil {
+			b.finishRun(ctx, err)
+			return err
+		}
+		previousStatus = statusFromClusterDoc(ctx, processClusterStatus)
+	}
+
 	b.resetStatus()
 	b.setStartTime(time.Now().UTC())
 
