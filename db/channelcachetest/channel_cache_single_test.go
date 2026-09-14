@@ -1416,3 +1416,26 @@ func TestSingleChannelCachePrependChanges(t *testing.T) {
 		assert.Equal(t, uint64(10), validFrom)
 	})
 }
+
+// TestSingleChannelCacheGetCachedChangesValidFrom pins the valid-from returned alongside a partial
+// read. When since lands inside the cached log the caller is told the range starts after the last
+// entry it skipped, so a feed resuming there covers the gap exactly - one too low and it re-reads,
+// one too high and it misses an entry.
+func TestSingleChannelCacheGetCachedChangesValidFrom(t *testing.T) {
+	ctx := base.TestCtx(t)
+	cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{},
+		channels.NewID("chanA", base.DefaultCollectionID), 1, newTestCacheStats(t))
+	for seq := uint64(1); seq <= 5; seq++ {
+		cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"), false)
+	}
+
+	validFrom, changes := cache.GetCachedChanges(db.GetChangesOptionsWithSeq(t, db.SequenceID{Seq: 2}))
+
+	assert.True(t, verifyChannelSequences(changes, []uint64{3, 4, 5}))
+	assert.Equal(t, uint64(3), validFrom, "valid from the sequence after the last one skipped")
+
+	// since below the log returns everything, and the cache's own validFrom stands.
+	validFrom, changes = cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+	assert.True(t, verifyChannelSequences(changes, []uint64{1, 2, 3, 4, 5}))
+	assert.Equal(t, uint64(1), validFrom)
+}

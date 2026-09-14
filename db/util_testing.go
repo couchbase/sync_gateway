@@ -1823,6 +1823,22 @@ func (c *singleChannelCacheImpl) PruneCacheAgeForTest(_ testing.TB, ctx context.
 	c.pruneCacheAge(ctx)
 }
 
+// GetCachedChangesSinceForTest reads a channel's cached entries after since, never falling back
+// to a query.
+func (c *channelCacheImpl) GetCachedChangesSinceForTest(_ testing.TB, ctx context.Context, channel channels.ID, since uint64) ([]*LogEntry, error) {
+	return c.getCachedChangesSince(ctx, channel, since)
+}
+
+// GetBypassChannelCacheForTest returns the query-backed cache used when no channel cache is held.
+func (c *channelCacheImpl) GetBypassChannelCacheForTest(_ testing.TB, ch channels.ID) (SingleChannelCache, error) {
+	return c.getBypassChannelCache(ch)
+}
+
+// CleanAgedItemsForTest runs the age-based prune across every channel cache.
+func (c *channelCacheImpl) CleanAgedItemsForTest(_ testing.TB, ctx context.Context) error {
+	return c.cleanAgedItems(ctx)
+}
+
 // ReleaseLateLogsForEvictionForTest detaches the cache's late logs, as compaction does on eviction.
 func (c *singleChannelCacheImpl) ReleaseLateLogsForEvictionForTest(_ testing.TB) {
 	c.releaseLateLogsForEviction()

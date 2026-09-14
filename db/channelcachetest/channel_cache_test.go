@@ -1319,3 +1319,136 @@ func TestChannelCacheRemoveByCollection(t *testing.T) {
 		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{2}))
 	})
 }
+
+// TestChannelCacheAddUnusedSequence covers which sequence a released range advances the cache's
+// high sequence to. A range reports its end; a single released sequence has no end and reports
+// itself. Getting either wrong leaves the high sequence behind, which stalls changes feeds.
+func TestChannelCacheAddUnusedSequence(t *testing.T) {
+	newCache := func(t *testing.T) db.ChannelCache {
+		ctx := base.TestCtx(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+		require.NoError(t, err)
+		t.Cleanup(func() { cache.Stop(ctx) })
+		return cache
+	}
+
+	t.Run("range advances to its end sequence", func(t *testing.T) {
+		cache := newCache(t)
+		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
+		assert.Equal(t, uint64(9), cache.GetHighCacheSequence())
+	})
+
+	t.Run("single sequence advances to itself", func(t *testing.T) {
+		cache := newCache(t)
+		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5})
+		assert.Equal(t, uint64(5), cache.GetHighCacheSequence())
+	})
+}
+
+// TestChannelCacheAddToCacheStarChannel covers the star-channel bookkeeping in AddToCache: a
+// document the sync function did not place in "*" must still reach the star channel cache, and a
+// document in no channels at all must be handled without incident.
+func TestChannelCacheAddToCacheStarChannel(t *testing.T) {
+	ctx := base.TestCtx(t)
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+		db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+	require.NoError(t, err)
+	defer cache.Stop(ctx)
+
+	starCache, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channels.UserStarChannel, base.DefaultCollectionID))
+	namedCache, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID("chanA", base.DefaultCollectionID))
+
+	entry := db.MakeTestLogEntryForChannels(1, []string{"chanA"})
+	cache.AddToCache(ctx, entry)
+
+	assert.True(t, verifyChannelSequences(namedCache.LogsForTest(t), []uint64{1}))
+	assert.True(t, verifyChannelSequences(starCache.LogsForTest(t), []uint64{1}),
+		"a doc in an ordinary channel must still reach the star channel")
+
+	// A document the sync function placed in no channels at all still belongs in "*", since that
+	// is the all-docs channel. It must also not upset the allocation sized from the channel count.
+	cache.AddToCache(ctx, db.MakeTestLogEntryForChannels(2, nil))
+	assert.True(t, verifyChannelSequences(namedCache.LogsForTest(t), []uint64{1}))
+	assert.True(t, verifyChannelSequences(starCache.LogsForTest(t), []uint64{1, 2}),
+		"a doc in no channels still reaches the star channel")
+}
+
+// TestChannelCacheCleanAgedItems covers the background task that age-prunes every channel cache.
+// TestSingleChannelCachePruneAge covers the per-channel prune; this is the level above, which
+// walks the caches and had no test.
+func TestChannelCacheCleanAgedItems(t *testing.T) {
+	ctx := base.TestCtx(t)
+	options := db.DefaultCacheOptions().ChannelCacheOptions
+	options.ChannelCacheMinLength = 1
+	options.ChannelCacheMaxLength = 10
+	options.ChannelCacheAge = time.Minute
+
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options,
+		db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+	require.NoError(t, err)
+	defer cache.Stop(ctx)
+
+	single, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID("chanA", base.DefaultCollectionID))
+	for seq := uint64(1); seq <= 3; seq++ {
+		entry := db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a")
+		received := time.Now().Add(-2 * time.Minute)
+		entry.TimeReceived = channels.NewFeedTimestamp(&received)
+		single.AddToCacheForTest(t, ctx, entry, false)
+	}
+	require.Len(t, single.LogsForTest(t), 3)
+
+	require.NoError(t, cache.CleanAgedItemsForTest(t, ctx))
+
+	// Stale entries are dropped down to ChannelCacheMinLength.
+	assert.Len(t, single.LogsForTest(t), 1)
+}
+
+// TestChannelCacheCachedChangesAccessors covers the three cache-only read paths and the error
+// branch they share. Each resolves a channel cache first and returns early on failure; negating
+// that guard makes the ordinary call return nothing at all, so asserting the result is enough.
+func TestChannelCacheCachedChangesAccessors(t *testing.T) {
+	ctx := base.TestCtx(t)
+	chanID := channels.NewID("chanA", base.DefaultCollectionID)
+
+	queryHandler := &db.QueryHandlerForTest{}
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+		queryHandler.AsFactory, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+	require.NoError(t, err)
+	defer cache.Stop(ctx)
+
+	single, _ := cache.AddChannelCacheForTest(t, ctx, chanID)
+	for seq := uint64(1); seq <= 3; seq++ {
+		single.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"), false)
+	}
+
+	t.Run("GetCachedChanges returns the whole cached log", func(t *testing.T) {
+		changes, err := cache.GetCachedChanges(ctx, chanID)
+		require.NoError(t, err)
+		assert.True(t, verifyChannelSequences(changes, []uint64{1, 2, 3}))
+	})
+
+	t.Run("getCachedChangesSince returns only entries after since", func(t *testing.T) {
+		changes, err := cache.GetCachedChangesSinceForTest(t, ctx, chanID, 1)
+		require.NoError(t, err)
+		assert.True(t, verifyChannelSequences(changes, []uint64{2, 3}))
+	})
+
+	t.Run("getBypassChannelCache returns a usable cache", func(t *testing.T) {
+		bypass, err := cache.GetBypassChannelCacheForTest(t, chanID)
+		require.NoError(t, err)
+		require.NotNil(t, bypass)
+		assert.Equal(t, chanID, bypass.ChannelID())
+	})
+
+	t.Run("a failing factory propagates its error", func(t *testing.T) {
+		factoryErr := fmt.Errorf("query handler requested for unknown collectionID")
+		queryHandler.SetFactoryError(factoryErr)
+		defer queryHandler.SetFactoryError(nil)
+
+		bypass, err := cache.GetBypassChannelCacheForTest(t, chanID)
+
+		require.ErrorIs(t, err, factoryErr)
+		assert.Nil(t, bypass, "a caller handling this error has no cache to read the channel name from")
+	})
+}
