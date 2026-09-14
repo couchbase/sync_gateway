@@ -1220,3 +1220,64 @@ func TestSingleChannelCacheGetChangesComposition(t *testing.T) {
 		assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}))
 	})
 }
+
+// TestSingleChannelCachePruneAge covers pruneCacheAge, the background task that bounds channel
+// cache memory by age.
+// Entries older than ChannelCacheAge are dropped, except that ChannelCacheMinLength entries are
+// always retained regardless of age.
+func TestSingleChannelCachePruneAge(t *testing.T) {
+	chanID := channels.NewID("chanA", base.DefaultCollectionID)
+	const cacheAge = time.Minute
+
+	agedEntry := func(seq uint64, age time.Duration) *db.LogEntry {
+		entry := db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a")
+		received := time.Now().Add(-age)
+		entry.TimeReceived = channels.NewFeedTimestamp(&received)
+		return entry
+	}
+
+	// MinLength 2 gives pruning a floor to stop at; MaxLength 10 keeps length pruning out of it.
+	options := db.ChannelCacheOptions{ChannelCacheMinLength: 2, ChannelCacheMaxLength: 10, ChannelCacheAge: cacheAge}
+
+	t.Run("stale entries are pruned down to MinLength", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache := db.NewSingleChannelCacheWithOptionsForTest(t, ctx, &db.QueryHandlerForTest{}, chanID, 1, options, stats)
+		for seq := uint64(1); seq <= 5; seq++ {
+			cache.AddToCacheForTest(t, ctx, agedEntry(seq, 2*cacheAge), false)
+		}
+		active, _, _ := getCacheUtilization(stats)
+		require.Equal(t, 5, active)
+
+		cache.PruneCacheAgeForTest(t, ctx)
+
+		// MinLength is a floor: pruning stops at 2 even though all five are stale.
+		require.Len(t, cache.LogsForTest(t), 2)
+		assert.True(t, verifyChannelSequences(cache.LogsForTest(t), []uint64{4, 5}))
+
+		// validFrom must advance past the last entry dropped, not to it - the cache no longer
+		// holds seq 3, so claiming to be valid from 3 would hide it from a resuming feed.
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(4), validFrom)
+
+		active, _, _ = getCacheUtilization(stats)
+		assert.Equal(t, 2, active, "utilization must fall by the number pruned")
+	})
+
+	t.Run("entries within the age are kept", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache := db.NewSingleChannelCacheWithOptionsForTest(t, ctx, &db.QueryHandlerForTest{}, chanID, 1, options, stats)
+		for seq := uint64(1); seq <= 5; seq++ {
+			cache.AddToCacheForTest(t, ctx, agedEntry(seq, 0), false)
+		}
+
+		cache.PruneCacheAgeForTest(t, ctx)
+
+		require.Len(t, cache.LogsForTest(t), 5)
+		validFrom, _ := cache.GetCachedChanges(db.GetChangesOptionsWithZeroSeq(t))
+		assert.Equal(t, uint64(1), validFrom)
+		active, _, _ := getCacheUtilization(stats)
+		assert.Equal(t, 5, active)
+	})
+}

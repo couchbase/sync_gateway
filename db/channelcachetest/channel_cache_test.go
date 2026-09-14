@@ -156,7 +156,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	// Add another channel to cache
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_17", base.DefaultCollectionID))
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	// Validate cache size
 	assert.Equal(t, 12, cache.ChannelCachesForTest(t).Length())
@@ -203,7 +203,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	// Add another channel to cache, should trigger compaction
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	// Validate cache size
 	assert.Equal(t, 10, cache.ChannelCachesForTest(t).Length())
@@ -265,7 +265,7 @@ func TestChannelCacheCompactMixedEviction(t *testing.T) {
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
 	activeChannels.IncrChannel(channels.NewID("chan_19", base.DefaultCollectionID))
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	assert.Equal(t, 10, cache.ChannelCachesForTest(t).Length())
 
@@ -315,7 +315,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 
 	// Add another channel to cache, should trigger compaction
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	// Expect channels 1-10, 11-15 to be evicted, and all to be marked as NRU during compaction
 	assert.Equal(t, 14, cache.ChannelCachesForTest(t).Length())
@@ -353,7 +353,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 		}
 	}
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	//   1-5 are inactive, recently used
 	//   6-14 are inactive, not recently used

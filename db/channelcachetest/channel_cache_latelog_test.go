@@ -453,7 +453,7 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 
 	// Add another channel to exceed the high watermark and trigger compaction down to the low watermark.
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_17", base.DefaultCollectionID))
-	require.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 	require.Equal(t, 12, cache.ChannelCachesForTest(t).Length(), "compaction should evict down to the low watermark")
 
 	// The decisive assertion: after eviction the gauge must have been decremented to exactly the non-sentinel

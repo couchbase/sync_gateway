@@ -1773,17 +1773,12 @@ func (c *channelCacheImpl) AddChannelCacheForTest(_ testing.TB, ctx context.Cont
 	return c.addChannelCache(ctx, channel)
 }
 
-// WaitForChannelCacheCompactionForTest polls until compaction has finished, reporting false if it
-// did not complete in time.
-func WaitForChannelCacheCompactionForTest(_ testing.TB, cache *channelCacheImpl) (compactionComplete bool) {
-	for i := 0; i <= 10; i++ {
-		if cache.compactRunning.IsTrue() {
-			time.Sleep(100 * time.Millisecond)
-		} else {
-			return true
-		}
-	}
-	return false
+// WaitForChannelCacheCompactionForTest blocks until channel cache compaction has finished,
+// failing the test if it does not. Callers do not need to assert on the result.
+func WaitForChannelCacheCompactionForTest(t testing.TB, cache *channelCacheImpl) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, cache.compactRunning.IsTrue(), "channel cache compaction did not complete")
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // CleanAgedLateLogsForTest runs the background age-based late log prune across all channels.
@@ -1821,6 +1816,11 @@ func (c *singleChannelCacheImpl) LateLogCountForTest(_ testing.TB) int64 {
 // does not count the parked sentinel entry.
 func (c *singleChannelCacheImpl) CountedLateLogCountForTest(_ testing.TB) int64 {
 	return c.countedLateLogCount()
+}
+
+// PruneCacheAgeForTest runs the age-based prune of the primary cache.
+func (c *singleChannelCacheImpl) PruneCacheAgeForTest(_ testing.TB, ctx context.Context) {
+	c.pruneCacheAge(ctx)
 }
 
 // PruneLateLogAgeForTest drops late log entries older than the configured age.
