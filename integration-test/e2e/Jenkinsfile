@@ -148,7 +148,7 @@ pipeline {
     }
     post {
         always {
-            archiveArtifacts(artifacts: 'couchbase-lite-tests/environment/local/sync_gateway.log', followSymlinks: false)
+            archiveArtifacts(artifacts: 'couchbase-lite-tests/environment/local/sync_gateway*.log', followSymlinks: false)
             junit(allowEmptyResults: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml')
         }
         success {
