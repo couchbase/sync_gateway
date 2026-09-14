@@ -127,6 +127,5 @@ func NewAsyncIndexInitManager(metadataStore base.DataStore, metaKeys *base.Metad
 			metaKeys:      metaKeys,
 			processSuffix: "index_init",
 		},
-		terminator: base.NewSafeTerminator(),
 	}
 }

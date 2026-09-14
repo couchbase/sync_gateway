@@ -124,7 +124,6 @@ func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManag
 			processSuffix: "resync",
 			multiNode:     distributed,
 		},
-		terminator: base.NewSafeTerminator(),
 	}
 	if distributed {
 		b.updateDatabaseState = func(ctx context.Context, running bool) error {
