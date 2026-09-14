@@ -1182,14 +1182,14 @@ func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64
 // HasCachingFeedDelay returns true if a user has specified
 func HasCachingFeedDelay(t testing.TB) bool {
 	t.Helper()
-	return maxCachingFeedDelay(t) > 0
+	return totalCachingFeedDelay(t) > 0
 }
 
 // GetCachingFeedDelayFactor returns a multipler for increasing wait times for sequences if the test harness is
 // configured with a delayed caching feed.
 func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
 	t.Helper()
-	cachingDelay := maxCachingFeedDelay(t)
+	cachingDelay := totalCachingFeedDelay(t)
 	if cachingDelay == 0 {
 		return 1
 	}
@@ -1198,16 +1198,16 @@ func GetCachingFeedDelayFactor(t testing.TB) time.Duration {
 	return factor
 }
 
-// maxCachingFeedDelay returns the largest artificial delay configured for the caching feed, since a principal doc
-// delay applies on top of the delay applied to every event. Wait helpers that shorten their timeout when the feed is
+// totalCachingFeedDelay returns the worst-case artificial delay configured for a single caching feed event. A
+// principal doc sleeps for both delays, so they are summed. Wait helpers that shorten their timeout when the feed is
 // undelayed must see a principal doc delay too, or they time out against it.
-func maxCachingFeedDelay(t testing.TB) time.Duration {
+func totalCachingFeedDelay(t testing.TB) time.Duration {
 	t.Helper()
 	delay, err := GetCachingFeedDelay()
 	require.NoError(t, err, "Error parsing caching feed delay")
 	principalDelay, err := GetCachingFeedPrincipalDocDelay()
 	require.NoError(t, err, "Error parsing caching feed principal doc delay")
-	return max(delay, principalDelay)
+	return delay + principalDelay
 }
 
 // PutRevEntry inserts a DocumentRevision into the cache under its revID key.

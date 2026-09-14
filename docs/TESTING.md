@@ -157,8 +157,8 @@ SG_TEST_CACHING_FEED_PRINCIPAL_DOC_DELAY=100ms go test -tags cb_sg_devmode ./res
 A long-lived replication reloads its user when the caching feed notifies on that user's principal
 doc, and `WaitForPendingChanges` does not cover those notifications. Any test that grants or revokes
 access on a live BLIP connection and then asserts on the result fails deterministically under this
-delay. The fix for such a test is `rt.NewUserWaiter()` before the grant change and
-`db.WaitForUserWaiterChange()` after it.
+delay. The fix for such a test is `userWaiter := rt.NewUserWaiter(username)` before the grant
+change and `db.WaitForUserWaiterChange(t, userWaiter)` after it.
 
 ### Diagnostics
 
