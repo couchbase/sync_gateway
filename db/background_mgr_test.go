@@ -1195,7 +1195,6 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 }
 
 func TestBackgroundManagerJoinConcurrentWhileStopping(t *testing.T) {
-	t.Skip("this test might not be valid pending CBG-5435")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
@@ -1863,4 +1862,97 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 			require.NoError(t, mgr.UpdateHeartbeatDocClusterAware(ctx))
 		})
 	}
+}
+
+// gatedInitProcess holds a run inside Init until the test releases it, and then runs until its terminator closes.
+type gatedInitProcess struct {
+	initEntered chan struct{}
+	releaseInit chan struct{}
+}
+
+func (p *gatedInitProcess) Init(context.Context, MockProcessOptions, []byte) (backgroundManagerInitMode, error) {
+	close(p.initEntered)
+	<-p.releaseInit
+	return backgroundManagerInitResume, nil
+}
+
+func (p *gatedInitProcess) Run(_ context.Context, _ MockProcessOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	<-terminator.Done()
+	return nil
+}
+
+func (p *gatedInitProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) (statusOut []byte, meta []byte, err error) {
+	statusOut, err = base.JSONMarshal(status)
+	return statusOut, nil, err
+}
+
+func (p *gatedInitProcess) SetProcessStatus(context.Context, []byte, []byte) {}
+
+func (p *gatedInitProcess) ResetStatus() {}
+
+// TestBackgroundManagerJoinDoesNotResurrectStoppedProcess covers a Join that is admitted against a running cluster
+// status document and only gets as far as writing its own status after the process has been stopped everywhere.
+// The joining node has to end its run rather than put the cluster back to running, which would draw the other
+// nodes back into a process that is over.
+func TestBackgroundManagerJoinDoesNotResurrectStoppedProcess(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	clusterAwareOptions := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: testBucket.DefaultDataStore(ctx),
+		metaKeys:      base.NewMetadataKeys("test-join-after-stop"),
+		processSuffix: "join-after-stop",
+		multiNode:     true,
+	}
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+
+	runningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "join-after-stop-running",
+		Process:             &MockProcess{},
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	require.NoError(t, runningNode.Start(ctx, MockProcessOptions{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, timeout, 10*time.Millisecond)
+
+	process := &gatedInitProcess{initEntered: make(chan struct{}), releaseInit: make(chan struct{})}
+	joiningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "join-after-stop-joining",
+		Process:             process,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	var joinErr error
+	joined := make(chan struct{})
+	go func() {
+		defer close(joined)
+		joinErr = joiningNode.Join(ctx)
+	}()
+
+	// The joining node is admitted against a running status document, and then held before it writes its own.
+	base.RequireChanClosed(t, process.initEntered, "joining node did not reach Init")
+
+	require.NoError(t, runningNode.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateStopped, state)
+	}, timeout, 10*time.Millisecond)
+
+	close(process.releaseInit)
+	base.RequireChanClosed(t, joined, "Join did not return")
+	require.NoError(t, joinErr)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateStopped, joiningNode.GetRunState())
+	}, timeout, 10*time.Millisecond)
+
+	// The status writes the joining node has left to make must not move the cluster off the state it reached.
+	require.Never(t, func() bool {
+		state, err := runningNode.getClusterStatusState(ctx)
+		return err != nil || state != BackgroundProcessStateStopped
+	}, 2*BackgroundManagerStatusUpdateIntervalSecs*time.Second, 50*time.Millisecond)
 }

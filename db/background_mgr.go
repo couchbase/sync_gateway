@@ -77,21 +77,22 @@ const (
 	backgroundManagerInitResume
 )
 
-// backgroundManagerUpdateClusterStatusMode controls whether updateMultiNodeClusterAwareStatus enforces
-// consistency between the local and cluster states.
+// backgroundManagerUpdateClusterStatusMode controls  the in memory and cluster states.
 type backgroundManagerUpdateClusterStatusMode int
 
 const (
-	// backgroundManagerStatusUpdate returns errBackgroundManagerStatusNotRunning
-	// when the cluster doc shows a terminal state but the local state is running. Used by the polling loop and
-	// periodic status updates to detect that another node has stopped or completed the process.
+	// backgroundManagerStatusUpdate is used during BackgroundManager.Run where a task is running locally.
+	// Merges the current local status to the cluster doc and passes the previous
+	// status, so the process can merge its stats.
 	backgroundManagerStatusUpdate backgroundManagerUpdateClusterStatusMode = iota
-	// backgroundManagerStatusStart writes the current local status to the cluster doc unconditionally
-	// and does not pass the previous status when updating local status. Used when starting a new run.
+	// backgroundManagerStatusStart is used when starting a new run where previous stats are disregarded.
 	backgroundManagerStatusStart
-	// backgroundManagerStatusResume writes the current local status to the cluster doc unconditionally
-	// and passes the previous status when updating local status. Used when resuming an existing run.
+	// backgroundManagerStatusResume writes the current local status to the cluster doc unconditionally and passes
+	// the previous status, so the process can carry its stats forward. Used when this node starts a run that
+	// carries on from an earlier one. Used when calling Start after a previous instance called Stop without completing.
 	backgroundManagerStatusResume
+	// backgroundManagerStatusJoin is used when a new node joins an already running background manager process launched by another node. Used in only by multi node background managers.
+	backgroundManagerStatusJoin
 )
 
 type BackgroundProcessAction string
@@ -203,7 +204,8 @@ func (b *BackgroundManager[O]) callUpdateDatabaseState(ctx context.Context, runn
 // the status document.  It only starts the local process when the cluster state is
 // BackgroundProcessStateRunning; if there is no status document it returns
 // errBackgroundManagerStatusNotRunning, and for any other terminal state it returns nil
-// without starting the local process.  Only supported for multi-node background managers.
+// without starting the local process.  It also returns nil without running when the cluster ends the process while
+// this node is joining it.  Only supported for multi-node background managers.
 func (b *BackgroundManager[O]) Join(ctx context.Context) error {
 	if b.mode() != backgroundManagerModeMultiNode {
 		err := fmt.Errorf("Join is only supported for multi-node background managers (process %q)", b.name)
@@ -333,10 +335,20 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		var err error
 		if b.mode() == backgroundManagerModeMultiNode {
 			mode := backgroundManagerStatusStart
-			if isJoin || initMode == backgroundManagerInitResume {
+			switch {
+			case isJoin:
+				mode = backgroundManagerStatusJoin
+			case initMode == backgroundManagerInitResume:
 				mode = backgroundManagerStatusResume
 			}
 			err = b.updateMultiNodeClusterAwareStatus(ctx, mode)
+			if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
+				// The cluster ended the process while this node was joining it, so end the run rather than
+				// report this node running.
+				b.compareAndSwapRunState(BackgroundProcessStateRunning, stateErr.state)
+				b.Terminate()
+				return nil
+			}
 		} else {
 			err = b.UpdateSingleNodeClusterAwareStatus(ctx)
 		}
@@ -749,7 +761,7 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 		// In the case of starting a run (backgroundManagerStatusStart), don't send the previous status to
 		// BackgroundManagerProcessI so as to not process previous stats.
 		// For status updates and resuming runs, we do pass the previous status so we can merge/preserve existing stats.
-		if mode == backgroundManagerStatusUpdate || mode == backgroundManagerStatusResume {
+		if mode != backgroundManagerStatusStart {
 			previousStatus = current
 		}
 		status, metadata, err := b.getStatusWithPrevious(previousStatus)
@@ -761,18 +773,20 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			if err := base.JSONUnmarshal(current, &output); err != nil {
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
-			// If the local status is running, but another node stopped or errored, adopt that state locally so
-			// that we transition properly when our process terminates, and report not running so that caller can
-			// terminate the background manager on this node.
-			if mode == backgroundManagerStatusUpdate {
-				if status, ok := output["status"]; ok {
-					bucketState, err := unmarshalBackgroundProcessState(status)
-					if err != nil {
-						return nil, nil, false, err
-					}
-					if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
-						return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling update: another node already transitioned background process %q to terminal state %q", b.name, bucketState))
-					}
+			if currentStatus, ok := output["status"]; ok && mode != backgroundManagerStatusStart {
+				bucketState, err := unmarshalBackgroundProcessState(currentStatus)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				switch {
+				// A node joining a run must not resurrect a process the cluster has already ended.
+				case mode == backgroundManagerStatusJoin && clusterStateEndsRun(bucketState):
+					return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling join: the cluster already transitioned background process %q to state %q", b.name, bucketState))
+				// If the local status is running, but another node stopped or errored, adopt that state locally so
+				// that we transition properly when our process terminates, and report not running so that caller can
+				// terminate the background manager on this node.
+				case mode == backgroundManagerStatusUpdate && clusterStateEndsRun(bucketState) && b.GetRunState() == BackgroundProcessStateRunning:
+					return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling update: another node already transitioned background process %q to terminal state %q", b.name, bucketState))
 				}
 			}
 		}
@@ -906,6 +920,12 @@ func (b *BackgroundManager[O]) stopProcess(ctx context.Context) {
 		}
 	}
 
+}
+
+// clusterStateEndsRun reports whether a state read from the cluster status document means the process is over, so a
+// node that still considers itself running has to stop.
+func clusterStateEndsRun(state BackgroundProcessState) bool {
+	return slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, state)
 }
 
 // compareAndSwapRunState does a compare and swap on the run state. If the existing state does not match the old state then no update occurs.
