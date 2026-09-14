@@ -364,6 +364,22 @@ func (rt *RestTester) DeleteReplication(replicationID string) {
 	RequireStatus(rt.TB(), resp, http.StatusOK)
 }
 
+// StartReplication starts a replication via the REST API and waits for it to be running.
+func (rt *RestTester) StartReplication(replicationID string) {
+	rt.TB().Helper()
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+	rt.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+}
+
+// StopReplication stops a replication via the REST API and waits for it to be stopped.
+func (rt *RestTester) StopReplication(replicationID string) {
+	rt.TB().Helper()
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
+	RequireStatus(rt.TB(), resp, http.StatusOK)
+	rt.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+}
+
 func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType, conflictResolverFunc string) {
 	rt.TB().Helper()
 	replicationConfig := &db.ReplicationConfig{
