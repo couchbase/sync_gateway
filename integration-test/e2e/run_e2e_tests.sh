@@ -71,5 +71,14 @@ fi
 uv run -- ./environment/local/start_local.py "${START_LOCAL_ARGS[@]}"
 
 TOPOLOGY_CONFIG="$(cat environment/local/topology_config)"
+PYTEST_STATUS=0
 # shellcheck disable=SC2086
-uv run pytest --config "${TOPOLOGY_CONFIG}" --junitxml="tests/junit_report.xml" -o junit_logging=all -o junit_log_passing_tests=false "./tests" ${PYTEST_EXTRA_ARGS:-}
+uv run pytest --config "${TOPOLOGY_CONFIG}" --junitxml="tests/junit_report.xml" -o junit_logging=all -o junit_log_passing_tests=false "./tests" ${PYTEST_EXTRA_ARGS:-} || PYTEST_STATUS=$?
+
+# pytest exits 1 when tests ran and some failed, which Jenkins should report as UNSTABLE rather than
+# a broken build. Every other non-zero code means the suite never really ran (2 interrupted,
+# 3 internal error, 4 usage error, 5 nothing collected) and is passed through as a hard failure.
+if [[ "${PYTEST_STATUS}" -eq 1 ]]; then
+    exit 50
+fi
+exit "${PYTEST_STATUS}"
