@@ -96,6 +96,10 @@ pipeline {
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
+                    // The build history lists the build number alone, so name what identifies a run
+                    // here, the same way SyncGatewayIntegration/Jenkinsfile does.
+                    def trigger = load('integration-test/jenkinsHelpers.groovy').triggeredBy()
+                    currentBuild.description = [params.SG_COMMIT, trigger ? "for ${trigger}" : ''].findAll { it }.join(' ')
                 }
             }
         }

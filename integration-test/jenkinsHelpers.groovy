@@ -6,8 +6,9 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-// Shared Jenkins pipeline helpers - Slack notifications and GitHub commit statuses - loaded via the
-// `load` step by the Jenkinsfiles in this repo (see Jenkinsfile and integration-test/*/Jenkinsfile).
+// Shared Jenkins pipeline helpers - Slack notifications, GitHub commit statuses and build metadata -
+// loaded via the `load` step by the Jenkinsfiles in this repo (see Jenkinsfile and
+// integration-test/*/Jenkinsfile).
 
 // Builds a Slack-friendly summary of the JUnit results recorded by the 'junit' step in post.always,
 // including up to 10 failed test names (Jenkins runs post.always before success/failure/unstable/aborted,
@@ -82,6 +83,21 @@ def jiraLinkForBranch(String branch) {
     }
     def ticket = "CBG-${matcher.group(1)}"
     return "<https://jira.issues.couchbase.com/browse/${ticket}|${ticket}>"
+}
+
+// Who caused this build - the user who started it, or else the upstream job that fanned it out, as
+// "<job> #<build>". Returns '' for a trigger with neither (a timer or the SCM), where there is nobody
+// to name. Used in currentBuild.description, so a run's origin shows in the job's build history.
+def triggeredBy() {
+    def userIdCauses = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+    if (userIdCauses) {
+        return userIdCauses[0].userId ?: ''
+    }
+    def upstreamCauses = currentBuild.getBuildCauses('hudson.model.Cause$UpstreamCause')
+    if (upstreamCauses) {
+        return "${upstreamCauses[0].upstreamProject} #${upstreamCauses[0].upstreamBuild}"
+    }
+    return ''
 }
 
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
