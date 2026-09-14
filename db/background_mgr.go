@@ -39,6 +39,11 @@ const (
 	BackgroundProcessStateError     BackgroundProcessState = "error"
 )
 
+// isTerminal reports whether a run in this state has finished, as opposed to running or on its way to stopping.
+func (s BackgroundProcessState) isTerminal() bool {
+	return slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, s)
+}
+
 // errBackgroundManagerAlreadyStopping is returned when a Start or Stop is called while the process is in the Stopping
 // state.
 var errBackgroundManagerStatusAlreadyStopping = base.HTTPErrorf(http.StatusServiceUnavailable, "Process currently stopping. Wait until stopped to retry")
@@ -255,12 +260,38 @@ func (b *BackgroundManager[O]) Start(ctx context.Context, options O) error {
 	var processClusterStatus []byte
 	if b.mode() != backgroundManagerModeLocal {
 		var err error
-		processClusterStatus, _, err = b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.StatusDocID())
-		if err != nil && !base.IsDocNotFoundError(err) {
-			return pkgerrors.Wrap(err, "Failed to get current process status")
+		processClusterStatus, err = b.readClusterStatus(ctx)
+		if err != nil {
+			return err
 		}
 	}
 	return b.start(ctx, options, processClusterStatus, false)
+}
+
+// readClusterStatus returns the cluster status document, or nil when the process has not run on this cluster yet.
+func (b *BackgroundManager[O]) readClusterStatus(ctx context.Context) ([]byte, error) {
+	raw, _, err := b.clusterAwareOptions.metadataStore.GetRaw(ctx, b.clusterAwareOptions.StatusDocID())
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			return nil, nil
+		}
+		return nil, pkgerrors.Wrap(err, "Failed to get current process status")
+	}
+	return raw, nil
+}
+
+// statusFromClusterDoc returns the status recorded in a cluster status document. A document that cannot be read
+// leaves the caller with the zero status, which is how a process that has never run is treated.
+func statusFromClusterDoc(ctx context.Context, raw []byte) BackgroundManagerStatus {
+	if raw == nil {
+		return BackgroundManagerStatus{}
+	}
+	status, err := unmarshalBackgroundManagerStatus(raw)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "Could not unmarshal the cluster status before calling BackgroundManager.Run %v", err)
+		return BackgroundManagerStatus{}
+	}
+	return status
 }
 
 // start marks the process as running, calls Process.Init, and launches Process.Run in a goroutine. options are
@@ -273,21 +304,15 @@ func (b *BackgroundManager[O]) Start(ctx context.Context, options O) error {
 //   - errBackgroundManagerStatusAlreadyStopping if in the process of stopping
 //   - an error from Process.Init
 func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClusterStatus []byte, isJoin bool) error {
-	if b.mode() != backgroundManagerModeMultiNode && b.updateDatabaseState != nil {
+	mode := b.mode()
+	if mode != backgroundManagerModeMultiNode && b.updateDatabaseState != nil {
 		return fmt.Errorf("updateDatabaseState should only be set for multi-node background managers")
 	}
-	var previousStatus BackgroundManagerStatus
-	if processClusterStatus != nil {
-		var err error
-		previousStatus, err = unmarshalBackgroundManagerStatus(processClusterStatus)
-		if err != nil {
-			base.InfofCtx(ctx, base.KeyAll, "Could not unmarshal the cluster status before calling BackgroundManager.Run %v", err)
-		}
-	}
+	previousStatus := statusFromClusterDoc(ctx, processClusterStatus)
 
 	err := b.markStart(ctx, previousStatus)
 	if err != nil {
-		if b.mode() == backgroundManagerModeMultiNode && errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
+		if mode == backgroundManagerModeMultiNode && errors.Is(err, errBackgroundManagerProcessAlreadyRunning) {
 			return nil
 		}
 		return err
@@ -308,15 +333,17 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		return err
 	}
 
-	if b.mode() == backgroundManagerModeSingleNode {
+	switch mode {
+	case backgroundManagerModeSingleNode:
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
 			b.startPollingSingleNodeStatus(ctx, b.terminator)
 		})
-	}
-	if b.mode() == backgroundManagerModeMultiNode {
+	case backgroundManagerModeMultiNode:
 		b.backgroundManagerStatusUpdateWaitGroup.Go(func() {
 			b.startPollingMultiNodeStatus(ctx, b.terminator)
 		})
+	case backgroundManagerModeLocal:
+		// Nothing to poll: a local process has no cluster status document.
 	}
 	go func() {
 		err := b.Process.Run(ctx, options, b.UpdateStatusClusterAware, b.terminator)
@@ -329,14 +356,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		b.finishRun(ctx)
 	}()
 
-	if b.mode() != backgroundManagerModeLocal {
+	if mode != backgroundManagerModeLocal {
 		var err error
-		if b.mode() == backgroundManagerModeMultiNode {
-			mode := backgroundManagerStatusStart
+		if mode == backgroundManagerModeMultiNode {
+			statusMode := backgroundManagerStatusStart
 			if isJoin || initMode == backgroundManagerInitResume {
-				mode = backgroundManagerStatusResume
+				statusMode = backgroundManagerStatusResume
 			}
-			err = b.updateMultiNodeClusterAwareStatus(ctx, mode)
+			err = b.updateMultiNodeClusterAwareStatus(ctx, statusMode)
 		} else {
 			err = b.UpdateSingleNodeClusterAwareStatus(ctx)
 		}
@@ -658,7 +685,7 @@ func (b *BackgroundManager[O]) markStop(ctx context.Context) error {
 
 	// Treat the initial zero state ("") the same as a terminal state: the process was never
 	// started on this node, so there is nothing to stop.
-	if currentState == "" || slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopped, BackgroundProcessStateError}, currentState) {
+	if currentState == "" || currentState.isTerminal() {
 		return errBackgroundManagerProcessAlreadyStopped
 	}
 	b.setRunState(BackgroundProcessStateStopping)
@@ -770,7 +797,7 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 					if err != nil {
 						return nil, nil, false, err
 					}
-					if slices.Contains([]BackgroundProcessState{BackgroundProcessStateCompleted, BackgroundProcessStateStopping, BackgroundProcessStateStopped, BackgroundProcessStateError}, bucketState) && b.GetRunState() == BackgroundProcessStateRunning {
+					if (bucketState == BackgroundProcessStateStopping || bucketState.isTerminal()) && b.GetRunState() == BackgroundProcessStateRunning {
 						return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling update: another node already transitioned background process %q to terminal state %q", b.name, bucketState))
 					}
 				}
