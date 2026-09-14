@@ -55,7 +55,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: go-build
         run: go build "./..."
 
@@ -70,7 +70,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - run: go tool addlicense -check -f licenses/addlicense.tmpl .
 
   golangci:
@@ -84,7 +84,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: golangci-lint
         uses: *actions_golangci_lint_version
         with:
@@ -115,7 +115,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
@@ -155,7 +155,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Run Tests
         run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -race -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
@@ -194,7 +194,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Run Tests
         run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
@@ -231,7 +231,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Run Tests
         run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 -short -bench=. -benchtime=1x -run '!' "./..."
         shell: bash
@@ -271,7 +271,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Run Tests
         run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=skipped --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=30m -count=1 "./..."
         shell: bash
@@ -339,7 +339,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Build
         run: go build -v "./tools/stats-definition-exporter"
       - name: Run Tests
@@ -377,7 +377,7 @@ jobs:
       # go mod download would try to fetch the private EE module, which public runners can't reach
       - name: Download Go modules
         shell: bash
-        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode ./... tool > /dev/null
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: Build
         run: go build "./tools/cache_perf_tool"
   govulncheck:
