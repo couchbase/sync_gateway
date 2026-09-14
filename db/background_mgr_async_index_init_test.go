@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -34,19 +35,16 @@ func TestAsyncIndexInitConcurrentStatus(t *testing.T) {
 
 	const iterations = 10_000
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range iterations {
 			tracker.Set(collections[i%len(collections)], CollectionIndexStatusReady)
 		}
-	}()
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		for range iterations {
 			_, _, err := mgr.GetProcessStatus(BackgroundManagerStatus{}, nil)
 			assert.NoError(t, err)
 		}
-	}()
-	wg.Wait()
+	})
+	base.WaitWithTimeout(t, &wg, time.Minute)
 }
