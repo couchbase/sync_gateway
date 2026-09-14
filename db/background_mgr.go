@@ -83,21 +83,23 @@ const (
 	backgroundManagerInitResume
 )
 
-// backgroundManagerUpdateClusterStatusMode controls  the in memory and cluster states.
+// backgroundManagerUpdateClusterStatusMode says which run a write to the cluster status document belongs to. It
+// decides whether the previous status is passed to the process to merge its stats, and whether the write is refused
+// because the cluster has already ended the run.
 type backgroundManagerUpdateClusterStatusMode int
 
 const (
-	// backgroundManagerStatusUpdate is used during BackgroundManager.Run where a task is running locally.
-	// Merges the current local status to the cluster doc and passes the previous
-	// status, so the process can merge its stats.
+	// backgroundManagerStatusUpdate is a write from a run working locally. It passes the previous status so the
+	// process can merge its stats, and is refused if the cluster has already ended the run.
 	backgroundManagerStatusUpdate backgroundManagerUpdateClusterStatusMode = iota
-	// backgroundManagerStatusStart is used when starting a new run where previous stats are disregarded.
+	// backgroundManagerStatusStart is the first write of a new run. Previous stats are disregarded, so the previous
+	// status is not passed to the process.
 	backgroundManagerStatusStart
-	// backgroundManagerStatusResume writes the current local status to the cluster doc unconditionally and passes
-	// the previous status, so the process can carry its stats forward. Used when this node starts a run that
-	// carries on from an earlier one. Used when calling Start after a previous instance called Stop without completing.
+	// backgroundManagerStatusResume is the first write of a run carrying on from an earlier one, such as a Start
+	// after a Stop that did not complete. It passes the previous status so the process can carry its stats forward.
 	backgroundManagerStatusResume
-	// backgroundManagerStatusJoin is used when a new node joins an already running background manager process launched by another node. Used in only by multi node background managers.
+	// backgroundManagerStatusJoin is the first write of a node joining a run another node started. It passes the
+	// previous status, and is refused if the cluster has already ended that run. Multi node managers only.
 	backgroundManagerStatusJoin
 )
 
@@ -196,19 +198,20 @@ type StoppableBackgroundManager interface {
 // bucket separately from the standard BackgroundManagerStatusUpdateIntervalSecs interval.
 type updateStatusCallbackFunc func(ctx context.Context) error
 
-// installTerminator gives the new run its terminator. b.lock, which markStop also takes, orders this against a
-// Stop: the Stop is either already visible to the check below, or it closes the terminator once stored.
-func (b *BackgroundManager[O]) installTerminator() *base.SafeTerminator {
+// installTerminator gives the new run its terminator, and reports false when a Stop has ended the run instead.
+// b.lock, which markStop also takes, orders this against a Stop: the Stop either arrives before this decision, or
+// it closes the terminator stored here.
+func (b *BackgroundManager[O]) installTerminator() (*base.SafeTerminator, bool) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	terminator := base.NewSafeTerminator()
 	if b.GetRunState() == BackgroundProcessStateStopping {
-		terminator.Close()
+		return nil, false
 	}
 
+	terminator := base.NewSafeTerminator()
 	b.terminator.Store(terminator)
-	return terminator
+	return terminator, true
 }
 
 // GetName returns name of the background manager
@@ -343,22 +346,22 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	}
 
 	// The previous run reports a terminal state before its goroutines exit, so wait them out before installing
-	// ours. Not under b.lock: those goroutines take it through SetError and Stop.
+	// ours. Not under b.lock: the heartbeat goroutine takes it through Stop.
 	b.runWaitGroup.Wait()
 
-	terminator := b.installTerminator()
-
-	b.resetStatus()
-	b.setStartTime(time.Now().UTC())
-
-	// A Stop landed while we waited. Init is destructive - resync purges the previous run's checkpoints - so end
-	// the run rather than start one we would immediately abort.
-	if terminator.IsClosed() {
+	// A Stop landed while we waited. Both of the steps below are destructive - resetStatus discards the previous
+	// run's stats and Init purges the previous run's resync checkpoints - so end the run before either of them
+	// rather than start one we would immediately abort.
+	terminator, started := b.installTerminator()
+	if !started {
 		b.finishRun(ctx, nil)
 		return nil
 	}
 
-	if b.mode() == backgroundManagerModeSingleNode {
+	b.resetStatus()
+	b.setStartTime(time.Now().UTC())
+
+	if mode == backgroundManagerModeSingleNode {
 		b.runWaitGroup.Go(func() {
 			b.updateHeartbeatDocPeriodically(ctx, terminator)
 		})
@@ -388,14 +391,12 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			case initMode == backgroundManagerInitResume:
 				statusMode = backgroundManagerStatusResume
 			}
-			err = b.updateMultiNodeClusterAwareStatus(ctx, statusMode)
+			err = b.updateMultiNodeClusterAwareStatus(ctx, statusMode, nil)
 			if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
 				// The cluster ended the process while this node was joining it, so end the run rather than
 				// report this node running. The cluster already holds the terminal status, so settle the local
 				// state only - publishing this node's copy would overwrite it.
-				b.setPendingTerminalState(stateErr.state)
-				b.setTerminalRunState()
-				b.Terminate()
+				b.endRunWithoutPublishing(stateErr.state)
 				return nil
 			}
 		} else {
@@ -488,28 +489,56 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 //
 // Only the goroutine that owns the run may call this. Anything else records a reason with SetError instead.
 func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
+	// start calls this on its own goroutine for a run that never launched one, so join the group here rather than
+	// leave it to the caller: the next run has to wait out every path that ends a run.
+	b.runWaitGroup.Add(1)
+	defer b.runWaitGroup.Done()
+
 	if err != nil {
 		b.setLastErrorMessage(err.Error())
 	}
 	b.Terminate()
-	b.setTerminalRunState()
-	b.updateTerminalStatus(ctx)
+	b.updateTerminalStatus(ctx, b.setTerminalRunState(""))
 }
 
-// updateTerminalStatus persists the current (terminal) status and removes the heartbeat doc to allow a subsequent run.
-func (b *BackgroundManager[O]) updateTerminalStatus(ctx context.Context) {
-	if b.mode() != backgroundManagerModeLocal {
-		err := b.UpdateStatusClusterAware(ctx)
-		if err != nil {
-			if _, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); !ok {
-				base.WarnfCtx(ctx, "Failed to update terminal background manager status after finishing process: %v", err)
-			}
-		}
+// endRunWithoutPublishing ends a run that never launched Process.Run, adopting state as its terminal state without
+// writing the cluster status. Used when another node has already published the terminal status, which this node's
+// copy would overwrite.
+func (b *BackgroundManager[O]) endRunWithoutPublishing(state BackgroundProcessState) {
+	b.runWaitGroup.Add(1)
+	defer b.runWaitGroup.Done()
 
-		// Delete the heartbeat doc to allow another process to run
-		// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
-		_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
+	// Terminate before settling the state: settling admits the next run, and the terminator closed here must not
+	// be the one that run installs.
+	b.Terminate()
+	b.setTerminalRunState(state)
+}
+
+// updateTerminalStatus publishes terminal, the status the run settled on, and removes the heartbeat doc to allow a
+// subsequent run. It publishes terminal rather than the current local status because settling that state admits
+// the next run, whose status must not be written as this run's terminal status.
+func (b *BackgroundManager[O]) updateTerminalStatus(ctx context.Context, terminal BackgroundManagerStatus) {
+	mode := b.mode()
+	if mode == backgroundManagerModeLocal {
+		return
 	}
+
+	var err error
+	if mode == backgroundManagerModeMultiNode {
+		err = b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate, &terminal)
+	} else {
+		// A single node run holds the heartbeat doc until the delete below, so no other run can be writing here.
+		err = b.UpdateSingleNodeClusterAwareStatus(ctx)
+	}
+	if err != nil {
+		if _, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); !ok {
+			base.WarnfCtx(ctx, "Failed to update terminal background manager status after finishing process: %v", err)
+		}
+	}
+
+	// Delete the heartbeat doc to allow another process to run
+	// Note: We can ignore the error, worst case is the user has to wait until the heartbeat doc expires
+	_ = b.clusterAwareOptions.metadataStore.Delete(ctx, b.clusterAwareOptions.HeartbeatDocID())
 }
 
 // getClusterStatusState gets the current background process state of the cluster.
@@ -583,11 +612,21 @@ func (b *BackgroundManager[O]) getStatusLocalWithoutPrevious() (status []byte, m
 // delegating to the underlying background process. previous is the last serialized status document, used to
 // merge/preserve existing stats; pass nil when there is no previous status to merge.
 func (b *BackgroundManager[O]) getStatusWithPrevious(previous []byte) (status []byte, meta []byte, err error) {
+	return b.serializeStatus(nil, previous)
+}
+
+// serializeStatus delegates to the underlying background process to serialize the status to write. override, when
+// non-nil, is serialized in place of the local status.
+func (b *BackgroundManager[O]) serializeStatus(override *BackgroundManagerStatus, previous []byte) (status []byte, meta []byte, err error) {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
 
+	if override != nil {
+		return b.Process.GetProcessStatus(*override, previous)
+	}
+
 	backgroundStatus := b.status
-	if string(backgroundStatus.State) == "" {
+	if backgroundStatus.State == "" {
 		backgroundStatus.State = BackgroundProcessStateCompleted
 	}
 	// A run with a terminal state waiting for it is over as far as the cluster is concerned, and only the local
@@ -689,12 +728,16 @@ func (b *BackgroundManager[O]) setPendingTerminalState(state BackgroundProcessSt
 	b.pendingTerminalState = state
 }
 
-// setTerminalRunState moves the run state to its terminal value once the run has finished. An error recorded during
-// the run takes precedence over stopping or completing normally.
-func (b *BackgroundManager[O]) setTerminalRunState() {
+// setTerminalRunState moves the run state to its terminal value once the run has finished, and returns the status
+// it settled on so the caller can publish that rather than a later run's. pending is a terminal state learned from
+// the cluster, or "" to adopt the one recorded by setPendingTerminalState. An error recorded during the run takes
+// precedence over stopping or completing normally.
+func (b *BackgroundManager[O]) setTerminalRunState(pending BackgroundProcessState) BackgroundManagerStatus {
 	b.statusLock.Lock()
 	defer b.statusLock.Unlock()
-	pending := b.pendingTerminalState
+	if pending == "" {
+		pending = b.pendingTerminalState
+	}
 	b.pendingTerminalState = ""
 	switch {
 	case b.status.LastErrorMessage != "":
@@ -707,6 +750,7 @@ func (b *BackgroundManager[O]) setTerminalRunState() {
 	case b.status.State == BackgroundProcessStateRunning:
 		b.status.State = BackgroundProcessStateCompleted
 	}
+	return b.status
 }
 
 // Stop triggers a Stop of the background process. This will transition the state to BackgroundProcessStateStopping and
@@ -818,7 +862,7 @@ func (b *BackgroundManager[O]) UpdateStatusClusterAware(ctx context.Context) err
 	case backgroundManagerModeSingleNode:
 		return b.UpdateSingleNodeClusterAwareStatus(ctx)
 	case backgroundManagerModeMultiNode:
-		return b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate)
+		return b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate, nil)
 	case backgroundManagerModeLocal:
 		return nil
 	default:
@@ -846,13 +890,18 @@ func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Co
 }
 
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status.
-// When mode is backgroundManagerStatusUpdate and the cluster doc shows a terminal
-// state while the local state is running, it returns errBackgroundManagerStatusNotRunning without
-// writing. When mode is backgroundManagerStatusStart or backgroundManagerStatusResume the write always proceeds.
-func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context, mode backgroundManagerUpdateClusterStatusMode) error {
+// statusOverride, when non-nil, is written in place of that local status, so a run that has finished publishes the
+// state it settled on rather than one a later run has since set.
+//
+// The write is refused, with errBackgroundManagerStatusNotRunning and no change to the document, when the cluster
+// doc shows the run is over and this node would either report itself running (mode backgroundManagerStatusUpdate)
+// or join that run (mode backgroundManagerStatusJoin). A backgroundManagerStatusStart or
+// backgroundManagerStatusResume write always proceeds, since it claims a run of its own.
+func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context, mode backgroundManagerUpdateClusterStatusMode, statusOverride *BackgroundManagerStatus) error {
 	docID := b.clusterAwareOptions.StatusDocID()
 	var previousStatus []byte
 	var newStatus []byte
+	var publishedState BackgroundProcessState
 	_, err := b.clusterAwareOptions.metadataStore.Update(ctx, docID, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		// In the case of starting a run (backgroundManagerStatusStart), don't send the previous status to
 		// BackgroundManagerProcessI so as to not process previous stats.
@@ -860,7 +909,14 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 		if mode != backgroundManagerStatusStart {
 			previousStatus = current
 		}
-		status, metadata, err := b.getStatusWithPrevious(previousStatus)
+		status, metadata, err := b.serializeStatus(statusOverride, previousStatus)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		// Take the state from the status about to be written, rather than reading the run state again: the process
+		// serializes a state of its own, and the run state can move on in between, either of which would let a
+		// stale running status be written or reported.
+		proposedState, err := unmarshalBackgroundProcessState(status)
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -869,7 +925,7 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			if err := base.JSONUnmarshal(current, &output); err != nil {
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
-			if currentStatus, ok := output["status"]; ok && mode != backgroundManagerStatusStart {
+			if currentStatus, ok := output["status"]; ok && (mode == backgroundManagerStatusUpdate || mode == backgroundManagerStatusJoin) {
 				bucketState, err := unmarshalBackgroundProcessState(currentStatus)
 				if err != nil {
 					return nil, nil, false, err
@@ -877,12 +933,6 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 				// A cluster that has ended the run, or is on its way to ending it, is not one this node can
 				// report itself running to.
 				runIsOver := bucketState == BackgroundProcessStateStopping || bucketState.isTerminal()
-				// Take the local state from the status about to be written, rather than reading the run state
-				// again - it can move to terminal in between, which would let a stale running status be written.
-				proposedState, err := unmarshalBackgroundProcessState(status)
-				if err != nil {
-					return nil, nil, false, err
-				}
 				switch {
 				// A node joining a run must not resurrect a process the cluster has already ended.
 				case mode == backgroundManagerStatusJoin && runIsOver:
@@ -904,13 +954,16 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			return nil, nil, false, fmt.Errorf("could not marshal updated status doc %q: %w", docID, err)
 		}
 		newStatus = status
+		publishedState = proposedState
 		return outputBytes, nil, false, nil
 	})
 	if err != nil {
 		return err
 	}
 	b.Process.SetProcessStatus(ctx, previousStatus, newStatus)
-	b.callUpdateDatabaseState(ctx, b.GetRunState() == BackgroundProcessStateRunning)
+	// Mirror the state that was published, not the run state: a node that has learned the cluster ended the run
+	// keeps working until Process.Run returns, and reporting it running would start the process up again elsewhere.
+	b.callUpdateDatabaseState(ctx, publishedState == BackgroundProcessStateRunning)
 	return nil
 }
 
@@ -996,7 +1049,7 @@ func (b *BackgroundManager[O]) startPollingMultiNodeStatus(ctx context.Context, 
 	for {
 		select {
 		case <-ticker.C:
-			if err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate); err != nil {
+			if err := b.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate, nil); err != nil {
 				if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
 					// Another node ended the process. Record the state it reached and stop; the Process.Run
 					// goroutine adopts it once it has actually finished.
