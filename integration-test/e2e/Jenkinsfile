@@ -134,22 +134,37 @@ pipeline {
         stage('Run E2E Tests') {
             steps {
                 sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
-                    sh '''
-                        set -eu
-                        mkdir -p integration-test/e2e .github
-                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
-                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
-                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
-                        /bin/bash integration-test/e2e/run_e2e_tests.sh
-                    '''
+                    script {
+                        // run_e2e_tests.sh separates test failures (exit 50 -> UNSTABLE) from anything
+                        // that stopped the suite running at all (-> FAILURE). A plain sh step would collapse
+                        // both into FAILURE, so the unstable post block below would never run.
+                        def exitCode = sh(returnStatus: true, script: '''
+                            set -eu
+                            mkdir -p integration-test/e2e .github
+                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
+                            curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
+                            /bin/bash integration-test/e2e/run_e2e_tests.sh
+                        ''')
+                        if (exitCode == 50) {
+                            unstable('At least one e2e test failed')
+                        } else if (exitCode != 0) {
+                            error("E2E test run exited ${exitCode}")
+                        }
+                    }
                 }
             }
         }
     }
     post {
         always {
-            archiveArtifacts(artifacts: 'couchbase-lite-tests/environment/local/sync_gateway*.log', followSymlinks: false)
-            junit(allowEmptyResults: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml')
+            // An empty archive is tolerated so that a failure before Sync Gateway produces any log
+            // (checkout, curl, Couchbase Server startup) doesn't throw here, skip the junit step, and
+            // mask the real cause.
+            archiveArtifacts(artifacts: 'couchbase-lite-tests/environment/local/sync_gateway*.log', allowEmptyArchive: true, followSymlinks: false)
+            // This is a standalone job rather than a GitHub branch source, so there is no check run to
+            // publish to - without this the junit step logs "[Checks API] No suitable checks publisher found".
+            junit(allowEmptyResults: true, skipPublishingChecks: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml')
         }
         success {
             script {
@@ -160,6 +175,12 @@ pipeline {
                 if (dmTarget) {
                     slackSend(channel: dmTarget, color: 'good', message: message)
                 }
+            }
+        }
+        unstable {
+            script {
+                def slackUtils = load('integration-test/slackUtils.groovy')
+                slackUtils.slackSendFailure('E2E tests', 'unstable', env.BUILD_URL, e2eDetails(slackUtils))
             }
         }
         failure {
