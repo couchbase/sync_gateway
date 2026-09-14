@@ -15,6 +15,7 @@ on:
     # Only run when we change a shell script
     paths:
       - "*.sh"
+      - ".ci/*.sh"
     branches:
       - "main"
       - "release/*"
@@ -25,6 +26,7 @@ on:
     # Only run when we change a shell script
     paths:
       - "*.sh"
+      - ".ci/*.sh"
     branches:
       - "main"
       - "release/*"

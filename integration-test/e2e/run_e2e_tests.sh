@@ -28,6 +28,9 @@ fi
 if [[ "$BACKING_STORE" == "cbs" ]]; then
     : "${COUCHBASE_SERVER_VERSION:?COUCHBASE_SERVER_VERSION must be set when BACKING_STORE=cbs}"
     CBS_ENV_FILE="$(mktemp)"
+    # start_cbs.py runs cbdinocluster out of the integration-test/tools module, so warm that
+    # module cache here where a flaky proxy is retried rather than failing the whole run
+    "${REPO_DIR}/.ci/retry.sh" go -C "${REPO_DIR}/integration-test/tools" mod download
     "${REPO_DIR}/integration-test/start_cbs.py" --version "${COUCHBASE_SERVER_VERSION}" --purpose sync_gateway_e2e --env-file "${CBS_ENV_FILE}"
     # shellcheck disable=SC1090
     source "${CBS_ENV_FILE}"
@@ -41,6 +44,10 @@ git config --global filter.lfs.required true
 git config --global filter.lfs.clean "git-lfs clean -- %f"
 git config --global filter.lfs.smudge "git-lfs smudge -- %f"
 git config --global filter.lfs.process "git-lfs filter-process"
+
+# start_local.py builds Sync Gateway out of REPO_DIR further down, so warm the root module cache
+# now that the private module rewrite above is in place
+"${REPO_DIR}/.ci/retry.sh" go -C "${REPO_DIR}" mod download
 
 # Clean up any existing clone to make local re-runs idempotent
 rm -rf couchbase-lite-tests
