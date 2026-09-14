@@ -19,3 +19,9 @@ import (
 func GetCachingFeedDelay() (time.Duration, error) {
 	return 0, nil
 }
+
+// GetCachingFeedPrincipalDocDelay returns the additional delay to apply to principal documents in the caching feed.
+// If cb_sg_devmode build flag is not set, do not use.
+func GetCachingFeedPrincipalDocDelay() (time.Duration, error) {
+	return 0, nil
+}

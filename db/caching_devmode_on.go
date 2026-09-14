@@ -19,7 +19,18 @@ import (
 // GetCachingFeedDelay returns the delay to apply to processing of each DCP event in the caching feed, used for testing
 // purposes to simulate a slow feed.
 func GetCachingFeedDelay() (time.Duration, error) {
-	delayEnvVar := "SG_TEST_CACHING_FEED_DELAY"
+	return cachingFeedDelayFromEnv("SG_TEST_CACHING_FEED_DELAY")
+}
+
+// GetCachingFeedPrincipalDocDelay returns an additional delay to apply to principal (user and role) documents on the
+// caching feed, on top of GetCachingFeedDelay. Waiting on the change cache does not cover the principal doc
+// notifications that tell a live replication to reload its user, so this delay lets tests widen that window.
+func GetCachingFeedPrincipalDocDelay() (time.Duration, error) {
+	return cachingFeedDelayFromEnv("SG_TEST_CACHING_FEED_PRINCIPAL_DOC_DELAY")
+}
+
+// cachingFeedDelayFromEnv parses a caching feed delay from the named environment variable, returning zero if unset.
+func cachingFeedDelayFromEnv(delayEnvVar string) (time.Duration, error) {
 	d := os.Getenv(delayEnvVar)
 	if d == "" {
 		return 0, nil

@@ -48,6 +48,7 @@ type changeListener struct {
 	started                  base.AtomicBool    // whether the feed has been started
 	metaKeys                 *base.MetadataKeys // Metadata key formatter
 	feedDelay                time.Duration      // testing seam to add an artificial delay to processing of each DCP event in the caching feed
+	principalDocFeedDelay    time.Duration      // testing seam to add an artificial delay to processing of principal doc DCP events in the caching feed
 }
 
 // unusedSeqChannelID marks the unused sequence key for the channel cache. This is a marker that is global to all collections.
@@ -72,6 +73,10 @@ func newChangeListener(name string, groupID string, db *DatabaseContext) (*chang
 	listener.dbCtx = db
 	var err error
 	listener.feedDelay, err = GetCachingFeedDelay()
+	if err != nil {
+		return nil, err
+	}
+	listener.principalDocFeedDelay, err = GetCachingFeedPrincipalDocDelay()
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +189,9 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	// Notify for principal mutations *and* deletions to wake changes feeds.
 	docType := listener.DocumentType(event.Key)
 	if docType == DocTypeUser || docType == DocTypeRole {
+		if listener.principalDocFeedDelay > 0 {
+			time.Sleep(listener.principalDocFeedDelay)
+		}
 		// defer to notify after callback completion
 		key := channels.NewID(string(event.Key), principalDocCollectionIDForChannelID)
 		defer listener.notifyKey(listener.ctx, key)
