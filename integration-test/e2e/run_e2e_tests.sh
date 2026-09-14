@@ -45,6 +45,10 @@ git config --global filter.lfs.clean "git-lfs clean -- %f"
 git config --global filter.lfs.smudge "git-lfs smudge -- %f"
 git config --global filter.lfs.process "git-lfs filter-process"
 
+# start_local.py builds Sync Gateway out of REPO_DIR further down, so warm the root module cache
+# now that the private module rewrite above is in place
+"${REPO_DIR}/.ci/retry.sh" go -C "${REPO_DIR}" mod download
+
 # Clean up any existing clone to make local re-runs idempotent
 rm -rf couchbase-lite-tests
 

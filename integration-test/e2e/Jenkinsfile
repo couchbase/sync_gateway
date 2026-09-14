@@ -136,8 +136,11 @@ pipeline {
                 sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                     sh '''
                         set -eu
-                        mkdir -p integration-test/e2e .github
+                        mkdir -p integration-test/e2e .github .ci
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                        # run_e2e_tests.sh calls this, and SG_COMMIT may predate it, so take it from main too
+                        curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
+                        chmod +x .ci/retry.sh
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
                         curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
                         /bin/bash integration-test/e2e/run_e2e_tests.sh

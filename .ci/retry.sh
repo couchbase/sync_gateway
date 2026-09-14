@@ -19,6 +19,20 @@ set -euo pipefail
 attempts=${RETRY_ATTEMPTS:-4}
 delay=${RETRY_DELAY:-5}
 
+# without these guards, no args exits 0 without running anything and a bad attempt count skips the loop entirely
+if (($# == 0)); then
+    echo "retry: usage: .ci/retry.sh <command> [args...]" >&2
+    exit 2
+fi
+if [[ ! "${attempts}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "retry: RETRY_ATTEMPTS must be a positive integer, got '${attempts}'" >&2
+    exit 2
+fi
+if [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
+    echo "retry: RETRY_DELAY must be a non-negative integer, got '${delay}'" >&2
+    exit 2
+fi
+
 for ((attempt = 1; attempt <= attempts; attempt++)); do
     # capture the status here: $? after an if-block is the status of the if, not of the command
     status=0
