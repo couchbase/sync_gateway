@@ -470,7 +470,8 @@ func TestChannelCacheRemove(t *testing.T) {
 	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
-	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cacheStats := dbstats.Cache()
+	cache := db.NewSingleChannelCacheForTest(t, collection, channels.NewID("Test1", collectionID), 0, cacheStats)
 
 	// Add some entries to cache
 	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"), false)
@@ -484,7 +485,10 @@ func TestChannelCacheRemove(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Now remove doc1
-	cache.Remove(ctx, collectionID, []string{"doc1"}, time.Now())
+	removed := cache.Remove(ctx, collectionID, []string{"doc1"}, time.Now())
+	assert.Equal(t, 1, removed, "Remove reports what it removed")
+	active, _, _ := getCacheUtilization(cacheStats)
+	assert.Equal(t, 2, active, "utilization falls by the number removed")
 	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
@@ -494,7 +498,8 @@ func TestChannelCacheRemove(t *testing.T) {
 	// Try to remove doc5 with a startTime before it was added to ensure it's not removed
 	// This will print a debug level log:
 	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
-	cache.Remove(ctx, collectionID, []string{"doc5"}, time.Now().Add(-time.Second*5))
+	removed = cache.Remove(ctx, collectionID, []string{"doc5"}, time.Now().Add(-time.Second*5))
+	assert.Equal(t, 0, removed, "a doc received after the purge started is not removed or counted")
 	entries, err = cache.GetChanges(ctx, db.GetChangesOptionsWithZeroSeq(t))
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))

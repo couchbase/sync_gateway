@@ -16,6 +16,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/db"
 
@@ -1237,5 +1238,84 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		assert.Equal(t, "doc2", changes10[1].ID)
 		assert.Equal(t, "doc3", changes10[2].ID)
 		assert.Equal(t, "doc4", changes10[3].ID)
+	})
+}
+
+// TestChannelCacheRemoveByCollection covers channelCacheImpl.Remove, which dispatches a purge
+// across every channel cache in one collection. The existing TestChannelCacheRemove covers the
+// per-channel singleChannelCacheImpl.Remove.
+func TestChannelCacheRemoveByCollection(t *testing.T) {
+	const channelName = "chanA"
+	otherCollectionID := base.DefaultCollectionID + 1
+
+	purgeTime := time.Now()
+	entryAt := func(seq uint64, received time.Time) *db.LogEntry {
+		entry := db.MakeTestLogEntry(seq, fmt.Sprintf("doc_%d", seq), "1-a")
+		entry.TimeReceived = channels.NewFeedTimestamp(&received)
+		return entry
+	}
+	beforePurge := func(seq uint64) *db.LogEntry { return entryAt(seq, purgeTime.Add(-time.Minute)) }
+
+	t.Run("removes matching docs from the target collection only", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), stats)
+		require.NoError(t, err)
+		defer cache.Stop(ctx)
+
+		target, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, base.DefaultCollectionID))
+		other, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, otherCollectionID))
+		for seq := uint64(1); seq <= 3; seq++ {
+			target.AddToCacheForTest(t, ctx, beforePurge(seq), false)
+			other.AddToCacheForTest(t, ctx, beforePurge(seq), false)
+		}
+		active, _, _ := getCacheUtilization(stats)
+		require.Equal(t, 6, active)
+
+		count := cache.Remove(ctx, base.DefaultCollectionID, []string{"doc_1", "doc_2"}, purgeTime)
+
+		assert.Equal(t, 2, count)
+		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{3}))
+
+		// The same doc IDs exist in the other collection and must be left alone.
+		assert.True(t, verifyChannelSequences(other.LogsForTest(t), []uint64{1, 2, 3}))
+
+		active, _, _ = getCacheUtilization(stats)
+		assert.Equal(t, 4, active, "utilization must fall by the number removed")
+	})
+
+	t.Run("empty docID list is a no-op", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), stats)
+		require.NoError(t, err)
+		defer cache.Stop(ctx)
+
+		target, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, base.DefaultCollectionID))
+		target.AddToCacheForTest(t, ctx, beforePurge(1), false)
+
+		assert.Equal(t, 0, cache.Remove(ctx, base.DefaultCollectionID, nil, purgeTime))
+		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{1}))
+	})
+
+	t.Run("documents received after the purge started are kept", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), stats)
+		require.NoError(t, err)
+		defer cache.Stop(ctx)
+
+		target, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, base.DefaultCollectionID))
+		target.AddToCacheForTest(t, ctx, beforePurge(1), false)
+		// Resurrected after the purge began: removing it would discard a write the purge never saw.
+		target.AddToCacheForTest(t, ctx, entryAt(2, purgeTime.Add(time.Minute)), false)
+
+		count := cache.Remove(ctx, base.DefaultCollectionID, []string{"doc_1", "doc_2"}, purgeTime)
+
+		assert.Equal(t, 1, count)
+		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{2}))
 	})
 }
