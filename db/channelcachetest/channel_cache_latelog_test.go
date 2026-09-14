@@ -1402,3 +1402,47 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	require.Equal(t, abcCache.LateLogCountForTest(t), 1,
 		"the length force-prune should event down to one item")
 }
+
+// TestChannelCacheLateLogAgeFallback pins the late-log pruning interval's fallback. LateLogAge is
+// resolved separately from every other option - it is a local consumed straight by the background
+// task rather than a field stored on the cache - and `<= 0` falls back to DefaultLateLogAge so
+// that late-log pruning always runs.
+//
+// The fallback is observable because NewBackgroundTask rejects a non-positive interval: without
+// it, construction fails. That makes a successful construction here a real assertion about which
+// value was used, not merely that the constructor did not blow up.
+func TestChannelCacheLateLogAgeFallback(t *testing.T) {
+	newCacheWithLateLogAge := func(t *testing.T, lateLogAge time.Duration) error {
+		t.Helper()
+		// Start from the defaults so ChannelCacheAge stays valid - it schedules a background task
+		// of its own, and a non-positive value there would fail construction for unrelated reasons.
+		options := db.DefaultCacheOptions().ChannelCacheOptions
+		options.LateLogAge = lateLogAge
+
+		stats, err := base.NewSyncGatewayStats()
+		require.NoError(t, err)
+		dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+		require.NoError(t, err)
+		activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
+
+		ctx := base.TestCtx(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options, db.QueryHandlerFactoryForTest,
+			activeChannels, dbstats.Cache())
+		if err != nil {
+			return err
+		}
+		cache.Stop(ctx)
+		return nil
+	}
+
+	// Zero is the boundary, and the value a config that never set late_log_expiry_seconds
+	// produces. Without the fallback the interval would reach NewBackgroundTask as zero.
+	require.NoError(t, newCacheWithLateLogAge(t, 0), "a zero LateLogAge must fall back to the default")
+
+	// One side of the boundary: negative is equally unset, and equally rejected by
+	// NewBackgroundTask if it survives that far.
+	require.NoError(t, newCacheWithLateLogAge(t, -time.Second), "a negative LateLogAge must fall back to the default")
+
+	// The other side: a configured value is passed through and is a valid interval.
+	require.NoError(t, newCacheWithLateLogAge(t, 30*time.Second), "a positive LateLogAge must be accepted")
+}

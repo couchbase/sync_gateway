@@ -975,3 +975,125 @@ func writeEntries(entries []*db.LogEntry) {
 		log.Printf("%d:seq=%d, docID=%s, revID=%s", index, entry.Sequence, entry.DocID, entry.RevID)
 	}
 }
+
+// TestSingleChannelCacheOptionResolution pins which value wins when a cache option is supplied:
+// a positive value is used, and anything else leaves the built-in default in place.
+//
+// Every option resolves through the same `if options.X > 0` shape, so the interesting values are
+// the boundary (zero) and one either side of it. Existing tests construct a cache with options
+// and then assert that construction succeeded, which never establishes which value actually took
+// effect - so the assertions here are on the resolved option read back off the cache.
+func TestSingleChannelCacheOptionResolution(t *testing.T) {
+	const (
+		configuredLength   = 7
+		configuredChannels = 11
+	)
+	configuredAge := 23 * time.Second
+
+	// Each option under test, with the default it falls back to and a configured value that is
+	// deliberately different from that default.
+	intOptions := []struct {
+		name         string
+		set          func(*db.ChannelCacheOptions, int)
+		get          func(*db.ChannelCacheOptions) int
+		defaultValue int
+		configured   int
+	}{
+		{
+			name:         "ChannelCacheMinLength",
+			set:          func(o *db.ChannelCacheOptions, v int) { o.ChannelCacheMinLength = v },
+			get:          func(o *db.ChannelCacheOptions) int { return o.ChannelCacheMinLength },
+			defaultValue: db.DefaultChannelCacheMinLength,
+			configured:   configuredLength,
+		},
+		{
+			name:         "ChannelCacheMaxLength",
+			set:          func(o *db.ChannelCacheOptions, v int) { o.ChannelCacheMaxLength = v },
+			get:          func(o *db.ChannelCacheOptions) int { return o.ChannelCacheMaxLength },
+			defaultValue: db.DefaultChannelCacheMaxLength,
+			configured:   configuredLength,
+		},
+		{
+			name:         "MaxNumChannels",
+			set:          func(o *db.ChannelCacheOptions, v int) { o.MaxNumChannels = v },
+			get:          func(o *db.ChannelCacheOptions) int { return o.MaxNumChannels },
+			defaultValue: db.DefaultChannelCacheMaxNumber,
+			configured:   configuredChannels,
+		},
+	}
+
+	durationOptions := []struct {
+		name         string
+		set          func(*db.ChannelCacheOptions, time.Duration)
+		get          func(*db.ChannelCacheOptions) time.Duration
+		defaultValue time.Duration
+		configured   time.Duration
+	}{
+		{
+			name:         "ChannelCacheAge",
+			set:          func(o *db.ChannelCacheOptions, v time.Duration) { o.ChannelCacheAge = v },
+			get:          func(o *db.ChannelCacheOptions) time.Duration { return o.ChannelCacheAge },
+			defaultValue: db.DefaultChannelCacheAge,
+			configured:   configuredAge,
+		},
+		{
+			name:         "LateLogAge",
+			set:          func(o *db.ChannelCacheOptions, v time.Duration) { o.LateLogAge = v },
+			get:          func(o *db.ChannelCacheOptions) time.Duration { return o.LateLogAge },
+			defaultValue: db.DefaultLateLogAge,
+			configured:   configuredAge,
+		},
+	}
+
+	// resolve builds a cache with only the option under test set, and returns its resolved options.
+	resolve := func(t *testing.T, apply func(*db.ChannelCacheOptions)) *db.ChannelCacheOptions {
+		t.Helper()
+		// Start from the zero value, not the defaults, so an unset option is genuinely unset.
+		options := db.ChannelCacheOptions{}
+		apply(&options)
+		cache := db.NewSingleChannelCacheWithOptionsForTest(t, base.TestCtx(t), &db.QueryHandlerForTest{},
+			channels.NewID("chanA", base.DefaultCollectionID), 0, options, nil)
+		return cache.OptionsForTest(t)
+	}
+
+	for _, option := range intOptions {
+		t.Run(option.name, func(t *testing.T) {
+			// Zero is the boundary: the option is unset, so the default must survive. A `>=`
+			// here would take the zero instead.
+			resolved := resolve(t, func(o *db.ChannelCacheOptions) { option.set(o, 0) })
+			assert.Equal(t, option.defaultValue, option.get(resolved), "zero leaves the default in place")
+
+			// One below the boundary.
+			resolved = resolve(t, func(o *db.ChannelCacheOptions) { option.set(o, -1) })
+			assert.Equal(t, option.defaultValue, option.get(resolved), "a negative value leaves the default in place")
+
+			// One above: the configured value wins. A `<=` here would discard it.
+			resolved = resolve(t, func(o *db.ChannelCacheOptions) { option.set(o, option.configured) })
+			assert.Equal(t, option.configured, option.get(resolved), "a positive value replaces the default")
+		})
+	}
+
+	for _, option := range durationOptions {
+		t.Run(option.name, func(t *testing.T) {
+			resolved := resolve(t, func(o *db.ChannelCacheOptions) { option.set(o, 0) })
+			assert.Equal(t, option.defaultValue, option.get(resolved), "zero leaves the default in place")
+
+			resolved = resolve(t, func(o *db.ChannelCacheOptions) { option.set(o, -time.Second) })
+			assert.Equal(t, option.defaultValue, option.get(resolved), "a negative value leaves the default in place")
+
+			resolved = resolve(t, func(o *db.ChannelCacheOptions) { option.set(o, option.configured) })
+			assert.Equal(t, option.configured, option.get(resolved), "a positive value replaces the default")
+		})
+	}
+
+	// Setting one option must not disturb the others, which the per-option cases above cannot
+	// show on their own.
+	t.Run("other options untouched", func(t *testing.T) {
+		resolved := resolve(t, func(o *db.ChannelCacheOptions) { o.ChannelCacheMinLength = configuredLength })
+		assert.Equal(t, configuredLength, resolved.ChannelCacheMinLength)
+		assert.Equal(t, db.DefaultChannelCacheMaxLength, resolved.ChannelCacheMaxLength)
+		assert.Equal(t, db.DefaultChannelCacheAge, resolved.ChannelCacheAge)
+		assert.Equal(t, db.DefaultChannelCacheMaxNumber, resolved.MaxNumChannels)
+		assert.Equal(t, db.DefaultLateLogAge, resolved.LateLogAge)
+	})
+}
