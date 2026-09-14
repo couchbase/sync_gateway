@@ -28,7 +28,7 @@ _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "to
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
 DEFAULT_CBS_VERSION = "8.0.1"
 DEFAULT_SERVICES = "kv,n1ql,index"
-DEFAULT_MEMORY_MB = 3072
+DEFAULT_MEMORY_MB = 10240
 DEFAULT_NODES = 1
 # Tracks the cluster this script last allocated from a given working directory, so repeated
 # local invocations (e.g. re-running tests) reuse the running cluster instead of allocating a
