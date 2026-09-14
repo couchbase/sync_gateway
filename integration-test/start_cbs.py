@@ -28,7 +28,9 @@ _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "to
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
 DEFAULT_CBS_VERSION = "8.0.1"
 DEFAULT_SERVICES = "kv,n1ql,index"
-DEFAULT_MEMORY_MB = 10240
+# The bucket pool allocates 10 buckets of 512MB, so KV needs room for all of them at once.
+DEFAULT_KV_MEMORY_MB = 5120
+DEFAULT_INDEX_MEMORY_MB = 3072
 DEFAULT_NODES = 1
 # Tracks the cluster this script last allocated from a given working directory, so repeated
 # local invocations (e.g. re-running tests) reuse the running cluster instead of allocating a
@@ -73,6 +75,57 @@ def ensure_initialized() -> None:
     )
 
 
+def check_memory_quota(kv_memory_mb: int, index_memory_mb: int) -> None:
+    """Raise if the requested service quotas exceed what Couchbase Server accepts on a node this
+    size. cbdinocluster only reports this as a 400 partway through a deploy, which is slow and
+    buries the cause in a stack trace."""
+    result = subprocess.run(
+        ["docker", "info", "--format", "{{.MemTotal}}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    total_bytes = result.stdout.strip()
+    # If docker isn't reachable, leave the diagnosis to the deploy rather than blocking on it.
+    if result.returncode != 0 or not total_bytes.isdigit():
+        return
+    total_mb = int(total_bytes) // (1024 * 1024)
+    # ns_server caps the combined service quota at the larger of 80% of RAM and RAM - 1GB.
+    max_quota_mb = max(int(total_mb * 0.8), total_mb - 1024)
+    requested_mb = kv_memory_mb + index_memory_mb
+    if requested_mb > max_quota_mb:
+        raise RuntimeError(
+            f"Requested quotas (kv {kv_memory_mb}MB + index {index_memory_mb}MB = {requested_mb}MB) "
+            f"exceed the {max_quota_mb}MB Couchbase Server allows on a node with the Docker VM's "
+            f"{total_mb}MB of memory. Lower --kv-memory-mb/--index-memory-mb, or give Docker more "
+            "memory in its resource settings."
+        )
+
+
+def parse_services(definition: str) -> set[str] | None:
+    """Read the services out of 'cbdinocluster get-definition' output, which writes them either
+    inline ('services: [kv, n1ql]') or as an indented block list depending on the version."""
+    lines = definition.splitlines()
+    for i, line in enumerate(lines):
+        match = re.match(r"(\s*)services:\s*(.*)$", line)
+        if match is None:
+            continue
+        indent, inline = match.group(1), match.group(2).strip()
+        if inline.startswith("["):
+            return {
+                s.strip() for s in inline.strip("[]").split(",") if s.strip()
+            } or None
+        services = set()
+        for item in lines[i + 1 :]:
+            item_match = re.match(r"(\s*)-\s*(\S+)\s*$", item)
+            # A less-indented '-' starts the next node group, not another service.
+            if item_match is None or len(item_match.group(1)) <= len(indent):
+                break
+            services.add(item_match.group(2))
+        return services or None
+    return None
+
+
 def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None:
     """Return the cluster ID recorded in the cwd's state file, if it's still running and
     matches the requested version/node count/services. Otherwise return None."""
@@ -109,13 +162,8 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
     definition = result.stdout
     version_match = re.search(r"version:\s*(\S+)", definition)
     nodes_match = re.search(r"count:\s*(\S+)", definition)
-    services_match = re.search(r"services:\s*\[([^\]]*)\]", definition)
     requested_services = {s.strip() for s in services.split(",") if s.strip()}
-    existing_services = (
-        {s.strip() for s in services_match.group(1).split(",") if s.strip()}
-        if services_match
-        else None
-    )
+    existing_services = parse_services(definition)
     if (
         version_match is None
         or nodes_match is None
@@ -167,16 +215,18 @@ def main() -> None:
     parser.add_argument(
         "--kv-memory-mb",
         type=int,
-        default=int(os.environ.get("COUCHBASE_KV_MEMORY_MB", DEFAULT_MEMORY_MB)),
+        default=int(os.environ.get("COUCHBASE_KV_MEMORY_MB", DEFAULT_KV_MEMORY_MB)),
         help="KV service memory quota in MB "
-        f"(default: $COUCHBASE_KV_MEMORY_MB or {DEFAULT_MEMORY_MB})",
+        f"(default: $COUCHBASE_KV_MEMORY_MB or {DEFAULT_KV_MEMORY_MB})",
     )
     parser.add_argument(
         "--index-memory-mb",
         type=int,
-        default=int(os.environ.get("COUCHBASE_INDEX_MEMORY_MB", DEFAULT_MEMORY_MB)),
+        default=int(
+            os.environ.get("COUCHBASE_INDEX_MEMORY_MB", DEFAULT_INDEX_MEMORY_MB)
+        ),
         help="Index service memory quota in MB "
-        f"(default: $COUCHBASE_INDEX_MEMORY_MB or {DEFAULT_MEMORY_MB})",
+        f"(default: $COUCHBASE_INDEX_MEMORY_MB or {DEFAULT_INDEX_MEMORY_MB})",
     )
     parser.add_argument(
         "--tls",
@@ -197,6 +247,8 @@ def main() -> None:
     cluster_id = find_reusable_cluster(opts.version, opts.nodes, opts.services)
 
     if cluster_id is None:
+        check_memory_quota(opts.kv_memory_mb, opts.index_memory_mb)
+
         services = ", ".join(s.strip() for s in opts.services.split(",") if s.strip())
 
         # A version containing '/' is a full docker image reference (e.g.
