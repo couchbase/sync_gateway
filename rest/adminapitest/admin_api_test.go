@@ -684,11 +684,8 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 			defer rt.Close()
 			scopeName := "sg_test_0"
 
-			// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
-			// double-close panic from concurrent callback invocations.
-			docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 3)
-			for _, key := range docKeys {
-				resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace1}}/"+key, `{"value":1}`)
+			for i := range 3 {
+				resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace1}}/doc%d", i), `{"value":1}`)
 				rest.RequireStatus(t, resp, http.StatusCreated)
 			}
 
@@ -797,12 +794,9 @@ func TestResyncUsingDCPStreamReset(t *testing.T) {
 	)
 	defer rt.Close()
 
-	// All docs on vBucket 0 so a single DCP worker processes them serially, avoiding a
-	// double-close panic from concurrent callback invocations.
-	docKeys := sgtest.VBucketDocIDs(t, rt.Bucket(), 0, 5)
-	numDocs := len(docKeys)
-	for _, key := range docKeys {
-		rt.CreateTestDoc(key)
+	const numDocs = 5
+	for i := range numDocs {
+		rt.CreateTestDoc(fmt.Sprintf("doc%d", i))
 	}
 
 	rt.TakeDbOffline()
@@ -4270,10 +4264,10 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 	assert.Equal(t, base.MetadataStoreModeFallbackInactive, statusResponse.Databases["db"].MetadataStoreMode)
 }
 
-// resyncPauser blocks the resync DCP stream at the first user document it encounters. Can be
-// Paused and Released multiple times across a test.
-// Tests using this pauser must ensure all docs are on vBucket 0 (via sgtest.VBucketDocIDs) so only
-// a single DCP worker fires the callback.
+// resyncPauser blocks the resync DCP stream at the user documents it encounters, until Release is
+// called. Can be Paused and Released multiple times across a test.
+// Resync runs one goroutine per DCP worker, so several documents can be processed concurrently and
+// every blocked call is released together.
 type resyncPauser struct {
 	t           testing.TB
 	blocked     chan struct{}
@@ -4300,21 +4294,25 @@ func newResyncPauser(rt *rest.RestTester) *resyncPauser {
 	}
 }
 
-// Pause arms the pauser to block resync at the first user document it encounters. Call Release
+// Pause arms the pauser to block resync at every user document it encounters. Call Release
 // before pausing again.
 func (p *resyncPauser) Pause() {
 	if !p.callbackSet.CompareAndSwap(false, true) {
 		require.FailNow(p.t, "resyncPauser.Pause called while already paused; call Release first")
 	}
-	p.blocked = make(chan struct{})
-	p.blockCh = make(chan struct{})
+	blocked := make(chan struct{})
+	blockCh := make(chan struct{})
+	p.blocked, p.blockCh = blocked, blockCh
+	// Callbacks read the channels they were created with, so a later Pause can't race with a
+	// resync goroutine still inside the previous callback.
+	var blockedOnce sync.Once
 	p.ds.SetWriteUpdateWithXattrsCallback(func(key string) {
 		if strings.HasPrefix(key, "_sync:") {
 			return
 		}
-		close(p.blocked)
+		blockedOnce.Do(func() { close(blocked) })
 		// Runs on the resync DCP goroutine, so use the goroutine-safe wait.
-		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
+		sgtest.RequireChanClosedFromCallback(p.t, blockCh)
 	})
 }
 
@@ -4324,7 +4322,7 @@ func (p *resyncPauser) WaitUntilBlocked() {
 	base.RequireChanClosed(p.t, p.blocked)
 }
 
-// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
+// Release clears the callback and unblocks the paused docs. Fails the test if not currently paused.
 func (p *resyncPauser) Release() {
 	if !p.release() {
 		require.FailNow(p.t, "resyncPauser.Release called while not paused")
@@ -4336,7 +4334,7 @@ func (p *resyncPauser) Close() {
 	p.release()
 }
 
-// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// release clears the callback and unblocks any paused docs if currently paused, reporting whether
 // it was paused.
 func (p *resyncPauser) release() bool {
 	if !p.callbackSet.CompareAndSwap(true, false) {
