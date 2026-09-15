@@ -12,10 +12,11 @@ permissions:
 
 on:
   push:
-    # Only run when we change a shell script
+    # Only run when we change a shell script. '*' does not cross '/' in a path
+    # filter, so '**.sh' is what reaches scripts outside the repo root.
     paths:
-      - "*.sh"
-      - ".ci/*.sh"
+      - "**.sh"
+      - ".github/workflows/shell.yml"
     branches:
       - "main"
       - "release/*"
@@ -23,10 +24,11 @@ on:
       - "CBG*"
       - "ci-*"
   pull_request:
-    # Only run when we change a shell script
+    # Only run when we change a shell script. '*' does not cross '/' in a path
+    # filter, so '**.sh' is what reaches scripts outside the repo root.
     paths:
-      - "*.sh"
-      - ".ci/*.sh"
+      - "**.sh"
+      - ".github/workflows/shell.yml"
     branches:
       - "main"
       - "release/*"
