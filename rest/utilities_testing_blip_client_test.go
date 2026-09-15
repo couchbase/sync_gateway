@@ -53,10 +53,8 @@ func TestBlipTesterClientPullHandling(t *testing.T) {
 			// both cases turn on a revision being identified by its cv, which pre-4.0 clients do not do
 			requireRevAfterNoRevIsStored(t, ctx, client, btcc)
 			requireDuplicateRevIsNoop(t, ctx, client, btcc)
-		} else {
-			// replacedRev is a rev tree ID, so only pre-4.0 clients are sent one
-			requireReplacedRevIsStored(t, ctx, client, btcc)
 		}
+		requireReplacedRevIsStored(t, ctx, client, btcc)
 	})
 }
 
@@ -134,26 +132,35 @@ func requireDuplicateRevIsNoop(t *testing.T, ctx context.Context, client *BlipTe
 }
 
 // requireReplacedRevIsStored covers the replacedRev property on a pull. The client records the revision it
-// was sent under the rev ID the server replaced, so a test waiting for the revision named in the changes
-// message finds it.
+// was sent under the version the server replaced, so a test waiting for the version named in the changes
+// message finds it. Sync Gateway names the replaced revision with a cv or with a rev tree ID, depending on
+// what the client negotiated, so both forms are covered.
 func requireReplacedRevIsStored(t *testing.T, ctx context.Context, client *BlipTesterClient, btcc *BlipTesterCollectionClient) {
-	const replacedRevID = "2-def"
-	const sentRevID = "3-def"
+	replacedVersion := DocVersion{RevTreeID: "2-def"}
+	sentVersion := DocVersion{RevTreeID: "3-def"}
+	replacedRev, sentRev := replacedVersion.RevTreeID, sentVersion.RevTreeID
+	if client.UseHLV() {
+		replacedVersion = DocVersion{CV: db.Version{SourceID: "sourceC", Value: 100}}
+		sentVersion = DocVersion{CV: db.Version{SourceID: "sourceC", Value: 200}}
+		replacedRev, sentRev = replacedVersion.CV.String(), sentVersion.CV.String()
+	}
 
 	handleRev := client.pullReplication.handleRev(ctx, client)
 	for _, deleted := range []bool{false, true} {
 		docID := fmt.Sprintf("%s_replacedRev_deleted_%t", SafeDocumentName(t, t.Name()), deleted)
 		properties := blip.Properties{
 			db.RevMessageID:          docID,
-			db.RevMessageRev:         sentRevID,
-			db.RevMessageReplacedRev: replacedRevID,
+			db.RevMessageRev:         sentRev,
+			db.RevMessageReplacedRev: replacedRev,
 		}
 		if deleted {
 			properties[db.RevMessageDeleted] = "1"
 		}
 		handleRev(newTestPullMessage(btcc, db.MessageRev, properties, []byte(`{"foo":"bar"}`)))
 
-		_, _, found := btcc.GetVersion(docID, DocVersion{RevTreeID: replacedRevID})
-		assert.True(t, found, "deleted=%t: replaced revision %q is not stored on the client", deleted, replacedRevID)
+		_, _, found := btcc.GetVersion(docID, replacedVersion)
+		assert.True(t, found, "deleted=%t: replaced version %v is not stored on the client", deleted, replacedVersion)
+		_, _, found = btcc.GetVersion(docID, sentVersion)
+		assert.True(t, found, "deleted=%t: sent version %v is not stored on the client", deleted, sentVersion)
 	}
 }
