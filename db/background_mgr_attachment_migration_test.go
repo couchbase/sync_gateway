@@ -351,3 +351,82 @@ func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
 	require.NotEmpty(t, raw)
 	require.Equal(t, byte(base.SyncInfoTypeV1), raw[0], "expected V1 prefix byte from attachment migration write at ccv 4.1")
 }
+
+// TestAttachmentMigrationCheckpointsRemovedOnCompletion asserts that a completed run leaves no
+// checkpoints.
+func TestAttachmentMigrationCheckpointsRemovedOnCompletion(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	for i := range 10 {
+		docBody := Body{
+			"value":         1234,
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		}
+		_, doc, err := collection.Put(ctx, fmt.Sprintf("%s_%d", t.Name(), i), docBody)
+		require.NoError(t, err)
+		require.NotNil(t, doc.Attachments())
+	}
+
+	mgr := db.AttachmentMigrationManager
+	process := mgr.Process.(*AttachmentMigrationManager)
+
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	migrationID := getAttachmentMigrationStats(t, db).MigrationID
+	require.NotEmpty(t, migrationID)
+
+	requireDCPCheckpointsPurged(t, ctx, db.DatabaseContext, process.getCheckpointPrefix(migrationID),
+		"completed migration run %q left its DCP checkpoints behind", migrationID)
+}
+
+// TestAttachmentMigrationResetPurgesStoppedRunCheckpoints asserts that a reset purges the checkpoints
+// of the run it abandons. resetDCPMetadataIfNeeded cannot cover this, because it only ever sees the
+// new migration ID.
+func TestAttachmentMigrationResetPurgesStoppedRunCheckpoints(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	// a large number of docs is needed to stop the migration midway through without it completing first
+	for i := range 4000 {
+		docBody := Body{
+			"value":         1234,
+			BodyAttachments: map[string]any{"myatt": map[string]any{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+		}
+		_, doc, err := collection.Put(ctx, fmt.Sprintf("%s_%d", t.Name(), i), docBody)
+		require.NoError(t, err)
+		require.NotNil(t, doc.Attachments())
+	}
+
+	mgr := db.AttachmentMigrationManager
+	process := mgr.Process.(*AttachmentMigrationManager)
+
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{}))
+	wg := sync.WaitGroup{}
+	defer base.WaitWithTimeout(t, &wg, 30*time.Second)
+	wg.Go(func() {
+		waitForAttachmentMigrationDocsProcessed(t, db, 200)
+		require.NoError(t, mgr.Stop(ctx))
+	})
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateStopped)
+
+	stoppedMigrationID := getAttachmentMigrationStats(t, db).MigrationID
+	require.NotEmpty(t, stoppedMigrationID)
+
+	stoppedPrefix := process.getCheckpointPrefix(stoppedMigrationID)
+	requireDCPCheckpointsExist(t, ctx, db.DatabaseContext, stoppedPrefix,
+		"precondition: a stopped migration should have persisted checkpoints")
+
+	// reset - this abandons the stopped run's ID rather than resuming it
+	require.NoError(t, mgr.Start(ctx, AttachmentMigrationOptions{Reset: true}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	require.NotEqual(t, stoppedMigrationID, getAttachmentMigrationStats(t, db).MigrationID,
+		"reset should have started a new migration run")
+
+	requireDCPCheckpointsPurged(t, ctx, db.DatabaseContext, stoppedPrefix,
+		"reset left behind the checkpoints for abandoned migration run %q", stoppedMigrationID)
+}

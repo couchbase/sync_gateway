@@ -11,6 +11,7 @@ package base
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -23,6 +24,9 @@ type RosmarDCPClient struct {
 	doneChan   chan struct{}
 	closeOnce  sync.Once
 	terminator chan bool
+	// closeRequested distinguishes a terminated feed from one that streamed everything, since rosmar
+	// closes doneChan for both.
+	closeRequested atomic.Bool
 }
 
 // NewRosmarDCPClient creates a new DCPClient for a rosmar bucket.
@@ -65,6 +69,13 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 	// This extra goroutine can be removed if sgbucket.FeedArguments.DoneChan is changed to chan error
 	go func() {
 		<-dc.doneChan
+		// Purge checkpoints once a one-shot feed streams everything. A terminated feed keeps them so
+		// the next run can resume.
+		if dc.opts.OneShot && !dc.closeRequested.Load() {
+			if err := dc.PurgeCheckpoints(dc.ctx); err != nil {
+				WarnfCtx(dc.ctx, "Failed to purge DCP checkpoints after one-shot feed completion: %v", err)
+			}
+		}
 		close(doneChan)
 	}()
 	return doneChan, nil
@@ -73,6 +84,7 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 // Close the DCP feed. This is a non blocking operation to allow for use in a callback function.
 func (dc *RosmarDCPClient) Close() error {
 	dc.closeOnce.Do(func() {
+		dc.closeRequested.Store(true)
 		if dc.terminator != nil {
 			close(dc.terminator)
 			dc.terminator = nil
