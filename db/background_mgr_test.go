@@ -3162,3 +3162,68 @@ func TestBackgroundManagerTerminalStatusDoesNotOverwriteNewerRun(t *testing.T) {
 	require.Equal(t, BackgroundProcessStateRunning, state, "a finished run published its terminal status over the next run")
 	require.Equal(t, BackgroundProcessStateRunning, fastNode.GetRunState())
 }
+
+// TestRefusedStatusWriteClearsDatabaseState covers the database state document a node keeps for its own run. A node
+// whose status write is refused no longer holds the run, so it has to record that it is not running, or another node
+// reads that stale mirror and joins a run that is over.
+func TestRefusedStatusWriteClearsDatabaseState(t *testing.T) {
+
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	const processName = "refused-write-database-state"
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+
+	fastNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-fast",
+		Process:             &MockProcess{},
+		clusterAwareOptions: multiNodeOptions(processName, metadataStore),
+	}
+	slowProcess := newBlockingStopProcess()
+	slowNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-slow",
+		Process:             slowProcess,
+		clusterAwareOptions: multiNodeOptions(processName, metadataStore),
+	}
+	var databaseStateRunning atomic.Bool
+	slowNode.updateDatabaseState = func(_ context.Context, running bool) error {
+		databaseStateRunning.Store(running)
+		return nil
+	}
+
+	requireClusterState := func(expected BackgroundProcessState) {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			state, err := fastNode.getClusterStatusState(ctx)
+			assert.NoError(c, err)
+			assert.Equal(c, expected, state)
+		}, timeout, 10*time.Millisecond)
+	}
+
+	require.NoError(t, fastNode.Start(ctx, MockProcessOptions{}))
+	require.NoError(t, slowNode.Start(ctx, MockProcessOptions{}))
+	var releaseOnce sync.Once
+	releaseSlowRun := func() { releaseOnce.Do(func() { close(slowProcess.releaseRun) }) }
+	defer releaseSlowRun()
+	requireClusterState(BackgroundProcessStateRunning)
+	require.True(t, databaseStateRunning.Load())
+
+	// The slow node learns from the cluster that the run is over, rather than being stopped locally, so its last
+	// successful status write reported it as running.
+	require.NoError(t, fastNode.Stop(ctx))
+	requireClusterState(BackgroundProcessStateStopped)
+	base.RequireChanClosed(t, slowProcess.pastTerminator, "slow node did not learn that the run was over")
+
+	// The next run takes the status document over, so the slow node's terminal write is refused.
+	require.NoError(t, fastNode.Start(ctx, MockProcessOptions{}))
+	defer func() { require.NoError(t, fastNode.Stop(ctx)) }()
+	requireClusterState(BackgroundProcessStateRunning)
+
+	releaseSlowRun()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, slowNode.GetRunState().isTerminal(), "slow node is in state %q", slowNode.GetRunState())
+	}, timeout, 10*time.Millisecond)
+
+	require.False(t, databaseStateRunning.Load(), "the node left its database state at running after its run ended")
+}

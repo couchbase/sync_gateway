@@ -977,6 +977,11 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 		return outputBytes, nil, false, nil
 	})
 	if err != nil {
+		// A refused write means this node does not hold the run the document describes. Mirror that, or the
+		// database state document keeps this node at running and another node joins a run that is over.
+		if _, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
+			b.callUpdateDatabaseState(ctx, false)
+		}
 		return err
 	}
 	b.Process.SetProcessStatus(ctx, previousStatus, newStatus)
