@@ -1576,6 +1576,12 @@ func (qh *QueryHandlerForTest) QueryCount() int {
 /// Bridges for out-of-package test packages.
 // Deliberately thin - no assertions, no retries, no extra synchronisation.
 
+// RevisionCacheForTest exposes the database's revision cache, whose Peek and Put are already
+// exported on the interface.
+func (dbc *DatabaseContext) RevisionCacheForTest(_ testing.TB) RevisionCache {
+	return dbc.revisionCache
+}
+
 // ChannelCacheForTest exposes the database's channel cache.
 func (dbc *DatabaseContext) ChannelCacheForTest(_ testing.TB) ChannelCache {
 	return dbc.channelCache

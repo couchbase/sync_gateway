@@ -3415,3 +3415,278 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 			"the unblocked document's channels must be notified, not only the unused-sequence marker")
 	})
 }
+
+// TestProcessEntryRouting covers how processEntry decides a sequence's fate: cache it now, hold it
+// as pending, treat it as a late arrival, or drop it. TestAddPendingLogs asserts pending ordering
+// but none of these thresholds, so the boundaries between those outcomes are unpinned.
+func TestProcessEntryRouting(t *testing.T) {
+	const initialSequence = 100
+
+	t.Run("the expected next sequence is cached and raises the feed high mark", func(t *testing.T) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		cacheOptions := db.DefaultCacheOptions()
+		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		require.NoError(t, changeCache.Start(initialSequence))
+		defer changeCache.Stop(ctx)
+
+		_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
+		changeCache.UpdateStatsForTest(t, ctx)
+
+		assert.Equal(t, uint64(102), changeCache.NextSequenceForTest(t))
+		assert.Equal(t, uint64(101), database.DbStats.Database().HighSeqFeed.Value(),
+			"the highest sequence seen on the feed must advance")
+	})
+
+	t.Run("a sequence at initialSequence is dropped", func(t *testing.T) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+		// Instantiate the channel before the cache starts, so it would accept an entry at 100.
+		abcChannel := channels.NewID("ABC", collectionID)
+		_, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+		require.NoError(t, err)
+
+		cacheOptions := db.DefaultCacheOptions()
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		require.NoError(t, changeCache.Start(initialSequence))
+		defer changeCache.Stop(ctx)
+
+		// initialSequence itself was already accounted for before startup: it is neither the next
+		// sequence nor later than the startup point, so it belongs nowhere.
+		entry := db.MakeTestLogEntryForChannels(initialSequence, []string{"ABC"})
+		entry.CollectionID = collectionID
+		_ = changeCache.ProcessEntryForTest(t, ctx, entry)
+
+		cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+		require.NoError(t, err)
+		assert.Empty(t, cached, "a sequence at the startup point must not be cached as a late arrival")
+	})
+
+	t.Run("a buffered entry raises the pending high-water mark", func(t *testing.T) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		cacheOptions := db.DefaultCacheOptions()
+		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		require.NoError(t, changeCache.Start(initialSequence))
+		defer changeCache.Stop(ctx)
+
+		// 103 arrives with 101 and 102 missing, so it waits.
+		_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+		changeCache.UpdateStatsForTest(t, ctx)
+
+		assert.Equal(t, uint64(101), changeCache.NextSequenceForTest(t), "a buffered entry does not advance the feed")
+		assert.Equal(t, int64(1), database.DbStats.Cache().PendingSeqLen.Value())
+		assert.Equal(t, int64(1), database.DbStats.CBLReplicationPull().MaxPending.Value(),
+			"the pending high-water mark must record the peak, which diagnoses feed lag")
+	})
+}
+
+// TestSkippedSequenceBookkeeping covers removing sequences from the skipped list and the broadcast
+// throttle that tracks it. BroadcastSlowMode slows feed broadcasts while gaps are outstanding, so
+// inverting its condition throttles a healthy system and hammers a struggling one.
+func TestSkippedSequenceBookkeeping(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// Arriving at 103 leaves 101 and 102 to be given up on and pushed to skipped.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, changeCache.WasSkipped(101))
+		assert.True(c, changeCache.WasSkipped(102))
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// Removing a sequence that is present succeeds; one that never arrived does not.
+	require.NoError(t, changeCache.RemoveSkipped(101), "a skipped sequence can be removed")
+	assert.False(t, changeCache.WasSkipped(101))
+	assert.Error(t, changeCache.RemoveSkipped(999), "a sequence that was never skipped cannot be removed")
+
+	// 102 is still outstanding, so the throttle must stay on.
+	require.True(t, changeCache.WasSkipped(102))
+	database.BroadcastSlowMode.Store(true)
+	require.NoError(t, changeCache.RemoveSkipped(102))
+	assert.False(t, database.BroadcastSlowMode.Load(),
+		"clearing the last skipped sequence releases the broadcast throttle")
+}
+
+// TestReleaseUnusedSequenceRange covers the arm chosen for a released range of sequences, and the
+// broadcast throttle that follows. A range entirely below the next expected sequence is cleared
+// from the skipped list; clearing the last of them releases the throttle that slows feed
+// broadcasts while gaps are outstanding.
+func TestReleaseUnusedSequenceRange(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// 101 and 102 are given up on, leaving the feed throttled while they are outstanding.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, changeCache.WasSkipped(101))
+		assert.True(c, changeCache.WasSkipped(102))
+	}, 10*time.Second, 10*time.Millisecond)
+	database.BroadcastSlowMode.Store(true)
+
+	// The allocator reports 101-102 as never used, so they are no longer gaps worth waiting for.
+	changeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 101, 102, channels.NewFeedTimestampFromNow())
+
+	assert.False(t, changeCache.WasSkipped(101))
+	assert.False(t, changeCache.WasSkipped(102))
+	assert.False(t, database.BroadcastSlowMode.Load(),
+		"with no gaps left outstanding the feed broadcast throttle must be released")
+}
+
+// TestDocChangedUnusedSequenceRangeKey covers parsing the unused-sequence-range metadata document.
+// The sequence bounds are carried in the document key rather than its body, so a parsing slip
+// silently drops the release and the feed waits forever for sequences that will never arrive.
+func TestDocChangedUnusedSequenceRangeKey(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// 103 waits on 101 and 102.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	require.Equal(t, uint64(101), changeCache.NextSequenceForTest(t))
+
+	rangeEvent := func(key string) sgbucket.FeedEvent {
+		return sgbucket.FeedEvent{Synchronous: true, Key: []byte(key), CollectionID: collectionID}
+	}
+
+	// A key that does not carry two sequences is unusable and must change nothing.
+	changeCache.DocChanged(rangeEvent(database.DatabaseContext.MetadataKeys.UnusedSeqRangePrefix()+"101"), db.DocTypeUnusedSeqRange)
+	changeCache.DocChanged(rangeEvent(database.DatabaseContext.MetadataKeys.UnusedSeqRangePrefix()+"notANumber:102"), db.DocTypeUnusedSeqRange)
+	changeCache.DocChanged(rangeEvent(database.DatabaseContext.MetadataKeys.UnusedSeqRangePrefix()+"101:notANumber"), db.DocTypeUnusedSeqRange)
+	assert.Equal(t, uint64(101), changeCache.NextSequenceForTest(t), "an unparseable key releases nothing")
+
+	// A well-formed key releases the range, which lets 103 through.
+	changeCache.DocChanged(rangeEvent(database.DatabaseContext.MetadataKeys.UnusedSeqRangeKey(101, 102)), db.DocTypeUnusedSeqRange)
+	assert.Equal(t, uint64(104), changeCache.NextSequenceForTest(t), "releasing 101-102 unblocks the buffered 103")
+}
+
+// TestChangeWaiterWake covers how a blocked changes feed decides whether it was woken because
+// there are changes to read, because it should re-check for termination, or because the listener
+// closed. This is the receiving half of the notification path: the cache raising the counter is
+// only useful if the waiter agrees something happened.
+func TestChangeWaiterWake(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
+	listener := database.DatabaseContext.GetMutationListener(t)
+
+	watched := channels.NewID("ABC", collectionID)
+
+	t.Run("a change on a watched key reports changes", func(t *testing.T) {
+		waiter := listener.NewWaiter([]channels.ID{watched}, false)
+
+		// Notify before waiting, so Wait returns on the counter it finds rather than blocking.
+		listener.Notify(ctx, channels.SetOfNoValidate(watched))
+
+		assert.Equal(t, db.WaiterHasChanges, waiter.Wait(ctx))
+	})
+
+	t.Run("a termination check reports termination, not changes", func(t *testing.T) {
+		waiter := listener.NewWaiter([]channels.ID{watched}, false)
+
+		// The termination counter moves without the change counter moving, so a feed must not
+		// mistake this for new data - it would read nothing and report an empty result.
+		listener.NotifyCheckForTermination(ctx, base.SetOf(watched.Name))
+
+		assert.Equal(t, db.WaiterCheckTerminated, waiter.Wait(ctx))
+	})
+}
+
+// TestDocChangedEvictsRevisionCacheOnUnchangedCV covers the revision-cache eviction that follows a
+// conflict resolution where the local revision wins. The HLV is updated but the current version is
+// not, so the revision cache key still points at the pre-resolution body - without eviction a
+// client reading through the cache is served the losing side of a resolved conflict.
+func TestDocChangedEvictsRevisionCacheOnUnchangedCV(t *testing.T) {
+	const sourceID, versionHex = "sourceA", "0x1234"
+
+	run := func(t *testing.T, flags uint8) (evicted bool) {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+		collectionID := collection.GetCollectionID()
+
+		cacheOptions := db.DefaultCacheOptions()
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		require.NoError(t, changeCache.Start(0))
+		defer changeCache.Stop(ctx)
+
+		// Seed the cache under the CV key, which is what the eviction targets.
+		cv := db.Version{SourceID: sourceID, Value: base.HexCasToUint64(versionHex)}
+		revCache := database.DatabaseContext.RevisionCacheForTest(t)
+		require.NoError(t, revCache.Put(ctx, db.DocumentRevision{
+			DocID:     "conflictDoc",
+			RevID:     "2-local",
+			BodyBytes: []byte(`{"winner":"local"}`),
+			History:   db.Revisions{db.RevisionsStart: 2, db.RevisionsIds: []string{"local", "a"}},
+			CV:        &cv,
+		}, collectionID))
+		_, present := revCache.Peek(ctx, "conflictDoc", cv.String(), collectionID)
+		require.True(t, present, "precondition: the revision must be cached before the feed event")
+
+		syncData := db.SyncData{
+			RevAndVersion: channels.RevAndVersion{
+				RevTreeID:      "2-local",
+				CurrentSource:  sourceID,
+				CurrentVersion: versionHex,
+			},
+			Sequence: 1,
+			Flags:    flags,
+			Channels: channels.ChannelMap{"ABC": nil},
+			History:  db.RevTree{"2-local": &db.RevInfo{ID: "2-local", Channels: base.SetOf("ABC")}},
+		}
+		changeCache.DocChanged(feedEventForTest(t, "conflictDoc", collectionID, syncData), db.DocTypeDocument)
+
+		_, stillPresent := revCache.Peek(ctx, "conflictDoc", cv.String(), collectionID)
+		return !stillPresent
+	}
+
+	// The flag marks a local-wins resolution, so the cached body is stale and must go.
+	assert.True(t, run(t, channels.UnchangedCV), "an UnchangedCV mutation must evict the stale revision")
+
+	// Positive control: without the flag the cached revision is still current and must be kept.
+	// Without this, the assertion above would pass just as readily if nothing were ever cached.
+	assert.False(t, run(t, 0), "an ordinary mutation must not evict the cached revision")
+}
