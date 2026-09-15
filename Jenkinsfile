@@ -246,7 +246,7 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                def helpers = load('.ci/jenkinsHelpers.groovy')
                 helpers.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': helpers.gitCommitLink()])
             }
         }
@@ -254,14 +254,14 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                def helpers = load('.ci/jenkinsHelpers.groovy')
                 helpers.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL, ['Commit': helpers.gitCommitLink()])
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                def helpers = load('.ci/jenkinsHelpers.groovy')
                 helpers.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': helpers.gitCommitLink()])
             }
         }

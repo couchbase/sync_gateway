@@ -12,10 +12,11 @@ go test -tags cb_sg_enterprise,cb_sg_devmode ./...                    # unit tes
 - **Enterprise Edition is the default** — pass the `cb_sg_enterprise,cb_sg_devmode` build tags on every Go command unless you were specifically asked to test Community Edition. EE also needs SSH access to a private repo — see [docs/BUILD.md](docs/BUILD.md).
 - **Community Edition** is what you get with no build tags: `go build -o bin/sync_gateway .` / `go test ./...`. Only drop the tags when CE behaviour is what's being tested.
 - **If the EE dependencies can't be fetched** (no SSH access to the private repo), fall back to CE and say explicitly that the results are CE-only.
-- **CI runs both**: GitHub Actions (`.github/workflows/ci.yml`) builds and tests CE; Jenkins (`Jenkinsfile`, `jenkins-integration-build.sh`) runs EE.
+- **CI runs both**: GitHub Actions (`.github/workflows/ci.yml`) builds and tests CE; Jenkins (`Jenkinsfile`, `.ci/jenkins/integration-build.sh`) runs EE.
 - **Integration tests** against a real Couchbase Server are covered in [docs/TESTING.md](docs/TESTING.md): starting a local cluster with `integration-test/start_cbs.py`, the `SG_TEST_*` environment variables, and the bucket pool.
 - **Python tooling** (`tools/`): See [tools/AGENTS.md](tools/AGENTS.md).
 - **Lint**: CI enforces `.golangci-strict.yml`; reproduce it locally with `pre-commit run golangci-lint --all-files`. Some conventions are enforced here rather than written down — the linter message explains the fix.
+- **CI layout**: everything CI-only lives in `.ci/` — `retry.sh`, the shared pipeline helpers (`jenkinsHelpers.groovy`, `slack_usernames.yaml`), and the Jenkins job definitions under `.ci/jenkins/`. Scripts meant to also be run by hand (`build.sh`, `test.sh`, `integration-test/*.sh`, `integration-test/start_cbs.py`) stay where they are. The root `Jenkinsfile` stays put because Jenkins multibranch pipelines discover it there.
 - **CI tools** are pinned by `tool` directives in `go.mod` and run as `go tool <name>` — `gotestsum`, `addlicense`, `goimports`, `goveralls`. No install step is needed. `cbdinocluster` is pinned in its own module: `go -C integration-test/tools tool cbdinocluster`.
 
 Git: `main` is the current in-development version. Released versions and backports live in `release/x.y.z` branches. Feature branches are named `CBG-xxxx` after the Jira ticket.

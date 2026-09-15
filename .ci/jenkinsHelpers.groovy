@@ -8,7 +8,7 @@
 
 // Shared Jenkins pipeline helpers - Slack notifications, GitHub commit statuses and build metadata -
 // loaded via the `load` step by the Jenkinsfiles in this repo (see Jenkinsfile and
-// integration-test/*/Jenkinsfile).
+// .ci/jenkins/*/Jenkinsfile).
 
 // Builds a Slack-friendly summary of the JUnit results recorded by the 'junit' step in post.always,
 // including up to 10 failed test names (Jenkins runs post.always before success/failure/unstable/aborted,
@@ -101,7 +101,7 @@ def triggeredBy() {
 }
 
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
-// .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
+// .ci/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,
 // which has an UpstreamCause instead) or if the triggering user has no entry/Slack ID in the map.
 def slackUserIdForBuild() {
@@ -110,15 +110,15 @@ def slackUserIdForBuild() {
         echo('No UserIdCause on this build (not manually triggered) - skipping Slack DM')
         return null
     }
-    if (!fileExists('.github/slack_usernames.yaml')) {
-        echo('.github/slack_usernames.yaml not present (build likely failed before it could be fetched) - skipping Slack DM')
+    if (!fileExists('.ci/slack_usernames.yaml')) {
+        echo('.ci/slack_usernames.yaml not present (build likely failed before it could be fetched) - skipping Slack DM')
         return null
     }
     def githubUsername = userIdCauses[0].userId
-    def slackMap = readYaml(file: '.github/slack_usernames.yaml')
+    def slackMap = readYaml(file: '.ci/slack_usernames.yaml')
     def slackUserId = slackMap[githubUsername]
     if (!slackUserId) {
-        echo("No Slack ID mapped for '${githubUsername}' in .github/slack_usernames.yaml")
+        echo("No Slack ID mapped for '${githubUsername}' in .ci/slack_usernames.yaml")
         return null
     }
     return slackUserId
