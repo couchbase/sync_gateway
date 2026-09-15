@@ -916,7 +916,7 @@ func getAttachmentCompactionStatus(t testing.TB, db *Database) AttachmentManager
 func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
 	for _, stopPhase := range []attachmentCompactionPhase{MarkPhase, SweepPhase, CleanupPhase} {
 		t.Run(string(stopPhase), func(t *testing.T) {
-			testDb, ctx := setupTestDBDefaultCollection(t)
+			testDb, ctx := SetupTestDBDefaultCollection(t)
 			defer testDb.Close(ctx)
 			dataStore := testDb.Bucket.DefaultDataStore(ctx)
 
@@ -976,7 +976,7 @@ func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
 // TestAttachmentCompactionCheckpointsRemovedOnCompletion asserts that a completed run leaves no
 // checkpoints. Compaction persists one prefix per phase, so all three must be gone.
 func TestAttachmentCompactionCheckpointsRemovedOnCompletion(t *testing.T) {
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := SetupTestDBDefaultCollection(t)
 	defer testDb.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)

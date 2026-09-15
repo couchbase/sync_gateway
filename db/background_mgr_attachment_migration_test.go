@@ -355,7 +355,7 @@ func TestAttachmentMigrationWritesV1SyncInfoAtCcv41(t *testing.T) {
 // TestAttachmentMigrationCheckpointsRemovedOnCompletion asserts that a completed run leaves no
 // checkpoints.
 func TestAttachmentMigrationCheckpointsRemovedOnCompletion(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -386,7 +386,7 @@ func TestAttachmentMigrationCheckpointsRemovedOnCompletion(t *testing.T) {
 // of the run it abandons. resetDCPMetadataIfNeeded cannot cover this, because it only ever sees the
 // new migration ID.
 func TestAttachmentMigrationResetPurgesStoppedRunCheckpoints(t *testing.T) {
-	db, ctx := setupTestDB(t)
+	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
