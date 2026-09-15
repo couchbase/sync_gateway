@@ -104,8 +104,8 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options Attachme
 		// process from scratch with a new compaction ID. Otherwise, we should resume with the compact ID, phase and
 		// stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || options.Reset {
-			// The new compaction ID abandons the previous run's checkpoints, so remove them before
-			// minting one. Best-effort: a failure here must not block the new run.
+			// The new compaction ID abandons the previous run's checkpoints, so remove them first. A
+			// failure here must not block the new run.
 			if statusDoc.CompactID != "" {
 				if purgeErr := a.purgeAllPhaseCheckpoints(ctx, options.Database, statusDoc.CompactID); purgeErr != nil {
 					base.WarnfCtx(ctx, "Failed to delete checkpoints for previous compact ID %q: %v, these will be abandoned and unused", statusDoc.CompactID, purgeErr)
@@ -225,9 +225,8 @@ func (*AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, databa
 	)
 }
 
-// purgeAllPhaseCheckpoints removes the DCP checkpoints for every phase of the given compaction run.
-// Compaction persists one checkpoint prefix per phase, so all three must be purged or two thirds of
-// the run's checkpoints are left orphaned.
+// purgeAllPhaseCheckpoints removes the DCP checkpoints for every phase of the given compaction run,
+// which persists one checkpoint prefix per phase.
 func (a *AttachmentCompactionManager) purgeAllPhaseCheckpoints(ctx context.Context, database *Database, compactID string) error {
 	var errs []error
 	for _, phase := range []attachmentCompactionPhase{MarkPhase, SweepPhase, CleanupPhase} {
