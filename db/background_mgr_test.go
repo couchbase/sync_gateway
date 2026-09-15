@@ -1864,3 +1864,131 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 		})
 	}
 }
+
+// singleNodeOptions returns cluster aware options for a process that one node of the cluster runs at a time, held
+// by a heartbeat document. Nodes that share name see the same documents.
+func singleNodeOptions(name string, metadataStore base.DataStore) *ClusterAwareBackgroundManagerOptions {
+	return &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      base.NewMetadataKeys("test-" + name),
+		processSuffix: name,
+	}
+}
+
+// releasableProcess returns from Run when the test releases it, without waiting for its terminator, so a test can
+// end a run whose heartbeat another node has already taken over.
+type releasableProcess struct {
+	MockProcess
+	release chan struct{}
+}
+
+func (p *releasableProcess) Run(context.Context, MockProcessOptions, updateStatusCallbackFunc, *base.SafeTerminator) error {
+	<-p.release
+	return nil
+}
+
+// displacedSingleNodeRun is a single node run whose heartbeat document has expired and been claimed by a second
+// node, with the first run's goroutine still going.
+type displacedSingleNodeRun struct {
+	staleNode      *BackgroundManager[MockProcessOptions]
+	newNode        *BackgroundManager[MockProcessOptions]
+	heartbeatDocID string
+	metadataStore  base.DataStore
+	// releaseStaleRun lets the first run return. Safe to call more than once.
+	releaseStaleRun func()
+}
+
+// startDisplacedSingleNodeRun starts a single node run, expires its heartbeat document, and starts a second run of
+// the same process on another node. Both runs are live when it returns.
+func startDisplacedSingleNodeRun(t *testing.T, ctx context.Context, name string) *displacedSingleNodeRun {
+	testBucket := base.GetTestBucket(t)
+	t.Cleanup(func() { testBucket.Close(ctx) })
+	metadataStore := testBucket.DefaultDataStore(ctx)
+
+	staleProcess := &releasableProcess{release: make(chan struct{})}
+	var releaseOnce sync.Once
+	run := &displacedSingleNodeRun{
+		metadataStore:   metadataStore,
+		heartbeatDocID:  base.NewMetadataKeys("test-" + name).BackgroundProcessHeartbeatPrefix(name),
+		releaseStaleRun: func() { releaseOnce.Do(func() { close(staleProcess.release) }) },
+	}
+	t.Cleanup(run.releaseStaleRun)
+
+	run.staleNode = &BackgroundManager[MockProcessOptions]{
+		name:                name + "-stale",
+		Process:             staleProcess,
+		clusterAwareOptions: singleNodeOptions(name, metadataStore),
+	}
+	require.NoError(t, run.staleNode.Start(ctx, MockProcessOptions{}))
+
+	// The heartbeat expires while Process.Run has not returned. UpdateHeartbeatDocClusterAware names this window
+	// itself: past it, this node can no longer claim to be the only one running the process.
+	require.NoError(t, metadataStore.Delete(ctx, run.heartbeatDocID))
+
+	run.newNode = &BackgroundManager[MockProcessOptions]{
+		name:                name + "-new",
+		Process:             &MockProcess{},
+		clusterAwareOptions: singleNodeOptions(name, metadataStore),
+	}
+	require.NoError(t, run.newNode.Start(ctx, MockProcessOptions{}))
+	t.Cleanup(func() { require.NoError(t, run.newNode.Stop(ctx)) })
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := run.newNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+	return run
+}
+
+// requireStaleRunEnded releases the first run and waits for it to settle.
+func requireStaleRunEnded(t *testing.T, run *displacedSingleNodeRun) {
+	run.releaseStaleRun()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, run.staleNode.GetRunState().isTerminal(), "stale node is in state %q", run.staleNode.GetRunState())
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+}
+
+// TestSingleNodeStatusWriteDoesNotOverwriteNewRun covers a single node run that ends after another node has taken the
+// process on. Its status belongs to a run that is over, so it must not replace the status of the run in progress.
+func TestSingleNodeStatusWriteDoesNotOverwriteNewRun(t *testing.T) {
+	t.Skip("pending fix: UpdateSingleNodeClusterAwareStatus writes the status document with Set, which has nothing to compare against")
+
+	ctx := base.TestCtx(t)
+	run := startDisplacedSingleNodeRun(t, ctx, "single-node-stale-status")
+
+	requireStaleRunEnded(t, run)
+
+	state, err := run.newNode.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateRunning, state, "a finished run published its status over the run that replaced it")
+}
+
+// TestSingleNodeTerminalRunKeepsNewRunsHeartbeat covers the heartbeat document a run deletes when it ends. The
+// document belongs to whichever run holds the process, so a run that is over must not delete another run's claim.
+func TestSingleNodeTerminalRunKeepsNewRunsHeartbeat(t *testing.T) {
+	t.Skip("pending fix: updateTerminalStatus deletes the heartbeat document without checking which run it holds")
+
+	ctx := base.TestCtx(t)
+	run := startDisplacedSingleNodeRun(t, ctx, "single-node-stale-heartbeat")
+
+	requireStaleRunEnded(t, run)
+
+	_, _, err := run.metadataStore.GetRaw(ctx, run.heartbeatDocID)
+	require.NoError(t, err, "a finished run deleted the heartbeat document of the run that replaced it, which lets a third node start the same process")
+}
+
+// TestSingleNodeStopDoesNotStopTheNextRun covers a stop aimed at a run that another node has already taken over. The
+// stop must not be written to the heartbeat document of the run that replaced it.
+func TestSingleNodeStopDoesNotStopTheNextRun(t *testing.T) {
+	t.Skip("pending fix: markStop reads the heartbeat document and writes it back without a CAS, so it cannot tell which run it stops")
+
+	ctx := base.TestCtx(t)
+	run := startDisplacedSingleNodeRun(t, ctx, "single-node-stale-stop")
+
+	require.NoError(t, run.staleNode.Stop(ctx))
+
+	var heartbeat HeartbeatDoc
+	_, err := run.metadataStore.Get(ctx, run.heartbeatDocID, &heartbeat)
+	require.NoError(t, err)
+	require.False(t, heartbeat.ShouldStop, "stopping a run that was over marked the run that replaced it to stop")
+}
