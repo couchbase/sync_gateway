@@ -1835,36 +1835,38 @@ func dcpCheckpointKeys(t testing.TB, db *DatabaseContext, checkpointPrefix strin
 // existingDCPCheckpoints returns the subset of checkpoint documents for checkpointPrefix that are
 // currently present in the database's metadata store.
 func existingDCPCheckpoints(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) []string {
+// existingDCPCheckpoints returns the checkpoint documents present under checkpointPrefix. It scans the
+// metadata store rather than reading a predicted set of keys, so a document at an unexpected key is
+// still reported.
+func existingDCPCheckpoints(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string) []string {
 	t.Helper()
+	rss, ok := base.AsRangeScanStore(db.MetadataStore)
+	require.True(t, ok, "metadata store does not support range scan")
+
+	iter, err := rss.Scan(ctx, sgbucket.NewRangeScanForPrefix(checkpointPrefix), sgbucket.ScanOptions{IDsOnly: true})
+	require.NoError(t, err)
 	var found []string
-	for _, key := range dcpCheckpointKeys(t, db, checkpointPrefix, feedMode) {
-		_, _, err := db.MetadataStore.GetRaw(ctx, key)
-		if err == nil {
-			found = append(found, key)
-			continue
-		}
-		require.True(t, base.IsDocNotFoundError(err), "unexpected error reading DCP checkpoint %q: %v", key, err)
+	for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
+		found = append(found, item.ID)
 	}
+	require.NoError(t, iter.Close(ctx))
+	slices.Sort(found) // Couchbase Server returns scan results unordered
 	return found
 }
 
-// writeDCPCheckpoint persists a DCP checkpoint document for checkpointPrefix, so a test can construct
-// the state of a previous run that still owns checkpoints and assert on whether a later operation
-// purges it. The contents are irrelevant - all that matters is that a document exists at a key the
-// purge is expected to target.
-func writeDCPCheckpoint(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) {
+// requireDCPCheckpointsExist waits for checkpoints to appear under checkpointPrefix. A KV range scan
+// reads a per-vBucket snapshot view, so it can miss a document for a short time after the write.
+func requireDCPCheckpointsExist(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, msgAndArgs ...any) {
 	t.Helper()
-	if feedMode == base.DCPFeedGocb {
-		// use the real metadata writer so the document matches what a gocb feed would leave behind
-		metadata := base.NewDCPMetadataCS(ctx, db.MetadataStore, db.NumVBuckets(), base.DefaultNumWorkers, checkpointPrefix)
-		metadata.Persist(ctx, 0, []uint16{0})
-	} else {
-		key := checkpointPrefix
-		if feedMode == base.DCPFeedSharded {
-			key = fmt.Sprintf("%s%d", checkpointPrefix, 0)
-		}
-		require.NoError(t, db.MetadataStore.SetRaw(ctx, key, 0, nil, []byte("{}")))
-	}
-	require.NotEmpty(t, existingDCPCheckpoints(t, ctx, db, checkpointPrefix, feedMode),
-		"failed to seed DCP checkpoint for prefix %q", checkpointPrefix)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEmpty(c, existingDCPCheckpoints(t, ctx, db, checkpointPrefix), msgAndArgs...)
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// requireDCPCheckpointsPurged waits for every checkpoint under checkpointPrefix to be gone.
+func requireDCPCheckpointsPurged(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, msgAndArgs ...any) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Empty(c, existingDCPCheckpoints(t, ctx, db, checkpointPrefix), msgAndArgs...)
+	}, 30*time.Second, 100*time.Millisecond)
 }

@@ -24,9 +24,8 @@ type RosmarDCPClient struct {
 	doneChan   chan struct{}
 	closeOnce  sync.Once
 	terminator chan bool
-	// closeRequested records that Close was called, which means the feed was terminated rather than
-	// having streamed everything. Rosmar closes doneChan either way, so this is the only way to tell
-	// the two apart.
+	// closeRequested distinguishes a terminated feed from one that streamed everything, since rosmar
+	// closes doneChan for both.
 	closeRequested atomic.Bool
 }
 
@@ -70,13 +69,8 @@ func (dc *RosmarDCPClient) Start() (chan error, error) {
 	// This extra goroutine can be removed if sgbucket.FeedArguments.DoneChan is changed to chan error
 	go func() {
 		<-dc.doneChan
-		// On successful one-shot feed completion, purge persisted checkpoints. This matches
-		// GoCBDCPClient, which purges in deactivateVbucket once the last vBucket stream ends cleanly.
-		//
-		// A terminated feed must keep its checkpoints so the next run can resume, and rosmar closes
-		// doneChan for a termination too, so skip the purge when Close was what ended the feed. On a
-		// natural finish this check runs before doneChan is closed to the caller, so the caller cannot
-		// have called Close yet.
+		// Purge checkpoints once a one-shot feed streams everything. A terminated feed keeps them so
+		// the next run can resume.
 		if dc.opts.OneShot && !dc.closeRequested.Load() {
 			if err := dc.PurgeCheckpoints(dc.ctx); err != nil {
 				WarnfCtx(dc.ctx, "Failed to purge DCP checkpoints after one-shot feed completion: %v", err)
