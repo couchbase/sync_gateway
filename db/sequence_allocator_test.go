@@ -900,3 +900,49 @@ func getClientSequenceBatchSize(allocator *sequenceAllocator) uint64 {
 	defer allocator.mutex.Unlock()
 	return allocator.sequenceBatchSize
 }
+
+// TestSequenceAllocatorNextSequenceAfterStop verifies that sequence allocation still completes once the
+// allocator has been stopped, rather than parking the calling goroutine forever.
+func TestSequenceAllocatorNextSequenceAfterStop(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
+
+	a, err := newSequenceAllocator(ctx, bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
+	require.NoError(t, err)
+
+	// Nothing has been allocated yet, so reserveNotify is empty when the monitor goroutine exits.
+	a.Stop(ctx)
+
+	// The allocator holds no reserved sequences, so both calls below have to reserve a new batch, and every
+	// reservation notifies on reserveNotify. Results come back over a channel rather than through assertions in
+	// the goroutine, because that goroutine outlives the test if a notify blocks.
+	type allocation struct {
+		sequence uint64
+		err      error
+	}
+	allocated := make(chan allocation, 2)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 2 {
+			sequence, err := a.nextSequence(ctx)
+			allocated <- allocation{sequence: sequence, err: err}
+		}
+	})
+
+	for i := range 2 {
+		result := base.RequireChanRecv(t, allocated, "allocation %d never returned from nextSequence after Stop", i+1)
+		require.NoError(t, result.err)
+		assert.Equal(t, uint64(i+1), result.sequence)
+	}
+
+	// The sends above are buffered, so wait for the goroutine itself to finish before the deferred bucket close
+	// tears out the datastore underneath it.
+	wg.Wait()
+}
