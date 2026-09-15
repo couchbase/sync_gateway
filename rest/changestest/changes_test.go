@@ -949,3 +949,63 @@ func TestContinuousChangesRolePurge(t *testing.T) {
 	require.Len(t, feedChanges, 1)
 	require.Equal(t, "afterPurgeAllowed", feedChanges[0].ID)
 }
+
+// TestChangesFeedReplicationGauges covers the active pull-replication gauges maintained around a
+// changes request. Each feed type increments its own active gauge on entry and releases it on exit
+// via defer, so a release that runs the wrong way leaks permanently: the count only climbs, and an
+// idle cluster reports hundreds of active replications. The number stays plausible throughout,
+// which is why nothing notices.
+func TestChangesFeedReplicationGauges(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	pullStats := rt.GetDatabase().DbStats.CBLReplicationPull()
+	dbStats := rt.GetDatabase().DbStats.Database()
+
+	t.Run("a one-shot feed releases its active count", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes", "")
+		rest.RequireStatus(t, response, http.StatusOK)
+
+		assert.Equal(t, int64(1), pullStats.NumPullReplTotalOneShot.Value(), "the request is counted")
+		assert.Equal(t, int64(0), pullStats.NumPullReplActiveOneShot.Value(), "and released on completion")
+
+		// A one-shot feed must not be counted as continuous.
+		assert.Equal(t, int64(0), pullStats.NumPullReplTotalContinuous.Value())
+		assert.Equal(t, int64(0), pullStats.NumPullReplActiveContinuous.Value())
+
+		assert.Equal(t, int64(0), dbStats.NumReplicationsActive.Value(), "the overall count is released too")
+	})
+
+	t.Run("a continuous feed releases its active count", func(t *testing.T) {
+		// A short timeout ends the feed on its own, so the deferred release runs.
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?feed=continuous&timeout=100", "")
+		rest.RequireStatus(t, response, http.StatusOK)
+
+		assert.Equal(t, int64(1), pullStats.NumPullReplTotalContinuous.Value(), "the request is counted")
+		assert.Equal(t, int64(0), pullStats.NumPullReplActiveContinuous.Value(), "and released on completion")
+
+		// The earlier one-shot request is the only one counted there.
+		assert.Equal(t, int64(1), pullStats.NumPullReplTotalOneShot.Value())
+		assert.Equal(t, int64(0), pullStats.NumPullReplActiveOneShot.Value())
+
+		assert.Equal(t, int64(0), dbStats.NumReplicationsActive.Value())
+	})
+
+	// Ordered last: a longpoll feed is also counted as continuous, so running it earlier would
+	// perturb the continuous assertions above.
+	t.Run("a waiting feed releases its caught-up count", func(t *testing.T) {
+		// A longpoll feed with nothing to send parks in ChangeWaiter.Wait, which is counted as
+		// caught-up for the duration. The count is a gauge of feeds waiting right now, so failing
+		// to release it leaves every feed that ever waited counted forever.
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?feed=longpoll&since=999&timeout=100", "")
+		rest.RequireStatus(t, response, http.StatusOK)
+
+		assert.Positive(t, pullStats.NumPullReplTotalCaughtUp.Value(), "the wait is counted")
+
+		// The handler returns once the feed is done writing, but the goroutine serving it releases
+		// the gauge a moment later, so settle rather than sampling immediately.
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(0), pullStats.NumPullReplCaughtUp.Value())
+		}, 10*time.Second, 10*time.Millisecond, "the caught-up gauge must be released when the wait ends")
+	})
+}

@@ -1824,6 +1824,12 @@ func (c *singleChannelCacheImpl) CountedLateLogCountForTest(_ testing.TB) int64 
 	return c.countedLateLogCount()
 }
 
+// WaitForSequenceNotSkippedForTest blocks until the sequence is no longer in the skipped list, or
+// the wait expires.
+func (c *changeCache) WaitForSequenceNotSkippedForTest(_ testing.TB, ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
+	return c.waitForSequenceNotSkipped(ctx, sequence, maxWaitTime)
+}
+
 // PruneCacheAgeForTest runs the age-based prune of the primary cache.
 func (c *singleChannelCacheImpl) PruneCacheAgeForTest(_ testing.TB, ctx context.Context) {
 	c.pruneCacheAge(ctx)

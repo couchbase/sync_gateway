@@ -3690,3 +3690,73 @@ func TestDocChangedEvictsRevisionCacheOnUnchangedCV(t *testing.T) {
 	// Without this, the assertion above would pass just as readily if nothing were ever cached.
 	assert.False(t, run(t, 0), "an ordinary mutation must not evict the cached revision")
 }
+
+// TestMaxStableCachedWithSkippedSequence covers the stable sequence reported while a gap is
+// outstanding. Everything from the oldest skipped sequence onwards is unsafe to treat as complete,
+// so the stable point is the sequence immediately before it - one too high and a feed would skip
+// the gap when it is eventually filled.
+func TestMaxStableCachedWithSkippedSequence(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// With no gaps, everything cached is stable.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
+	changeCache.UpdateStatsForTest(t, ctx)
+	require.Equal(t, uint64(101), database.DbStats.Cache().HighSeqStable.Value())
+
+	// 103 arrives leaving 102 behind, which is eventually given up on.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, changeCache.WasSkipped(102))
+	}, 10*time.Second, 10*time.Millisecond)
+
+	changeCache.UpdateStatsForTest(t, ctx)
+	assert.Equal(t, uint64(101), database.DbStats.Cache().HighSeqStable.Value(),
+		"the stable point stops immediately below the oldest gap")
+}
+
+// TestWaitForSequenceNotSkipped covers the wait used when a caller needs a skipped sequence
+// resolved before proceeding. It must return once the sequence leaves the skipped list, and report
+// an error if it never does.
+func TestWaitForSequenceNotSkipped(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, changeCache.Start(initialSequence))
+	defer changeCache.Stop(ctx)
+
+	// A sequence already delivered and never skipped needs no wait at all.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
+	require.NoError(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 101, time.Second))
+
+	// Leave 102 skipped, then resolve it by delivering it.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, changeCache.WasSkipped(102))
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// While it is still skipped the wait must not report success.
+	assert.Error(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 102, 50*time.Millisecond),
+		"a sequence still in the skipped list is not resolved")
+
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(102, "doc102", "1-a"))
+	assert.NoError(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 102, 5*time.Second),
+		"once delivered, the sequence is resolved")
+}
