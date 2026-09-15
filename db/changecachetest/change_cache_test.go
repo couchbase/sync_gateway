@@ -3141,6 +3141,8 @@ func TestDocChangedFeedLatencyStat(t *testing.T) {
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+	// Init records the current time, which would leave a back-dated write as the earlier of the two.
+	changeCache.SetInitTimeForTest(t, time.Now().Add(-time.Hour))
 	require.NoError(t, changeCache.Start(0))
 	defer changeCache.Stop(ctx)
 
@@ -3151,7 +3153,7 @@ func TestDocChangedFeedLatencyStat(t *testing.T) {
 		Sequence:      1,
 		Channels:      channels.ChannelMap{"ABC": nil},
 		History:       db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
-		TimeSaved:     time.Now(),
+		TimeSaved:     time.Now().Add(-time.Minute),
 	}
 	changeCache.DocChanged(feedEventForTest(t, "latencyDoc", collectionID, syncData), db.DocTypeDocument)
 
@@ -3638,6 +3640,9 @@ func TestChangeWaiterWake(t *testing.T) {
 // not, so the revision cache key still points at the pre-resolution body - without eviction a
 // client reading through the cache is served the losing side of a resolved conflict.
 func TestDocChangedEvictsRevisionCacheOnUnchangedCV(t *testing.T) {
+	if base.TestDisableRevCache() {
+		t.Skip("test requires the revision cache to be enabled - a bypass cache has nothing to evict")
+	}
 	const sourceID, versionHex = "sourceA", "0x1234"
 
 	run := func(t *testing.T, flags uint8) (evicted bool) {

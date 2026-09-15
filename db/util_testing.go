@@ -1622,6 +1622,13 @@ func NewChangeCacheForTest(_ testing.TB) *changeCache {
 	return &changeCache{}
 }
 
+// SetInitTimeForTest overrides the time the cache considers itself to have started. Feed latency is
+// measured from this point for documents written before it, so a test that needs a known elapsed
+// time has to place it rather than take whatever Init recorded.
+func (c *changeCache) SetInitTimeForTest(_ testing.TB, initTime time.Time) {
+	c.initTime = initTime
+}
+
 // ChangeCacheForTest exposes the database's own change cache.
 func (dbc *DatabaseContext) ChangeCacheForTest(_ testing.TB) *changeCache {
 	return &dbc.changeCache
