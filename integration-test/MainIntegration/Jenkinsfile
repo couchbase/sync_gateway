@@ -2,53 +2,53 @@
 // in the top-level Jenkinsfile). Coverage takes into account Rosmar and Couchbase Server runs in combination
 // for a complete summary.
 
-// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
+// Details block included in every Slack message for this pipeline (see jenkinsHelpers.groovy).
 // Server version and edition are deliberately absent - see the note on parameters below.
-def slackDetails(slackUtils) {
+def slackDetails(helpers) {
     def details = [
         SG_COMMIT: params.SG_COMMIT,
-        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        GIT_COMMIT: helpers.githubCommitLink(env.GIT_COMMIT),
     ]
-    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    def ticketLink = helpers.jiraLinkForBranch(params.SG_COMMIT)
     if (ticketLink) {
         details['Ticket'] = ticketLink
     }
     return details
 }
 
-// Sends the build result to Slack. slackUtils.groovy is fetched in the Checkout stage, so it can be absent
-// if the build failed before that point - fall back to a bare message rather than throwing out of the post
-// block, which would leave the failure unreported entirely.
+// Sends the build result to Slack. jenkinsHelpers.groovy is fetched in the Checkout stage, so it can be
+// absent if the build failed before that point - fall back to a bare message rather than throwing out of the
+// post block, which would leave the failure unreported entirely.
 def notifySlack(String status) {
     def color = ['passed': 'good', 'aborted': 'warning'].get(status, 'danger')
-    if (!fileExists('integration-test/slackUtils.groovy')) {
+    if (!fileExists('integration-test/jenkinsHelpers.groovy')) {
         slackSend(channel: 'syncgatewaybot', color: color, message: ":x: *MainIntegration ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
         return
     }
-    def slackUtils = load('integration-test/slackUtils.groovy')
-    if (status == 'aborted' && slackUtils.isSelfCancelledAdhocBuild()) {
+    def helpers = load('integration-test/jenkinsHelpers.groovy')
+    if (status == 'aborted' && helpers.isSelfCancelledAdhocBuild()) {
         echo('Build was started and cancelled by the same user - skipping Slack notification')
         return
     }
     // Only a genuine failure goes through slackSendFailure(), which DMs the triggering user or escalates
     // to #syncgatewaybot-alerts. An abort nobody chose is still worth recording, but not escalating.
     if (status == 'unstable' || status == 'build failure') {
-        slackUtils.slackSendFailure('MainIntegration', status, env.BUILD_URL, slackDetails(slackUtils))
+        helpers.slackSendFailure('MainIntegration', status, env.BUILD_URL, slackDetails(helpers))
         return
     }
-    slackSend(channel: 'syncgatewaybot', color: color, message: slackUtils.slackMessage('MainIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
+    slackSend(channel: 'syncgatewaybot', color: color, message: helpers.slackMessage('MainIntegration', status, env.BUILD_URL, slackDetails(helpers)))
 }
 
 // Reports this job's result as the sgw-jenkins-main-integration-test commit status on GitHub (see
-// integration-test/githubUtils.groovy). That file is fetched in the Checkout stage, so it can be absent if
-// the build failed before that point - skip rather than throwing out of a post block, which would leave the
-// result unreported entirely.
+// jenkinsHelpers.groovy). That file is fetched in the Checkout stage, so it can be absent if the build
+// failed before that point - skip rather than throwing out of a post block, which would leave the result
+// unreported entirely.
 def notifyGitHub(String status) {
-    if (!fileExists('integration-test/githubUtils.groovy')) {
-        echo('integration-test/githubUtils.groovy not present - skipping GitHub commit status')
+    if (!fileExists('integration-test/jenkinsHelpers.groovy')) {
+        echo('integration-test/jenkinsHelpers.groovy not present - skipping GitHub commit status')
         return
     }
-    load('integration-test/githubUtils.groovy').notifyCommitStatus('sgw-jenkins-main-integration-test', 'Integration tests', status)
+    load('integration-test/jenkinsHelpers.groovy').notifyCommitStatus('sgw-jenkins-main-integration-test', 'Integration tests', status)
 }
 
 pipeline {
@@ -91,12 +91,15 @@ pipeline {
                 // ones from main instead.
                 sh '''
                     set -eu
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/githubUtils.groovy -o integration-test/githubUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/jenkinsHelpers.groovy -o integration-test/jenkinsHelpers.groovy
                 '''
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
+                    // The build history lists the build number alone, so name what identifies a run
+                    // here, the same way SyncGatewayIntegration/Jenkinsfile does.
+                    def trigger = load('integration-test/jenkinsHelpers.groovy').triggeredBy()
+                    currentBuild.description = [params.SG_COMMIT, trigger ? "for ${trigger}" : ''].findAll { it }.join(' ')
                 }
             }
         }

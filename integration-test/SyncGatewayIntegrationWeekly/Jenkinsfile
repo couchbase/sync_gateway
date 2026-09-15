@@ -100,6 +100,9 @@ pipeline {
                         }
                     }
                     echo("Resolved GA ${ga76}, ${ga80} and tips ${tip76}, ${tip80}, ${tip85}")
+                    // The resolved tags change from sweep to sweep, so record them on the build itself
+                    // rather than leaving the console log as the only place they appear.
+                    currentBuild.description = [ga76, ga80, shortServer(tip76), shortServer(tip80), shortServer(tip85)].join(', ')
 
                     // Anything not named here takes the child job's own default: EE, rev cache enabled.
                     def combinations = [

@@ -1,10 +1,10 @@
-// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
-// The Checkout stage overwrites integration-test/slackUtils.groovy and .github/slack_usernames.yaml with
+// Details block included in every Slack message for this pipeline (see jenkinsHelpers.groovy).
+// The Checkout stage overwrites integration-test/jenkinsHelpers.groovy and .github/slack_usernames.yaml with
 // the latest versions from main, so both stay current regardless of which SG_COMMIT is under test.
-def e2eDetails(slackUtils) {
+def e2eDetails(helpers) {
     return [
-        SG_COMMIT: slackUtils.refLink(params.SG_COMMIT),
-        Commit: slackUtils.gitCommitLink(),
+        SG_COMMIT: helpers.refLink(params.SG_COMMIT),
+        Commit: helpers.gitCommitLink(),
         BACKING_STORE: params.BACKING_STORE,
         COUCHBASE_LITE_VERSION: params.COUCHBASE_LITE_VERSION,
         COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
@@ -12,16 +12,16 @@ def e2eDetails(slackUtils) {
 }
 
 // Reports this job's result as the sgw-jenkins-e2e-test-<backing store> commit status on GitHub (see
-// integration-test/githubUtils.groovy). BACKING_STORE is part of the context so a rosmar run and a cbs run
-// of the same commit don't overwrite each other. githubUtils.groovy is fetched in the Checkout stage, so it
-// can be absent if the build failed before that point - skip rather than throwing out of a post block,
-// which would leave the result unreported entirely.
+// jenkinsHelpers.groovy). BACKING_STORE is part of the context so a rosmar run and a cbs run of the same
+// commit don't overwrite each other. That file is fetched in the Checkout stage, so it can be absent if the
+// build failed before that point - skip rather than throwing out of a post block, which would leave the
+// result unreported entirely.
 def notifyGitHub(String status) {
-    if (!fileExists('integration-test/githubUtils.groovy')) {
-        echo('integration-test/githubUtils.groovy not present - skipping GitHub commit status')
+    if (!fileExists('integration-test/jenkinsHelpers.groovy')) {
+        echo('integration-test/jenkinsHelpers.groovy not present - skipping GitHub commit status')
         return
     }
-    load('integration-test/githubUtils.groovy').notifyCommitStatus("sgw-jenkins-e2e-test-${params.BACKING_STORE}", 'E2E tests', status)
+    load('integration-test/jenkinsHelpers.groovy').notifyCommitStatus("sgw-jenkins-e2e-test-${params.BACKING_STORE}", 'E2E tests', status)
 }
 
 pipeline {
@@ -157,13 +157,21 @@ pipeline {
                     # run_e2e_tests.sh calls this, and SG_COMMIT may predate it, so take it from main too
                     curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
                     chmod +x .ci/retry.sh
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/githubUtils.groovy -o integration-test/githubUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/jenkinsHelpers.groovy -o integration-test/jenkinsHelpers.groovy
                     curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.github/slack_usernames.yaml -o .github/slack_usernames.yaml
                 '''
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
+                    // The build history lists the build number alone, so name the parameters that
+                    // identify a run here, the same way SyncGatewayIntegration/Jenkinsfile does.
+                    def trigger = load('integration-test/jenkinsHelpers.groovy').triggeredBy()
+                    def backingStore = params.BACKING_STORE == 'cbs' ? "cbs ${params.COUCHBASE_SERVER_VERSION}" : params.BACKING_STORE
+                    currentBuild.description = [
+                        params.SG_COMMIT,
+                        trigger ? "for ${trigger}" : '',
+                        "on CBL ${params.COUCHBASE_LITE_VERSION}, ${backingStore}",
+                    ].findAll { it }.join(' ')
                 }
             }
         }
@@ -198,10 +206,10 @@ pipeline {
         success {
             script {
                 notifyGitHub('passed')
-                def slackUtils = load('integration-test/slackUtils.groovy')
-                def message = slackUtils.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails(slackUtils))
+                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                def message = helpers.slackMessage('E2E tests', 'passed', env.BUILD_URL, e2eDetails(helpers))
                 slackSend(channel: 'syncgatewaybot', color: 'good', message: message)
-                def dmTarget = slackUtils.slackUserIdForBuild()
+                def dmTarget = helpers.slackUserIdForBuild()
                 if (dmTarget) {
                     slackSend(channel: dmTarget, color: 'good', message: message)
                 }
@@ -210,15 +218,15 @@ pipeline {
         unstable {
             script {
                 notifyGitHub('unstable')
-                def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('E2E tests', 'unstable', env.BUILD_URL, e2eDetails(slackUtils))
+                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                helpers.slackSendFailure('E2E tests', 'unstable', env.BUILD_URL, e2eDetails(helpers))
             }
         }
         failure {
             script {
                 notifyGitHub('build failure')
-                def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails(slackUtils))
+                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                helpers.slackSendFailure('E2E tests', 'failed', "Console: ${env.BUILD_URL}console", e2eDetails(helpers))
             }
         }
         aborted {

@@ -6,8 +6,9 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-// Shared Slack notification helpers, loaded via the `load` step by Jenkinsfiles that want
-// consistent Slack formatting (see Jenkinsfile and integration-test/e2e/Jenkinsfile).
+// Shared Jenkins pipeline helpers - Slack notifications, GitHub commit statuses and build metadata -
+// loaded via the `load` step by the Jenkinsfiles in this repo (see Jenkinsfile and
+// integration-test/*/Jenkinsfile).
 
 // Builds a Slack-friendly summary of the JUnit results recorded by the 'junit' step in post.always,
 // including up to 10 failed test names (Jenkins runs post.always before success/failure/unstable/aborted,
@@ -84,6 +85,21 @@ def jiraLinkForBranch(String branch) {
     return "<https://jira.issues.couchbase.com/browse/${ticket}|${ticket}>"
 }
 
+// Who caused this build - the user who started it, or else the upstream job that fanned it out, as
+// "<job> #<build>". Returns '' for a trigger with neither (a timer or the SCM), where there is nobody
+// to name. Used in currentBuild.description, so a run's origin shows in the job's build history.
+def triggeredBy() {
+    def userIdCauses = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+    if (userIdCauses) {
+        return userIdCauses[0].userId ?: ''
+    }
+    def upstreamCauses = currentBuild.getBuildCauses('hudson.model.Cause$UpstreamCause')
+    if (upstreamCauses) {
+        return "${upstreamCauses[0].upstreamProject} #${upstreamCauses[0].upstreamBuild}"
+    }
+    return ''
+}
+
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
 // .github/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,
@@ -142,6 +158,33 @@ def slackSendFailure(String title, String status, String link, Map details = [:]
         slackSend(channel: 'syncgatewaybot-alerts', color: 'danger', message: message)
     }
     slackSend(channel: 'syncgatewaybot', color: 'danger', message: message)
+}
+
+// Posts a commit status against env.GIT_COMMIT, which shows up on that commit - and on any PR whose head it
+// is - in GitHub. `status` is the pipeline's own vocabulary: 'running' -> PENDING, 'passed' -> SUCCESS,
+// 'unstable' -> FAILURE, and anything else, including 'aborted', -> ERROR. GitHub has no cancelled state,
+// and staying quiet on an abort would strand the pending status on that commit forever.
+//
+// Reporting is best-effort: none of these jobs gate a merge, so GitHub being unreachable leaves the build
+// result untouched rather than failing an otherwise good build. An abort arriving mid-notify still aborts.
+// Account, repo and sha are passed explicitly because githubNotify can't reliably infer them from the
+// explicit checkouts these jobs do.
+def notifyCommitStatus(String context, String description, String status) {
+    if (!env.GIT_COMMIT) {
+        echo('No GIT_COMMIT captured (checkout failed) - skipping GitHub commit status')
+        return
+    }
+    catchError(message: "Failed to publish GitHub commit status '${context}'", buildResult: 'SUCCESS', stageResult: 'SUCCESS', catchInterruptions: false) {
+        githubNotify(
+            credentialsId: 'github_cb-robot-sg_access_token',
+            account: 'couchbase',
+            repo: 'sync_gateway',
+            sha: env.GIT_COMMIT,
+            context: context,
+            description: "${description} ${status}",
+            status: ['running': 'PENDING', 'passed': 'SUCCESS', 'unstable': 'FAILURE'].get(status, 'ERROR')
+        )
+    }
 }
 
 return this

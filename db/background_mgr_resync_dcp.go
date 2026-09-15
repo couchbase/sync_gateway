@@ -53,27 +53,36 @@ type ResyncManagerDCP struct {
 	resyncCollectionInfo
 	lock              sync.RWMutex
 	Distributed       bool
-	dcpDoneChan       chan error      // mark when the DCP feed is completed
 	completedvBuckets *vBucketTracker // tracks the number of completed vBuckets for the local
 }
 
 // vBucketTracker tracks completed vBuckets in a thread safe way. It is used to determine when all vBuckets have
 // completed so that the resync process can be marked as complete and the DCP feed can be stopped.
 type vBucketTracker struct {
-	m    map[string]struct{} // map of vBuckets in string format that have been completed
-	lock sync.RWMutex
+	m        map[string]struct{} // map of vBuckets in string format that have been completed
+	doneChan chan error          // closed when every vBucket has completed, ending the run that owns it
+	lock     sync.RWMutex
 }
 
 // newvBucketTracker returns a new instance of vBucketTracker to store completed vBucket numbers.
 func newvBucketTracker() *vBucketTracker {
-	return &vBucketTracker{m: make(map[string]struct{})}
+	return &vBucketTracker{m: make(map[string]struct{}), doneChan: make(chan error)}
 }
 
-// clear resets the vBucketTracker to an empty state.
-func (v *vBucketTracker) clear() {
+// reset empties the vBucketTracker and creates the done channel for the next run. Each run gets its own channel, so
+// that marking vBuckets completed from a previously persisted status can never close a finished run's channel.
+func (v *vBucketTracker) reset() {
 	v.lock.Lock()
 	defer v.lock.Unlock()
 	v.m = make(map[string]struct{})
+	v.doneChan = make(chan error)
+}
+
+// done returns the channel that is closed once every vBucket of the current run has completed.
+func (v *vBucketTracker) done() chan error {
+	v.lock.RLock()
+	defer v.lock.RUnlock()
+	return v.doneChan
 }
 
 // union returns a slice containing all vBuckets from v and other (deduplicated).
@@ -347,6 +356,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting DCP resync")
+	var doneChan chan error
 	if r.Distributed {
 		var resyncDestKey string
 		var scopeName string
@@ -365,7 +375,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		sort.Strings(collectionNamesByScope[scopeName])
 		resyncDestKey = base.DestKey(db.Name, scopeName, collectionNamesByScope[scopeName], base.ShardedDCPFeedTypeResync)
 
-		r.dcpDoneChan = make(chan error)
+		doneChan = r.completedvBuckets.done()
 		checkPointPrefix := GetResyncDCPCheckpointPrefix(db, r.ResyncID, true)
 
 		resyncDestFunc := func(janitorRollback func()) (cbgt.Dest, error) {
@@ -450,7 +460,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			base.WarnfCtx(ctx, "Failed to create resync DCP client! %v", err)
 			return err
 		}
-		r.dcpDoneChan, err = dcpClient.Start()
+		doneChan, err = dcpClient.Start()
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to start resync DCP feed! %v", err)
 			_ = dcpClient.Close()
@@ -458,7 +468,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		}
 		dcpClientClose.append(func() error {
 			_ = dcpClient.Close()
-			err := <-r.dcpDoneChan
+			err := <-doneChan
 			return err
 		})
 
@@ -467,7 +477,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 	}
 	select {
-	case <-r.dcpDoneChan:
+	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged(), r.DocsProcessed())
 		err := dcpClientClose.shutdown()
 		if err != nil {
@@ -576,7 +586,7 @@ func (r *ResyncManagerDCP) ResetStatus() {
 	r.docsErroredLocal.Store(0)
 	r.docsErroredCrossNode.Store(0)
 	r.docsTargeted.Store(0)
-	r.completedvBuckets.clear()
+	r.completedvBuckets.reset()
 	r.ResyncedCollections = nil
 }
 
@@ -794,7 +804,7 @@ func (r *ResyncManagerDCP) markVBucketsCompleted(ctx context.Context, vbNos iter
 		r.completedvBuckets.m[vbNo] = struct{}{}
 	}
 	if len(r.completedvBuckets.m) == int(totalVbuckets) {
-		close(r.dcpDoneChan)
+		close(r.completedvBuckets.doneChan)
 	}
 }
 
