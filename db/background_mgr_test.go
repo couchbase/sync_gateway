@@ -2902,3 +2902,202 @@ func TestMultiNodeDatabaseStateFollowsPublishedStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, BackgroundProcessStateStopped, state)
 }
+
+// blockingStopProcess stays inside Run after its terminator closes until the test releases it, so the run is over
+// from the manager's point of view while its goroutine still owes the cluster a terminal status.
+type blockingStopProcess struct {
+	MockProcess
+	// pastTerminator closes once the run has seen its terminator, whether a local stop or the cluster closed it.
+	pastTerminator chan struct{}
+	releaseRun     chan struct{}
+}
+
+func newBlockingStopProcess() *blockingStopProcess {
+	return &blockingStopProcess{
+		pastTerminator: make(chan struct{}),
+		releaseRun:     make(chan struct{}),
+	}
+}
+
+func (p *blockingStopProcess) Run(_ context.Context, _ MockProcessOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	<-terminator.Done()
+	close(p.pastTerminator)
+	<-p.releaseRun
+	return nil
+}
+
+// resumingProcess reports a resume from Init, so the node claims the run with backgroundManagerStatusResume.
+type resumingProcess struct {
+	MockProcess
+}
+
+func (p *resumingProcess) Init(context.Context, MockProcessOptions, []byte) (backgroundManagerInitMode, error) {
+	return backgroundManagerInitResume, nil
+}
+
+// multiNodeOptions returns cluster aware options for one node of a multi node process. Nodes that share name see the
+// same status document, and metadataStore lets a single node be given a leaky data store of its own.
+func multiNodeOptions(name string, metadataStore base.DataStore) *ClusterAwareBackgroundManagerOptions {
+	return &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      base.NewMetadataKeys("test-" + name),
+		processSuffix: name,
+		multiNode:     true,
+	}
+}
+
+// TestBackgroundManagerResumeDoesNotOverwriteStoppingClusterState covers a Start whose post-wait re-read of the
+// cluster status already shows stopping. The claim that follows Init must not put the cluster back to running.
+func TestBackgroundManagerResumeDoesNotOverwriteStoppingClusterState(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	const processName = "resume-while-stopping"
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+	statusDocID := base.NewMetadataKeys("test-" + processName).BackgroundProcessStatusPrefix(processName)
+
+	// The starting node reads the status document twice: once before markStart, and once after it has waited for
+	// any previous run. Park the second read so the stop below lands in between.
+	atReRead := make(chan struct{})
+	releaseReRead := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseReRead) }) }
+	defer release()
+	var statusReads atomic.Int64
+	leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
+		GetRawCallback: func(key string) error {
+			if key != statusDocID || statusReads.Add(1) != 2 {
+				return nil
+			}
+			close(atReRead)
+			sgtest.RequireChanClosedFromCallback(t, releaseReRead)
+			return nil
+		},
+	})
+	defer leakyBucket.Close(ctx)
+
+	stoppingProcess := newBlockingStopProcess()
+	runningNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-running",
+		Process:             stoppingProcess,
+		clusterAwareOptions: multiNodeOptions(processName, testBucket.DefaultDataStore(ctx)),
+	}
+	require.NoError(t, runningNode.Start(ctx, MockProcessOptions{}))
+	defer close(stoppingProcess.releaseRun)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, timeout, 10*time.Millisecond)
+
+	startingNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-starting",
+		Process:             &resumingProcess{},
+		clusterAwareOptions: multiNodeOptions(processName, leakyBucket.DefaultDataStore(ctx)),
+	}
+	var startErr error
+	started := make(chan struct{})
+	go func() {
+		defer close(started)
+		startErr = startingNode.Start(ctx, MockProcessOptions{})
+	}()
+	base.RequireChanClosed(t, atReRead, "starting node did not re-read the cluster status")
+
+	// Run stays blocked, so the cluster status document stays at stopping rather than reaching stopped.
+	require.NoError(t, runningNode.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateStopping, state)
+	}, timeout, 10*time.Millisecond)
+
+	release()
+	base.RequireChanClosed(t, started, "Start did not return")
+	defer func() {
+		if startingNode.GetRunState() == BackgroundProcessStateRunning {
+			require.NoError(t, startingNode.Stop(ctx))
+		}
+	}()
+
+	state, err := runningNode.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateStopping, state, "the resume claim overwrote a stopping cluster state")
+	require.ErrorIs(t, startErr, errBackgroundManagerStatusAlreadyStopping)
+}
+
+// gatedStartProcess holds a start inside Init until the test releases it. Init reports a fresh run, so the node
+// claims the run with backgroundManagerStatusStart.
+type gatedStartProcess struct {
+	gatedInitProcess
+}
+
+func (p *gatedStartProcess) Init(context.Context, MockProcessOptions, []byte) (backgroundManagerInitMode, error) {
+	close(p.initEntered)
+	sgtest.RequireChanClosedFromCallback(p.t, p.releaseInit)
+	return backgroundManagerInitReset, nil
+}
+
+// TestBackgroundManagerStartDoesNotOverwriteStoppingClusterState covers a Start that is admitted against a running
+// status document and only reaches its start claim after another node moved the cluster to stopping. The start claim
+// must not put the cluster back to running while the stop is still in progress.
+func TestBackgroundManagerStartDoesNotOverwriteStoppingClusterState(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	const processName = "start-while-stopping"
+	clusterAwareOptions := multiNodeOptions(processName, testBucket.DefaultDataStore(ctx))
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+
+	stoppingProcess := newBlockingStopProcess()
+	runningNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-running",
+		Process:             stoppingProcess,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	require.NoError(t, runningNode.Start(ctx, MockProcessOptions{}))
+	defer close(stoppingProcess.releaseRun)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, timeout, 10*time.Millisecond)
+
+	process := &gatedStartProcess{newGatedInitProcess(t)}
+	startingNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-starting",
+		Process:             process,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	var startErr error
+	started := make(chan struct{})
+	go func() {
+		defer close(started)
+		startErr = startingNode.Start(ctx, MockProcessOptions{})
+	}()
+
+	// The starting node reads a running status document, and is then held before it claims the run.
+	base.RequireChanClosed(t, process.initEntered, "starting node did not reach Init")
+
+	// Run stays blocked, so the cluster status document stays at stopping rather than reaching stopped.
+	require.NoError(t, runningNode.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateStopping, state)
+	}, timeout, 10*time.Millisecond)
+
+	close(process.releaseInit)
+	base.RequireChanClosed(t, started, "Start did not return")
+	defer func() {
+		if startingNode.GetRunState() == BackgroundProcessStateRunning {
+			require.NoError(t, startingNode.Stop(ctx))
+		}
+	}()
+
+	state, err := runningNode.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateStopping, state, "the start claim overwrote a stopping cluster state")
+	require.ErrorIs(t, startErr, errBackgroundManagerStatusAlreadyStopping)
+}

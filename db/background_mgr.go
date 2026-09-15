@@ -103,6 +103,11 @@ const (
 	backgroundManagerStatusJoin
 )
 
+// isClaim reports whether the mode claims a run for this node rather than reporting on one it already holds.
+func (m backgroundManagerUpdateClusterStatusMode) isClaim() bool {
+	return m == backgroundManagerStatusStart || m == backgroundManagerStatusResume
+}
+
 type BackgroundProcessAction string
 
 const (
@@ -361,6 +366,12 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			return err
 		}
 		previousStatus = statusFromClusterDoc(ctx, processClusterStatus)
+		// A stop landed while we waited. Leave the previous run's stats and checkpoints alone: resetStatus and
+		// Init below would discard them for a run the cluster will not admit.
+		if mode == backgroundManagerModeMultiNode && previousStatus.State == BackgroundProcessStateStopping {
+			b.endRunWithoutPublishing(BackgroundProcessStateStopped)
+			return errBackgroundManagerStatusAlreadyStopping
+		}
 	}
 
 	b.resetStatus()
@@ -398,9 +409,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			}
 			err = b.updateMultiNodeClusterAwareStatus(ctx, statusMode, nil)
 			if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
-				// The cluster ended the process while this node was joining it. Settle the local state
+				// The cluster ended the process while this node was claiming it. Settle the local state
 				// only: the cluster already holds the terminal status.
 				b.endRunWithoutPublishing(stateErr.state)
+				// A join is driven by the cluster, which has answered it. A Start was asked for by a
+				// caller, who is told why the process did not start.
+				if !isJoin && stateErr.state == BackgroundProcessStateStopping {
+					return errBackgroundManagerStatusAlreadyStopping
+				}
 				return nil
 			}
 		} else {
@@ -886,9 +902,8 @@ func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Co
 // updateMultiNodeClusterAwareStatus updates the cluster status document with the current local status.
 // statusOverride, when non-nil, is written in place of that local status, so a finished run publishes the state it
 // settled on.
-// When mode is backgroundManagerStatusUpdate or backgroundManagerStatusJoin and the cluster doc shows the run is
-// over, it returns errBackgroundManagerStatusNotRunning without writing. When mode is backgroundManagerStatusStart
-// or backgroundManagerStatusResume the write always proceeds.
+// The write is refused with errBackgroundManagerStatusNotRunning when it does not belong on the document: a claim
+// against a cluster that is stopping, or a join against a run the cluster has ended.
 func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context, mode backgroundManagerUpdateClusterStatusMode, statusOverride *BackgroundManagerStatus) error {
 	docID := b.clusterAwareOptions.StatusDocID()
 	var previousStatus []byte
@@ -916,7 +931,7 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			if err := base.JSONUnmarshal(current, &output); err != nil {
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
-			if currentStatus, ok := output["status"]; ok && (mode == backgroundManagerStatusUpdate || mode == backgroundManagerStatusJoin) {
+			if currentStatus, ok := output["status"]; ok {
 				bucketState, err := unmarshalBackgroundProcessState(currentStatus)
 				if err != nil {
 					return nil, nil, false, err
@@ -924,6 +939,10 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 				// Stopping counts as over: this node must not report itself running to it.
 				runIsOver := bucketState == BackgroundProcessStateStopping || bucketState.isTerminal()
 				switch {
+				// A claim must not restart a process the cluster is still stopping. Terminal states are left
+				// alone: a new run is meant to replace them.
+				case mode.isClaim() && bucketState == BackgroundProcessStateStopping:
+					return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling start: the cluster is stopping background process %q", b.name))
 				// A node joining a run must not resurrect a process the cluster has already ended.
 				case mode == backgroundManagerStatusJoin && runIsOver:
 					return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling join: the cluster already transitioned background process %q to state %q", b.name, bucketState))
@@ -937,7 +956,6 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 		}
 		output["status"] = json.RawMessage(status)
 		output["meta"] = json.RawMessage(metadata)
-
 		outputBytes, err := base.JSONMarshal(output)
 		if err != nil {
 			return nil, nil, false, fmt.Errorf("could not marshal updated status doc %q: %w", docID, err)
