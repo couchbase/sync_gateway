@@ -15,6 +15,7 @@ import (
 	"log"
 	"maps"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -824,12 +825,7 @@ func TestResyncCheckpointPrefix(t *testing.T) {
 // is passed through to StartShardedDCPFeed by inspecting the persisted CBGT plan pindexes
 // in the metadata store after a distributed resync runs.
 func TestResyncImportPartitionsPassthrough(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("Distributed resync requires EE")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Distributed resync not supported for rosmar")
-	}
+	base.TestRequiresDistributedResync(t)
 
 	// Must evenly divide 1024 vbuckets, otherwise CBGT creates an extra pindex for the remainder.
 	numPartitions := uint16(4)
@@ -1231,4 +1227,82 @@ func TestNewResyncManagerDCPUpdateDatabaseState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, state.ResyncRunning)
 	require.False(t, *state.ResyncRunning)
+}
+
+// TestResyncManagerDCPResumeAllVBucketsCompleted verifies that a resync can be resumed when the persisted status
+// already lists every vBucket as completed. BackgroundManager.start hands that status to SetProcessStatus while Run
+// is still setting up the feed, so the manager must not close a done channel that belongs to a finished run.
+//
+// The test makes the calls start() makes on resume rather than calling Start, because the two race: the cluster
+// status write costs a round trip to the bucket, while Run only does local work before it takes the done channel.
+// Run wins that race on a real cluster, and on rosmar the database never creates the distributed manager the status
+// write comes from, so a Start based test reproduces this on neither.
+func TestResyncManagerDCPResumeAllVBucketsCompleted(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		completedPreviousRun bool
+	}{
+		{
+			name:                 "resumed on a node that has not run resync",
+			completedPreviousRun: false,
+		},
+		{
+			name:                 "resumed after a local run completed every vBucket",
+			completedPreviousRun: true,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db, ctx := SetupTestDB(t)
+			defer db.Close(ctx)
+
+			resyncManager, ok := any(db.ResyncManager.Process).(*ResyncManagerDCP)
+			require.True(t, ok)
+
+			completedVBuckets := make([]string, 0, db.numVBuckets)
+			for vbNo := range db.numVBuckets {
+				completedVBuckets = append(completedVBuckets, strconv.Itoa(int(vbNo)))
+			}
+
+			if testCase.completedPreviousRun {
+				// completing the last vBucket closes the done channel, which is how a run ends its DCP feed
+				resyncManager.markVBucketsCompleted(ctx, slices.Values(completedVBuckets), db.numVBuckets)
+				base.RequireChanClosed(t, resyncManager.completedvBuckets.done(), "done channel for the completed run")
+			}
+			previousRunDoneChan := resyncManager.completedvBuckets.done()
+
+			// a previous run was stopped after completing every vBucket
+			statusDoc := ResyncManagerStatusDocDCP{
+				ResyncManagerResponseDCP: ResyncManagerResponseDCP{
+					BackgroundManagerStatus: BackgroundManagerStatus{
+						State: BackgroundProcessStateStopped,
+					},
+					ResyncID: uuid.NewString(),
+				},
+				ResyncManagerMeta: ResyncManagerMeta{
+					CollectionIDs: slices.Collect(maps.Keys(db.CollectionByID)),
+					resyncManagerCompletedVBuckets: resyncManagerCompletedVBuckets{
+						CompletedVBuckets: completedVBuckets,
+					},
+				},
+			}
+			previousStatus, err := base.JSONMarshal(statusDoc)
+			require.NoError(t, err)
+
+			// on resume start() clears the manager status, initializes from the previous status, and then writes
+			// the cluster status
+			db.ResyncManager.resetStatus()
+			initMode, err := resyncManager.Init(ctx, ResyncOptions{Collections: base.NewCollectionNames()}, previousStatus)
+			require.NoError(t, err)
+			require.Equal(t, backgroundManagerInitResume, initMode)
+			require.NotPanics(t, func() {
+				resyncManager.SetProcessStatus(ctx, previousStatus, nil)
+			})
+
+			// the resumed run needs a done channel of its own, closed so that Run performs the principal
+			// invalidation and stat updates that follow the DCP feed
+			require.NotEqual(t, previousRunDoneChan, resyncManager.completedvBuckets.done(), "resumed run must not reuse the done channel of the previous run")
+			base.RequireChanClosed(t, resyncManager.completedvBuckets.done(), "done channel for the resumed run")
+		})
+	}
 }
