@@ -1806,35 +1806,6 @@ func (c *changeCache) GetOldestSkippedSequenceForTest(_ testing.TB, ctx context.
 	return c.getOldestSkippedSequence(ctx)
 }
 
-// dcpCheckpointKeys returns every document key a DCP feed using checkpointPrefix would persist for
-// the given feed mode. The layout differs per backend: rosmar writes a single document at the
-// prefix, the gocb client writes one document per worker, and cbgt writes one per vBucket.
-func dcpCheckpointKeys(t testing.TB, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) []string {
-	t.Helper()
-	switch feedMode {
-	case base.DCPFeedRosmar:
-		return []string{checkpointPrefix}
-	case base.DCPFeedGocb:
-		keys := make([]string, 0, base.DefaultNumWorkers)
-		for workerID := range base.DefaultNumWorkers {
-			keys = append(keys, fmt.Sprintf("%s%d", checkpointPrefix, workerID))
-		}
-		return keys
-	case base.DCPFeedSharded:
-		keys := make([]string, 0, db.NumVBuckets())
-		for vbNo := range db.NumVBuckets() {
-			keys = append(keys, fmt.Sprintf("%s%d", checkpointPrefix, vbNo))
-		}
-		return keys
-	default:
-		require.FailNow(t, "unhandled DCP feed mode", "%s", feedMode)
-		return nil
-	}
-}
-
-// existingDCPCheckpoints returns the subset of checkpoint documents for checkpointPrefix that are
-// currently present in the database's metadata store.
-func existingDCPCheckpoints(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, feedMode base.DCPFeedMode) []string {
 // existingDCPCheckpoints returns the checkpoint documents present under checkpointPrefix. It scans the
 // metadata store rather than reading a predicted set of keys, so a document at an unexpected key is
 // still reported.
