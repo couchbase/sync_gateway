@@ -92,6 +92,10 @@ type BlipTesterClientOpts struct {
 // defaultBlipTesterClientRevsLimit is the number of revisions sent as history when the client replicates - older revisions are not sent, and may not be stored.
 const defaultBlipTesterClientRevsLimit = 20
 
+// noopProperty marks a rev response for a revision the client already held. Sync Gateway does not read
+// it, but couchbase-lite-core sets it (IncomingRev::finish), so the blip tester matches that.
+const noopProperty = "noop"
+
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
 type BlipTesterClient struct {
 	BlipTesterClientOpts
@@ -321,12 +325,36 @@ func (cd *clientDoc) _getLatestHLVCopy(t testing.TB) db.HybridLogicalVector {
 	return *latestRev.HLV.Copy()
 }
 
+// _alreadyHasIncomingRev reports whether the client already holds the incoming revision. Sync Gateway
+// sends one when a document is rewritten without its cv changing, because the client answers the second
+// changes entry before the first rev arrives and so asks for the same version twice.
+func (cd *clientDoc) _alreadyHasIncomingRev(t testing.TB, incomingHLV *db.HybridLogicalVector) bool {
+	if cd == nil || incomingHLV == nil {
+		return false
+	}
+	latestRev := cd._latestRev(t)
+	if latestRev.noRev {
+		// a norev names the version Sync Gateway could not send but carries no body, so the client does
+		// not hold that revision and a rev for the same cv is new content rather than a duplicate
+		return false
+	}
+	if latestRev.version.RevTreeID != "" {
+		// revtree clients identify a revision by its rev ID rather than its cv
+		return false
+	}
+	return latestRev.HLV.EqualCV(incomingHLV)
+}
+
 func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVector) bool {
 	// there is no local document
 	if cd == nil {
 		return false
 	}
 	latestRev := cd._latestRev(t)
+	if latestRev.noRev {
+		// a norev placeholder holds no body, so there is nothing for the incoming revision to conflict with
+		return false
+	}
 	if latestRev.version.RevTreeID != "" {
 		// currently no conflict detection or resolution for revtree clients.
 		return false
@@ -677,7 +705,6 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 		}
 
 		docID := msg.Properties[db.RevMessageID]
-		revID := msg.Properties[db.RevMessageRev]
 		deltaSrc := msg.Properties[db.RevMessageDeltaSrc]
 		replacedRev := msg.Properties[db.RevMessageReplacedRev]
 
@@ -701,14 +728,17 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 					require.NoError(btr.TB(), err, "error parsing version %q: %v", replacedRev, err)
 					replacedVersion = &DocVersion{CV: v}
 				} else {
-					replacedVersion = &DocVersion{RevTreeID: revID}
+					replacedVersion = &DocVersion{RevTreeID: replacedRev}
 				}
 				rev.replacedVersion = replacedVersion
 			}
-			btcc.addRev(ctx, docID, rev)
+			alreadyExisted := btcc.addRev(ctx, docID, rev)
 
 			if !msg.NoReply() {
 				response := msg.Response()
+				if alreadyExisted {
+					response.Properties[noopProperty] = "true"
+				}
 				response.SetBody([]byte(`[]`))
 			}
 			return
@@ -873,10 +903,13 @@ func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterC
 			}
 			rev.replacedVersion = replacedVersion
 		}
-		btcc.addRev(ctx, docID, rev)
+		alreadyExisted := btcc.addRev(ctx, docID, rev)
 
 		if !msg.NoReply() {
 			response := msg.Response()
+			if alreadyExisted {
+				response.Properties[noopProperty] = "true"
+			}
 			response.SetBody([]byte(`[]`))
 		}
 	}
@@ -2350,15 +2383,22 @@ type revOptions struct {
 	isNoRev                   bool                    // isNoRev is true if this revision was created from a _no_rev message
 }
 
-// addRev adds a revision for a specific document.
-func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string, opts revOptions) {
+// addRev adds a revision for a specific document. It returns true when the client already held the
+// incoming revision, so nothing was stored.
+func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string, opts revOptions) (alreadyExisted bool) {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
-	newClientSeq := btcc._nextSequence()
 
 	newBody := opts.body
 	newVersion := opts.incomingVersion
 	doc, hasLocalDoc := btcc._getClientDoc(docID)
+	// A revision the client already holds is a no-op, which is what couchbase-lite-core does with one
+	// (Inserter::insertRevisionNow sets alreadyExisted, IncomingRev::finish answers noop:true). The
+	// client asked for it, so this is not the changes response being ignored.
+	if doc._alreadyHasIncomingRev(btcc.TB(), opts.incomingHLV) {
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring rev for docID %s: already have version %#v", base.UD(docID), opts.incomingVersion)
+		return true
+	}
 	updatedHLV := doc._getLatestHLVCopy(btcc.TB())
 	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
 	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
@@ -2383,6 +2423,9 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		return
 	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
+	// allocated only now that the revision is stored: a sequence with no document behind it makes the
+	// push changes feed iterate instead of waiting for real work
+	newClientSeq := btcc._nextSequence()
 	// ConflictResolver is currently on BlipTesterClient, but might be per replication in the future.
 	docRev := clientDocRev{
 		clientSeq:   newClientSeq,
@@ -2417,6 +2460,7 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	if newVersion != opts.incomingVersion {
 		btcc._seqCond.Broadcast()
 	}
+	return false
 }
 
 // getAllRevisions returns all revisions for a given docID
