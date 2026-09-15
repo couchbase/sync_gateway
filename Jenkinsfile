@@ -246,23 +246,23 @@ pipeline {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
+                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                helpers.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': helpers.gitCommitLink()])
             }
         }
         failure {
             // archive non-verbose outputs upon failure for inspection (each verbose output is conditionally archived on stage failure)
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
+                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                helpers.slackSendFailure('main SGW pipeline', 'build failure', env.BUILD_URL, ['Commit': helpers.gitCommitLink()])
             }
         }
         aborted {
             archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false, allowEmptyArchive: true
             script {
-                def slackUtils = load('integration-test/slackUtils.groovy')
-                slackUtils.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': slackUtils.gitCommitLink()])
+                def helpers = load('integration-test/jenkinsHelpers.groovy')
+                helpers.slackSendFailure('main SGW pipeline', 'unstable', env.BUILD_URL, ['Commit': helpers.gitCommitLink()])
             }
         }
         cleanup {

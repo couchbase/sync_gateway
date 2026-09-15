@@ -7,53 +7,53 @@
 // "COUCHBASE_SERVER_PROTOCOL environment variable is required to be set". Just run it again - it isn't a
 // misconfiguration.
 
-// Details block included in every Slack message for this pipeline (see integration-test/slackUtils.groovy).
-def slackDetails(slackUtils) {
+// Details block included in every Slack message for this pipeline (see jenkinsHelpers.groovy).
+def slackDetails(helpers) {
     def details = [
         SG_COMMIT: params.SG_COMMIT,
-        GIT_COMMIT: slackUtils.githubCommitLink(env.GIT_COMMIT),
+        GIT_COMMIT: helpers.githubCommitLink(env.GIT_COMMIT),
         COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
     ]
-    def ticketLink = slackUtils.jiraLinkForBranch(params.SG_COMMIT)
+    def ticketLink = helpers.jiraLinkForBranch(params.SG_COMMIT)
     if (ticketLink) {
         details['Ticket'] = ticketLink
     }
     return details
 }
 
-// Sends the build result to Slack. slackUtils.groovy is fetched in the Checkout stage, so it can be absent
-// if the build failed before that point - fall back to a bare message rather than throwing out of the post
-// block, which would leave the failure unreported entirely.
+// Sends the build result to Slack. jenkinsHelpers.groovy is fetched in the Checkout stage, so it can be
+// absent if the build failed before that point - fall back to a bare message rather than throwing out of the
+// post block, which would leave the failure unreported entirely.
 def notifySlack(String status) {
     def color = ['passed': 'good', 'aborted': 'warning'].get(status, 'danger')
-    if (!fileExists('integration-test/slackUtils.groovy')) {
+    if (!fileExists('integration-test/jenkinsHelpers.groovy')) {
         slackSend(channel: 'syncgatewaybot', color: color, message: ":x: *SyncGatewayIntegration ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
         return
     }
-    def slackUtils = load('integration-test/slackUtils.groovy')
-    if (status == 'aborted' && slackUtils.isSelfCancelledAdhocBuild()) {
+    def helpers = load('integration-test/jenkinsHelpers.groovy')
+    if (status == 'aborted' && helpers.isSelfCancelledAdhocBuild()) {
         echo('Build was started and cancelled by the same user - skipping Slack notification')
         return
     }
     // Only a genuine failure goes through slackSendFailure(), which DMs the triggering user or escalates
     // to #syncgatewaybot-alerts. An abort nobody chose is still worth recording, but not escalating.
     if (status == 'unstable' || status == 'build failure') {
-        slackUtils.slackSendFailure('SyncGatewayIntegration', status, env.BUILD_URL, slackDetails(slackUtils))
+        helpers.slackSendFailure('SyncGatewayIntegration', status, env.BUILD_URL, slackDetails(helpers))
         return
     }
-    slackSend(channel: 'syncgatewaybot', color: color, message: slackUtils.slackMessage('SyncGatewayIntegration', status, env.BUILD_URL, slackDetails(slackUtils)))
+    slackSend(channel: 'syncgatewaybot', color: color, message: helpers.slackMessage('SyncGatewayIntegration', status, env.BUILD_URL, slackDetails(helpers)))
 }
 
 // Reports this job's result as the sgw-jenkins-integration-test commit status that shows up on PRs (see
-// integration-test/githubUtils.groovy). That file is fetched in the Checkout stage, so it can be absent if
-// the build failed before that point - skip rather than throwing out of a post block, which would leave the
-// result unreported entirely.
+// jenkinsHelpers.groovy). That file is fetched in the Checkout stage, so it can be absent if the build
+// failed before that point - skip rather than throwing out of a post block, which would leave the result
+// unreported entirely.
 def notifyGitHub(String status) {
-    if (!fileExists('integration-test/githubUtils.groovy')) {
-        echo('integration-test/githubUtils.groovy not present - skipping GitHub commit status')
+    if (!fileExists('integration-test/jenkinsHelpers.groovy')) {
+        echo('integration-test/jenkinsHelpers.groovy not present - skipping GitHub commit status')
         return
     }
-    load('integration-test/githubUtils.groovy').notifyCommitStatus('sgw-jenkins-integration-test', 'Integration tests', status)
+    load('integration-test/jenkinsHelpers.groovy').notifyCommitStatus('sgw-jenkins-integration-test', 'Integration tests', status)
 }
 
 pipeline {
@@ -148,8 +148,7 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                 // instead.
                 sh '''
                     set -eu
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/slackUtils.groovy -o integration-test/slackUtils.groovy
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/githubUtils.groovy -o integration-test/githubUtils.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/jenkinsHelpers.groovy -o integration-test/jenkinsHelpers.groovy
                 '''
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
