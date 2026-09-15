@@ -2180,8 +2180,13 @@ func TestRevocationMessage(t *testing.T) {
 		// Wait for doc revision to come over
 		_ = btcRunner.WaitForPullRevMessage(btc.id, "doc", version)
 
+		// The blip connection caches the user, and only reloads it once the caching feed notifies on
+		// the user doc - the change cache catching up is not enough to guarantee that has happened.
+		userWaiter := rt.NewUserWaiter("user")
+
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
+		db.WaitForUserWaiterChange(t, userWaiter)
 
 		const doc1ID = "doc1"
 		version = rt.PutDoc(doc1ID, `{"channels": "!"}`)
@@ -2291,8 +2296,13 @@ func TestRevocationNoRev(t *testing.T) {
 
 		_ = btcRunner.WaitForVersion(btc.id, docID, version)
 
+		// The blip connection caches the user, and only reloads it once the caching feed notifies on
+		// the user doc - the change cache catching up is not enough to guarantee that has happened.
+		userWaiter := rt.NewUserWaiter("user")
+
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
+		db.WaitForUserWaiterChange(t, userWaiter)
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 
@@ -2383,8 +2393,13 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 		// store throw bool for doc now first rev has arrived
 		throw.Store(true)
+		// The blip connection caches the user, and only reloads it once the caching feed notifies on
+		// the user doc - the change cache catching up is not enough to guarantee that has happened.
+		userWaiter := rt.NewUserWaiter("user")
+
 		// Remove role from user
 		revocationTester.removeRole("user", "foo")
+		db.WaitForUserWaiterChange(t, userWaiter)
 
 		_ = rt.UpdateDoc(docID, version, `{"channels": "A", "val": "mutate"}`)
 		rt.WaitForPendingChanges()
