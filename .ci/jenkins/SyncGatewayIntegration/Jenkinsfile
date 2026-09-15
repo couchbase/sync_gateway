@@ -143,14 +143,18 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
                     env.GIT_BRANCH = scmVars.GIT_BRANCH
                 }
-                // SG_COMMIT can be an arbitrary developer branch, whose copies of these helpers may be
-                // stale or missing methods the steps below need - always load the current ones from main
-                // instead.
+                // SG_COMMIT can be an arbitrary developer branch, whose copies of these helpers and of
+                // the test runner may be stale or missing what the steps below need - always fetch the
+                // current ones from main instead.
                 sh '''
                     set -eu
-                    mkdir -p .ci
+                    mkdir -p .ci/jenkins
                     curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
                     curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkins/integration-build.sh -o .ci/jenkins/integration-build.sh
+                    # integration-build.sh calls this, and SG_COMMIT may predate it, so take it from main too
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
+                    chmod +x .ci/jenkins/integration-build.sh .ci/retry.sh
                 '''
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
