@@ -3101,3 +3101,64 @@ func TestBackgroundManagerStartDoesNotOverwriteStoppingClusterState(t *testing.T
 	require.Equal(t, BackgroundProcessStateStopping, state, "the start claim overwrote a stopping cluster state")
 	require.ErrorIs(t, startErr, errBackgroundManagerStatusAlreadyStopping)
 }
+
+// TestBackgroundManagerTerminalStatusDoesNotOverwriteNewerRun covers a node that finishes a run after the cluster has
+// already started the next one. Its terminal status belongs to the run that is over, so it must not be published over
+// the status of the run that is now in progress.
+func TestBackgroundManagerTerminalStatusDoesNotOverwriteNewerRun(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	const processName = "terminal-over-newer-run"
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+	metadataStore := testBucket.DefaultDataStore(ctx)
+
+	fastNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-fast",
+		Process:             &MockProcess{},
+		clusterAwareOptions: multiNodeOptions(processName, metadataStore),
+	}
+	slowProcess := newBlockingStopProcess()
+	slowNode := &BackgroundManager[MockProcessOptions]{
+		name:                processName + "-slow",
+		Process:             slowProcess,
+		clusterAwareOptions: multiNodeOptions(processName, metadataStore),
+	}
+
+	requireClusterState := func(expected BackgroundProcessState) {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			state, err := fastNode.getClusterStatusState(ctx)
+			assert.NoError(c, err)
+			assert.Equal(c, expected, state)
+		}, timeout, 10*time.Millisecond)
+	}
+
+	// Both nodes run the first run.
+	require.NoError(t, fastNode.Start(ctx, MockProcessOptions{}))
+	require.NoError(t, slowNode.Start(ctx, MockProcessOptions{}))
+	var releaseOnce sync.Once
+	releaseSlowRun := func() { releaseOnce.Do(func() { close(slowProcess.releaseRun) }) }
+	defer releaseSlowRun()
+	requireClusterState(BackgroundProcessStateRunning)
+
+	// The first run ends everywhere. The slow node's goroutine is past its terminator and owes a terminal status.
+	require.NoError(t, slowNode.Stop(ctx))
+	require.NoError(t, fastNode.Stop(ctx))
+	requireClusterState(BackgroundProcessStateStopped)
+
+	// The second run starts while the slow node still owes a terminal status for the first one.
+	require.NoError(t, fastNode.Start(ctx, MockProcessOptions{}))
+	defer func() { require.NoError(t, fastNode.Stop(ctx)) }()
+	requireClusterState(BackgroundProcessStateRunning)
+
+	releaseSlowRun()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, slowNode.GetRunState().isTerminal(), "slow node is in state %q", slowNode.GetRunState())
+	}, timeout, 10*time.Millisecond)
+
+	state, err := fastNode.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateRunning, state, "a finished run published its terminal status over the next run")
+	require.Equal(t, BackgroundProcessStateRunning, fastNode.GetRunState())
+}

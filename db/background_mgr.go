@@ -383,7 +383,8 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		})
 	}
 
-	// If we're resuming a cluster-aware process, try to reuse the previous start time.
+	// The start time identifies the run, so a node joining or resuming a run in progress adopts the one the cluster
+	// is already reporting rather than naming a run of its own.
 	if previousStatus.State == BackgroundProcessStateRunning && !previousStatus.StartTime.IsZero() {
 		b.setStartTime(previousStatus.StartTime)
 	}
@@ -561,26 +562,31 @@ func (b *BackgroundManager[O]) getClusterStatusState(ctx context.Context) (Backg
 	if err != nil {
 		return "", err
 	}
-	state, err := unmarshalBackgroundProcessState(statusRaw)
+	status, err := unmarshalStatusSubDoc(statusRaw)
 	if err != nil {
 		return "", fmt.Errorf("could not get background manager state from cluster status doc %q: %w", docID, err)
 	}
-	return state, nil
+	return status.State, nil
 
 }
 
-// unmarshalBackgroundProcessState returns the BackgroundProcessState from raw bytes of the status document.
-func unmarshalBackgroundProcessState(statusRaw []byte) (BackgroundProcessState, error) {
-	var clusterStatus struct {
-		Status BackgroundProcessState `json:"status"`
+// unmarshalStatusSubDoc returns the status held in the "status" subdocument of a cluster status document.
+func unmarshalStatusSubDoc(statusRaw []byte) (BackgroundManagerStatus, error) {
+	var status BackgroundManagerStatus
+	if err := base.JSONUnmarshal(statusRaw, &status); err != nil {
+		return BackgroundManagerStatus{}, err
 	}
-	if err := base.JSONUnmarshal(statusRaw, &clusterStatus); err != nil {
-		return "", err
-	}
-	return clusterStatus.Status, nil
+	return status, nil
 }
 
-// unmarshalBackgroundManagerStatus returns the BackgroundManagerStatus from raw bytes of the status document.
+// sameRun reports whether two statuses describe the same run. A run is identified by its start time: a start claims
+// one, and a resume or a join adopts the one the cluster is already running, so every node of a run reports the same
+// value. A zero time names no run and is treated as a match.
+func sameRun(a, b BackgroundManagerStatus) bool {
+	return a.StartTime.IsZero() || b.StartTime.IsZero() || a.StartTime.Equal(b.StartTime)
+}
+
+// unmarshalBackgroundManagerStatus returns the BackgroundManagerStatus from raw bytes of a whole status document.
 func unmarshalBackgroundManagerStatus(statusRaw []byte) (BackgroundManagerStatus, error) {
 	var clusterStatus struct {
 		Status BackgroundManagerStatus `json:"status"`
@@ -903,7 +909,8 @@ func (b *BackgroundManager[O]) UpdateSingleNodeClusterAwareStatus(ctx context.Co
 // statusOverride, when non-nil, is written in place of that local status, so a finished run publishes the state it
 // settled on.
 // The write is refused with errBackgroundManagerStatusNotRunning when it does not belong on the document: a claim
-// against a cluster that is stopping, or a join against a run the cluster has ended.
+// against a cluster that is stopping, a join against a run the cluster has ended, or an update from a run other than
+// the one the document holds.
 func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Context, mode backgroundManagerUpdateClusterStatusMode, statusOverride *BackgroundManagerStatus) error {
 	docID := b.clusterAwareOptions.StatusDocID()
 	var previousStatus []byte
@@ -920,9 +927,9 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 		if err != nil {
 			return nil, nil, false, err
 		}
-		// Check the state about to be written rather than the run state: the process serializes a state of its
-		// own, and the run state can move on in between.
-		proposedState, err := unmarshalBackgroundProcessState(status)
+		// Check the status about to be written rather than the local status: the process serializes a status of
+		// its own, and the local one can move on in between.
+		proposedStatus, err := unmarshalStatusSubDoc(status)
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -932,10 +939,11 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 				return nil, nil, false, fmt.Errorf("Could not unmarshal doc(%q) within updateClusterAwareStatus: %w", docID, err)
 			}
 			if currentStatus, ok := output["status"]; ok {
-				bucketState, err := unmarshalBackgroundProcessState(currentStatus)
+				documentStatus, err := unmarshalStatusSubDoc(currentStatus)
 				if err != nil {
 					return nil, nil, false, err
 				}
+				bucketState := documentStatus.State
 				// Stopping counts as over: this node must not report itself running to it.
 				runIsOver := bucketState == BackgroundProcessStateStopping || bucketState.isTerminal()
 				switch {
@@ -949,8 +957,12 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 				// If the local status is running, but another node stopped or errored, adopt that state locally so
 				// that we transition properly when our process terminates, and report not running so that caller can
 				// terminate the background manager on this node.
-				case mode == backgroundManagerStatusUpdate && runIsOver && proposedState == BackgroundProcessStateRunning:
+				case mode == backgroundManagerStatusUpdate && runIsOver && proposedStatus.State == BackgroundProcessStateRunning:
 					return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling update: another node already transitioned background process %q to terminal state %q", b.name, bucketState))
+				// This node is reporting on a run the document no longer holds, so its status, terminal or not,
+				// belongs to a run that is over. State alone cannot tell the two apart.
+				case mode == backgroundManagerStatusUpdate && !sameRun(proposedStatus, documentStatus):
+					return nil, nil, false, newErrBackgroundManagerStatusNotRunning(bucketState, fmt.Sprintf("canceling update: background process %q has moved on to another run", b.name))
 				}
 			}
 		}
@@ -961,7 +973,7 @@ func (b *BackgroundManager[O]) updateMultiNodeClusterAwareStatus(ctx context.Con
 			return nil, nil, false, fmt.Errorf("could not marshal updated status doc %q: %w", docID, err)
 		}
 		newStatus = status
-		publishedState = proposedState
+		publishedState = proposedStatus.State
 		return outputBytes, nil, false, nil
 	})
 	if err != nil {
