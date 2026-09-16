@@ -511,19 +511,17 @@ func (h *handler) handlePostIndexInit() error {
 	}
 	newDbConfig.Index.NumPartitions = req.NumPartitions
 
-	var statusMap = make(db.IndexStatusByCollection, len(newDbConfig.Scopes))
+	scopes := make([]string, 0, len(newDbConfig.Scopes)+2)
 	for scope := range newDbConfig.Scopes {
-		statusMap[scope] = make(map[string]db.CollectionIndexStatus)
+		scopes = append(scopes, scope)
 	}
-	// init _default scope because it's still possible that a named scope can still initialize metadata indexes in _default._default
-	if _, ok := statusMap[base.DefaultScope]; !ok {
-		statusMap[base.DefaultScope] = make(map[string]db.CollectionIndexStatus, 1)
-	}
-	// init _mobile scope because we have metadata indexes initialized in _mobile collection
-	statusMap[base.SystemScope] = make(map[string]db.CollectionIndexStatus, 1)
+	// include _default because a named scope can still initialize metadata indexes in _default._default, and
+	// _mobile because metadata indexes are initialized in the _mobile collection
+	scopes = append(scopes, base.DefaultScope, base.SystemScope)
+	statusTracker := db.NewIndexStatusTracker(scopes...)
 
 	var statusCallback CollectionCallbackFunc = func(dbName string, scName base.ScopeAndCollectionName, status db.CollectionIndexStatus) {
-		statusMap[scName.ScopeName()][scName.CollectionName()] = status
+		statusTracker.Set(scName, status)
 		if err := h.db.AsyncIndexInitManager.UpdateStatusClusterAware(h.ctx()); err != nil {
 			base.WarnfCtx(h.ctx(), "Unable to update async index job status on cluster : %v", err)
 		}
@@ -555,8 +553,8 @@ func (h *handler) handlePostIndexInit() error {
 	}
 
 	opts := db.AsyncIndexInitOptions{
-		StatusMap: &statusMap,
-		DoneChan:  done,
+		StatusTracker: statusTracker,
+		DoneChan:      done,
 	}
 	err = h.db.AsyncIndexInitManager.Start(h.ctx(), opts)
 	if err != nil {
