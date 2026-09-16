@@ -42,7 +42,11 @@ env:
   # tag for repo at v1 is not updated
   ACTIONS_GOVULNCHECK_VERSION: &actions_govulncheck_version golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
   ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
+  ACTIONS_CACHE_VERSION: &actions_cache_version actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
   GO_MOD_FILE: &go_mod_file go.mod
+  # Couchbase Lite version the test server is built against - keep in step with
+  # cbltestclient.DefaultCBLVersion and integration-test/cbl_test_server.py.
+  CBL_VERSION: '4.1.2'
 
 jobs:
   build:
@@ -366,6 +370,77 @@ jobs:
           path: test.log
           retention-days: 7
           if-no-files-found: warn
+  test-cbl:
+    # Exercises testing/cbltestclient against a real Couchbase Lite client, so that the harness
+    # Sync Gateway's replication tests will be built on is known to work on every supported OS.
+    # Windows is absent because nothing consumes the harness there yet - topologytest, its first
+    # consumer, is already skipped on Windows in CI.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: ubuntu
+          - os: macos-latest
+            name: macos
+    name: test cbltestclient (${{ matrix.name }})
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+      # Turns "no test server available" from a skip into a failure, so a broken build step can't
+      # quietly cost us our only real Couchbase Lite coverage.
+      SG_TEST_REQUIRE_CBL_TEST_SERVER: 'true'
+    steps:
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
+        with:
+          go-version-file: *go_mod_file
+      - uses: *actions_setup_uv_version
+      # go mod download would try to fetch the private EE module, which public runners can't reach
+      - name: Download Go modules
+        shell: bash
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
+      # Building the test server downloads the Couchbase Lite package and compiles a C++ project,
+      # so it is cached on the version and the script that pins the test server's source.
+      - name: Cache Couchbase Lite test server
+        id: cbl-test-server-cache
+        uses: *actions_cache_version
+        with:
+          path: cbl-test-server
+          key: cbl-test-server-${{ matrix.os }}-${{ env.CBL_VERSION }}-${{ hashFiles('integration-test/cbl_test_server.py') }}
+      - name: Build Couchbase Lite test server
+        if: steps.cbl-test-server-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: uv run integration-test/cbl_test_server.py --cbl-version "${CBL_VERSION}"
+        env:
+          SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
+      - name: Run Tests
+        shell: bash
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/...
+        env:
+          SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
+      - name: Test Summary
+        if: always()
+        shell: bash
+        run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *actions_go_test_annotations_version
+        with:
+          test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: *actions_upload_artifact_version
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.name }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
+
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool

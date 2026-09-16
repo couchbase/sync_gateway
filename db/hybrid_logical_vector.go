@@ -670,6 +670,16 @@ func extractHLVFromBlipString(versionVectorStr string) (*HybridLogicalVector, []
 	return hlv, legacyRevs, nil
 }
 
+// ParseHLVFromBlipString parses a version vector in the format used on the blip wire, and in the
+// _revs metadata a Couchbase Lite client reports for a document: cv[,mv...][;pv...].  It is the
+// exported form of extractHLVFromBlipString, for test helpers outside this package that have to
+// read a version vector a real client produced.
+//
+// Any legacy revtree IDs found in the history section are returned alongside the HLV.
+func ParseHLVFromBlipString(versionVectorStr string) (*HybridLogicalVector, []string, error) {
+	return extractHLVFromBlipString(versionVectorStr)
+}
+
 // ExtractCVFromProposeChangesRev strips any trailing HLV content from proposeChanges rev property(CBG-4460)
 func ExtractCVFromProposeChangesRev(rev string) string {
 	pvDelimiter := strings.Index(rev, ";")

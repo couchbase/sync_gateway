@@ -168,6 +168,45 @@ change and `db.WaitForUserWaiterChange(t, userWaiter)` after it.
 | `SG_TEST_GOROUTINE_DUMP` | Capture a goroutine pprof profile at the end of each package and log its location | unset |
 | `SG_TEST_PROFILE_FREQUENCY` | Capture pprof profiles at this interval | unset |
 
+Real Couchbase Lite client
+--------------------------
+
+`testing/cbltestclient` drives a real Couchbase Lite client from Go tests, so replication behaviour
+can be checked against the actual implementation rather than against our own emulation of it. It
+talks to the [CBL-C test server](https://github.com/couchbaselabs/couchbase-lite-tests), a real
+Couchbase Lite C application that exposes its database and replicator over HTTP - so nothing links
+libcblite into the Sync Gateway build.
+
+No prebuilt test server is published publicly, so one has to be built:
+
+```sh
+uv run integration-test/cbl_test_server.py --cbl-version 4.1.2
+```
+
+That clones `couchbaselabs/couchbase-lite-tests` at a pinned commit, downloads the public
+Enterprise Edition Couchbase Lite package, and builds the server with CMake, installing it where
+the tests look for it. It takes a few minutes and a large download the first time, and is a no-op
+afterwards. Tests that need a test server and cannot find one are skipped.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `SG_TEST_CBL_VERSION` | Couchbase Lite version to use when a test doesn't name one | `4.1.2` |
+| `SG_TEST_CBL_TEST_SERVER_DIR` | Where built test servers are installed and looked for | OS cache directory |
+| `SG_TEST_CBL_TEST_SERVER_BINARIES` | Test server executables to use, as `<version>=<path>` pairs | unset |
+| `SG_TEST_CBL_TEST_SERVER_URLS` | Already-running test servers to use, as `<version>=<url>` pairs | unset |
+| `SG_TEST_REQUIRE_CBL_TEST_SERVER` | Fail rather than skip when no test server is available. CI sets this | `false` |
+| `SG_TEST_CBL_TESTS_REPO` | Build from an existing `couchbase-lite-tests` checkout instead of the pinned commit | unset |
+
+Two limits are worth knowing about, both in the test server rather than in this package:
+
+- Only one self-managed test server can run at a time unless its build accepts `--port` and
+  `--files-dir`. Without them the port is compiled in and, on Linux and macOS, every server shares
+  one data directory and wipes the others' sessions at startup. Run servers by hand and point
+  `SG_TEST_CBL_TEST_SERVER_URLS` at them to exercise several Couchbase Lite versions at once.
+- A deleted document cannot be read back. `GetDocument` reports a tombstone exactly as it reports a
+  document that never existed, so asserting that something was deleted means taking a snapshot
+  first with `SnapshotDocuments` and checking it with `VerifyDocuments`.
+
 Enterprise Edition
 ------------------
 
