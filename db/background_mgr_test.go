@@ -2516,7 +2516,7 @@ func (p *failingInitProcess) Init(ctx context.Context, options MockProcessOption
 }
 
 // TestBackgroundManagerStartWaitsForRunThatFailedInit covers a run that ends inside start itself, because Init
-// failed. Its terminal status update still has to join runWaitGroup, or the next Start starts alongside it.
+// failed. Its terminal status update still has to settle the run, or the next Start starts alongside it.
 func TestBackgroundManagerStartWaitsForRunThatFailedInit(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)

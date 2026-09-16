@@ -125,8 +125,11 @@ type BackgroundManager[O any] struct {
 	statusLock           sync.RWMutex
 	name                 string
 	terminator           atomic.Pointer[base.SafeTerminator]
-	// runWaitGroup tracks every goroutine of a run, so start can wait out the previous run.
-	runWaitGroup        sync.WaitGroup
+	// runWaitGroup tracks the goroutines of a run, so start can wait out the previous run.
+	runWaitGroup sync.WaitGroup
+	// runFinished is closed once the run this node holds has settled its terminal status, which start does on its
+	// own goroutine for a run that ends before Process.Run is launched. Guarded by lock.
+	runFinished         chan struct{}
 	clusterAwareOptions *ClusterAwareBackgroundManagerOptions
 	lock                sync.Mutex
 	Process             BackgroundManagerProcessI[O]
@@ -346,14 +349,19 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		return err
 	}
 
-	// The previous run reports its terminal state before its goroutines exit, so wait them out first.
+	finished, previousFinished := b.beginRun()
+
+	// The previous run settles its terminal status before its goroutines exit, so wait out both.
+	if previousFinished != nil {
+		<-previousFinished
+	}
 	b.runWaitGroup.Wait()
 
 	// A Stop landed while we waited. End the run before resetStatus and Init, which discard the previous run's
 	// stats and checkpoints.
 	terminator, started := b.installTerminator()
 	if !started {
-		b.finishRun(ctx, nil)
+		b.finishRun(ctx, finished, nil)
 		return nil
 	}
 
@@ -362,14 +370,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	if mode != backgroundManagerModeLocal {
 		processClusterStatus, err = b.readClusterStatus(ctx)
 		if err != nil {
-			b.finishRun(ctx, err)
+			b.finishRun(ctx, finished, err)
 			return err
 		}
 		previousStatus = statusFromClusterDoc(ctx, processClusterStatus)
 		// A stop landed while we waited. Leave the previous run's stats and checkpoints alone: resetStatus and
 		// Init below would discard them for a run the cluster will not admit.
 		if mode == backgroundManagerModeMultiNode && previousStatus.State == BackgroundProcessStateStopping {
-			b.endRunWithoutPublishing(BackgroundProcessStateStopped)
+			b.endRunWithoutPublishing(finished, BackgroundProcessStateStopped)
 			return errBackgroundManagerStatusAlreadyStopping
 		}
 	}
@@ -392,7 +400,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 	initMode, err := b.Process.Init(ctx, options, processClusterStatus)
 	if err != nil {
 		// No Process.Run goroutine was launched, so this goroutine ends the run.
-		b.finishRun(ctx, err)
+		b.finishRun(ctx, finished, err)
 		return err
 	}
 
@@ -412,7 +420,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
 				// The cluster ended the process while this node was claiming it. Settle the local state
 				// only: the cluster already holds the terminal status.
-				b.endRunWithoutPublishing(stateErr.state)
+				b.endRunWithoutPublishing(finished, stateErr.state)
 				// A join is driven by the cluster, which has answered it. A Start was asked for by a
 				// caller, who is told why the process did not start.
 				if !isJoin && stateErr.state == BackgroundProcessStateStopping {
@@ -426,7 +434,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		if err != nil {
 			base.ErrorfCtx(ctx, "Failed to update background manager status on start: %v", err)
 			// No Process.Run goroutine was launched, so this goroutine ends the run.
-			b.finishRun(ctx, err)
+			b.finishRun(ctx, finished, err)
 			return err
 		}
 	}
@@ -448,7 +456,7 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 		if err != nil {
 			base.ErrorfCtx(ctx, "Error: %v", err)
 		}
-		b.finishRun(ctx, err)
+		b.finishRun(ctx, finished, err)
 	})
 
 	return nil
@@ -504,12 +512,22 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 	return nil
 }
 
+// beginRun records the run markStart has just admitted, and returns the channel that run settles on along with
+// the one belonging to the run it displaced. A nil previous means this is the first run on this node.
+func (b *BackgroundManager[O]) beginRun() (finished, previous chan struct{}) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	previous = b.runFinished
+	b.runFinished = make(chan struct{})
+	return b.runFinished, previous
+}
+
 // finishRun records err, terminates the process, then records and publishes the terminal state. Only the goroutine
-// that owns the run may call it. Anything else records a reason with SetError instead.
-func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
-	// start calls this on its own goroutine for a run that never launched one, so join the group here.
-	b.runWaitGroup.Add(1)
-	defer b.runWaitGroup.Done()
+// that owns the run may call it. Anything else records a reason with SetError instead. finished is the channel the
+// run settles on, closed once its terminal status has been published so that the next start can proceed.
+func (b *BackgroundManager[O]) finishRun(ctx context.Context, finished chan struct{}, err error) {
+	defer close(finished)
 
 	if err != nil {
 		b.setLastErrorMessage(err.Error())
@@ -518,11 +536,11 @@ func (b *BackgroundManager[O]) finishRun(ctx context.Context, err error) {
 	b.updateTerminalStatus(ctx, b.setTerminalRunState(""))
 }
 
-// endRunWithoutPublishing ends a run that never launched Process.Run, adopting state as its terminal state. Used
-// when another node has already published the terminal status, which this node's copy would overwrite.
-func (b *BackgroundManager[O]) endRunWithoutPublishing(state BackgroundProcessState) {
-	b.runWaitGroup.Add(1)
-	defer b.runWaitGroup.Done()
+// endRunWithoutPublishing ends a run that never launched Process.Run, adopting state as its terminal state, and
+// settles finished for it. Used when another node has already published the terminal status, which this node's
+// copy would overwrite.
+func (b *BackgroundManager[O]) endRunWithoutPublishing(finished chan struct{}, state BackgroundProcessState) {
+	defer close(finished)
 
 	// Terminate first: settling the state admits the next run, whose terminator must not be the one closed here.
 	b.Terminate()
