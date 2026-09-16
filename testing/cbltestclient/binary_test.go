@@ -92,6 +92,9 @@ func TestResolveBinary(t *testing.T) {
 	installed := filepath.Join(binDir, testServerExecutable)
 	require.NoError(t, os.WriteFile(installed, []byte("--port"), 0o700))
 	t.Setenv(EnvTestServerDir, root)
+	// An explicitly named binary takes precedence over the cache, so clear it or a developer
+	// running with one set never exercises the cache lookup this is checking.
+	t.Setenv(EnvTestServerBinaries, "")
 
 	info, err := ResolveBinary("4.1.2")
 	require.NoError(t, err)
