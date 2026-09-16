@@ -176,8 +176,8 @@ func (c *Client) StartReplicator(ctx context.Context, config ReplicatorConfig, r
 // StopReplicator stops a replicator.  It returns once the request is accepted, not once the
 // replicator has reached ReplicatorActivityStopped - poll ReplicatorStatus for that.
 //
-// The C test server compiles its handler for this but never registers the route, so against that
-// server this fails with "Request API Not Found" until the registration is fixed upstream.
+// A C test server built before the route was registered compiles the handler but never reaches
+// it, and answers "Request API Not Found" instead.
 func (c *Client) StopReplicator(ctx context.Context, replicatorID string) error {
 	request := struct {
 		ID string `json:"id"`

@@ -400,14 +400,29 @@ jobs:
       - name: Download Go modules
         shell: bash
         run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
+      # The script tracks a branch tip rather than a fixed commit, so the cache has to be keyed on
+      # what that tip currently is - otherwise a moved tip would keep serving the server built
+      # from the commit before it.
+      - name: Resolve Couchbase Lite test server commit
+        id: cbl-test-server-commit
+        shell: bash
+        run: |
+          ref=$(uv run integration-test/cbl_test_server.py --print-ref)
+          commit=$(git ls-remote https://github.com/couchbaselabs/couchbase-lite-tests.git "${ref}" | cut -f1)
+          if [ -z "${commit}" ]; then
+            echo "::error::${ref} does not exist in couchbaselabs/couchbase-lite-tests"
+            exit 1
+          fi
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
       # Building the test server downloads the Couchbase Lite package and compiles a C++ project,
-      # so it is cached on the version and the script that pins the test server's source.
+      # so it is cached on the Couchbase Lite version, the test server commit, and the script that
+      # builds it.
       - name: Cache Couchbase Lite test server
         id: cbl-test-server-cache
         uses: *actions_cache_version
         with:
           path: cbl-test-server
-          key: cbl-test-server-${{ matrix.os }}-${{ env.CBL_VERSION }}-${{ hashFiles('integration-test/cbl_test_server.py') }}
+          key: cbl-test-server-${{ matrix.os }}-${{ env.CBL_VERSION }}-${{ steps.cbl-test-server-commit.outputs.commit }}-${{ hashFiles('integration-test/cbl_test_server.py') }}
       - name: Build Couchbase Lite test server
         if: steps.cbl-test-server-cache.outputs.cache-hit != 'true'
         shell: bash

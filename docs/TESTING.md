@@ -183,10 +183,15 @@ No prebuilt test server is published publicly, so one has to be built:
 uv run integration-test/cbl_test_server.py --cbl-version 4.1.2
 ```
 
-That clones `couchbaselabs/couchbase-lite-tests` at a pinned commit, downloads the public
-Enterprise Edition Couchbase Lite package, and builds the server with CMake, installing it where
-the tests look for it. It takes a few minutes and a large download the first time, and is a no-op
-afterwards. Tests that need a test server and cannot find one are skipped.
+That fetches the `couchbase-lite-tests` branch the script names, downloads the public Enterprise
+Edition Couchbase Lite package, and builds the server with CMake, installing it where the tests
+look for it. It takes a few minutes and a large download the first time. Afterwards it resolves the
+branch tip and does nothing if the installed server was built from it, so a moved tip rebuilds and
+an unmoved one does not. Tests that need a test server and cannot find one are skipped.
+
+The script tracks a branch rather than a fixed commit because the harness needs test server changes
+that have not merged yet: `--port` and `--files-dir`, so several servers can run on one host, and a
+routed `/stopReplicator`. Point it at `main` once they have landed.
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -195,17 +200,19 @@ afterwards. Tests that need a test server and cannot find one are skipped.
 | `SG_TEST_CBL_TEST_SERVER_BINARIES` | Test server executables to use, as `<version>=<path>` pairs | unset |
 | `SG_TEST_CBL_TEST_SERVER_URLS` | Already-running test servers to use, as `<version>=<url>` pairs | unset |
 | `SG_TEST_REQUIRE_CBL_TEST_SERVER` | Fail rather than skip when no test server is available. CI sets this | `false` |
-| `SG_TEST_CBL_TESTS_REPO` | Build from an existing `couchbase-lite-tests` checkout instead of the pinned commit | unset |
+| `SG_TEST_CBL_TESTS_REPO` | Build from an existing `couchbase-lite-tests` checkout instead of fetching the ref | unset |
+| `SG_TEST_CBL_TESTS_REF` | Branch, tag or commit of `couchbase-lite-tests` to build | the branch named in the script |
 
 Two limits are worth knowing about, both in the test server rather than in this package:
 
-- Only one self-managed test server can run at a time unless its build accepts `--port` and
-  `--files-dir`. Without them the port is compiled in and, on Linux and macOS, every server shares
-  one data directory and wipes the others' sessions at startup. Run servers by hand and point
-  `SG_TEST_CBL_TEST_SERVER_URLS` at them to exercise several Couchbase Lite versions at once.
 - A deleted document cannot be read back. `GetDocument` reports a tombstone exactly as it reports a
   document that never existed, so asserting that something was deleted means taking a snapshot
   first with `SnapshotDocuments` and checking it with `VerifyDocuments`.
+- A test server built without `--port` and `--files-dir` can only run one at a time: the port is
+  compiled in and, on Linux and macOS, every server shares one data directory and wipes the others'
+  sessions at startup. The branch the script tracks has both, so this only bites a build pointed at
+  by `SG_TEST_CBL_TEST_SERVER_BINARIES`. Running servers by hand and pointing
+  `SG_TEST_CBL_TEST_SERVER_URLS` at them works either way.
 
 Enterprise Edition
 ------------------

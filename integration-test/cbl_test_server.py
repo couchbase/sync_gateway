@@ -35,10 +35,11 @@ from pathlib import Path
 DEFAULT_CBL_VERSION = "4.1.2"
 
 TESTS_REPO_URL = "https://github.com/couchbaselabs/couchbase-lite-tests.git"
-# Pinned so that a change to the test server's API or command line is something we opt into.  The
-# --port flag this script relies on is not on main yet, so a local checkout has to be passed with
-# --repo until it lands; update this and drop that workaround once it has.
-TESTS_REPO_COMMIT = "675ea8d2dab8f8300e8b08714778d42b759cf34e"
+# The branch carrying the test server changes Sync Gateway's harness needs: --port and --files-dir
+# so several servers can run on one host, and a routed /stopReplicator.  Tracking its tip rather
+# than a fixed commit means picking up fixes as they land; the resolved commit goes in the stamp
+# file, so moving the tip still rebuilds.  Point this at main once the branch has merged.
+TESTS_REPO_REF = "test_server_fixes"
 
 # Written next to the installed server to record what it was built from, so a rebuild can be
 # skipped when nothing has changed.
@@ -102,8 +103,42 @@ def stamp_value(version: str, commit: str) -> str:
     return f"{version} {commit}"
 
 
-def checkout_repo(work_dir: Path, repo: Path | None) -> Path:
-    """Return the couchbase-lite-tests checkout to build from, cloning the pinned commit if needed."""
+def git(args: list[str], cwd: Path) -> None:
+    """Run a git command with the LFS smudge filter off.
+
+    The datasets are stored in Git LFS and the test server build does not need them, so skipping
+    the filter avoids pulling tens of megabytes of .cblite2 archives.
+    """
+    run(
+        ["git", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.required=false", *args],
+        cwd=cwd,
+    )
+
+
+def resolve_ref(ref: str) -> str | None:
+    """Return the commit ref points at, or None if the remote cannot be reached.
+
+    This is what makes a moving ref safe to track: the commit goes into the stamp file, so a tip
+    that has moved rebuilds and one that has not does nothing.  Being unable to resolve it is not
+    fatal - an offline machine with a server already installed should keep using it.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", TESTS_REPO_URL, ref],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as error:
+        log(f"Could not resolve {ref} in {TESTS_REPO_URL}: {error}")
+        return None
+    if not result.stdout.strip():
+        raise RuntimeError(f"{ref} does not exist in {TESTS_REPO_URL}")
+    return result.stdout.split()[0]
+
+
+def checkout_repo(work_dir: Path, repo: Path | None, ref: str) -> Path:
+    """Return the couchbase-lite-tests checkout to build from, fetching ref if needed."""
     if repo is not None:
         log(f"Using existing couchbase-lite-tests checkout at {repo}")
         return repo
@@ -113,36 +148,8 @@ def checkout_repo(work_dir: Path, repo: Path | None) -> Path:
         checkout.mkdir(parents=True, exist_ok=True)
         run(["git", "init", "--quiet"], cwd=checkout)
         run(["git", "remote", "add", "origin", TESTS_REPO_URL], cwd=checkout)
-    # The datasets are stored in Git LFS and the test server build does not need them, so skip the
-    # smudge filter rather than pulling tens of megabytes of .cblite2 archives.
-    run(
-        [
-            "git",
-            "-c",
-            "filter.lfs.smudge=",
-            "-c",
-            "filter.lfs.required=false",
-            "fetch",
-            "--depth",
-            "1",
-            "origin",
-            TESTS_REPO_COMMIT,
-        ],
-        cwd=checkout,
-    )
-    run(
-        [
-            "git",
-            "-c",
-            "filter.lfs.smudge=",
-            "-c",
-            "filter.lfs.required=false",
-            "checkout",
-            "--quiet",
-            "FETCH_HEAD",
-        ],
-        cwd=checkout,
-    )
+    git(["fetch", "--depth", "1", "origin", ref], cwd=checkout)
+    git(["checkout", "--quiet", "FETCH_HEAD"], cwd=checkout)
     return checkout
 
 
@@ -274,7 +281,12 @@ def main() -> None:
         "--repo",
         type=Path,
         default=os.environ.get("SG_TEST_CBL_TESTS_REPO"),
-        help="Build from an existing couchbase-lite-tests checkout instead of cloning the pinned commit",
+        help="Build from an existing couchbase-lite-tests checkout instead of fetching the ref",
+    )
+    parser.add_argument(
+        "--ref",
+        default=os.environ.get("SG_TEST_CBL_TESTS_REF", TESTS_REPO_REF),
+        help=f"Branch, tag or commit of couchbase-lite-tests to build (default: {TESTS_REPO_REF})",
     )
     parser.add_argument(
         "--work-dir",
@@ -291,7 +303,18 @@ def main() -> None:
         action="store_true",
         help="Print the installed executable's path on stdout",
     )
+    parser.add_argument(
+        "--print-ref",
+        action="store_true",
+        help="Print the couchbase-lite-tests ref that would be built, and do nothing else",
+    )
     args = parser.parse_args()
+
+    # Lets a caller key a cache on what the ref resolves to without this script owning that
+    # decision, which is what CI does.
+    if args.print_ref:
+        print(args.ref)
+        return
 
     install_dir = args.out or default_install_dir(args.cbl_version)
     executable = (
@@ -300,25 +323,38 @@ def main() -> None:
         / ("testserver.exe" if goos() == "windows" else "testserver")
     )
 
-    commit = "local" if args.repo else TESTS_REPO_COMMIT
     stamp = install_dir / STAMP_FILE_NAME
-    # A local checkout is rebuilt every time: its commit is whatever is checked out right now, so a
-    # stamp saying "local" tells us nothing about whether it is current.
+    installed = executable.exists() and stamp.exists()
+
+    # A local checkout is rebuilt every time: its working tree is whatever is checked out right
+    # now, including uncommitted changes, so no stamp can say whether it is current.
+    commit = "local" if args.repo else resolve_ref(args.ref)
+    if commit is None:
+        if not installed:
+            raise RuntimeError(
+                f"Cannot reach {TESTS_REPO_URL} to resolve {args.ref}, and no test server is "
+                f"installed at {executable}"
+            )
+        log(f"Keeping the installed test server at {executable}")
+        if args.print_path:
+            print(executable)
+        return
+
     up_to_date = (
         not args.force
         and not args.repo
-        and executable.exists()
-        and stamp.exists()
+        and installed
         and stamp.read_text() == stamp_value(args.cbl_version, commit)
     )
     if up_to_date:
         log(
-            f"Couchbase Lite {args.cbl_version} test server already installed at {executable}"
+            f"Couchbase Lite {args.cbl_version} test server already installed at {executable} "
+            f"({args.ref} is {commit[:12]})"
         )
     else:
         work_dir = args.work_dir or install_dir.parent / "src"
         work_dir.mkdir(parents=True, exist_ok=True)
-        checkout = checkout_repo(work_dir, args.repo)
+        checkout = checkout_repo(work_dir, args.repo, args.ref)
         built_bin_dir = build(checkout, args.cbl_version)
         install(
             built_bin_dir,

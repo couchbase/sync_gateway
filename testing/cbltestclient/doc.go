@@ -17,7 +17,7 @@
 // about testing.  Server and the process pool find a test server build, run one process per
 // Couchbase Lite version, and hand out a ready Client.
 //
-// The API is mirrored from spec/api/api.yaml at commit
-// 675ea8d2dab8f8300e8b08714778d42b759cf34e.  Note that the spec is at API version 2 while the C
+// The API is mirrored from spec/api/api.yaml on the couchbase-lite-tests branch
+// integration-test/cbl_test_server.py tracks.  Note that the spec is at API version 2 while the C
 // server still declares 1, so the version is negotiated from GET / rather than assumed.
 package cbltestclient

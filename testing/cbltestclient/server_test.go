@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -254,4 +255,47 @@ func TestTestServerStopKillsTheProcess(t *testing.T) {
 	// Stopping twice is normal: the pool stops every server it started, and a caller may already
 	// have stopped one.
 	server.stop(ctx)
+}
+
+func TestTestServerReplicatorLifecycle(t *testing.T) {
+	server, database := requireTestServerDatabase(t)
+	ctx := base.TestCtx(t)
+
+	// Nothing is listening on port 1, so the replicator connects, fails, and sits OFFLINE.  That is
+	// enough to exercise start, status and stop without needing a Sync Gateway: what is under test
+	// here is the control API, not replication itself.
+	replicatorID, err := server.Client.StartReplicator(ctx, ReplicatorConfig{
+		Database:               database,
+		Collections:            []ReplicationCollection{{Names: []string{testCollection}}},
+		Endpoint:               "ws://127.0.0.1:1/unreachable",
+		ReplicatorType:         ReplicatorTypePushAndPull,
+		Continuous:             true,
+		EnableDocumentListener: true,
+	}, false)
+	require.NoError(t, err)
+	require.NotEmpty(t, replicatorID)
+
+	status, err := server.Client.ReplicatorStatus(ctx, replicatorID)
+	require.NoError(t, err)
+	assert.NotEqual(t, ReplicatorActivityStopped, status.Activity)
+
+	require.NoError(t, server.Client.StopReplicator(ctx, replicatorID))
+
+	// Stopping is asynchronous: the request is accepted, and the replicator reaches STOPPED after.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := server.Client.ReplicatorStatus(ctx, replicatorID)
+		assert.NoError(c, err)
+		assert.Equal(c, ReplicatorActivityStopped, status.Activity)
+	}, 30*time.Second, 50*time.Millisecond, "replicator did not stop")
+}
+
+func TestTestServerStopUnknownReplicator(t *testing.T) {
+	server, _ := requireTestServerDatabase(t)
+	err := server.Client.StopReplicator(base.TestCtx(t), "no-such-replicator")
+	require.Error(t, err)
+	// The route has to reach the handler for this to be a replicator error rather than the test
+	// server's "Request API Not Found", which is what an unrouted endpoint answers.
+	var apiErr *APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Contains(t, apiErr.Message, "Replicator Not Found")
 }
