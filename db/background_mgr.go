@@ -358,14 +358,14 @@ func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClus
 			err = b.updateMultiNodeClusterAwareStatus(ctx, statusMode)
 			if stateErr, ok := errors.AsType[errBackgroundManagerStatusNotRunning](err); ok {
 				// The cluster ended the process while this node was joining it, so end the run rather than
-				// report this node running. A cluster still stopping leaves this node stopped, because there is
-				// no Process.Run here to carry it the rest of the way.
+				// report this node running.
+				b.Terminate()
 				endState := stateErr.state
 				if endState == BackgroundProcessStateStopping {
+					// There is no Process.Run on this node to carry a stopping cluster the rest of the way.
 					endState = BackgroundProcessStateStopped
 				}
-				b.compareAndSwapRunState(BackgroundProcessStateRunning, endState)
-				b.Terminate()
+				b.settleRunState(endState)
 				return nil
 			}
 		} else {
@@ -465,14 +465,7 @@ func (b *BackgroundManager[O]) markStart(ctx context.Context, previousStatus Bac
 
 // finishRun records the terminal state once the process has stopped, then publishes it.
 func (b *BackgroundManager[O]) finishRun(ctx context.Context) {
-	b.statusLock.Lock()
-	if b.status.State == BackgroundProcessStateStopping {
-		b.status.State = BackgroundProcessStateStopped
-	} else if b.status.State == BackgroundProcessStateRunning {
-		b.status.State = BackgroundProcessStateCompleted
-	}
-	b.statusLock.Unlock()
-
+	b.settleRunState(BackgroundProcessStateCompleted)
 	b.updateTerminalStatus(ctx)
 }
 
@@ -968,6 +961,21 @@ func (b *BackgroundManager[O]) stopProcess(ctx context.Context) {
 		}
 	}
 
+}
+
+// settleRunState records the state a run ends on, once nothing is left to carry it any further. terminalState is
+// where a run that was still running lands. A run that was already stopping lands on stopped either way.
+func (b *BackgroundManager[O]) settleRunState(terminalState BackgroundProcessState) {
+	b.statusLock.Lock()
+	defer b.statusLock.Unlock()
+	switch b.status.State {
+	case BackgroundProcessStateRunning:
+		b.status.State = terminalState
+	case BackgroundProcessStateStopping:
+		b.status.State = BackgroundProcessStateStopped
+	default:
+		// A run that already reached a terminal state keeps it.
+	}
 }
 
 // compareAndSwapRunState does a compare and swap on the run state. If the existing state does not match the old state then no update occurs.
