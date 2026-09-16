@@ -1528,10 +1528,12 @@ func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context,
 	// reached the backend - and that it did not then retry. Copying the slice header is enough
 	// to iterate outside the lock: SeedEntries only ever appends, so entries below this length
 	// never move.
-	qh.lock.Lock()
-	qh.queryCount++
-	callback, entries := qh.queryCallback, qh.entries
-	qh.lock.Unlock()
+	callback, entries := func() (func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error), LogEntries) {
+		qh.lock.Lock()
+		defer qh.lock.Unlock()
+		qh.queryCount++
+		return qh.queryCallback, qh.entries
+	}()
 
 	if callback != nil {
 		return callback(channel, startSeq, endSeq, limit, activeOnly)

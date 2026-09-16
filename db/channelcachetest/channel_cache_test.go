@@ -254,17 +254,24 @@ func TestChannelCacheCompactMixedEviction(t *testing.T) {
 
 	// Channels 1-15 active, 16-18 inactive. Only three inactive candidates against a target of
 	// nine, so six must come from the active-but-not-recently-used pool.
+	//
+	// A channel is always marked active before its cache is added, never after. Adding the cache
+	// that crosses the high watermark starts compaction on its own goroutine, and compaction reads
+	// each channel's active flag to decide which pool it belongs to - so marking afterwards is a
+	// race that intermittently classifies the channel as inactive and shifts the split.
 	for i := 1; i <= 18; i++ {
 		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
-		cache.AddChannelCacheForTest(t, ctx, channel)
 		if i <= 15 {
 			activeChannels.IncrChannel(channel)
 		}
+		cache.AddChannelCacheForTest(t, ctx, channel)
 	}
 	assert.Equal(t, 18, cache.ChannelCachesForTest(t).Length())
 
-	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
-	activeChannels.IncrChannel(channels.NewID("chan_19", base.DefaultCollectionID))
+	// The nineteenth channel is the one that triggers compaction.
+	chan19 := channels.NewID("chan_19", base.DefaultCollectionID)
+	activeChannels.IncrChannel(chan19)
+	cache.AddChannelCacheForTest(t, ctx, chan19)
 
 	db.WaitForChannelCacheCompactionForTest(t, cache)
 

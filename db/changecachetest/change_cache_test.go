@@ -3126,7 +3126,7 @@ func TestDocChangedRecentSequences(t *testing.T) {
 	for _, entry := range starChanges {
 		starSeqs = append(starSeqs, entry.Sequence)
 	}
-	assert.Equal(t, []uint64{103}, starSeqs, "only the document itself is a document")
+	assert.Equal(t, []uint64{103}, starSeqs, "the star channel holds one entry per document, so the removal at 102 is displaced by 103")
 }
 
 // TestDocChangedFeedLatencyStat pins where feed latency is measured from: the document's write
