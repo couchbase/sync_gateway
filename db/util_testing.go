@@ -1625,6 +1625,9 @@ func NewChangeCacheForTest(_ testing.TB) *changeCache {
 // SetInitTimeForTest overrides the time the cache considers itself to have started. Feed latency is
 // measured from this point for documents written before it, so a test that needs a known elapsed
 // time has to place it rather than take whatever Init recorded.
+//
+// Call between Init and Start. DocChanged reads initTime without holding the cache lock, so writing
+// it once a feed can deliver is a data race - there is no lock to take here that would fix that.
 func (c *changeCache) SetInitTimeForTest(_ testing.TB, initTime time.Time) {
 	c.initTime = initTime
 }

@@ -3129,36 +3129,64 @@ func TestDocChangedRecentSequences(t *testing.T) {
 	assert.Equal(t, []uint64{103}, starSeqs, "only the document itself is a document")
 }
 
-// TestDocChangedFeedLatencyStat pins that feed latency is recorded. TimeSaved is the write time
-// carried on the document, so any positive elapsed time since it must land on the stat.
+// TestDocChangedFeedLatencyStat pins where feed latency is measured from: the document's write
+// time, or the point this cache started working the feed, whichever is later. Asserting only that
+// some latency was recorded would hold either way - and taking the earlier of the two would charge
+// a document that sat in the bucket for hours before startup as hours of feed latency, swamping
+// the average on every restart.
 func TestDocChangedFeedLatencyStat(t *testing.T) {
-	database, ctx := db.SetupTestDB(t)
-	defer database.Close(ctx)
-	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
-	collectionID := collection.GetCollectionID()
+	// recordedLatency runs one mutation through a cache that started at initTime, carrying
+	// timeSaved as its write time, and returns the latency that landed on the stat.
+	recordedLatency := func(t *testing.T, initTime, timeSaved time.Time) time.Duration {
+		database, ctx := db.SetupTestDB(t)
+		defer database.Close(ctx)
+		collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
 
-	cacheOptions := db.DefaultCacheOptions()
-	changeCache := db.NewChangeCacheForTest(t)
-	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
-	// Init records the current time, which would leave a back-dated write as the earlier of the two.
-	changeCache.SetInitTimeForTest(t, time.Now().Add(-time.Hour))
-	require.NoError(t, changeCache.Start(0))
-	defer changeCache.Stop(ctx)
+		cacheOptions := db.DefaultCacheOptions()
+		changeCache := db.NewChangeCacheForTest(t)
+		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		// Init records the current time; place it before Start so the elapsed time is known.
+		changeCache.SetInitTimeForTest(t, initTime)
+		require.NoError(t, changeCache.Start(0))
+		defer changeCache.Stop(ctx)
 
-	require.Equal(t, int64(0), database.DbStats.Database().DCPReceivedTime.Value())
+		require.Equal(t, int64(0), database.DbStats.Database().DCPReceivedTime.Value())
 
-	syncData := db.SyncData{
-		RevAndVersion: channels.RevAndVersion{RevTreeID: "1-abc"},
-		Sequence:      1,
-		Channels:      channels.ChannelMap{"ABC": nil},
-		History:       db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
-		TimeSaved:     time.Now().Add(-time.Minute),
+		syncData := db.SyncData{
+			RevAndVersion: channels.RevAndVersion{RevTreeID: "1-abc"},
+			Sequence:      1,
+			Channels:      channels.ChannelMap{"ABC": nil},
+			History:       db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
+			TimeSaved:     timeSaved,
+		}
+		changeCache.DocChanged(feedEventForTest(t, "latencyDoc", collectionID, syncData), db.DocTypeDocument)
+
+		assert.Equal(t, int64(1), database.DbStats.Database().DCPReceivedCount.Value())
+		return time.Duration(database.DbStats.Database().DCPReceivedTime.Value())
 	}
-	changeCache.DocChanged(feedEventForTest(t, "latencyDoc", collectionID, syncData), db.DocTypeDocument)
 
-	assert.Positive(t, database.DbStats.Database().DCPReceivedTime.Value(), "feed latency must be recorded")
-	assert.Equal(t, int64(1), database.DbStats.Database().DCPReceivedCount.Value())
+	// Both cases place the later of the two inputs a minute ago and the earlier an hour ago, so
+	// the recorded latency says which one was used. The window is wide at the top because only
+	// the lower bound of the elapsed time is under the test's control.
+	const (
+		expectedFloor = time.Minute
+		wrongInput    = 10 * time.Minute
+	)
+
+	t.Run("a write after the cache started is charged from its write time", func(t *testing.T) {
+		latency := recordedLatency(t, time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
+
+		assert.GreaterOrEqual(t, latency, expectedFloor)
+		assert.Less(t, latency, wrongInput, "latency must come from TimeSaved, not the older cache start")
+	})
+
+	t.Run("a write from before the cache started is charged from the cache start", func(t *testing.T) {
+		latency := recordedLatency(t, time.Now().Add(-time.Minute), time.Now().Add(-time.Hour))
+
+		assert.GreaterOrEqual(t, latency, expectedFloor)
+		assert.Less(t, latency, wrongInput, "a pre-startup write is only this cache's problem from startup")
+	})
 }
 
 // TestDocChangedUnusedSequences covers the sequences a write consumed but never used, which a
@@ -3460,8 +3488,11 @@ func TestProcessEntryRouting(t *testing.T) {
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
-		// initialSequence itself was already accounted for before startup: it is neither the next
-		// sequence nor later than the startup point, so it belongs nowhere.
+		// initialSequence itself was already accounted for before startup. The cache started at
+		// 100, so it expects 101 next, and an entry at 100 is below that without being in the
+		// skipped list - processEntry's duplicate guard is what drops it. (The separate
+		// initialSequence arm further down that chain is only reachable for an entry marked
+		// skipped, so it is not what runs here.)
 		entry := db.MakeTestLogEntryForChannels(initialSequence, []string{"ABC"})
 		entry.CollectionID = collectionID
 		_ = changeCache.ProcessEntryForTest(t, ctx, entry)

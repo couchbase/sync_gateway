@@ -1459,6 +1459,12 @@ func TestLateLogsAfterEviction(t *testing.T) {
 	cache.AddLateSequence(db.MakeTestLogEntry(10, "doc10", "1-a"))
 	require.Equal(t, int64(1), cache.CountedLateLogCountForTest(t))
 
+	// A live cache hands a registering feed the most recent late sequence, so any successful
+	// registration from here on returns 10. That is what makes the zero asserted after eviction
+	// mean "turned away" - on a fresh cache, zero is also what registering on the seq-0 sentinel
+	// returns, so the same assertion there would hold whether or not the guard existed.
+	require.Equal(t, uint64(10), cache.RegisterLateSequenceClient())
+
 	cache.ReleaseLateLogsForEvictionForTest(t)
 
 	// A detached queue holds nothing. Reporting -1 here would make the next eviction *add* to
@@ -1468,7 +1474,8 @@ func TestLateLogsAfterEviction(t *testing.T) {
 
 	// A feed still holding this reference must be turned away rather than registered against an
 	// empty queue; it re-registers on a fresh cache after the UUID-mismatch rollback.
-	assert.Equal(t, uint64(0), cache.RegisterLateSequenceClient())
+	assert.Equal(t, uint64(0), cache.RegisterLateSequenceClient(),
+		"a detached cache must turn a feed away, not register it")
 }
 
 // TestGetLateSequencesSinceAllocation pins the result capacity of GetLateSequencesSince: exactly

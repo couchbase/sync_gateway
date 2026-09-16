@@ -962,45 +962,63 @@ func TestChangesFeedReplicationGauges(t *testing.T) {
 	pullStats := rt.GetDatabase().DbStats.CBLReplicationPull()
 	dbStats := rt.GetDatabase().DbStats.Database()
 
+	// The totals are cumulative counters on a RestTester shared by every subtest, so each subtest
+	// asserts the change its own request caused rather than an absolute value. Absolute values
+	// would make a subtest depend on the ones before it having run, which breaks running one on
+	// its own with -run - the first thing anyone does with a failure here.
+	type feedTotals struct{ oneShot, continuous int64 }
+	totals := func() feedTotals {
+		return feedTotals{
+			oneShot:    pullStats.NumPullReplTotalOneShot.Value(),
+			continuous: pullStats.NumPullReplTotalContinuous.Value(),
+		}
+	}
+
 	t.Run("a one-shot feed releases its active count", func(t *testing.T) {
+		before := totals()
+
 		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes", "")
 		rest.RequireStatus(t, response, http.StatusOK)
 
-		assert.Equal(t, int64(1), pullStats.NumPullReplTotalOneShot.Value(), "the request is counted")
+		after := totals()
+		assert.Equal(t, int64(1), after.oneShot-before.oneShot, "the request is counted")
 		assert.Equal(t, int64(0), pullStats.NumPullReplActiveOneShot.Value(), "and released on completion")
 
 		// A one-shot feed must not be counted as continuous.
-		assert.Equal(t, int64(0), pullStats.NumPullReplTotalContinuous.Value())
+		assert.Equal(t, int64(0), after.continuous-before.continuous)
 		assert.Equal(t, int64(0), pullStats.NumPullReplActiveContinuous.Value())
 
 		assert.Equal(t, int64(0), dbStats.NumReplicationsActive.Value(), "the overall count is released too")
 	})
 
 	t.Run("a continuous feed releases its active count", func(t *testing.T) {
+		before := totals()
+
 		// A short timeout ends the feed on its own, so the deferred release runs.
 		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?feed=continuous&timeout=100", "")
 		rest.RequireStatus(t, response, http.StatusOK)
 
-		assert.Equal(t, int64(1), pullStats.NumPullReplTotalContinuous.Value(), "the request is counted")
+		after := totals()
+		assert.Equal(t, int64(1), after.continuous-before.continuous, "the request is counted")
 		assert.Equal(t, int64(0), pullStats.NumPullReplActiveContinuous.Value(), "and released on completion")
 
-		// The earlier one-shot request is the only one counted there.
-		assert.Equal(t, int64(1), pullStats.NumPullReplTotalOneShot.Value())
+		// A continuous feed must not be counted as one-shot.
+		assert.Equal(t, int64(0), after.oneShot-before.oneShot)
 		assert.Equal(t, int64(0), pullStats.NumPullReplActiveOneShot.Value())
 
 		assert.Equal(t, int64(0), dbStats.NumReplicationsActive.Value())
 	})
 
-	// Ordered last: a longpoll feed is also counted as continuous, so running it earlier would
-	// perturb the continuous assertions above.
 	t.Run("a waiting feed releases its caught-up count", func(t *testing.T) {
 		// A longpoll feed with nothing to send parks in ChangeWaiter.Wait, which is counted as
 		// caught-up for the duration. The count is a gauge of feeds waiting right now, so failing
 		// to release it leaves every feed that ever waited counted forever.
+		caughtUpBefore := pullStats.NumPullReplTotalCaughtUp.Value()
+
 		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?feed=longpoll&since=999&timeout=100", "")
 		rest.RequireStatus(t, response, http.StatusOK)
 
-		assert.Positive(t, pullStats.NumPullReplTotalCaughtUp.Value(), "the wait is counted")
+		assert.Greater(t, pullStats.NumPullReplTotalCaughtUp.Value(), caughtUpBefore, "the wait is counted")
 
 		// The handler returns once the feed is done writing, but the goroutine serving it releases
 		// the gauge a moment later, so settle rather than sampling immediately.
