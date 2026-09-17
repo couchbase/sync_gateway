@@ -211,3 +211,77 @@ func TestQueryHandlerForTestAsFactory(t *testing.T) {
 
 	var _ ChannelQueryHandler = shared
 }
+
+// TestQueryHandlerForTestSetError covers error injection on the query path: the error reaches the
+// caller, the query is still counted, and clearing restores the seeded entries.
+func TestQueryHandlerForTestSetError(t *testing.T) {
+	queryErr := fmt.Errorf("query failed")
+	qh := &QueryHandlerForTest{}
+	qh.SeedEntries(LogEntries{MakeTestLogEntryForChannels(1, []string{"chanA"})})
+
+	qh.SetError(queryErr)
+	entries, err := qh.getChangesInChannelFromQuery(base.TestCtx(t), "chanA", 1, 0, 0, false)
+	require.ErrorIs(t, err, queryErr)
+	assert.Nil(t, entries)
+	assert.Equal(t, 1, qh.QueryCount(), "a failed query is still a query the caller issued")
+
+	// Clearing restores the seeded behaviour, so one test can cover both sides of a branch.
+	qh.SetError(nil)
+	entries, err = qh.getChangesInChannelFromQuery(base.TestCtx(t), "chanA", 1, 0, 0, false)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1)
+	assert.Equal(t, 2, qh.QueryCount())
+}
+
+// TestQueryHandlerForTestSetQueryCallback covers the general form: the callback sees the real
+// query arguments, replaces the result, and may call back into the handler without deadlocking.
+func TestQueryHandlerForTestSetQueryCallback(t *testing.T) {
+	qh := &QueryHandlerForTest{}
+	qh.SeedEntries(LogEntries{MakeTestLogEntryForChannels(1, []string{"chanA"})})
+
+	var gotChannel string
+	var gotStart, gotEnd uint64
+	var gotLimit int
+	var gotActiveOnly bool
+	var countDuringCallback int
+	qh.SetQueryCallback(func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+		gotChannel, gotStart, gotEnd, gotLimit, gotActiveOnly = channel, startSeq, endSeq, limit, activeOnly
+		// Runs outside the handler's lock, so reaching back in is safe.
+		countDuringCallback = qh.QueryCount()
+		return LogEntries{MakeTestLogEntryForChannels(99, []string{channel})}, nil
+	})
+
+	entries, err := qh.getChangesInChannelFromQuery(base.TestCtx(t), "chanB", 3, 7, 5, true)
+	require.NoError(t, err)
+	assert.Equal(t, "chanB", gotChannel)
+	assert.Equal(t, uint64(3), gotStart)
+	assert.Equal(t, uint64(7), gotEnd)
+	assert.Equal(t, 5, gotLimit)
+	assert.True(t, gotActiveOnly)
+	assert.Equal(t, 1, countDuringCallback, "the query is counted before the callback runs")
+
+	require.Len(t, entries, 1)
+	assert.Equal(t, uint64(99), entries[0].Sequence, "the callback replaces the seeded entries")
+}
+
+// TestQueryHandlerForTestSetFactoryError covers error injection on the factory, which is what
+// drives the channel cache's "could not obtain a query handler" branches. Production's factory
+// fails the same way when asked for a collectionID the database no longer holds.
+func TestQueryHandlerForTestSetFactoryError(t *testing.T) {
+	factoryErr := fmt.Errorf("unknown collection")
+	qh := &QueryHandlerForTest{}
+
+	handler, err := qh.AsFactory(base.DefaultCollectionID)
+	require.NoError(t, err)
+	assert.Same(t, ChannelQueryHandler(qh), handler)
+
+	qh.SetFactoryError(factoryErr)
+	handler, err = qh.AsFactory(base.DefaultCollectionID)
+	require.ErrorIs(t, err, factoryErr)
+	assert.Nil(t, handler, "a failed factory returns no handler, so callers must not use it")
+
+	qh.SetFactoryError(nil)
+	handler, err = qh.AsFactory(base.DefaultCollectionID)
+	require.NoError(t, err)
+	assert.Same(t, ChannelQueryHandler(qh), handler)
+}

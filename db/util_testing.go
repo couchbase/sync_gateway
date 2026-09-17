@@ -1472,9 +1472,11 @@ func MakeTestLogEntryWithCV(seq uint64, docid string, revid string, channelNames
 // file because ChannelQueryHandler's only method is unexported: Go will not let a type
 // outside package db implement it, so out-of-package test packages cannot write their own.
 type QueryHandlerForTest struct {
-	entries    LogEntries
-	queryCount int
-	lock       sync.RWMutex
+	entries       LogEntries
+	queryCount    int
+	queryCallback func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
+	factoryErr    error
+	lock          sync.RWMutex
 }
 
 // QueryHandlerFactoryForTest is a ChannelQueryHandlerFactory returning a fresh, empty handler.
@@ -1483,9 +1485,44 @@ func QueryHandlerFactoryForTest(collectionID uint32) (ChannelQueryHandler, error
 }
 
 // AsFactory adapts this handler to ChannelQueryHandlerFactory, so a single handler instance is
-// shared across every collection.
+// shared across every collection. Returns the error set by SetFactoryError, if any, which is how
+// a test drives the channel cache's own "could not obtain a query handler" branches - production
+// fails here when asked for a collectionID the database no longer holds.
 func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandler, error) {
+	qh.lock.RLock()
+	defer qh.lock.RUnlock()
+	if qh.factoryErr != nil {
+		return nil, qh.factoryErr
+	}
 	return qh, nil
+}
+
+// SetFactoryError makes every subsequent AsFactory call fail with err, so callers of
+// getChannelCache and getBypassChannelCache take their error branches. Pass nil to clear.
+func (qh *QueryHandlerForTest) SetFactoryError(err error) {
+	qh.lock.Lock()
+	defer qh.lock.Unlock()
+	qh.factoryErr = err
+}
+
+// SetQueryCallback installs a function that replaces the handler's own filtering, so a test can
+// return an error, a short result, or a different result per call. Pass nil to restore the
+// seeded-entry behaviour. The callback runs outside the handler's lock, so it is free to call
+// back into SeedEntries or QueryCount without deadlocking.
+func (qh *QueryHandlerForTest) SetQueryCallback(callback func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)) {
+	qh.lock.Lock()
+	defer qh.lock.Unlock()
+	qh.queryCallback = callback
+}
+
+// SetError makes every subsequent query fail with err, the common case of SetQueryCallback.
+// Pass nil to clear.
+func (qh *QueryHandlerForTest) SetError(err error) {
+	if err == nil {
+		qh.SetQueryCallback(nil)
+		return
+	}
+	qh.SetQueryCallback(func(string, uint64, uint64, int, bool) (LogEntries, error) { return nil, err })
 }
 
 // getChangesInChannelFromQuery serves seeded entries, applying the same filters the real
@@ -1495,9 +1532,24 @@ func (qh *QueryHandlerForTest) AsFactory(collectionID uint32) (ChannelQueryHandl
 // inclusive_end), and endSeq of 0 means unbounded - query.go substitutes N1QLMaxInt64 for it.
 // The bounds are applied before the limit, so entries outside the range do not consume it.
 func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+	// One lock acquisition covers the count and the snapshot. queryCount counts queries issued,
+	// not queries that succeeded, so a test injecting an error can still assert that the caller
+	// reached the backend - and that it did not then retry. Copying the slice header is enough
+	// to iterate outside the lock: SeedEntries only ever appends, so entries below this length
+	// never move.
+	callback, entries := func() (func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error), LogEntries) {
+		qh.lock.Lock()
+		defer qh.lock.Unlock()
+		qh.queryCount++
+		return qh.queryCallback, qh.entries
+	}()
+
+	if callback != nil {
+		return callback(channel, startSeq, endSeq, limit, activeOnly)
+	}
+
 	queryEntries := make(LogEntries, 0)
-	qh.lock.RLock()
-	for _, entry := range qh.entries {
+	for _, entry := range entries {
 		if _, ok := entry.Channels[channel]; !ok {
 			continue
 		}
@@ -1515,11 +1567,6 @@ func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context,
 			break
 		}
 	}
-	qh.lock.RUnlock()
-
-	qh.lock.Lock()
-	qh.queryCount++
-	qh.lock.Unlock()
 	return queryEntries, nil
 }
 
@@ -1539,6 +1586,12 @@ func (qh *QueryHandlerForTest) QueryCount() int {
 
 /// Bridges for out-of-package test packages.
 // Deliberately thin - no assertions, no retries, no extra synchronisation.
+
+// RevisionCacheForTest exposes the database's revision cache, whose Peek and Put are already
+// exported on the interface.
+func (dbc *DatabaseContext) RevisionCacheForTest(_ testing.TB) RevisionCache {
+	return dbc.revisionCache
+}
 
 // ChannelCacheForTest exposes the database's channel cache.
 func (dbc *DatabaseContext) ChannelCacheForTest(_ testing.TB) ChannelCache {
@@ -1578,6 +1631,16 @@ func (c *DatabaseCollectionWithUser) SetDatabaseCollectionUserForTest(_ testing.
 // NewChangeCacheForTest returns an uninitialised change cache. Call Init and Start on the result.
 func NewChangeCacheForTest(_ testing.TB) *changeCache {
 	return &changeCache{}
+}
+
+// SetInitTimeForTest overrides the time the cache considers itself to have started. Feed latency is
+// measured from this point for documents written before it, so a test that needs a known elapsed
+// time has to place it rather than take whatever Init recorded.
+//
+// Call between Init and Start. DocChanged reads initTime without holding the cache lock, so writing
+// it once a feed can deliver is a data race - there is no lock to take here that would fix that.
+func (c *changeCache) SetInitTimeForTest(_ testing.TB, initTime time.Time) {
+	c.initTime = initTime
 }
 
 // ChangeCacheForTest exposes the database's own change cache.
@@ -1737,17 +1800,12 @@ func (c *channelCacheImpl) AddChannelCacheForTest(_ testing.TB, ctx context.Cont
 	return c.addChannelCache(ctx, channel)
 }
 
-// WaitForChannelCacheCompactionForTest polls until compaction has finished, reporting false if it
-// did not complete in time.
-func WaitForChannelCacheCompactionForTest(_ testing.TB, cache *channelCacheImpl) (compactionComplete bool) {
-	for i := 0; i <= 10; i++ {
-		if cache.compactRunning.IsTrue() {
-			time.Sleep(100 * time.Millisecond)
-		} else {
-			return true
-		}
-	}
-	return false
+// WaitForChannelCacheCompactionForTest blocks until channel cache compaction has finished,
+// failing the test if it does not. Callers do not need to assert on the result.
+func WaitForChannelCacheCompactionForTest(t testing.TB, cache *channelCacheImpl) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, cache.compactRunning.IsTrue(), "channel cache compaction did not complete")
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // CleanAgedLateLogsForTest runs the background age-based late log prune across all channels.
@@ -1785,6 +1843,38 @@ func (c *singleChannelCacheImpl) LateLogCountForTest(_ testing.TB) int64 {
 // does not count the parked sentinel entry.
 func (c *singleChannelCacheImpl) CountedLateLogCountForTest(_ testing.TB) int64 {
 	return c.countedLateLogCount()
+}
+
+// WaitForSequenceNotSkippedForTest blocks until the sequence is no longer in the skipped list, or
+// the wait expires.
+func (c *changeCache) WaitForSequenceNotSkippedForTest(_ testing.TB, ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
+	return c.waitForSequenceNotSkipped(ctx, sequence, maxWaitTime)
+}
+
+// PruneCacheAgeForTest runs the age-based prune of the primary cache.
+func (c *singleChannelCacheImpl) PruneCacheAgeForTest(_ testing.TB, ctx context.Context) {
+	c.pruneCacheAge(ctx)
+}
+
+// GetCachedChangesSinceForTest reads a channel's cached entries after since, never falling back
+// to a query.
+func (c *channelCacheImpl) GetCachedChangesSinceForTest(_ testing.TB, ctx context.Context, channel channels.ID, since uint64) ([]*LogEntry, error) {
+	return c.getCachedChangesSince(ctx, channel, since)
+}
+
+// GetBypassChannelCacheForTest returns the query-backed cache used when no channel cache is held.
+func (c *channelCacheImpl) GetBypassChannelCacheForTest(_ testing.TB, ch channels.ID) (SingleChannelCache, error) {
+	return c.getBypassChannelCache(ch)
+}
+
+// CleanAgedItemsForTest runs the age-based prune across every channel cache.
+func (c *channelCacheImpl) CleanAgedItemsForTest(_ testing.TB, ctx context.Context) error {
+	return c.cleanAgedItems(ctx)
+}
+
+// ReleaseLateLogsForEvictionForTest detaches the cache's late logs, as compaction does on eviction.
+func (c *singleChannelCacheImpl) ReleaseLateLogsForEvictionForTest(_ testing.TB) {
+	c.releaseLateLogsForEviction()
 }
 
 // PruneLateLogAgeForTest drops late log entries older than the configured age.

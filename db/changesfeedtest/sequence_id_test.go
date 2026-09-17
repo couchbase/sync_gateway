@@ -267,11 +267,77 @@ func TestIntSeqToString(t *testing.T) {
 			seq:    db.SequenceID{LowSeq: 120, TriggeredBy: 130, Seq: 150},
 			seqStr: "120::150",
 		},
+		{
+			name:   "seq equal to triggeredBy - backfill is complete, not active",
+			seq:    db.SequenceID{TriggeredBy: 110, Seq: 110},
+			seqStr: "110",
+		},
+		{
+			name:   "lowSeq equal to triggeredBy during backfill - lowSeq is dropped",
+			seq:    db.SequenceID{LowSeq: 110, TriggeredBy: 110, Seq: 20},
+			seqStr: "110:20",
+		},
+		{
+			name:   "lowSeq equal to seq - lowSeq is dropped",
+			seq:    db.SequenceID{LowSeq: 100, Seq: 100},
+			seqStr: "100",
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.seqStr, tc.seq.String())
+		})
+	}
+}
+
+// TestSafeSequence covers the sequence a changes feed resumes from.
+//
+// LowSeq wins only while it is genuinely behind Seq. A LowSeq that has caught up or overtaken Seq
+// is stale, and resuming from it would re-send sequences the client already has.
+func TestSafeSequence(t *testing.T) {
+	testCases := []struct {
+		name     string
+		seq      db.SequenceID
+		expected uint64
+	}{
+		{
+			name:     "no lowSeq - resume from seq",
+			seq:      db.SequenceID{Seq: 200},
+			expected: 200,
+		},
+		{
+			name:     "lowSeq behind seq - resume from lowSeq",
+			seq:      db.SequenceID{LowSeq: 100, Seq: 200},
+			expected: 100,
+		},
+		{
+			name:     "lowSeq one behind seq - still resume from lowSeq",
+			seq:      db.SequenceID{LowSeq: 199, Seq: 200},
+			expected: 199,
+		},
+		{
+			// The boundary: LowSeq has caught up, so there is no longer a gap to resume into.
+			name:     "lowSeq equal to seq - resume from seq",
+			seq:      db.SequenceID{LowSeq: 200, Seq: 200},
+			expected: 200,
+		},
+		{
+			// Past the boundary: a stale LowSeq must not drag the resume point backwards.
+			name:     "lowSeq ahead of seq - stale, resume from seq",
+			seq:      db.SequenceID{LowSeq: 300, Seq: 200},
+			expected: 200,
+		},
+		{
+			name:     "triggeredBy is not considered",
+			seq:      db.SequenceID{LowSeq: 100, TriggeredBy: 500, Seq: 200},
+			expected: 100,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, tc.seq.SafeSequence())
 		})
 	}
 }

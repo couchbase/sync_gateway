@@ -453,7 +453,7 @@ func TestLateLogsStatReleasedOnChannelEviction(t *testing.T) {
 
 	// Add another channel to exceed the high watermark and trigger compaction down to the low watermark.
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_17", base.DefaultCollectionID))
-	require.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 	require.Equal(t, 12, cache.ChannelCachesForTest(t).Length(), "compaction should evict down to the low watermark")
 
 	// The decisive assertion: after eviction the gauge must have been decremented to exactly the non-sentinel
@@ -1401,4 +1401,112 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// earliest entry, this entry was the ony entry with a listener so it was safe to remove all other entries until the last entry
 	require.Equal(t, abcCache.LateLogCountForTest(t), 1,
 		"the length force-prune should event down to one item")
+}
+
+// TestChannelCacheLateLogAgeFallback pins the late-log pruning interval's fallback. LateLogAge is
+// resolved separately from every other option - it is a local consumed straight by the background
+// task rather than a field stored on the cache - and `<= 0` falls back to DefaultLateLogAge so
+// that late-log pruning always runs.
+//
+// The fallback is observable because NewBackgroundTask rejects a non-positive interval: without
+// it, construction fails. That makes a successful construction here a real assertion about which
+// value was used, not merely that the constructor did not blow up.
+func TestChannelCacheLateLogAgeFallback(t *testing.T) {
+	newCacheWithLateLogAge := func(t *testing.T, lateLogAge time.Duration) error {
+		t.Helper()
+		// Start from the defaults so ChannelCacheAge stays valid - it schedules a background task
+		// of its own, and a non-positive value there would fail construction for unrelated reasons.
+		options := db.DefaultCacheOptions().ChannelCacheOptions
+		options.LateLogAge = lateLogAge
+
+		stats, err := base.NewSyncGatewayStats()
+		require.NoError(t, err)
+		dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+		require.NoError(t, err)
+		activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
+
+		ctx := base.TestCtx(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options, db.QueryHandlerFactoryForTest,
+			activeChannels, dbstats.Cache())
+		if err != nil {
+			return err
+		}
+		cache.Stop(ctx)
+		return nil
+	}
+
+	// Zero is the boundary, and the value a config that never set late_log_expiry_seconds
+	// produces. Without the fallback the interval would reach NewBackgroundTask as zero.
+	require.NoError(t, newCacheWithLateLogAge(t, 0), "a zero LateLogAge must fall back to the default")
+
+	// One side of the boundary: negative is equally unset, and equally rejected by
+	// NewBackgroundTask if it survives that far.
+	require.NoError(t, newCacheWithLateLogAge(t, -time.Second), "a negative LateLogAge must fall back to the default")
+
+	// The other side: a configured value is passed through and is a valid interval.
+	require.NoError(t, newCacheWithLateLogAge(t, 30*time.Second), "a positive LateLogAge must be accepted")
+}
+
+// TestLateLogsAfterEviction covers the late-log queue on a cache that compaction has detached.
+// releaseLateLogsForEviction sets lateLogs to nil, and both the counted-entry total and the
+// listener registration have explicit handling for that state which nothing exercised.
+func TestLateLogsAfterEviction(t *testing.T) {
+	stats := newTestCacheStats(t)
+	cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{},
+		channels.NewID("chanA", base.DefaultCollectionID), 0, stats)
+	// A registered feed keeps the sentinel from being purged on the next add.
+	cache.RegisterLateSequenceClient()
+	cache.AddLateSequence(db.MakeTestLogEntry(10, "doc10", "1-a"))
+	require.Equal(t, int64(1), cache.CountedLateLogCountForTest(t))
+
+	// A live cache hands a registering feed the most recent late sequence, so any successful
+	// registration from here on returns 10. That is what makes the zero asserted after eviction
+	// mean "turned away" - on a fresh cache, zero is also what registering on the seq-0 sentinel
+	// returns, so the same assertion there would hold whether or not the guard existed.
+	require.Equal(t, uint64(10), cache.RegisterLateSequenceClient())
+
+	cache.ReleaseLateLogsForEvictionForTest(t)
+
+	// A detached queue holds nothing. Reporting -1 here would make the next eviction *add* to
+	// NumEntriesInLateFeed - the upward leak this release path exists to prevent.
+	assert.Equal(t, int64(0), cache.CountedLateLogCountForTest(t))
+	assert.Equal(t, int64(0), stats.NumEntriesInLateFeed.Value())
+
+	// A feed still holding this reference must be turned away rather than registered against an
+	// empty queue; it re-registers on a fresh cache after the UUID-mismatch rollback.
+	assert.Equal(t, uint64(0), cache.RegisterLateSequenceClient(),
+		"a detached cache must turn a feed away, not register it")
+}
+
+// TestGetLateSequencesSinceAllocation pins the result capacity of GetLateSequencesSince: exactly
+// the entries from the caller's last-seen position to the end of the queue. The sizing only
+// differs from a naive one when an entry sits ahead of the caller's position, which happens when
+// a slower feed is still parked further back.
+func TestGetLateSequencesSinceAllocation(t *testing.T) {
+	cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{},
+		channels.NewID("chanA", base.DefaultCollectionID), 0, newTestCacheStats(t))
+
+	// Two feeds register on the sentinel; the slower one never advances, so it pins the front of
+	// the queue and keeps later positions at a non-zero index.
+	slowFeedSince := cache.RegisterLateSequenceClient()
+	fastFeedSince := cache.RegisterLateSequenceClient()
+	require.Equal(t, uint64(0), slowFeedSince)
+
+	for seq := uint64(10); seq <= 12; seq++ {
+		cache.AddLateSequence(db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"))
+	}
+
+	entries, lastSequence, err := cache.GetLateSequencesSince(fastFeedSince)
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	assert.Equal(t, uint64(12), lastSequence)
+
+	cache.AddLateSequence(db.MakeTestLogEntry(13, "doc13", "1-a"))
+	require.Len(t, cache.LateLogsForTest(t), 5, "the slow feed keeps the earlier entries alive")
+
+	// The queue holds 5 entries and the fast feed is at index 3, so exactly 2 slots are needed.
+	entries, _, err = cache.GetLateSequencesSince(lastSequence)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, 2, cap(entries), "allocated for the entries from the caller's position to the end")
 }

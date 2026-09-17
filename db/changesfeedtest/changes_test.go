@@ -1313,3 +1313,157 @@ func TestChangesMultiChannelActiveOnlyLimit(t *testing.T) {
 		})
 	}
 }
+
+// TestChangesBackfillSinceShapes pins which branch the per-channel grant handling takes for each
+// shape of incoming since.
+func TestChangesBackfillSinceShapes(t *testing.T) {
+	database, ctx := db.SetupTestDBDefaultCollection(t)
+	defer database.Close(ctx)
+
+	authenticator := database.Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
+	cacheWaiter := database.NewDCPCachingCountWaiter(t)
+
+	// doc1 lands in both channels at sequence 1; PBS is granted at sequence 2, so seqAddedAt is 2
+	// and doc1 is the document the grant backfills.
+	_, _, err = collection.Put(ctx, "doc1", db.Body{"channels": []string{"ABC", "PBS"}})
+	require.NoError(t, err)
+	cacheWaiter.AddAndWait(1)
+
+	userInfo, err := database.GetPrincipalForTest(t, "naomi", true)
+	require.NoError(t, err)
+	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+	_, _, err = database.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
+	require.NoError(t, err)
+	database.WaitForPendingChanges(t)
+
+	// A second document after the grant, so the "mid-backfill for a later channel" case has
+	// something to return - otherwise it asserts an empty result, which passes whatever branch runs.
+	_, _, err = collection.Put(ctx, "doc2", db.Body{"channels": []string{"PBS"}})
+	require.NoError(t, err)
+	cacheWaiter.AddAndWait(1)
+	database.WaitForPendingChanges(t)
+
+	collUser, err := authenticator.GetUser("naomi")
+	require.NoError(t, err)
+	collection.SetDatabaseCollectionUserForTest(t, collUser)
+
+	const seqAddedAt = 2
+	testCases := []struct {
+		name  string
+		since db.SequenceID
+		want  []string
+	}{
+		{
+			name:  "from the beginning - ABC directly, PBS by backfill",
+			since: db.SequenceID{Seq: 0},
+			want:  []string{"doc1@1", "doc1@2:1", "_user/naomi@2", "doc2@3"},
+		},
+		{
+			name:  "past the document but before the grant - backfill still owed",
+			since: db.SequenceID{Seq: 1},
+			want:  []string{"doc1@2:1", "_user/naomi@2", "doc2@3"},
+		},
+		{
+			name:  "triggeredBy below the grant - a backfill for an earlier grant does not suppress this one",
+			since: db.SequenceID{TriggeredBy: seqAddedAt - 1, Seq: 0},
+			want:  []string{"doc1@1", "doc1@2:1", "_user/naomi@2", "doc2@3"},
+		},
+		{
+			name:  "mid-backfill for this grant - resumes rather than restarting",
+			since: db.SequenceID{TriggeredBy: seqAddedAt, Seq: 0},
+			want:  []string{"doc1@2:1", "_user/naomi@2", "doc2@3"},
+		},
+		{
+			name:  "backfill for this grant already complete - not replayed",
+			since: db.SequenceID{TriggeredBy: seqAddedAt, Seq: 1},
+			want:  []string{"_user/naomi@2", "doc2@3"},
+		},
+		{
+			name:  "triggeredBy above the grant - mid-backfill for a later channel",
+			since: db.SequenceID{TriggeredBy: seqAddedAt + 1, Seq: 1},
+			want:  []string{"doc2@3"},
+		},
+		{
+			name:  "compound since - lowSeq below the grant, mid-backfill for it",
+			since: db.SequenceID{LowSeq: 1, TriggeredBy: seqAddedAt, Seq: 0},
+			want:  []string{"doc1@2:1", "_user/naomi@2", "doc2@3"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			changes := db.GetChangesForTest(t, collection, base.SetOf("*"), db.GetChangesOptionsWithSeq(t, tc.since))
+			var got []string
+			for _, change := range changes {
+				got = append(got, fmt.Sprintf("%s@%s", change.ID, change.Seq.String()))
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestChangesRemovalVisibilityBySince pins when a channel removal is still owed to a client. A
+// document removed from a channel is sent as a removal entry only while the client's since is
+// *below* the removal sequence - a client already past it has seen the removal and must not be
+// sent it again, and a client below it must be, or it keeps a document it can no longer access.
+//
+// Both directions matter and neither is asserted: sending a stale removal is noise, but failing to
+// send one leaves the client holding a document it has lost access to.
+func TestChangesRemovalVisibilityBySince(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+
+	authenticator := database.Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
+	cacheWaiter := database.NewDCPCachingCountWaiter(t)
+
+	// Sequence 1 puts alpha in A; sequence 2 moves it to B only, so alice loses access at 2.
+	rev, _, err := collection.Put(ctx, "alpha", db.Body{"channels": []string{"A"}})
+	require.NoError(t, err)
+	_, _, err = collection.Put(ctx, "alpha", db.Body{"channels": []string{"B"}, db.BodyRev: rev})
+	require.NoError(t, err)
+	cacheWaiter.AddAndWait(2)
+
+	collUser, err := authenticator.GetUser("alice")
+	require.NoError(t, err)
+	collection.SetDatabaseCollectionUserForTest(t, collUser)
+
+	const removalSeq = 2
+	testCases := []struct {
+		name        string
+		since       uint64
+		wantRemoval bool
+	}{
+		{name: "from the beginning - the removal is owed", since: 0, wantRemoval: true},
+		{name: "one below the removal - still owed", since: removalSeq - 1, wantRemoval: true},
+		{name: "at the removal - already seen, not resent", since: removalSeq, wantRemoval: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			changes := db.GetChangesForTest(t, collection, base.SetOf("*"),
+				db.GetChangesOptionsWithSeq(t, db.SequenceID{Seq: tc.since}))
+
+			if !tc.wantRemoval {
+				assert.Empty(t, changes, "a client past the removal has nothing owed")
+				return
+			}
+			require.Len(t, changes, 1)
+			assert.Equal(t, "alpha", changes[0].ID)
+			assert.Equal(t, uint64(removalSeq), changes[0].Seq.Seq)
+			assert.Equal(t, base.SetOf("A"), changes[0].Removed,
+				"the entry must name the channel the document left")
+		})
+	}
+}

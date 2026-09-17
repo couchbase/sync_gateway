@@ -16,6 +16,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/db"
 
@@ -156,7 +157,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	// Add another channel to cache
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_17", base.DefaultCollectionID))
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	// Validate cache size
 	assert.Equal(t, 12, cache.ChannelCachesForTest(t).Length())
@@ -203,7 +204,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	// Add another channel to cache, should trigger compaction
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	// Validate cache size
 	assert.Equal(t, 10, cache.ChannelCachesForTest(t).Length())
@@ -219,6 +220,68 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 		}
 	}
 
+	// All nine evictions were inactive, so the NRU counter must not move.
+	assert.Equal(t, 9, testStats.ChannelCacheChannelsEvictedInactive.Value())
+	assert.Equal(t, 0, testStats.ChannelCacheChannelsEvictedNRU.Value())
+	assert.Equal(t, 10, testStats.ChannelCacheNumChannels.Value())
+}
+
+// TestChannelCacheCompactMixedEviction covers a compaction that has to draw on both candidate
+// pools: too few inactive channels to reach the target, so the remainder comes from NRU. Neither
+// existing compaction test creates this - both have enough inactive channels to fill the target on
+// their own - which leaves the split between the two eviction counters unasserted.
+func TestChannelCacheCompactMixedEviction(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+
+	// Max 20, hwm 18, lwm 10: 19 channels means a target of 9 to evict.
+	options := db.DefaultCacheOptions().ChannelCacheOptions
+	options.MaxNumChannels = 20
+	options.CompactHighWatermarkPercent = 90
+	options.CompactLowWatermarkPercent = 50
+
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Cache()
+	activeChannels := channels.NewActiveChannels(&base.SgwIntStat{})
+
+	ctx := base.TestCtx(t)
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options, db.QueryHandlerFactoryForTest, activeChannels, testStats)
+	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop(ctx)
+
+	// Channels 1-15 active, 16-18 inactive. Only three inactive candidates against a target of
+	// nine, so six must come from the active-but-not-recently-used pool.
+	//
+	// A channel is always marked active before its cache is added, never after. Adding the cache
+	// that crosses the high watermark starts compaction on its own goroutine, and compaction reads
+	// each channel's active flag to decide which pool it belongs to - so marking afterwards is a
+	// race that intermittently classifies the channel as inactive and shifts the split.
+	for i := 1; i <= 18; i++ {
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		if i <= 15 {
+			activeChannels.IncrChannel(channel)
+		}
+		cache.AddChannelCacheForTest(t, ctx, channel)
+	}
+	assert.Equal(t, 18, cache.ChannelCachesForTest(t).Length())
+
+	// The nineteenth channel is the one that triggers compaction.
+	chan19 := channels.NewID("chan_19", base.DefaultCollectionID)
+	activeChannels.IncrChannel(chan19)
+	cache.AddChannelCacheForTest(t, ctx, chan19)
+
+	db.WaitForChannelCacheCompactionForTest(t, cache)
+
+	assert.Equal(t, 10, cache.ChannelCachesForTest(t).Length())
+
+	// Inactive channels are evicted first, so the split is fixed: 3 inactive, then 6 NRU to
+	// reach the target of 9.
+	assert.Equal(t, int64(3), testStats.ChannelCacheChannelsEvictedInactive.Value())
+	assert.Equal(t, int64(6), testStats.ChannelCacheChannelsEvictedNRU.Value())
+	assert.Equal(t, int64(10), testStats.ChannelCacheNumChannels.Value())
 }
 
 // TestChannelCacheCompactNRU tests compaction where a subset of the channels are marked as recently used
@@ -260,7 +323,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 
 	// Add another channel to cache, should trigger compaction
 	cache.AddChannelCacheForTest(t, ctx, channels.NewID("chan_19", base.DefaultCollectionID))
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	// Expect channels 1-10, 11-15 to be evicted, and all to be marked as NRU during compaction
 	assert.Equal(t, 14, cache.ChannelCachesForTest(t).Length())
@@ -298,7 +361,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 		}
 	}
 
-	assert.True(t, db.WaitForChannelCacheCompactionForTest(t, cache), "Compaction didn't complete in expected time")
+	db.WaitForChannelCacheCompactionForTest(t, cache)
 
 	//   1-5 are inactive, recently used
 	//   6-14 are inactive, not recently used
@@ -1182,5 +1245,217 @@ func TestChannelCacheActiveOnlyBoundariesAndGaps(t *testing.T) {
 		assert.Equal(t, "doc2", changes10[1].ID)
 		assert.Equal(t, "doc3", changes10[2].ID)
 		assert.Equal(t, "doc4", changes10[3].ID)
+	})
+}
+
+// TestChannelCacheRemoveByCollection covers channelCacheImpl.Remove, which dispatches a purge
+// across every channel cache in one collection. The existing TestChannelCacheRemove covers the
+// per-channel singleChannelCacheImpl.Remove.
+func TestChannelCacheRemoveByCollection(t *testing.T) {
+	const channelName = "chanA"
+	otherCollectionID := base.DefaultCollectionID + 1
+
+	purgeTime := time.Now()
+	entryAt := func(seq uint64, received time.Time) *db.LogEntry {
+		entry := db.MakeTestLogEntry(seq, fmt.Sprintf("doc_%d", seq), "1-a")
+		entry.TimeReceived = channels.NewFeedTimestamp(&received)
+		return entry
+	}
+	beforePurge := func(seq uint64) *db.LogEntry { return entryAt(seq, purgeTime.Add(-time.Minute)) }
+
+	t.Run("removes matching docs from the target collection only", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), stats)
+		require.NoError(t, err)
+		defer cache.Stop(ctx)
+
+		target, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, base.DefaultCollectionID))
+		other, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, otherCollectionID))
+		for seq := uint64(1); seq <= 3; seq++ {
+			target.AddToCacheForTest(t, ctx, beforePurge(seq), false)
+			other.AddToCacheForTest(t, ctx, beforePurge(seq), false)
+		}
+		active, _, _ := getCacheUtilization(stats)
+		require.Equal(t, 6, active)
+
+		count := cache.Remove(ctx, base.DefaultCollectionID, []string{"doc_1", "doc_2"}, purgeTime)
+
+		assert.Equal(t, 2, count)
+		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{3}))
+
+		// The same doc IDs exist in the other collection and must be left alone.
+		assert.True(t, verifyChannelSequences(other.LogsForTest(t), []uint64{1, 2, 3}))
+
+		active, _, _ = getCacheUtilization(stats)
+		assert.Equal(t, 4, active, "utilization must fall by the number removed")
+	})
+
+	t.Run("empty docID list is a no-op", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), stats)
+		require.NoError(t, err)
+		defer cache.Stop(ctx)
+
+		target, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, base.DefaultCollectionID))
+		target.AddToCacheForTest(t, ctx, beforePurge(1), false)
+
+		assert.Equal(t, 0, cache.Remove(ctx, base.DefaultCollectionID, nil, purgeTime))
+		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{1}))
+	})
+
+	t.Run("documents received after the purge started are kept", func(t *testing.T) {
+		ctx := base.TestCtx(t)
+		stats := newTestCacheStats(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), stats)
+		require.NoError(t, err)
+		defer cache.Stop(ctx)
+
+		target, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channelName, base.DefaultCollectionID))
+		target.AddToCacheForTest(t, ctx, beforePurge(1), false)
+		// Resurrected after the purge began: removing it would discard a write the purge never saw.
+		target.AddToCacheForTest(t, ctx, entryAt(2, purgeTime.Add(time.Minute)), false)
+
+		count := cache.Remove(ctx, base.DefaultCollectionID, []string{"doc_1", "doc_2"}, purgeTime)
+
+		assert.Equal(t, 1, count)
+		assert.True(t, verifyChannelSequences(target.LogsForTest(t), []uint64{2}))
+	})
+}
+
+// TestChannelCacheAddUnusedSequence covers which sequence a released range advances the cache's
+// high sequence to. A range reports its end; a single released sequence has no end and reports
+// itself. Getting either wrong leaves the high sequence behind, which stalls changes feeds.
+func TestChannelCacheAddUnusedSequence(t *testing.T) {
+	newCache := func(t *testing.T) db.ChannelCache {
+		ctx := base.TestCtx(t)
+		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+		require.NoError(t, err)
+		t.Cleanup(func() { cache.Stop(ctx) })
+		return cache
+	}
+
+	t.Run("range advances to its end sequence", func(t *testing.T) {
+		cache := newCache(t)
+		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
+		assert.Equal(t, uint64(9), cache.GetHighCacheSequence())
+	})
+
+	t.Run("single sequence advances to itself", func(t *testing.T) {
+		cache := newCache(t)
+		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5})
+		assert.Equal(t, uint64(5), cache.GetHighCacheSequence())
+	})
+}
+
+// TestChannelCacheAddToCacheStarChannel covers the star-channel bookkeeping in AddToCache: a
+// document the sync function did not place in "*" must still reach the star channel cache, and a
+// document in no channels at all must be handled without incident.
+func TestChannelCacheAddToCacheStarChannel(t *testing.T) {
+	ctx := base.TestCtx(t)
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+		db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+	require.NoError(t, err)
+	defer cache.Stop(ctx)
+
+	starCache, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID(channels.UserStarChannel, base.DefaultCollectionID))
+	namedCache, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID("chanA", base.DefaultCollectionID))
+
+	entry := db.MakeTestLogEntryForChannels(1, []string{"chanA"})
+	cache.AddToCache(ctx, entry)
+
+	assert.True(t, verifyChannelSequences(namedCache.LogsForTest(t), []uint64{1}))
+	assert.True(t, verifyChannelSequences(starCache.LogsForTest(t), []uint64{1}),
+		"a doc in an ordinary channel must still reach the star channel")
+
+	// A document the sync function placed in no channels at all still belongs in "*", since that
+	// is the all-docs channel. It must also not upset the allocation sized from the channel count.
+	cache.AddToCache(ctx, db.MakeTestLogEntryForChannels(2, nil))
+	assert.True(t, verifyChannelSequences(namedCache.LogsForTest(t), []uint64{1}))
+	assert.True(t, verifyChannelSequences(starCache.LogsForTest(t), []uint64{1, 2}),
+		"a doc in no channels still reaches the star channel")
+}
+
+// TestChannelCacheCleanAgedItems covers the background task that age-prunes every channel cache.
+// TestSingleChannelCachePruneAge covers the per-channel prune; this is the level above, which
+// walks the caches and had no test.
+func TestChannelCacheCleanAgedItems(t *testing.T) {
+	ctx := base.TestCtx(t)
+	options := db.DefaultCacheOptions().ChannelCacheOptions
+	options.ChannelCacheMinLength = 1
+	options.ChannelCacheMaxLength = 10
+	options.ChannelCacheAge = time.Minute
+
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", options,
+		db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+	require.NoError(t, err)
+	defer cache.Stop(ctx)
+
+	single, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID("chanA", base.DefaultCollectionID))
+	for seq := uint64(1); seq <= 3; seq++ {
+		entry := db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a")
+		received := time.Now().Add(-2 * time.Minute)
+		entry.TimeReceived = channels.NewFeedTimestamp(&received)
+		single.AddToCacheForTest(t, ctx, entry, false)
+	}
+	require.Len(t, single.LogsForTest(t), 3)
+
+	require.NoError(t, cache.CleanAgedItemsForTest(t, ctx))
+
+	// Stale entries are dropped down to ChannelCacheMinLength.
+	assert.Len(t, single.LogsForTest(t), 1)
+}
+
+// TestChannelCacheCachedChangesAccessors covers the three cache-only read paths and the error
+// branch they share. Each resolves a channel cache first and returns early on failure; negating
+// that guard makes the ordinary call return nothing at all, so asserting the result is enough.
+func TestChannelCacheCachedChangesAccessors(t *testing.T) {
+	ctx := base.TestCtx(t)
+	chanID := channels.NewID("chanA", base.DefaultCollectionID)
+
+	queryHandler := &db.QueryHandlerForTest{}
+	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
+		queryHandler.AsFactory, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
+	require.NoError(t, err)
+	defer cache.Stop(ctx)
+
+	single, _ := cache.AddChannelCacheForTest(t, ctx, chanID)
+	for seq := uint64(1); seq <= 3; seq++ {
+		single.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"), false)
+	}
+
+	t.Run("GetCachedChanges returns the whole cached log", func(t *testing.T) {
+		changes, err := cache.GetCachedChanges(ctx, chanID)
+		require.NoError(t, err)
+		assert.True(t, verifyChannelSequences(changes, []uint64{1, 2, 3}))
+	})
+
+	t.Run("getCachedChangesSince returns only entries after since", func(t *testing.T) {
+		changes, err := cache.GetCachedChangesSinceForTest(t, ctx, chanID, 1)
+		require.NoError(t, err)
+		assert.True(t, verifyChannelSequences(changes, []uint64{2, 3}))
+	})
+
+	t.Run("getBypassChannelCache returns a usable cache", func(t *testing.T) {
+		bypass, err := cache.GetBypassChannelCacheForTest(t, chanID)
+		require.NoError(t, err)
+		require.NotNil(t, bypass)
+		assert.Equal(t, chanID, bypass.ChannelID())
+	})
+
+	t.Run("a failing factory propagates its error", func(t *testing.T) {
+		factoryErr := fmt.Errorf("query handler requested for unknown collectionID")
+		queryHandler.SetFactoryError(factoryErr)
+		defer queryHandler.SetFactoryError(nil)
+
+		bypass, err := cache.GetBypassChannelCacheForTest(t, chanID)
+
+		require.ErrorIs(t, err, factoryErr)
+		assert.Nil(t, bypass, "a caller handling this error has no cache to read the channel name from")
 	})
 }
