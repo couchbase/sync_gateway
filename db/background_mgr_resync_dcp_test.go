@@ -1306,3 +1306,25 @@ func TestResyncManagerDCPResumeAllVBucketsCompleted(t *testing.T) {
 		})
 	}
 }
+
+// TestResyncCheckpointsRemovedOnCompletion covers the other half of CBG-5041 for resync: nothing
+// purges checkpoints when a run finishes successfully. BackgroundManager's terminal transition
+// persists the final status and deletes the heartbeat doc but never touches checkpoints, so the only
+// cleanup is the gocb client's implicit purge in deactivateVbucket. Rosmar has no equivalent, and
+// neither does the cbgt/sharded path used by distributed resync.
+// TestResyncCheckpointsRemovedOnCompletion asserts that a completed run leaves no checkpoints, on the
+// sharded feed as well as the single-node one.
+func TestResyncCheckpointsRemovedOnCompletion(t *testing.T) {
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{docsToCreate: 1000})
+	defer db.Close(ctx)
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+
+	require.NoError(t, db.ResyncManager.Start(ctx, ResyncOptions{Collections: base.NewCollectionNames()}))
+	completed := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+	require.NotEmpty(t, completed.ResyncID)
+
+	prefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, completed.ResyncID, process.Distributed)
+	requireDCPCheckpointsPurged(t, ctx, db.DatabaseContext, prefix,
+		"completed resync run %q left its DCP checkpoints behind", completed.ResyncID)
+}
