@@ -6,16 +6,6 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-// Benchmarks for the CBG-5693 refreshUser/tapNotifier decoupling. See
-// cbg5693_refreshuser_decouple_plan.md (repo root) for the full methodology, including why a
-// caching-throughput macro run cannot show this win, why absolute ns/op numbers from this harness
-// do not survive across sessions (only within-session, interleaved before/after deltas do), and the
-// run protocol for a true before/after comparison against a pre-PR1 checkout.
-//
-// CI note: .github/workflows/ci.yml's test-benchmark-compile job runs `-short -bench=. -benchtime=1x
-// -run '!'` over ./... on every push, so every benchmark here collapses to a single, cheap arm under
-// testing.Short() and reliably tears down every goroutine it starts before returning.
-
 package changecachetest
 
 import (
@@ -33,9 +23,7 @@ import (
 )
 
 // pinnedCacheOptions pins both broadcast intervals to the same duration, so BroadcastSlowMode
-// flipping can't change the wake cadence mid-benchmark.  (These benchmarks never write real
-// documents or allocate sequences, so slow mode never actually engages - this is insurance against
-// that changing, not a response to anything currently observed.)
+// flipping can't change the wake cadence mid-benchmark.
 func pinnedCacheOptions(interval time.Duration) db.CacheOptions {
 	opts := db.DefaultCacheOptions()
 	opts.BroadcastChangesInterval = interval
@@ -43,13 +31,7 @@ func pinnedCacheOptions(interval time.Duration) db.CacheOptions {
 	return opts
 }
 
-// populateKeyCounts seeds keyCounts with n channel entries via the already-exported Notify, in a
-// single tapNotifier.L acquisition for the whole batch.  Production carries ~20,000 resident
-// channels; a 1-entry map makes a map-lookup-shaped check look cheaper than it is - the earlier
-// perf study measured 20.0ns at 0 roles rising to 763ns at 50 roles against a 20,000-entry map.
-// Note this only matters for a true before/after comparison: the current (post-PR1) code no longer
-// reads keyCounts for the user-count check at all, so this axis should show flat, identical numbers
-// on its own - which is itself a result worth confirming.
+// populateKeyCounts seeds keyCounts with n channel entries in a single tapNotifier.L acquisition.
 func populateKeyCounts(b *testing.B, ctx context.Context, database *db.Database, collectionID uint32, n int) {
 	b.Helper()
 	listener := database.GetMutationListener(b)
@@ -60,11 +42,9 @@ func populateKeyCounts(b *testing.B, ctx context.Context, database *db.Database,
 	listener.Notify(ctx, channels.SetOfNoValidate(keys...))
 }
 
-// newBenchUser returns a saved user with `roles` resolved roles, so a waiter built from it has the
-// production shape: 1+roles tracked principal keys, each with its own resolved counter.
-// SetExplicitRoles alone isn't enough - it leaves RoleInvalSeq non-zero, and RoleNames() reports
-// nothing until a save-then-GetUser round trip resolves it (auth/user.go) - so this always does
-// both, even for roles == 0, to keep every arm's setup shape uniform.
+// newBenchUser returns a saved user with `roles` resolved roles, giving a waiter the production
+// shape of 1+roles tracked principal keys.  The save-then-GetUser round trip is required:
+// SetExplicitRoles leaves RoleInvalSeq set, and RoleNames() reports nothing until that resolves.
 func newBenchUser(b *testing.B, ctx context.Context, database *db.Database, name string, roles int) auth.User {
 	b.Helper()
 	a := database.Authenticator(ctx)
@@ -88,11 +68,7 @@ func newBenchUser(b *testing.B, ctx context.Context, database *db.Database, name
 	return user
 }
 
-// newBenchWaiter builds a waiter for user and asserts it has the production shape: 1+roles tracked
-// principal keys.  That assertion is load-bearing, not decorative - a nil-user waiter takes one
-// tapNotifier.L acquisition per wake where a real one takes two (or, post-PR1, zero vs the
-// lock-free path), and an earlier study's benchmarks were invalidated by silently using the
-// half-traffic nil-user shape.  This assertion is what stops that regressing again.
+// newBenchWaiter builds a waiter for user and asserts it tracks 1+roles principal keys.
 func newBenchWaiter(b *testing.B, database *db.Database, user auth.User, expectedKeys int) *db.ChangeWaiter {
 	b.Helper()
 	userDb, err := db.GetDatabase(database.DatabaseContext, user)
@@ -102,40 +78,19 @@ func newBenchWaiter(b *testing.B, database *db.Database, user auth.User, expecte
 	return w
 }
 
-// startHerd parks `waiters` independent ChangeWaiters, each watching its own distinct, never-
-// individually-satisfied channel key, and drives a background stream of ordinary channel-key
-// Notify calls (mimicking the caching feed writing documents) so the pinned-cadence broadcaster
-// ticker always has something to broadcast. Every tick, every parked waiter wakes, contends for
-// tapNotifier.L in turn, finds its own channel unaffected, and re-parks - reproducing the "wasted
-// wake" cost (measured in the earlier perf study's A19) that this file's money benchmark measures
-// the impact of on an unrelated per-BLIP-message check sharing the same mutex.
+// startHerd parks `waiters` ChangeWaiters, each on its own channel key that is never individually
+// satisfied, and drives background channel Notify calls so the broadcaster ticker always has
+// something to broadcast.  Every tick wakes every waiter, which contends for tapNotifier.L, finds
+// its own channel unaffected and re-parks: the wasted-wake load the benchmarks measure against.
+// The waiters are load, not the measurement, so they are deliberately not barrier-synchronised.
 //
-// There is deliberately no per-round WaitGroup barrier synchronising the waiters: they are load,
-// not the measurement, and a barrier that acks before re-blocking would understate park/unpark and
-// prevent overlapping broadcasts, which is exactly the behaviour under test.
+// Teardown releases the herd itself rather than relying on changeListener.Stop, which broadcasts
+// without holding tapNotifier.L - a goroutine midway through Cond.Wait's unlock-and-register step
+// can miss that broadcast and park forever.  notifyKey holds the lock across write-and-broadcast,
+// so teardown bumps every herd key via Notify and then issues one notifyKey to broadcast reliably.
+// `stop` covers the window where a goroutine is between Wait() calls rather than parked.
 //
-// Releasing every parked herd waiter reliably is the tricky part, and getting it wrong is a real,
-// previously-hit hang (confirmed via a goroutine dump during development), not a theoretical one.
-// changeListener.Stop's own teardown calls tapNotifier.Broadcast() WITHOUT holding tapNotifier.L
-// (change_listener.go's Stop) - deliberately, per sync.Cond's contract, which allows it. But that
-// means it can race with a goroutine that is concurrently past its own predicate check and about to
-// park: Broadcast() only wakes goroutines already registered as parked *at the instant it runs*, and
-// a goroutine mid-way through Cond.Wait's internal "unlock and register" step can miss it and then
-// park forever, since nothing broadcasts again afterwards. This is a property of Stop() itself, not
-// something this change introduced - these benchmarks are just the first thing to stress it hard
-// enough (many goroutines continuously cycling through Wait() right up to teardown) to expose it.
-//
-// notifyKey does not have this problem: it holds tapNotifier.L for its entire write-then-broadcast,
-// so by the time it broadcasts, every other goroutine touching that lock has either already returned
-// or is fully, atomically parked - there is no "in between" for it to race with. So teardown releases
-// the herd itself, reliably, instead of trusting Stop()'s broadcast to do it: bump every herd
-// waiter's own key first (Notify - no broadcast needed for this, just the state change), then issue
-// one notifyKey call to broadcast reliably, so every waiter wakes and finds its own key already
-// satisfied. `stop` still guards the small window where a goroutine is between Wait() calls (not
-// parked at all) rather than relying on it seeing a change that hasn't happened yet.
-//
-// The returned teardown function owns the *entire* shutdown sequence. Call it exactly once, and do
-// not also register a separate database.Close for the same database.
+// The returned teardown owns the whole shutdown, including database.Close.  Call it exactly once.
 func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters int) (teardown func()) {
 	b.Helper()
 	listener := database.GetMutationListener(b)
@@ -189,8 +144,8 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 	}
 }
 
-// shortModeGrid collapses a benchmark's parameter grid to a single, cheap arm under -short - the
-// mode ci.yml's test-benchmark-compile job always runs, on every push.
+// shortModeGrid collapses a parameter grid to a single cheap arm under -short, the mode CI's
+// test-benchmark-compile job runs on every push.
 func shortModeGrid[T any](full []T, short []T) []T {
 	if testing.Short() {
 		return short
@@ -198,21 +153,12 @@ func shortModeGrid[T any](full []T, short []T) []T {
 	return full
 }
 
-// BenchmarkRefreshUserUnderHerd is the money benchmark: it measures ns per RefreshUserCount() call
-// on a connection's own waiter - the check userBlipHandler's refreshUser performs on every single
-// inbound BLIP message (db/blip_handler.go:128-135) - while W other, unrelated changes-feed waiters
-// are parked and being broadcast to on the shared tapNotifier.L. The measured call is wrapped in the
-// same exclusive lock/unlock pair refreshUser itself uses today (dbUserLock,
-// db/blip_sync_context.go:106) - modelled inline here rather than by constructing a full
-// BlipSyncContext, since only that lock/unlock pair affects the measurement, not the surrounding
-// connection plumbing. That lock is NOT what PR1 removes (that's PR3's job); it's kept here
-// specifically so this benchmark's ns/op is the real, current per-BLIP-message cost as it stands
-// today (PR1 landed, PR3 not yet), not just the bare counter-check cost in isolation.
-//
-// Expected shape: before PR1, ns/op rises with `waiters` (the check queues behind the herd's
-// contention on tapNotifier.L); after PR1, ns/op should stay flat in `waiters`, since the check
-// never touches that mutex.  That shape - not any single absolute number - is the claim to publish;
-// see the plan doc's benchmark run protocol for why.
+// BenchmarkRefreshUserUnderHerd measures RefreshUserCount() - the check refreshUser performs on
+// every inbound BLIP message - while W unrelated changes-feed waiters are parked and being
+// broadcast to on tapNotifier.L.  ns/op should stay flat in `waiters`, since the check reads
+// per-principal atomics and never touches that mutex.  The measured call is wrapped in the same
+// exclusive lock refreshUser holds today (dbUserLock), modelled inline rather than by building a
+// full BlipSyncContext.
 func BenchmarkRefreshUserUnderHerd(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 
@@ -236,7 +182,7 @@ func BenchmarkRefreshUserUnderHerd(b *testing.B) {
 					teardown := startHerd(b, ctx, database, waiters)
 					defer teardown()
 
-					var dbUserLock sync.RWMutex // models db/blip_sync_context.go:106
+					var dbUserLock sync.RWMutex // models BlipSyncContext.dbUserLock
 					b.ReportAllocs()
 					b.ResetTimer()
 					for b.Loop() {
@@ -250,27 +196,15 @@ func BenchmarkRefreshUserUnderHerd(b *testing.B) {
 	}
 }
 
-// BenchmarkChangeWaiterWakeCost measures ChangeWaiter.Wait for a production-shape waiter whose own
-// tracked principal key is being bumped continuously by a background goroutine, so the predicate is
-// satisfied (or very close to it) on essentially every call - i.e. the "already changed, return"
-// cost, not the separate cost of actually parking and being woken (which BenchmarkRefreshUserUnderHerd's
-// herd already exercises, from the other side).
+// BenchmarkChangeWaiterWakeCost measures ChangeWaiter.Wait for a production-shape waiter whose
+// tracked principal key is bumped continuously, so the predicate is satisfied on essentially every
+// call - the "already changed, return" cost rather than the park-and-wake cost.  This is the path
+// where the user-count refresh no longer takes a second tapNotifier.L acquisition after
+// listener.Wait has returned.
 //
-// Before PR1, this call went on to take a SECOND, separate tapNotifier.L acquisition via
-// CurrentCount(waiter.userKeys) after listener.Wait had already returned; that second acquisition
-// is gone from the current code (see ChangeWaiter.Wait in change_listener.go), so this benchmark's
-// before/after delta - once run against a pre-PR1 checkout per the plan doc's protocol - is exactly
-// that removed acquisition's cost.
-//
-// The driver races the measured loop rather than being synchronised with it, so parking is possible
-// in principle if the measured goroutine ever gets ahead of it; the design accepts that rather than
-// entangling the measurement with the driver's own notifyKey cost (which BenchmarkNotifyBroadcastWake
-// measures separately).
-//
-// Ignore this benchmark's allocs/op: Go's allocation counters are process-wide, not per-goroutine,
-// so the driver's own tight, unthrottled notifyKey loop (which logs via base.DebugfCtx, allocating
-// on every call) gets attributed to whatever op happens to be measured at the same moment. The
-// ns/op figure is unaffected by this and is what to read.
+// Ignore allocs/op here: Go's allocation counters are process-wide, so the driver goroutine's own
+// notifyKey loop (which logs, and so allocates) is attributed to whatever op is measured alongside
+// it.  ns/op is unaffected and is the figure to read.
 func BenchmarkChangeWaiterWakeCost(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 
@@ -320,12 +254,11 @@ func BenchmarkChangeWaiterWakeCost(b *testing.B) {
 	}
 }
 
-// BenchmarkNotifyBroadcastWake measures notifyKey's own cost - the caching feed's write side - with
-// W production-shape waiters parked on the SAME principal key and woken by every call (notifyKey
-// broadcasts immediately, unlike the bulk channel Notify path, which waits for the ticker). This is
-// a GUARD RAIL, not a win: PR1's dual-write adds one atomic store inside notifyKey's existing
-// tapNotifier.L critical section. A real regression here at high waiter counts means the design
-// needs revisiting - see the plan doc's benchmark section.
+// BenchmarkNotifyBroadcastWake measures notifyKey itself - the caching feed's write side - with W
+// production-shape waiters parked on the same principal key and woken by every call.  This is a
+// guard rail, not a win: the dual-write adds one atomic store inside notifyKey's existing
+// tapNotifier.L critical section.  A regression at high waiter counts means the design needs
+// revisiting.
 func BenchmarkNotifyBroadcastWake(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 
@@ -344,13 +277,10 @@ func BenchmarkNotifyBroadcastWake(b *testing.B) {
 				userKey := channels.NewID(database.MetadataKeys.UserKey(user.Name()), 0)
 				listener := database.GetMutationListener(b)
 
-				// W production-shape waiters sharing the same user - the production shape of
-				// many connections replicating for the same account, all sharing one role or
-				// user key - parked in Wait, watching the exact key about to be hammered. Each
-				// checks `stop` before every Wait() call (not just relying on WaiterClosed) for
-				// the same reason startHerd does: a goroutine caught between Wait() calls when
-				// the teardown broadcast fires would otherwise park forever - see startHerd's
-				// doc comment for the mechanism and why this was a real, previously-hit hang.
+				// W waiters sharing one user - the production shape of many connections
+				// replicating for the same account - parked in Wait on the exact key about to
+				// be hammered.  Each checks `stop` before every Wait() for the reason given in
+				// startHerd's teardown note.
 				stop := make(chan struct{})
 				var wg sync.WaitGroup
 				for range waiters {
@@ -377,9 +307,8 @@ func BenchmarkNotifyBroadcastWake(b *testing.B) {
 				b.StopTimer()
 
 				close(stop)
-				// One more reliable, lock-held broadcast before Close() - see startHerd's doc
-				// comment for why Close()'s own teardown broadcast can't be trusted alone to
-				// release every parked waiter.
+				// One more lock-held broadcast before Close - see startHerd for why Close's own
+				// broadcast can't be trusted to release every parked waiter.
 				listener.NotifyKeyForTest(b, ctx, userKey)
 				database.Close(ctx)
 				wg.Wait()

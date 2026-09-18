@@ -18,25 +18,6 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// End-to-end coverage for principal (user/role) changes reaching a live BLIP replication.
-//
-// These tests all share one shape, and the shape is what makes them worth having: the documents are
-// written BEFORE the principal change, and no document is written after it. A changes feed parked in
-// ChangeWaiter.Wait can therefore only be woken by the principal notification itself, and the newly
-// granted documents can only arrive if the feed also observed the user count move and reloaded the
-// user. A test that writes a document after the grant proves neither - the document write wakes the
-// feed on its own, so it passes whether or not the user count was read correctly.
-//
-// The channel-1 document is deliberately written AFTER the initially-invisible one. Changes are sent
-// in sequence order, so "the client holds the visible document but not the invisible one" is a real
-// guarantee rather than a hopeful sleep.
-//
-// Verified by mutation: removing the user-count refresh from ChangeWaiter.Wait fails all three
-// TestBlipContinuousPull* tests (both subprotocols) and leaves both one-shot tests passing. That is
-// the expected split - checkForUserUpdates force-reloads the user for non-continuous feeds
-// regardless of the count, so the one-shot tests cover a different route and are guards against
-// collateral damage, not discriminators for the counter itself.
-
 // updateUserChannels grants username exactly the given channel set via the admin API.
 func updateUserChannels(rt *RestTester, username string, chans []string, roles []string) {
 	rt.TB().Helper()

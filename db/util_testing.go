@@ -910,21 +910,23 @@ func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Conte
 	listener.notifyKey(ctx, key)
 }
 
-// PrincipalCountsForTest returns copies of keyCounts and principalCounts, taken under tapNotifier.L
-// so the two maps are read as a consistent snapshot relative to each other.  Principal counters are
-// read via Load - not under principalCountsLock - but that's safe here because tapNotifier.L is
-// held throughout, and notifyKey (the sole writer of both maps) always stores into a principal
-// counter while holding tapNotifier.L, so no concurrent write to an existing counter can be in
-// flight while this function holds the lock.
+// PrincipalCountsForTest returns copies of keyCounts and principalCounts.  The counter pointers are
+// snapshotted under principalCountsLock - the lock that guards that map, and the only one that makes
+// iterating it safe against a concurrent first-use insert - and their values are then read under
+// tapNotifier.L, so the two returned maps are consistent with each other.  The two locks are never
+// held at the same time, keeping principalCountsLock a leaf lock (see changeListener).
 func (listener *changeListener) PrincipalCountsForTest(_ testing.TB) (keyCounts, principalCounts map[channels.ID]uint64) {
+	listener.principalCountsLock.Lock()
+	counters := make(map[channels.ID]*atomic.Uint64, len(listener.principalCounts))
+	maps.Copy(counters, listener.principalCounts)
+	listener.principalCountsLock.Unlock()
+
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	keyCounts = make(map[channels.ID]uint64, len(listener.keyCounts))
-	for k, v := range listener.keyCounts {
-		keyCounts[k] = v
-	}
-	principalCounts = make(map[channels.ID]uint64, len(listener.principalCounts))
-	for k, v := range listener.principalCounts {
+	maps.Copy(keyCounts, listener.keyCounts)
+	principalCounts = make(map[channels.ID]uint64, len(counters))
+	for k, v := range counters {
 		principalCounts[k] = v.Load()
 	}
 	return keyCounts, principalCounts

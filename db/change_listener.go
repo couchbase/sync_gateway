@@ -49,7 +49,9 @@ type changeListener struct {
 	// count on every inbound BLIP message without queueing behind a caching-feed broadcast.
 	// Entries are created once, on first use, and are never replaced or removed: a ChangeWaiter
 	// caches the *atomic.Uint64 pointer directly, so replacing the map entry would silently orphan
-	// every waiter still holding the old pointer.
+	// every waiter still holding the old pointer.  Waiter construction creates entries too, not just
+	// notifyKey, so the map retains ~100 bytes per principal that has ever connected, for the
+	// lifetime of the listener.
 	principalCounts          map[channels.ID]*atomic.Uint64
 	OnChangeCallback         DocChangedFunc
 	terminator               chan bool          // Signal to cause DCP feed to exit
