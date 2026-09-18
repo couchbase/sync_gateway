@@ -37,8 +37,8 @@ State the target you picked in one line before you start.
 
 ```bash
 # working tree
-git diff HEAD
-# branch
+git status --porcelain
+git diff HEAD   # note: untracked files won't appear; use `git add -N .` if you need them included
 BASE=$(git merge-base HEAD origin/$(git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|origin/||'))
 git diff "$BASE"...HEAD
 # pull request
@@ -117,7 +117,7 @@ Rules for these tests:
 - Put the test in the package it needs to reach, because most languages require this.
 - Name the file so it is easy to delete, for example `zz_review_repro_test.go`.
 - Delete the file after you record the output. Keep the source in the report.
-- For a race, run the race detector, for example `go test -race -run TestX -count=100 ./pkg/...`.
+- For a race, run the race detector, for example `go test -tags cb_sg_enterprise,cb_sg_devmode -race -run TestX -count=100 ./pkg/...`.
 - For a performance claim, run a benchmark and quote both numbers. A performance claim with no measurement is not a finding.
 
 Findings from Pass E and Pass F need no test. Report them in a separate section.
