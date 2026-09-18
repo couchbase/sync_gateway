@@ -899,8 +899,47 @@ func GetIndexPartitionCount(t testing.TB, bucket *base.GocbV2Bucket, dsName sgbu
 }
 
 // GetMutationListener retrieves mutation listener form database context, to be used only for testing purposes.
-func (db *DatabaseContext) GetMutationListener(t *testing.T) *changeListener {
+func (db *DatabaseContext) GetMutationListener(_ testing.TB) *changeListener {
 	return db.mutationListener
+}
+
+// NotifyKeyForTest drives a principal (user/role) notification directly, without a metadata-store
+// write and DCP round trip.  Tests and benchmarks that want to control notification rate or timing
+// precisely should use this rather than writing a real principal document.
+func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Context, key channels.ID) {
+	listener.notifyKey(ctx, key)
+}
+
+// PrincipalCountsForTest returns copies of keyCounts and principalCounts, taken under tapNotifier.L
+// so the two maps are read as a consistent snapshot relative to each other.  Principal counters are
+// read via Load - not under principalCountsLock - but that's safe here because tapNotifier.L is
+// held throughout, and notifyKey (the sole writer of both maps) always stores into a principal
+// counter while holding tapNotifier.L, so no concurrent write to an existing counter can be in
+// flight while this function holds the lock.
+func (listener *changeListener) PrincipalCountsForTest(_ testing.TB) (keyCounts, principalCounts map[channels.ID]uint64) {
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	keyCounts = make(map[channels.ID]uint64, len(listener.keyCounts))
+	for k, v := range listener.keyCounts {
+		keyCounts[k] = v
+	}
+	principalCounts = make(map[channels.ID]uint64, len(listener.principalCounts))
+	for k, v := range listener.principalCounts {
+		principalCounts[k] = v.Load()
+	}
+	return keyCounts, principalCounts
+}
+
+// CounterForTest returns the listener's current global notification counter.
+func (listener *changeListener) CounterForTest(_ testing.TB) uint64 {
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	return listener.counter
+}
+
+// UserKeysForTest returns the waiter's current set of principal (user/role) keys.
+func (waiter *ChangeWaiter) UserKeysForTest(_ testing.TB) []channels.ID {
+	return waiter.userKeys
 }
 
 // InitChannel is a test-only function to initialize a channel in the channel cache.
