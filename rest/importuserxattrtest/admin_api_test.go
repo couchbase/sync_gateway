@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 )
@@ -24,7 +23,7 @@ func TestUserXattrSetUnsetDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UserXattrKey = base.Ptr("myXattr")
+	dbConfig.UserXattrKey = new("myXattr")
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -33,7 +32,7 @@ func TestUserXattrSetUnsetDBConfig(t *testing.T) {
 	assert.Contains(t, string(resp.BodyBytes()), `"user_xattr_key":"myXattr"`)
 
 	// upsert an empty string to ensure we can remove the config option
-	resp = rt.UpsertDbConfig(rt.GetDatabase().Name, rest.DbConfig{UserXattrKey: base.Ptr("")})
+	resp = rt.UpsertDbConfig(rt.GetDatabase().Name, rest.DbConfig{UserXattrKey: new("")})
 	rest.AssertStatus(t, resp, http.StatusCreated)
 
 	// empty string for the config option will be treated like nil in use

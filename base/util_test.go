@@ -1798,17 +1798,17 @@ func TestAllOrNoneNil(t *testing.T) {
 		},
 		{
 			name: "one non-nil",
-			args: []any{nil, Ptr("foo"), nil},
+			args: []any{nil, new("foo"), nil},
 			want: false,
 		},
 		{
 			name: "one typed nil",
-			args: []any{Ptr(1234), Ptr("foo"), (*time.Time)(nil)},
+			args: []any{new(1234), new("foo"), (*time.Time)(nil)},
 			want: false,
 		},
 		{
 			name: "all non-nil",
-			args: []any{Ptr(1234), Ptr("foo"), Ptr(time.Second)},
+			args: []any{new(1234), new("foo"), new(time.Second)},
 			want: true,
 		},
 	}

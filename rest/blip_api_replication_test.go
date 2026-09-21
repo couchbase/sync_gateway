@@ -28,7 +28,7 @@ func TestReplicationBroadcastTickerChange(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			CacheConfig: &CacheConfig{
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxWaitPending: base.Ptr(uint32(100)),
+					MaxWaitPending: new(uint32(100)),
 				},
 			},
 		}},

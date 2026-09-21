@@ -3701,7 +3701,7 @@ func TestInvalidRevTreeCVEntryCachedByFailedRepair(t *testing.T) {
 	defer tb.Close(base.TestCtx(t)) // IgnoreClose means dbCtx.Close leaves the underlying bucket open
 
 	dbCtx, ctx := SetupTestDBForBucketWithOptions(t, lb, DatabaseContextOptions{
-		CacheOptions: base.Ptr(DefaultCacheOptions()),
+		CacheOptions: new(DefaultCacheOptions()),
 		RevisionCacheOptions: &RevisionCacheOptions{
 			// MaxItemCount must be set - a zero value silently selects the bypass cache, which stores
 			// nothing. InsertOnWrite is deliberately off: the entry under test comes from a read.

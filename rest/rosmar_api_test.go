@@ -31,7 +31,7 @@ func TestRosmarManagementAPI(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
-			config.Unsupported.RosmarBucketManagement = base.Ptr(true)
+			config.Unsupported.RosmarBucketManagement = new(true)
 		},
 	})
 	defer rt.Close()

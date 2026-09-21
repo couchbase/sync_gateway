@@ -605,7 +605,7 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				Logging: &rest.DbLoggingConfig{
 					Console: &rest.DbConsoleLoggingConfig{
-						LogLevel: base.Ptr(base.LevelError),
+						LogLevel: new(base.LevelError),
 						LogKeys:  logKeys,
 					},
 				},
@@ -620,7 +620,7 @@ func TestDBGetConfigCustomLogging(t *testing.T) {
 	var body rest.DbConfig
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
-	assert.Equal(t, body.Logging.Console.LogLevel, base.Ptr(base.LevelError))
+	assert.Equal(t, body.Logging.Console.LogLevel, new(base.LevelError))
 	assert.Equal(t, body.Logging.Console.LogKeys, logKeys)
 }
 
@@ -1299,7 +1299,7 @@ func TestMultipleBucketWithBadDbConfigScenario3(t *testing.T) {
 	// create a new db
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Name = "db1"
-	dbConfig.BucketConfig.Bucket = base.Ptr(rt.CustomTestBucket.GetName())
+	dbConfig.BucketConfig.Bucket = new(rt.CustomTestBucket.GetName())
 	resp := rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -1361,7 +1361,7 @@ func TestConfigPollingRemoveDatabase(t *testing.T) {
 			dbName := "db1"
 			dbConfig := rt.NewDbConfig()
 			dbConfig.Name = dbName
-			dbConfig.BucketConfig.Bucket = base.Ptr(rt.CustomTestBucket.GetName())
+			dbConfig.BucketConfig.Bucket = new(rt.CustomTestBucket.GetName())
 			resp := rt.CreateDatabase(dbName, dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -1995,7 +1995,7 @@ func TestHandleCreateDB(t *testing.T) {
 	resource := fmt.Sprintf("/%s/", bucket)
 
 	bucketConfig := rest.BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.Ptr(false)}
+	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: new(false)}
 	var respBody db.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
@@ -2170,7 +2170,7 @@ func TestHandleDBConfig(t *testing.T) {
 	dbConfig := rt.NewDbConfig()
 	dbConfig.CacheConfig = &rest.CacheConfig{
 		RevCacheConfig: &rest.RevCacheConfig{
-			MaxItemCount: base.Ptr(uint32(1337)), ShardCount: base.Ptr(uint16(7)),
+			MaxItemCount: new(uint32(1337)), ShardCount: new(uint16(7)),
 		},
 	}
 
@@ -2334,7 +2334,7 @@ func TestHandleGetStackTrace(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: base.Ptr("password")}}}}})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Users: map[string]*auth.PrincipalConfig{"alice": {Password: new("password")}}}}})
 	defer rt.Close()
 
 	// Test default db config redaction
@@ -2813,7 +2813,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	// Update revs limit too so we can check db config
 	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
-	dbConfig.RevsLimit = base.Ptr(uint32(100))
+	dbConfig.RevsLimit = new(uint32(100))
 
 	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -2822,7 +2822,7 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 
 	// Check that db revs limit is there now and error logging config
 	assert.Contains(t, maps.Keys(runtimeServerConfigResponse.Databases), "db")
-	assert.Equal(t, base.Ptr(uint32(100)), runtimeServerConfigResponse.Databases["db"].RevsLimit)
+	assert.Equal(t, new(uint32(100)), runtimeServerConfigResponse.Databases["db"].RevsLimit)
 
 	assert.NotNil(t, runtimeServerConfigResponse.Logging.Error)
 	assert.Equal(t, "debug", runtimeServerConfigResponse.Logging.Console.LogLevel.String())
@@ -2951,7 +2951,7 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				PersistentConfig: true,
 				MutateStartupConfig: func(config *rest.StartupConfig) {
-					config.Unsupported.UseGOCBFastFailRetry = base.Ptr(fastFail)
+					config.Unsupported.UseGOCBFastFailRetry = new(fastFail)
 				},
 			})
 			defer rt.Close()
@@ -3050,7 +3050,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	config := rest.BootstrapStartupConfigForTest(t)
 	config.Logging.Console.LogKeys = []string{base.KeyDCP.String()}
 	config.Logging.Console.LogLevel.Set(base.LevelDebug)
-	config.Logging.Console.Enabled = base.Ptr(true) // only necessary for tests since they avoid InitLogging, normally this is inferred by InitLogging
+	config.Logging.Console.Enabled = new(true) // only necessary for tests since they avoid InitLogging, normally this is inferred by InitLogging
 
 	sc, closeFn := rest.StartServerWithConfig(t, &config)
 	defer closeFn()
@@ -3127,7 +3127,7 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 			ctx := base.TestCtx(t)
 			config := rest.BootstrapStartupConfigForTest(t)
-			config.Unsupported.UseGOCBFastFailRetry = base.Ptr(fastFail)
+			config.Unsupported.UseGOCBFastFailRetry = new(fastFail)
 			// explicitly start with persistent config disabled
 			sc, err := rest.SetupServerContext(ctx, &config, false)
 			require.NoError(t, err)
@@ -3179,7 +3179,7 @@ func TestDbOfflineConfigLegacy(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.StartOffline = new(true)
 
 	// Persist config
 	resp := rt.UpsertDbConfig(rt.GetDatabase().Name, dbConfig)
@@ -3491,12 +3491,12 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 	res := rt.CreateDatabase(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 
-	config.DisablePasswordAuth = base.Ptr(true)
+	config.DisablePasswordAuth = new(true)
 	res = rt.UpsertDbConfig(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.True(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 
-	config.DisablePasswordAuth = base.Ptr(false)
+	config.DisablePasswordAuth = new(false)
 	res = rt.UpsertDbConfig(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.False(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
@@ -3592,47 +3592,47 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 		{
 			name:                "Invalid _sync",
 			inputBody:           map[string]any{"_sync": true},
-			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
+			expectedErrorStatus: new(http.StatusBadRequest),
 		},
 		{
 			name:                "Valid _sync",
 			inputBody:           map[string]any{"_sync": db.SyncData{}},
-			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
+			expectedErrorStatus: new(http.StatusBadRequest),
 		},
 		{
 			name:                        "Valid _deleted",
 			inputBody:                   map[string]any{"_deleted": false},
-			skipDocContentsVerification: base.Ptr(true),
+			skipDocContentsVerification: new(true),
 		},
 		{
 			name:                        "Valid _revisions",
 			inputBody:                   map[string]any{"_revisions": map[string]any{"ids": "1-abc"}},
-			skipDocContentsVerification: base.Ptr(true),
+			skipDocContentsVerification: new(true),
 		},
 		{
 			name:                        "Valid _exp",
 			inputBody:                   map[string]any{"_exp": "123"},
-			skipDocContentsVerification: base.Ptr(true),
+			skipDocContentsVerification: new(true),
 		},
 		{
 			name:                "Invalid _exp",
 			inputBody:           map[string]any{"_exp": "abc"},
-			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
+			expectedErrorStatus: new(http.StatusBadRequest),
 		},
 		{
 			name:                "_purged",
 			inputBody:           map[string]any{"_purged": false},
-			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
+			expectedErrorStatus: new(http.StatusBadRequest),
 		},
 		{
 			name:                "_removed",
 			inputBody:           map[string]any{"_removed": false},
-			expectedErrorStatus: base.Ptr(http.StatusNotFound),
+			expectedErrorStatus: new(http.StatusNotFound),
 		},
 		{
 			name:                "_sync_cookies",
 			inputBody:           map[string]any{"_sync_cookies": true},
-			expectedErrorStatus: base.Ptr(http.StatusBadRequest),
+			expectedErrorStatus: new(http.StatusBadRequest),
 		},
 		{
 			name: "Valid user defined uppercase properties", // Uses internal properties names but in upper case
@@ -3850,7 +3850,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 			defer tb1.Close(ctx)
 
 			config := rest.BootstrapStartupConfigForTest(t)
-			config.Unsupported.UseGOCBFastFailRetry = base.Ptr(fastFail)
+			config.Unsupported.UseGOCBFastFailRetry = new(fastFail)
 			config.BucketCredentials = map[string]*base.CredentialsConfig{
 				tb1.GetName(): {
 					Username: base.TestClusterUsername(),
@@ -3960,7 +3960,7 @@ func TestDatabaseCreationWithEnvVariable(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			config.Unsupported.AllowDbConfigEnvVars = base.Ptr(false)
+			config.Unsupported.AllowDbConfigEnvVars = new(false)
 		},
 		AdminInterfaceAuthentication: true,
 		SyncFn:                       `function (doc) { console.log("${environment}"); return true }`,
@@ -3996,7 +3996,7 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *rest.StartupConfig) {
-			config.Unsupported.AllowDbConfigEnvVars = base.Ptr(false)
+			config.Unsupported.AllowDbConfigEnvVars = new(false)
 		},
 		AdminInterfaceAuthentication: true,
 		SyncFn:                       `function (doc) { console.log("${environment}"); return true }`,
@@ -4015,7 +4015,7 @@ func TestDatabaseCreationWithEnvVariableWithBackticks(t *testing.T) {
 	require.NoError(t, err)
 
 	// change config to include backticks
-	cfg.Bucket = base.Ptr(fmt.Sprintf("`"+"%s"+"`", tb.GetName()))
+	cfg.Bucket = new(fmt.Sprintf("`"+"%s"+"`", tb.GetName()))
 
 	// create db with config and assert it is successful
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/backticks/", string(input), rest.MobileSyncGatewayRole.RoleName, "password")
@@ -4207,7 +4207,7 @@ func TestRetrieveMetadataMigrationStatusInClusterInfo(t *testing.T) {
 
 	// update doc to trigger migration status update
 	dbCfg := rt.NewDbConfig()
-	dbCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbCfg), http.StatusCreated)
 
 	// flush to ensure config is applied before starting migration
@@ -4244,7 +4244,7 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 
 	// Opt in to the dual metadata store but do not yet start the migration.
 	dbCfg := rt.NewDbConfig()
-	dbCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbCfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 

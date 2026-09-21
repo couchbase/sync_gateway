@@ -236,7 +236,7 @@ func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
 	if l != nil {
 		// Copy config struct to avoid mutating running config
 		fileLoggerConfig = l.config
-		fileLoggerConfig.Enabled = Ptr(l.Enabled.IsTrue())
+		fileLoggerConfig.Enabled = new(l.Enabled.IsTrue())
 	}
 
 	return &fileLoggerConfig
@@ -249,7 +249,7 @@ func (lfc *FileLoggerConfig) init(ctx context.Context, level LogLevel, name stri
 
 	if lfc.Enabled == nil {
 		// enable for all levels less verbose than debug by default
-		lfc.Enabled = Ptr(level < LevelDebug)
+		lfc.Enabled = new(level < LevelDebug)
 	}
 
 	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge, defaultMaxAgeOverride, true); err != nil {

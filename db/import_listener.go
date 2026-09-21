@@ -195,7 +195,7 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		var cv *rawHLV
 		vv := rawDoc.Xattrs[base.VvXattrName]
 		if len(vv) > 0 {
-			cv = base.Ptr(rawHLV(vv))
+			cv = new(rawHLV(vv))
 		}
 
 		isSGWrite, crc32Match, _ = syncData.IsSGWrite(ctx, event.Cas, rawDoc.Body, rawDoc.Xattrs[collection.UserXattrKey()], cv)

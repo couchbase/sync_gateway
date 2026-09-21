@@ -37,7 +37,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.Ptr(password)},
+					username: {Password: new(password)},
 				},
 			},
 		},
@@ -483,7 +483,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
-	useViews := base.Ptr(false)
+	useViews := new(false)
 
 	const (
 		username       = "alice"
@@ -502,7 +502,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 				Users: map[string]*auth.PrincipalConfig{
 					username: {
 						ExplicitChannels: base.SetOf(validChannel),
-						Password:         base.Ptr(password),
+						Password:         new(password),
 					},
 				},
 			},

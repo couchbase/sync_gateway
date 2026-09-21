@@ -50,7 +50,7 @@ func TestMetadataMigrationNotStartedWithExplicitFalse(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -74,7 +74,7 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 
 	// Create db on node A with migration disabled.
 	dbConfig := rtA.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	resp := rtA.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -100,7 +100,7 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update db config on node A to enable the system metadata collection.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp = rtA.UpsertDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -164,7 +164,7 @@ func TestMetadataMigrationStatsInitialisedWithOptIn(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -210,13 +210,13 @@ func TestMetadataMigrationNotRestartedAfterCompletion(t *testing.T) {
 	// counter) lands in _default._default. Without legacy data the new-DB fast path would flip the
 	// wrapper straight to MigrationComplete at construction and no migration would actually run.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice",
 		`{"name":"alice","password":"letmein","admin_channels":["public"]}`), http.StatusCreated)
 
 	// Opt in and drive the migration to completion via the REST endpoint.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_metadata_migration?action=start", ""), http.StatusOK)
@@ -251,7 +251,7 @@ func TestMetadataMigrationGuardHonoursPeerCompletion(t *testing.T) {
 	// path can't flip the wrapper to MigrationComplete at construction — the local flag must stay
 	// false to model a peer that ran the migration while this node did not.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 	legacyDB := rt.GetDatabase()
 	_, err := legacyDB.Bucket.DefaultDataStore(ctx).Incr(ctx, legacyDB.MetadataKeys.SyncSeqKey(), 1, 0, 0)
@@ -259,7 +259,7 @@ func TestMetadataMigrationGuardHonoursPeerCompletion(t *testing.T) {
 
 	// Opt in but deliberately DON'T flush this node's applied-config version, so ConfigFullyAppliedFunc
 	// reports not-applied and the auto-arm never actually starts a local migration.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 
 	dbCtx := rt.GetDatabase()
@@ -304,7 +304,7 @@ func TestMetadataMigrationPreservesJSONDatatypeForUserDocs(t *testing.T) {
 	// _default._default (the eventual fallback collection). Authenticator.Update writes
 	// users with the JSON datatype on disk — this gives us a real pre-migration shadow.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -320,7 +320,7 @@ func TestMetadataMigrationPreservesJSONDatatypeForUserDocs(t *testing.T) {
 	// Flip the opt-in on the existing database. This rebuilds the MetadataStore as a
 	// dual-collection wrapper with primary=_system._mobile, fallback=_default._default —
 	// so alice now lives on fallback exactly as she would after the upgrade in production.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp = rt.UpsertDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -378,7 +378,7 @@ func TestMetadataMigrationSkipsPrimaryWriteWhenUpdatedUserAlreadyMigrated(t *tes
 
 	// 1. Legacy mode: user write lands on _default._default.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -388,7 +388,7 @@ func TestMetadataMigrationSkipsPrimaryWriteWhenUpdatedUserAlreadyMigrated(t *tes
 
 	// 2. Flip the opt-in: MetadataStore becomes the dual-collection wrapper. The user
 	// doc lives on fallback (_default._default); primary (_system._mobile) is empty.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp = rt.UpsertDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -463,12 +463,12 @@ func TestMetadataMigrationOptInIsIrreversibleViaREST(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Attempting to set the opt-in back to false is rejected.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	resp = rt.ReplaceDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), "use_system_metadata_collection cannot be disabled once enabled")
@@ -480,7 +480,7 @@ func TestMetadataMigrationOptInIsIrreversibleViaREST(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "use_system_metadata_collection cannot be disabled once enabled")
 
 	// Keeping the opt-in enabled is permitted.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp = rt.ReplaceDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 }
@@ -527,7 +527,7 @@ func TestMetadataMigrationLegacyDefaultDBSiblingClassifiedOutOfScope(t *testing.
 	// state for a namespaced DB about to be upgraded.
 	const dbNamedName = "dbnamed"
 	dbNamedCfg := rt.NewDbConfig()
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(false)
 	dbNamedCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{
@@ -570,7 +570,7 @@ func TestMetadataMigrationLegacyDefaultDBSiblingClassifiedOutOfScope(t *testing.
 	// Flip dbnamed's opt-in. The MetadataStore is rebuilt as the dual-collection wrapper
 	// with primary=_system._mobile, fallback=_default._default. dbnamed's own legacy keys
 	// are still on fallback exactly as they would be after a production opt-in upgrade.
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
 
 	// Flush this node's applied config versions so the manual start passes the config-fully-applied
@@ -647,7 +647,7 @@ func TestMetadataMigrationConcurrentDefaultAndNamedDB(t *testing.T) {
 	// dbdefault: → metadataID="_default"
 	const dbDefaultName = "dbdefault"
 	dbDefaultCfg := rt.NewDbConfig()
-	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.UseSystemMobileMetadataCollection = new(false)
 	dbDefaultCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
@@ -662,7 +662,7 @@ func TestMetadataMigrationConcurrentDefaultAndNamedDB(t *testing.T) {
 	// dbnamed: → namespaced metadataID
 	const dbNamedName = "dbnamed"
 	dbNamedCfg := rt.NewDbConfig()
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(false)
 	dbNamedCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{namedCollection: {}},
@@ -702,9 +702,9 @@ func TestMetadataMigrationConcurrentDefaultAndNamedDB(t *testing.T) {
 	base.RequireDocsVisibleToRangeScan(t, fallback, allDocKeys)
 
 	// Flip both DBs' opt-in
-	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbDefaultCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
 
 	// Flush this node's applied config versions so the manual starts pass the config-fully-applied gate.
@@ -803,11 +803,11 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 	// creation — the pre-migration shape we want to exercise.
 	dbConfigForCollection := func(coll sgbucket.DataStoreName) rest.DbConfig {
 		cfg := rt.NewDbConfig()
-		cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+		cfg.UseSystemMobileMetadataCollection = new(false)
 		cfg.Scopes = rest.ScopesConfig{
 			coll.ScopeName(): rest.ScopeConfig{
 				Collections: rest.CollectionsConfig{
-					coll.CollectionName(): {SyncFn: base.Ptr(syncFn)},
+					coll.CollectionName(): {SyncFn: new(syncFn)},
 				},
 			},
 		}
@@ -840,7 +840,7 @@ func TestMetadataMigrationMovesOwnedSyncFunctionDocs(t *testing.T) {
 	// migrateDB flips a DB's opt-in, drives the migration to completion via the admin API.
 	migrateDB := func(dbName string, dbCtx *db.DatabaseContext, cfg rest.DbConfig, ownedKey string) *base.MetadataStore {
 
-		cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+		cfg.UseSystemMobileMetadataCollection = new(true)
 		rest.RequireStatus(t, rt.UpsertDbConfig(dbName, cfg), http.StatusCreated)
 
 		// Make sure the owned syncdata doc is visible to the range scan before we start, so the
@@ -901,11 +901,11 @@ func TestMoveSyncDataDocumentForDefaultDB(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	dbConfig.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{
-				base.DefaultCollection: {SyncFn: base.Ptr(`function(doc){channel(doc.channels);}`)},
+				base.DefaultCollection: {SyncFn: new(`function(doc){channel(doc.channels);}`)},
 			},
 		},
 	}
@@ -921,7 +921,7 @@ func TestMoveSyncDataDocumentForDefaultDB(t *testing.T) {
 	require.True(t, exists, "syncdata doc must exist in _default._default before migration")
 
 	// Flip the opt-in and migrate.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 
 	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
@@ -950,8 +950,8 @@ func TestMetadataMigrationOptInRejectedWithViews(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseViews = base.Ptr(true)
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseViews = new(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
@@ -979,7 +979,7 @@ func TestMetadataMigrationListsPrincipalsAfterCompletion(t *testing.T) {
 	// Legacy mode: principals (and the seq counter created alongside them) land in
 	// _default._default, so the new-DB fast path does not fire and the migration runs.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	resp := rt.CreateDatabase("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -992,7 +992,7 @@ func TestMetadataMigrationListsPrincipalsAfterCompletion(t *testing.T) {
 
 	// Opt in, flush this node's applied config version so the manual start passes the
 	// config-fully-applied gate, then drive the migration to completion.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp = rt.UpsertDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -1053,7 +1053,7 @@ func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
 
 			// Legacy mode so the user (and seq counter) land in _default._default and the migration runs.
 			dbConfig := rt.NewDbConfig()
-			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+			dbConfig.UseSystemMobileMetadataCollection = new(false)
 			resp := rt.CreateDatabase("db", dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -1074,7 +1074,7 @@ func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
 
 			// Opt in, flush this node's applied config version so the manual start passes the
 			// config-fully-applied gate, then drive the migration to completion.
-			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+			dbConfig.UseSystemMobileMetadataCollection = new(true)
 			resp = rt.UpsertDbConfig("db", dbConfig)
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -1152,7 +1152,7 @@ func TestMetadataMigrationEndToEndBucketBootstrapDocsContent(t *testing.T) {
 
 			// Legacy mode so the bootstrap docs land in _default._default and the migration runs.
 			dbConfig := rt.NewDbConfig()
-			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+			dbConfig.UseSystemMobileMetadataCollection = new(false)
 			rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", `{"name":"alice","password":"letmein","admin_channels":["public"]}`)
@@ -1163,7 +1163,7 @@ func TestMetadataMigrationEndToEndBucketBootstrapDocsContent(t *testing.T) {
 			require.NotEmpty(t, metadataID)
 
 			// Opt in and converge before snapshotting so the captured dbconfig reflects the opted-in config.
-			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+			dbConfig.UseSystemMobileMetadataCollection = new(true)
 			rest.RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 			rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 
@@ -1255,7 +1255,7 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 
 	// Create db on node A with migration disabled, let node B pick it up, register both nodes.
 	dbConfig := rtA.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	rest.RequireStatus(t, rtA.CreateDatabase("db", dbConfig), http.StatusCreated)
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
 	rtA.ServerContext().ForceClusterCompatRefresh(t, ctx)
@@ -1267,7 +1267,7 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	require.NoError(t, err)
 
 	// Opt in on node A and flush its registry entry. Node B has NOT applied the new config version.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rtA.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 	rtA.ServerContext().ForceClusterCompatRefresh(t, ctx)
 
@@ -1417,7 +1417,7 @@ func TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion(t *testing.T) 
 	// dbdefault: only _default._default → metadataID "_default", unprefixed keys.
 	const dbDefaultName = "dbdefault"
 	dbDefaultCfg := rt.NewDbConfig()
-	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.UseSystemMobileMetadataCollection = new(false)
 	dbDefaultCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
@@ -1429,7 +1429,7 @@ func TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion(t *testing.T) 
 	// colocates in _default._default alongside dbdefault's, reproducing the pre-migration state.
 	const dbNamedName = "dbnamed"
 	dbNamedCfg := rt.NewDbConfig()
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(false)
 	dbNamedCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{namedCollection: {}},
@@ -1453,7 +1453,7 @@ func TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion(t *testing.T) 
 	requireNoneExist(t, ctx, systemDS, append(defaultKeys.all(), namedKeys.all()...))
 
 	// === migrate dbdefault FIRST ===
-	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbDefaultCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbDefaultName+"/_metadata_migration?action=start", "")
@@ -1479,7 +1479,7 @@ func TestMetadataMigrationDefaultDBFirstThenNamedSiblingExclusion(t *testing.T) 
 	assert.Contains(t, resp.Body.String(), `"name":"bob"`, "dbnamed's user must be untouched by dbdefault's migration")
 
 	// === migrate dbnamed SECOND ===
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp = rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
@@ -1530,7 +1530,7 @@ func TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion(t *testing.T) 
 
 	const dbDefaultName = "dbdefault"
 	dbDefaultCfg := rt.NewDbConfig()
-	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbDefaultCfg.UseSystemMobileMetadataCollection = new(false)
 	dbDefaultCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{base.DefaultCollection: {}},
@@ -1540,7 +1540,7 @@ func TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion(t *testing.T) 
 
 	const dbNamedName = "dbnamed"
 	dbNamedCfg := rt.NewDbConfig()
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(false)
 	dbNamedCfg.Scopes = rest.ScopesConfig{
 		base.DefaultScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{namedCollection: {}},
@@ -1562,7 +1562,7 @@ func TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion(t *testing.T) 
 	requireNoneExist(t, ctx, systemDS, append(defaultKeys.all(), namedKeys.all()...))
 
 	// === migrate dbnamed FIRST ===
-	dbNamedCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbNamedCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbNamedName, dbNamedCfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbNamedName+"/_metadata_migration?action=start", "")
@@ -1582,7 +1582,7 @@ func TestMetadataMigrationNamedDBFirstThenDefaultSiblingExclusion(t *testing.T) 
 	assert.Contains(t, resp.Body.String(), `"name":"alice"`, "dbdefault's user must be untouched by dbnamed's migration")
 
 	// === migrate dbdefault SECOND ===
-	dbDefaultCfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbDefaultCfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbDefaultName, dbDefaultCfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp = rt.SendAdminRequest(http.MethodPost, "/"+dbDefaultName+"/_metadata_migration?action=start", "")
@@ -1621,7 +1621,7 @@ func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
 	defer rt.Close()
 
 	db1Cfg := rt.NewDbConfig()
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.UseSystemMobileMetadataCollection = new(false)
 	db1Cfg.Scopes = rest.ScopesConfig{
 		dataStore1.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
@@ -1630,7 +1630,7 @@ func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
 	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
 
 	db2Cfg := rt.NewDbConfig()
-	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.UseSystemMobileMetadataCollection = new(false)
 	db2Cfg.Scopes = rest.ScopesConfig{
 		dataStore2.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
@@ -1639,7 +1639,7 @@ func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
 	rest.RequireStatus(t, rt.CreateDatabase("db2", db2Cfg), http.StatusCreated)
 
 	// Opt in for db1 and start migration
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Cfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
@@ -1687,7 +1687,7 @@ func TestRecheckConvergesLocalCacheOnPeerCompletedMigration(t *testing.T) {
 	defer rt.Close()
 
 	db1Cfg := rt.NewDbConfig()
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.UseSystemMobileMetadataCollection = new(false)
 	db1Cfg.Scopes = rest.ScopesConfig{
 		dataStore1.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
@@ -1698,7 +1698,7 @@ func TestRecheckConvergesLocalCacheOnPeerCompletedMigration(t *testing.T) {
 	dataStore2, err := tb.GetNamedDataStore(1)
 	require.NoError(t, err)
 	db2Cfg := rt.NewDbConfig()
-	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.UseSystemMobileMetadataCollection = new(false)
 	db2Cfg.Scopes = rest.ScopesConfig{
 		dataStore2.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
@@ -1710,7 +1710,7 @@ func TestRecheckConvergesLocalCacheOnPeerCompletedMigration(t *testing.T) {
 	// bucket migration on its own — its local IsMigrationComplete cache stays false. (db2 also
 	// guarantees the recheck can't complete the bucket itself, isolating the test to the cache
 	// convergence path.)
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Cfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
@@ -1754,7 +1754,7 @@ func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
 	dataStore1, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
 	db1Cfg := rt.NewDbConfig()
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.UseSystemMobileMetadataCollection = new(false)
 	db1Cfg.Scopes = rest.ScopesConfig{
 		dataStore1.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
@@ -1765,7 +1765,7 @@ func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
 	dataStore2, err := tb.GetNamedDataStore(1)
 	require.NoError(t, err)
 	db2Cfg := rt.NewDbConfig()
-	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.UseSystemMobileMetadataCollection = new(false)
 	db2Cfg.Scopes = rest.ScopesConfig{
 		dataStore2.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
@@ -1775,7 +1775,7 @@ func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
 
 	// Opt in for db1 and start its migration. This stamps the bucket-level status doc with
 	// Bootstrap.State == pending. The bucket cannot complete yet because db2 has not opted in.
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Cfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
@@ -1829,7 +1829,7 @@ func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *
 	dataStore1, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
 	db1Cfg := rt.NewDbConfig()
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db1Cfg.UseSystemMobileMetadataCollection = new(false)
 	db1Cfg.Scopes = rest.ScopesConfig{
 		dataStore1.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
@@ -1837,7 +1837,7 @@ func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *
 	}
 	rest.RequireStatus(t, rt.CreateDatabase("db1", db1Cfg), http.StatusCreated)
 
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Cfg.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig("db1", db1Cfg), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, rt.Context())
 	resp := rt.SendAdminRequest(http.MethodPost, "/db1/_metadata_migration?action=start", "")
@@ -1868,7 +1868,7 @@ func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *
 	dataStore2, err := tb.GetNamedDataStore(1)
 	require.NoError(t, err)
 	db2Cfg := rt.NewDbConfig()
-	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.UseSystemMobileMetadataCollection = new(false)
 	db2Cfg.Scopes = rest.ScopesConfig{
 		dataStore2.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},
@@ -1907,7 +1907,7 @@ func TestOptedInBucketRejectsCreateDbWithoutMobileSystemCollectionOptIn(t *testi
 	dataStore1, err := tb.GetNamedDataStore(0)
 	require.NoError(t, err)
 	db1Cfg := rt.NewDbConfig()
-	db1Cfg.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Cfg.UseSystemMobileMetadataCollection = new(true)
 	db1Cfg.Scopes = rest.ScopesConfig{
 		dataStore1.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore1.CollectionName(): {}},
@@ -1929,7 +1929,7 @@ func TestOptedInBucketRejectsCreateDbWithoutMobileSystemCollectionOptIn(t *testi
 	dataStore2, err := tb.GetNamedDataStore(1)
 	require.NoError(t, err)
 	db2Cfg := rt.NewDbConfig()
-	db2Cfg.UseSystemMobileMetadataCollection = base.Ptr(false)
+	db2Cfg.UseSystemMobileMetadataCollection = new(false)
 	db2Cfg.Scopes = rest.ScopesConfig{
 		dataStore2.ScopeName(): rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{dataStore2.CollectionName(): {}},

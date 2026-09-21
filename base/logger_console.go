@@ -209,9 +209,9 @@ func (lcc *ConsoleLoggerConfig) init(ctx context.Context) (chan struct{}, error)
 	// Default to disabled only when a log key or log level has not been specified
 	if lcc.Enabled == nil {
 		if lcc.LogLevel != nil || len(lcc.LogKeys) > 0 {
-			lcc.Enabled = Ptr(true)
+			lcc.Enabled = new(true)
 		} else {
-			lcc.Enabled = Ptr(false)
+			lcc.Enabled = new(false)
 		}
 	}
 

@@ -117,7 +117,7 @@ func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConf
 	for _, dbConfig := range lc.Databases {
 		// Move non-db scoped LegacyServerConfig properties to each DbConfig
 		if lc.SlowQueryWarningThreshold != nil {
-			dbConfig.SlowQueryWarningThresholdMs = base.Ptr(uint32(*lc.SlowQueryWarningThreshold))
+			dbConfig.SlowQueryWarningThresholdMs = new(uint32(*lc.SlowQueryWarningThreshold))
 		}
 
 		// Validate replication configs
@@ -142,7 +142,7 @@ func (lc *LegacyServerConfig) ToStartupConfig(ctx context.Context) (*StartupConf
 			base.ErrorfCtx(ctx, "Error upgrading server address: %v", err)
 		}
 
-		dbConfig.Server = base.Ptr(server)
+		dbConfig.Server = new(server)
 
 		if !bootstrapConfigIsSet {
 			// Prioritise config fields over credentials in host
@@ -298,7 +298,7 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 
 	// Backwards compatibility: Continue defaulting to xattrs=false for upgraded 2.x configs (3.0+ default xattrs=true)
 	if dbc.EnableXattrs == nil {
-		dbc.EnableXattrs = base.Ptr(false)
+		dbc.EnableXattrs = new(false)
 	}
 
 	// Move guest out of the Users section and into its own promoted field
@@ -618,7 +618,7 @@ func ParseCommandLine(ctx context.Context, args []string, handling flag.ErrorHan
 		}
 
 		config = &LegacyServerConfig{
-			UseTLSServer:     base.Ptr(true),
+			UseTLSServer:     new(true),
 			Interface:        addr,
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
@@ -627,7 +627,7 @@ func ParseCommandLine(ctx context.Context, args []string, handling flag.ErrorHan
 			Logging: &base.LegacyLoggingConfig{
 				Console: base.ConsoleLoggerConfig{
 					// Enable the logger only when log keys have explicitly been set on the command line
-					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.Ptr(*logKeys != "")},
+					FileLoggerConfig: base.FileLoggerConfig{Enabled: new(*logKeys != "")},
 					LogKeys:          strings.Split(*logKeys, ","),
 				},
 				LogFilePath: *logFilePath,
@@ -644,7 +644,7 @@ func ParseCommandLine(ctx context.Context, args []string, handling flag.ErrorHan
 					},
 					Users: map[string]*auth.PrincipalConfig{
 						base.GuestUsername: {
-							Disabled:         base.Ptr(false),
+							Disabled:         new(false),
 							ExplicitChannels: base.SetFromArray([]string{"*"}),
 						},
 					},

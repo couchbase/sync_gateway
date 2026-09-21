@@ -165,7 +165,7 @@ func TestConfigToBucketPointName(t *testing.T) {
 
 	// create db config to point to bucket with . in the name
 	dbConfig := rt.NewDbConfig()
-	dbConfig.Bucket = base.Ptr(testBucketName)
+	dbConfig.Bucket = new(testBucketName)
 	dbConfig.Username = base.TestClusterUsername()
 	dbConfig.Password = base.TestClusterPassword()
 	dbConfig.Scopes = nil
@@ -218,7 +218,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			name: "valid num_replicas, legacy",
 			dbConfig: DbConfig{
 				Name:             "db",
-				NumIndexReplicas: base.Ptr(uint(2)),
+				NumIndexReplicas: new(uint(2)),
 			},
 			numReplicas: 2,
 		},
@@ -227,7 +227,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			dbConfig: DbConfig{
 				Name: "db",
 				Index: &IndexConfig{
-					NumReplicas: base.Ptr(uint(2)),
+					NumReplicas: new(uint(2)),
 				},
 			},
 			numReplicas: 2,
@@ -236,9 +236,9 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			name: "duplicate index replica definitions, same value",
 			dbConfig: DbConfig{
 				Name:             "db",
-				NumIndexReplicas: base.Ptr(uint(2)),
+				NumIndexReplicas: new(uint(2)),
 				Index: &IndexConfig{
-					NumReplicas: base.Ptr(uint(2)),
+					NumReplicas: new(uint(2)),
 				},
 			},
 			expectedError: "mutually exclusive",
@@ -247,9 +247,9 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			name: "duplicate index replica definitions, diff value",
 			dbConfig: DbConfig{
 				Name:             "db",
-				NumIndexReplicas: base.Ptr(uint(3)),
+				NumIndexReplicas: new(uint(3)),
 				Index: &IndexConfig{
-					NumReplicas: base.Ptr(uint(2)),
+					NumReplicas: new(uint(2)),
 				},
 			},
 			expectedError: "mutually exclusive",
@@ -259,7 +259,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			dbConfig: DbConfig{
 				Name: "db",
 				Index: &IndexConfig{
-					NumPartitions: base.Ptr(uint32(0)),
+					NumPartitions: new(uint32(0)),
 				},
 			},
 			expectedError: "num_partitions must be greater than 0",
@@ -268,7 +268,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 			name: "allowing conflicts with allow_conflicts=true",
 			dbConfig: DbConfig{
 				Name:           "db",
-				AllowConflicts: base.Ptr(true),
+				AllowConflicts: new(true),
 			},
 			expectedError: "allow_conflicts cannot be set to true",
 		},
@@ -278,7 +278,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 				Name: "db",
 				CacheConfig: &CacheConfig{
 					ChannelCacheConfig: &ChannelCacheConfig{
-						EnableStarChannel: base.Ptr(false),
+						EnableStarChannel: new(false),
 					},
 				},
 			},

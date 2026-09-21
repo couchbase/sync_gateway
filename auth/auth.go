@@ -927,7 +927,7 @@ func (auth *Authenticator) authenticateJWTIdentity(identity *Identity, provider 
 	}
 
 	updates = PrincipalConfig{
-		Name:        base.Ptr(username),
+		Name:        new(username),
 		Email:       &identity.Email,
 		JWTIssuer:   &common.Issuer,
 		JWTRoles:    jwtRoles,

@@ -50,7 +50,7 @@ func TestUserXattrRevCache(t *testing.T) {
 			Name:             "rt1",
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
-			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -62,7 +62,7 @@ func TestUserXattrRevCache(t *testing.T) {
 			Name:             "rt2",
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
-			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 		}},
 		SyncFn: syncFn,
 	})
@@ -136,7 +136,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Name:             "rt1",
-			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 		}},
@@ -148,7 +148,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Name:             "rt2",
-			ImportPartitions: base.Ptr(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
 			AutoImport:       true,
 			UserXattrKey:     &xattrKey,
 		}},
