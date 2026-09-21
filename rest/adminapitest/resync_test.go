@@ -72,7 +72,7 @@ func TestResyncRollback(t *testing.T) {
 func TestResyncRegenerateSequencesCorruptDocumentSequence(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeyChanges, base.KeyAccess)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		AutoImport: base.Ptr(false),
+		AutoImport: new(false),
 	})
 
 	defer rt.Close()
@@ -258,7 +258,7 @@ func TestResyncInvalidatePrincipals(t *testing.T) {
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				PersistentConfig:                 true,
 				SyncFn:                           initialSyncFn,
-				UseSystemScopeMetadataCollection: base.Ptr(test.useSystemScopeMetadataCollection),
+				UseSystemScopeMetadataCollection: new(test.useSystemScopeMetadataCollection),
 			})
 			defer rt.Close()
 
@@ -333,7 +333,7 @@ func TestResyncDoesNotWriteDocBody(t *testing.T) {
 	docID := t.Name()
 
 	cfg := rt.NewDbConfig()
-	cfg.AutoImport = base.Ptr(false)
+	cfg.AutoImport = new(false)
 	rest.RequireStatus(t, rt.CreateDatabase("db", cfg), http.StatusCreated)
 
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()

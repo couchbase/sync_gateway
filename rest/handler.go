@@ -160,7 +160,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 // makeSilentHandler creates an http.Handler that will run a handler with the given method only logging at debug
 func makeSilentHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return makeHandlerWithOptions(server, privs, accessPermissions, responsePermissions, method, handlerOptions{
-		httpLogLevel: base.Ptr(silentRequestLogLevel),
+		httpLogLevel: new(silentRequestLogLevel),
 	})
 }
 
@@ -647,14 +647,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// endpoint like /db/doc where this matches /db._default._default/
 			// the check whether the _default._default actually exists on this database is performed below
 			if keyspaceScope == nil && keyspaceCollection == nil {
-				keyspaceScope = base.Ptr(base.DefaultScope)
-				keyspaceCollection = base.Ptr(base.DefaultCollection)
+				keyspaceScope = new(base.DefaultScope)
+				keyspaceCollection = new(base.DefaultCollection)
 			}
 			// endpoint like /db.collectionName/doc where this matches /db.scopeName.collectionName/doc because there's a single scope defined
 			if keyspaceScope == nil {
 				if len(dbContext.Scopes) == 1 {
 					for scopeName, _ := range dbContext.Scopes {
-						keyspaceScope = base.Ptr(scopeName)
+						keyspaceScope = new(scopeName)
 					}
 
 				} else {
@@ -677,8 +677,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return ksNotFound
 			}
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
-			keyspaceScope = base.Ptr(base.DefaultScope)
-			keyspaceCollection = base.Ptr(base.DefaultCollection)
+			keyspaceScope = new(base.DefaultScope)
+			keyspaceCollection = new(base.DefaultCollection)
 		}
 		// explicitCollectionLogging is true if the collection was explicitly set in the keyspace string. When it is used, the log context will add a col:collection in log lines. If it is implicit, in the case of /db/doc, col: is omitted from the log information, but retained for audit logging purposes.
 		if explicitCollectionLogging {
@@ -1134,8 +1134,8 @@ func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, us
 	if !providerStillValid {
 		base.InfofCtx(ctx, base.KeyAuth, "User %v uses OIDC issuer %v which is no longer configured. Revoking OIDC roles/channels.", base.UD(user.Name()), base.UD(issuer))
 		return &auth.PrincipalConfig{
-			Name:        base.Ptr(user.Name()),
-			JWTIssuer:   base.Ptr(""),
+			Name:        new(user.Name()),
+			JWTIssuer:   new(""),
 			JWTRoles:    base.Set{},
 			JWTChannels: base.Set{},
 		}

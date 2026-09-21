@@ -22,7 +22,7 @@ func parseScopeAndCollection(sc string) (scope, collection *string, err error) {
 	parts := strings.Split(sc, base.ScopeCollectionSeparator)
 	switch len(parts) {
 	case 1:
-		scope = base.Ptr(base.DefaultScope)
+		scope = new(base.DefaultScope)
 		collection = &parts[0]
 	case 2:
 		scope = &parts[0]

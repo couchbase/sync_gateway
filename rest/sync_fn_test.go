@@ -53,7 +53,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 		}
 	}`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Ptr(uint32(0))}}}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: new(uint32(0))}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -1068,7 +1068,7 @@ func TestSyncFnTimeout(t *testing.T) {
 
 	syncFn := `function(doc) { while(true) {} }`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{JavascriptTimeoutSecs: new(uint32(1))}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

@@ -479,7 +479,7 @@ func SGCollectFilename() string {
 // newSGCollect creates a new sgCollect instance.
 func newSGCollect(ctx context.Context) *sgCollect {
 	sgCollectInstance := sgCollect{
-		status: base.Ptr(sgStopped),
+		status: new(sgStopped),
 	}
 	sgCollectInstance.sgPath, sgCollectInstance.SGCollectPath, sgCollectInstance.SGCollectPathErr = sgCollectPaths(ctx)
 	return &sgCollectInstance

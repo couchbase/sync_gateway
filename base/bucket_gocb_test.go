@@ -357,15 +357,15 @@ func TestIncrParity(t *testing.T) {
 	}{
 		{desc: "create zero counter when key missing", amt: 0, def: 0, expectValue: 0, expectPostRaw: "0"},
 		{desc: "create counter at def when key missing", amt: 0, def: 5, expectValue: 5, expectPostRaw: "5"},
-		{desc: "amt=0 on existing key returns current value and ignores def", existingValue: Ptr(uint64(42)), amt: 0, def: 100, expectValue: 42, expectPostRaw: "42", expectCASChanged: true},
+		{desc: "amt=0 on existing key returns current value and ignores def", existingValue: new(uint64(42)), amt: 0, def: 100, expectValue: 42, expectPostRaw: "42", expectCASChanged: true},
 		{desc: "missing key returns def, delta is not applied to it", amt: 1, def: 5, expectValue: 5, expectPostRaw: "5"},
-		{desc: "increment existing counter by amt", existingValue: Ptr(uint64(42)), amt: 1, def: 5, expectValue: 43, expectPostRaw: "43", expectCASChanged: true},
-		{desc: "amt=0 on existing key still rewrites doc and bumps CAS", existingValue: Ptr(uint64(42)), amt: 0, def: 0, expectValue: 42, expectPostRaw: "42", expectCASChanged: true},
+		{desc: "increment existing counter by amt", existingValue: new(uint64(42)), amt: 1, def: 5, expectValue: 43, expectPostRaw: "43", expectCASChanged: true},
+		{desc: "amt=0 on existing key still rewrites doc and bumps CAS", existingValue: new(uint64(42)), amt: 0, def: 0, expectValue: 42, expectPostRaw: "42", expectCASChanged: true},
 		{desc: "negative amt on missing key stores def (no wrap into def)", amt: maxU64, def: 0, expectValue: 0, expectPostRaw: "0"},
-		{desc: "negative amt on existing key decrements via uint64 wrap", existingValue: Ptr(uint64(42)), amt: maxU64, def: 0, expectValue: 41, expectPostRaw: "41", expectCASChanged: true},
-		{desc: "amt=-10 on existing key decrements by 10", existingValue: Ptr(uint64(100)), amt: negTen, def: 0, expectValue: 90, expectPostRaw: "90", expectCASChanged: true},
+		{desc: "negative amt on existing key decrements via uint64 wrap", existingValue: new(uint64(42)), amt: maxU64, def: 0, expectValue: 41, expectPostRaw: "41", expectCASChanged: true},
+		{desc: "amt=-10 on existing key decrements by 10", existingValue: new(uint64(100)), amt: negTen, def: 0, expectValue: 90, expectPostRaw: "90", expectCASChanged: true},
 		{desc: "def > int64 max returns MissingError (matches CBS gocb sentinel)", amt: 1, def: maxU64, expectErr: true},
-		{desc: "def > int64 max is ignored on existing key (delta still applied)", existingValue: Ptr(uint64(42)), amt: 1, def: maxU64, expectValue: 43, expectPostRaw: "43", expectCASChanged: true},
+		{desc: "def > int64 max is ignored on existing key (delta still applied)", existingValue: new(uint64(42)), amt: 1, def: maxU64, expectValue: 43, expectPostRaw: "43", expectCASChanged: true},
 	}
 
 	// formatU64 renders a uint64 as "negN" when it represents a wrapped-negative int64,

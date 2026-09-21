@@ -416,7 +416,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
-			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.Ptr("foo")}
+			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: new("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &openIDConnectOptions}}}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -465,9 +465,9 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ValidationKey: base.Ptr("qux"),
+		ValidationKey: new("qux"),
 		JWTConfigCommon: auth.JWTConfigCommon{
-			ClientID: base.Ptr("baz"),
+			ClientID: new("baz"),
 		},
 	}
 }
@@ -2612,7 +2612,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
-	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.Ptr(providerName)}
+	oidcOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: new(providerName)}
 	dbConfig := rt.NewDbConfig()
 	dbConfig.OIDCConfig = &oidcOptions
 
@@ -2726,7 +2726,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 			"test": &auth.OIDCProvider{
 				JWTConfigCommon: auth.JWTConfigCommon{
 					Issuer:   fmt.Sprintf("%s/%s/_oidc_testing", msg1.URL, rt1.DatabaseConfig.Name),
-					ClientID: base.Ptr("sync_gateway"),
+					ClientID: new("sync_gateway"),
 					Register: true,
 					// this UsernameClaim is critical - we'll generate two users from two different OIDC issuers but with the same username
 					UsernameClaim: "username",
@@ -2736,7 +2736,7 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 			"test2": &auth.OIDCProvider{
 				JWTConfigCommon: auth.JWTConfigCommon{
 					Issuer:        fmt.Sprintf("%s/%s/_oidc_testing", msg2.URL, rt2.DatabaseConfig.Name),
-					ClientID:      base.Ptr("sync_gateway"),
+					ClientID:      new("sync_gateway"),
 					Register:      true,
 					UsernameClaim: "username",
 				},
@@ -3104,7 +3104,7 @@ func TestNoOIDCValidationOnRemoval(t *testing.T) {
 			dbConfig := rt.NewDbConfig()
 			dbConfig.OIDCConfig = &auth.OIDCOptions{
 				Providers:       providers,
-				DefaultProvider: base.Ptr(defaultProvider),
+				DefaultProvider: new(defaultProvider),
 			}
 
 			// The invalid provider's issuer doesn't match its own discovery document (its mock server
@@ -3119,7 +3119,7 @@ func TestNoOIDCValidationOnRemoval(t *testing.T) {
 			updatedProviders, newDefaultProvider := buildProviders(test.updatedProviders, servers)
 			dbConfig.OIDCConfig = &auth.OIDCOptions{
 				Providers:       updatedProviders,
-				DefaultProvider: base.Ptr(newDefaultProvider),
+				DefaultProvider: new(newDefaultProvider),
 			}
 
 			RequireStatus(tt, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", string(base.MustJSONMarshal(tt, &dbConfig))), http.StatusCreated)
@@ -3294,7 +3294,7 @@ func TestOIDCValidationSkippedOnUnrelatedConfigUpsert(t *testing.T) {
 	// SetRevalidationFlags has nothing to mark. The already-configured "invalidProvider" is
 	// merged back in unchanged and must not be re-validated as a side effect of this update.
 	unrelatedUpdate := DbConfig{
-		RevsLimit: base.Ptr(uint32(1000)),
+		RevsLimit: new(uint32(1000)),
 	}
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &unrelatedUpdate))), http.StatusCreated)
 }
@@ -3356,7 +3356,7 @@ func TestOIDCRevalidationSkippedOnIdenticalConfigResubmit(t *testing.T) {
 		dbConfig := rt.NewDbConfig()
 		dbConfig.OIDCConfig = &auth.OIDCOptions{
 			Providers:       auth.OIDCProviderMap{"provider1": provider1, "provider2": provider2},
-			DefaultProvider: base.Ptr("provider1"),
+			DefaultProvider: new("provider1"),
 		}
 		return &dbConfig
 	}
@@ -3456,7 +3456,7 @@ func TestOIDCRevalidationConsistentWhenOffline(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.StartOffline = new(true)
 	dbConfig.OIDCConfig = &auth.OIDCOptions{
 		Providers: auth.OIDCProviderMap{"provider1": provider},
 	}
@@ -3476,7 +3476,7 @@ func TestOIDCRevalidationConsistentWhenOffline(t *testing.T) {
 	changedProvider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(changedProvider.Issuer)
 
 	changedConfig := rt.NewDbConfig()
-	changedConfig.StartOffline = base.Ptr(true)
+	changedConfig.StartOffline = new(true)
 	changedConfig.OIDCConfig = &auth.OIDCOptions{
 		Providers: auth.OIDCProviderMap{"provider1": changedProvider},
 	}
@@ -3502,7 +3502,7 @@ func TestOIDCNoRevalidationForPeerAddedProvider(t *testing.T) {
 	require.Nil(t, rt.GetDatabase().Options.OIDCOptions, "this node must still be unaware of the peer's provider")
 
 	// An update with nothing to do with OIDC must not be blocked by that provider.
-	unrelated := DbConfig{RevsLimit: base.Ptr(uint32(1234))}
+	unrelated := DbConfig{RevsLimit: new(uint32(1234))}
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_config", string(base.MustJSONMarshal(t, &unrelated))), http.StatusCreated)
 }
 

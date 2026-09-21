@@ -123,7 +123,7 @@ func InitLogging(ctx context.Context, logFilePath string,
 	traceLogger.Store(rawTraceLogger)
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, Ptr(statsDefaultMaxAgeOverride), &statsLogger.Load().buffer)
+	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, new(statsDefaultMaxAgeOverride), &statsLogger.Load().buffer)
 	if err != nil {
 		return err
 	}

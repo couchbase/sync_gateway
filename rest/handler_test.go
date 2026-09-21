@@ -105,14 +105,14 @@ func Test_parseKeyspace(t *testing.T) {
 			ks:             "d.c",
 			wantDb:         "d",
 			wantScope:      nil,
-			wantCollection: base.Ptr("c"),
+			wantCollection: new("c"),
 			wantErr:        assert.NoError,
 		},
 		{
 			ks:             "d.s.c",
 			wantDb:         "d",
-			wantScope:      base.Ptr("s"),
-			wantCollection: base.Ptr("c"),
+			wantScope:      new("s"),
+			wantCollection: new("c"),
 			wantErr:        assert.NoError,
 		},
 		{
@@ -160,8 +160,8 @@ func TestShouldCheckAdminRBAC(t *testing.T) {
 	for _, requireInterfaceAuth := range []bool{false, true} {
 		t.Run(fmt.Sprintf("requireInterfaceAuth=%t", requireInterfaceAuth), func(t *testing.T) {
 			config := BootstrapStartupConfigForTest(t)
-			config.API.AdminInterfaceAuthentication = base.Ptr(requireInterfaceAuth)
-			config.API.MetricsInterfaceAuthentication = base.Ptr(requireInterfaceAuth)
+			config.API.AdminInterfaceAuthentication = new(requireInterfaceAuth)
+			config.API.MetricsInterfaceAuthentication = new(requireInterfaceAuth)
 			sc, closeFn := StartServerWithConfig(t, &config)
 			defer closeFn()
 

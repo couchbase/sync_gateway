@@ -2693,7 +2693,7 @@ func (db *DatabaseContext) GetCollectionIDs() []uint32 {
 }
 
 func (db *DatabaseContext) EnableAllowConflicts(tb testing.TB) {
-	db.Options.AllowConflicts = base.Ptr(true)
+	db.Options.AllowConflicts = new(true)
 }
 
 // useShardedDCP returns true if the database supports sharded DCP feeds.

@@ -586,7 +586,7 @@ func InitSyncInfo(ctx context.Context, ds DataStore, metadataID string, clusterC
 		if metadataID == "" {
 			return false, true, nil
 		}
-		newSyncInfo := SyncInfo{MetadataID: Ptr(metadataID)}
+		newSyncInfo := SyncInfo{MetadataID: new(metadataID)}
 		payload, mErr := marshalSyncInfo(&newSyncInfo, clusterCompatVersion)
 		if mErr != nil {
 			return true, true, mErr
@@ -675,7 +675,7 @@ func SetSyncInfoMetadataID(ctx context.Context, ds DataStore, metadataID string,
 		return nil
 	}
 	return updateSyncInfo(ctx, ds, clusterCompatVersion, func(s *SyncInfo) {
-		s.MetadataID = Ptr(metadataID)
+		s.MetadataID = new(metadataID)
 	})
 }
 

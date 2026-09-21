@@ -746,15 +746,15 @@ func TestPublicPortAuthentication(t *testing.T) {
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
 	assert.Len(t, changesChannelUser1, 1)
 	change := changesChannelUser1[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: new(false)})
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	assert.Len(t, changesChannelUser2, 2)
 	change = changesChannelUser2[0]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.Ptr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: new(false)})
 
 	change = changesChannelUser2[1]
-	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.Ptr(false)})
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: new(false)})
 
 }
 
@@ -1162,7 +1162,7 @@ func TestBlipSendConcurrentRevs(t *testing.T) {
 				}
 			},
 		},
-		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
+		maxConcurrentRevs: new(maxConcurrentRevs),
 	})
 	defer rt.Close()
 	const user1 = "user1"
@@ -1222,7 +1222,7 @@ func TestBlipRevsThrottleUnblockedOnClose(t *testing.T) {
 				<-releaseRevs
 			},
 		},
-		maxConcurrentRevs: base.Ptr(maxConcurrentRevs),
+		maxConcurrentRevs: new(maxConcurrentRevs),
 	})
 	defer rt.Close()
 	// let the in-flight writes finish before the RestTester is closed
@@ -2584,19 +2584,19 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 		{
 			name:                        "Valid _attachments",
 			inputBody:                   map[string]any{"_attachments": map[string]any{"attch": map[string]any{"data": "c2d3IGZ0dw=="}}},
-			skipDocContentsVerification: base.Ptr(true),
+			skipDocContentsVerification: new(true),
 		},
 		{
 			name:                        "_revisions",
 			inputBody:                   map[string]any{"_revisions": false},
-			skipDocContentsVerification: base.Ptr(true),
+			skipDocContentsVerification: new(true),
 			rejectMsg:                   "top-level property '_revisions' is a reserved internal property",
 			errorCode:                   "404",
 		},
 		{
 			name:                        "Valid _exp",
 			inputBody:                   map[string]any{"_exp": "123"},
-			skipDocContentsVerification: base.Ptr(true),
+			skipDocContentsVerification: new(true),
 		},
 		{
 			name:      "Invalid _exp",
@@ -2689,6 +2689,45 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 				}
 			})
 		}
+	})
+}
+
+// TestBlipRevRejectionLogsDocID confirms that a rejected rev's INFO-level SyncMsg log line includes the document ID.
+func TestBlipRevRejectionLogsDocID(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	defer rt.Close()
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		const docID = "docWithReservedProperty"
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "1-abc"
+		revRequest.SetBody([]byte(`{"_deleted": false}`))
+		client.addCollectionProperty(revRequest)
+
+		var (
+			resp    *blip.Message
+			body    []byte
+			bodyErr error
+		)
+		base.AssertLogContains(t, "Id:<ud>"+docID+"</ud>", func() {
+			client.pushReplication.sendMsg(revRequest)
+			resp = revRequest.Response()
+			if resp != nil {
+				body, bodyErr = resp.Body()
+			}
+		})
+		require.NotNil(t, resp)
+		require.NoError(t, bodyErr)
+		require.Contains(t, string(body), "top-level property '_deleted' is a reserved internal property")
+		require.Equal(t, "404", resp.Properties[db.BlipErrorCode])
 	})
 }
 
@@ -3005,7 +3044,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 			}`,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				ChangesRequestPlus: base.Ptr(true),
+				ChangesRequestPlus: new(true),
 			},
 		},
 	}
@@ -3107,7 +3146,7 @@ func TestImportInvalidSyncGetsNoRev(t *testing.T) {
 
 	btcRunner.Run(func(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{
-			AutoImport: base.Ptr(false),
+			AutoImport: new(false),
 			SyncFn:     channels.DocChannelsSyncFunction,
 		})
 		defer rt.Close()
@@ -3176,7 +3215,7 @@ func TestOnDemandImportBlipFailure(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{
 			SyncFn:       syncFn,
 			ImportFilter: importFilter,
-			AutoImport:   base.Ptr(false),
+			AutoImport:   new(false),
 		})
 		defer rt.Close()
 
@@ -3516,7 +3555,7 @@ func TestBlipPushRevOnResurrection(t *testing.T) {
 		defer rt.Close()
 
 		dbConfig := rt.NewDbConfig()
-		dbConfig.AutoImport = base.Ptr(false)
+		dbConfig.AutoImport = new(false)
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 		docID := "doc1"
 		rt.CreateTestDoc(docID)

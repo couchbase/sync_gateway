@@ -91,19 +91,19 @@ func TestJWTVerifyToken(t *testing.T) {
 	ctx := base.TestCtx(t)
 	common := JWTConfigCommon{
 		Issuer:   testIssuer,
-		ClientID: base.Ptr(testClientID),
+		ClientID: new(testClientID),
 	}
 	baseProvider := LocalJWTAuthConfig{
 		JWTConfigCommon: common,
 		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK, testEncRSAJWK},
-		SkipExpiryCheck: base.Ptr(true),
+		SkipExpiryCheck: new(true),
 	}.BuildProvider(ctx, "test")
 	providerWithExpiryCheck := LocalJWTAuthConfig{
 		JWTConfigCommon: common,
 		Algorithms:      []string{"RS256", "ES256"},
 		Keys:            []jose.JSONWebKey{testRSAJWK, testECJWK, testEncRSAJWK},
-		SkipExpiryCheck: base.Ptr(false),
+		SkipExpiryCheck: new(false),
 	}.BuildProvider(ctx, "test")
 
 	t.Run("garbage", test(baseProvider, "INVALID", anyError))

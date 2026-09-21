@@ -312,7 +312,7 @@ func (h *handler) handleDbOnline() error {
 			return
 		}
 		if !h.server.persistentConfig {
-			newDbConfig := &DbConfig{StartOffline: base.Ptr(false)}
+			newDbConfig := &DbConfig{StartOffline: new(false)}
 			err = h.updateNonPersistentDbConfig(contextNoCancel, h.db.Name, false, false, true, newDbConfig)
 			if err != nil {
 				base.WarnfCtx(contextNoCancel.Ctx, "database reload failed during db online, Err: %v", err)
@@ -336,7 +336,7 @@ func (h *handler) handleDbOnline() error {
 				oldConfig = bucketDbConfig.DbConfig
 
 				// set config to offline false to start online processes
-				bucketDbConfig.StartOffline = base.Ptr(false)
+				bucketDbConfig.StartOffline = new(false)
 
 				if err := bucketDbConfig.validateConfigUpdate(contextNoCancel.Ctx, oldConfig, false); err != nil {
 					return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -380,7 +380,7 @@ func (h *handler) handleDbOffline() error {
 
 	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOnline, db.DBStopping) {
 		if !h.server.persistentConfig {
-			newDbConfig := &DbConfig{StartOffline: base.Ptr(true)}
+			newDbConfig := &DbConfig{StartOffline: new(true)}
 			err := h.updateNonPersistentDbConfig(contextNoCancel, h.db.Name, false, false, true, newDbConfig)
 			if err != nil {
 				return err
@@ -393,7 +393,7 @@ func (h *handler) handleDbOffline() error {
 				oldConfig = bucketDbConfig.DbConfig
 
 				// set config to offline true
-				bucketDbConfig.StartOffline = base.Ptr(true)
+				bucketDbConfig.StartOffline = new(true)
 
 				if err := bucketDbConfig.validateConfigUpdate(contextNoCancel.Ctx, oldConfig, false); err != nil {
 					return nil, base.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -1163,7 +1163,7 @@ func (h *handler) handleGetDbAuditConfig() error {
 				Name:        stringPtrOrNil(descriptor.Name),
 				Description: stringPtrOrNil(descriptor.Description),
 				Enabled:     &eventEnabled,
-				Filterable:  base.Ptr(descriptor.FilteringPermitted),
+				Filterable:  new(descriptor.FilteringPermitted),
 			}
 		} else {
 			events[idStr] = &eventEnabled
@@ -2003,7 +2003,7 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 	if user, ok := princ.(auth.User); ok {
 		email := user.Email()
 		info.Email = &email
-		info.Disabled = base.Ptr(user.Disabled())
+		info.Disabled = new(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
 			channels, err := user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection)
@@ -2012,7 +2012,7 @@ func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynami
 			}
 			info.Channels = channels.AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
-			info.JWTIssuer = base.Ptr(user.JWTIssuer())
+			info.JWTIssuer = new(user.JWTIssuer())
 			info.JWTRoles = user.JWTRoles().AsSet()
 			info.JWTChannels = user.JWTChannels().AsSet()
 			lastUpdated := user.JWTLastUpdated()

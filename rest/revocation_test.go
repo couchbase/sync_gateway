@@ -1080,13 +1080,13 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.Ptr(2),
+			QueryPaginationLimit: new(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Ptr(uint32(0)),
+					MaxItemCount: new(uint32(0)),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.Ptr(0),
+					MaxNumber: new(0),
 				},
 			},
 		}},
@@ -1129,7 +1129,7 @@ func TestRevocationsWithQueryLimit2Channels(t *testing.T) {
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:           false,
-			QueryPaginationLimit: base.Ptr(2),
+			QueryPaginationLimit: new(2),
 		}},
 	})
 	defer rt.Close()
@@ -1168,13 +1168,13 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.Ptr(2),
+			QueryPaginationLimit: new(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Ptr(uint32(0)),
+					MaxItemCount: new(uint32(0)),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.Ptr(0),
+					MaxNumber: new(0),
 				},
 			},
 		}},
@@ -1214,13 +1214,13 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	ctx := base.TestCtx(t)
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			QueryPaginationLimit: base.Ptr(2),
+			QueryPaginationLimit: new(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Ptr(uint32(0)),
+					MaxItemCount: new(uint32(0)),
 				},
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxNumber: base.Ptr(0),
+					MaxNumber: new(0),
 				},
 			},
 		}},
@@ -2355,7 +2355,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 					DbConfig: DbConfig{
 						CacheConfig: &CacheConfig{
 							RevCacheConfig: &RevCacheConfig{
-								InsertOnWrite: base.Ptr(true),
+								InsertOnWrite: new(true),
 							},
 						},
 					},

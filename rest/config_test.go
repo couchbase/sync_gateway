@@ -502,14 +502,14 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	}
 
 	// Set Deprecated Values
-	dbConfig.DeprecatedRevCacheSize = base.Ptr(uint32(10))
-	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.Ptr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.Ptr(10)
-	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.Ptr(10)
-	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(true)
-	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Ptr(uint32(10))
-	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.Ptr(10)
-	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Ptr(uint32(10))
+	dbConfig.DeprecatedRevCacheSize = new(uint32(10))
+	dbConfig.CacheConfig.DeprecatedChannelCacheAge = new(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = new(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = new(10)
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = new(true)
+	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = new(uint32(10))
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = new(10)
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = new(uint32(10))
 
 	// Run Deprecated Fallback
 	warnings := dbConfig.deprecatedConfigCacheFallback()
@@ -536,10 +536,10 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	}
 
 	// Set A Couple Deprecated Values AND Their New Counterparts
-	dbConfig.DeprecatedRevCacheSize = base.Ptr(uint32(10))
-	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr(uint32(20))
-	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.Ptr(false)
-	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(true)
+	dbConfig.DeprecatedRevCacheSize = new(uint32(10))
+	dbConfig.CacheConfig.RevCacheConfig.MaxItemCount = new(uint32(20))
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = new(false)
+	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = new(true)
 
 	// Run Deprecated Fallback
 	warnings = dbConfig.deprecatedConfigCacheFallback()
@@ -730,7 +730,7 @@ func TestAuditLogConfigDatabaseEventInGlobal(t *testing.T) {
 
 	sc := NewEmptyStartupConfig()
 	sc.Logging.LogFilePath = t.TempDir()
-	sc.Logging.Audit.Enabled = base.Ptr(true)
+	sc.Logging.Audit.Enabled = new(true)
 	sc.Logging.Audit.EnabledEvents = []uint{
 		uint(base.AuditIDSyncGatewayStartup),          // global, non-filterable
 		uint(base.AuditIDUserCreate),                  // database, filterable
@@ -1004,8 +1004,8 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 
 	config := &StartupConfig{
 		Bootstrap: BootstrapConfig{
-			UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-			ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
+			UseTLSServer:        new(base.ServerIsTLS(base.UnitTestUrl())),
+			ServerTLSSkipVerify: new(base.TestTLSSkipVerify()),
 		},
 	}
 	databases := DbConfigMap{
@@ -1016,7 +1016,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			UseViews: base.Ptr(base.TestsDisableGSI()),
+			UseViews: new(base.TestsDisableGSI()),
 		},
 		"db2": {
 			BucketConfig: BucketConfig{
@@ -1025,7 +1025,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb1User,
 				Password: tb1Password,
 			},
-			UseViews: base.Ptr(base.TestsDisableGSI()),
+			UseViews: new(base.TestsDisableGSI()),
 		},
 		"db3": {
 			BucketConfig: BucketConfig{
@@ -1034,7 +1034,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 				Username: tb2User,
 				Password: tb2Password,
 			},
-			UseViews: base.Ptr(base.TestsDisableGSI()),
+			UseViews: new(base.TestsDisableGSI()),
 		},
 	}
 
@@ -1044,7 +1044,7 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	defer sc.Close(ctx)
 	for _, dbConfig := range databases {
 		if !base.TestsDisableGSI() {
-			dbConfig.Index = &IndexConfig{NumReplicas: base.Ptr(uint(0))}
+			dbConfig.Index = &IndexConfig{NumReplicas: new(uint(0))}
 		}
 		_, err := sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
@@ -1377,13 +1377,13 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			unexpectedChannels:   []string{defaultVal, unexpandedVal},
 		},
 		{
-			allowDbConfigEnvVars: base.Ptr(true),
+			allowDbConfigEnvVars: new(true),
 			setEnvVar:            false,
 			expectedChannel:      defaultVal,
 			unexpectedChannels:   []string{secretVal, unexpandedVal},
 		},
 		{
-			allowDbConfigEnvVars: base.Ptr(false),
+			allowDbConfigEnvVars: new(false),
 			setEnvVar:            true,
 			expectedChannel:      unexpandedVal,
 			unexpectedChannels:   []string{secretVal, defaultVal},
@@ -1406,7 +1406,7 @@ func TestDbConfigEnvVarsToggle(t *testing.T) {
 			}
 
 			dbc := rt.NewDbConfig()
-			dbc.Sync = base.Ptr(fmt.Sprintf(
+			dbc.Sync = new(fmt.Sprintf(
 				"function(doc) {channel('%s');}",
 				unexpandedVal,
 			))
@@ -1470,8 +1470,8 @@ func TestSetupServerContext(t *testing.T) {
 		ctx := base.TestCtx(t)
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(base.UnitTestUrl()))
-		config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
+		config.Bootstrap.UseTLSServer = new(base.ServerIsTLS(base.UnitTestUrl()))
+		config.Bootstrap.ServerTLSSkipVerify = new(base.TestTLSSkipVerify())
 		config.Bootstrap.Username = base.TestClusterUsername()
 		config.Bootstrap.Password = base.TestClusterPassword()
 		sc, err := SetupServerContext(ctx, &config, false)
@@ -1536,7 +1536,7 @@ func TestConfigGroupIDValidation(t *testing.T) {
 				Bootstrap: BootstrapConfig{
 					ConfigGroupID: test.cfgGroupID,
 					Server:        base.UnitTestUrl(),
-					UseTLSServer:  base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
+					UseTLSServer:  new(base.ServerIsTLS(base.UnitTestUrl())),
 				},
 			}
 			err := sc.Validate(base.TestCtx(t), isEnterpriseEdition)
@@ -1933,7 +1933,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name: "db",
-				Sync: base.Ptr(sync),
+				Sync: new(sync),
 			}
 			if test.insecureSkipVerify {
 				dbConfig.Unsupported = &db.UnsupportedOptions{
@@ -2027,7 +2027,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name:         "db",
-				ImportFilter: base.Ptr(importFilter),
+				ImportFilter: new(importFilter),
 			}
 			if test.insecureSkipVerify {
 				dbConfig.Unsupported = &db.UnsupportedOptions{
@@ -2227,7 +2227,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 						{
 							HandlerType: "webhook",
 							Url:         "http://127.0.0.1:8080/",
-							Timeout:     base.Ptr(uint64(0)),
+							Timeout:     new(uint64(0)),
 							Filter:      webhookFilter,
 						},
 					},
@@ -2284,39 +2284,39 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Valid Sync Fn No Import",
-			base.Ptr(`function(){}`),
+			new(`function(){}`),
 			nil,
 			0,
-			base.Ptr(`function(){}`),
+			new(`function(){}`),
 			nil,
 		},
 		{
 			"Valid Import Fn No Sync",
 			nil,
-			base.Ptr(`function(){}`),
+			new(`function(){}`),
 			0,
 			nil,
-			base.Ptr(`function(){}`),
+			new(`function(){}`),
 		},
 		{
 			"Both empty",
-			base.Ptr(``),
-			base.Ptr(``),
+			new(``),
+			new(``),
 			0,
 			nil,
 			nil,
 		},
 		{
 			"Both blank",
-			base.Ptr(` `),
-			base.Ptr(` `),
+			new(` `),
+			new(` `),
 			0,
 			nil,
 			nil,
 		},
 		{
 			"Invalid Sync Fn No Import",
-			base.Ptr(`function(){`),
+			new(`function(){`),
 			nil,
 			1,
 			nil,
@@ -2324,7 +2324,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Invalid Sync Fn No Import 2",
-			base.Ptr(`function(doc){
+			new(`function(doc){
 				if (t )){}
 			}`),
 			nil,
@@ -2335,15 +2335,15 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		{
 			"Invalid Import Fn No Sync",
 			nil,
-			base.Ptr(`function(){`),
+			new(`function(){`),
 			1,
 			nil,
 			nil,
 		},
 		{
 			"Both invalid",
-			base.Ptr(`function(){`),
-			base.Ptr(`function(){`),
+			new(`function(){`),
+			new(`function(){`),
 			2,
 			nil,
 			nil,
@@ -2461,27 +2461,27 @@ func TestStartupConfigReplicationThrottleValidation(t *testing.T) {
 		},
 		{
 			name:         "invalid-low",
-			revsThrottle: base.Ptr(4),
+			revsThrottle: new(4),
 			expectError:  true,
 		},
 		{
 			name:         "Valid-5",
-			revsThrottle: base.Ptr(5),
+			revsThrottle: new(5),
 			expectError:  false,
 		},
 		{
 			name:         "Valid-20",
-			revsThrottle: base.Ptr(20),
+			revsThrottle: new(20),
 			expectError:  false,
 		},
 		{
 			name:         "Valid-200",
-			revsThrottle: base.Ptr(200),
+			revsThrottle: new(200),
 			expectError:  false,
 		},
 		{
 			name:         "invalid-high",
-			revsThrottle: base.Ptr(201),
+			revsThrottle: new(201),
 			expectError:  true,
 		},
 	}
@@ -2508,9 +2508,9 @@ func TestStartupConfigUpdateFrequencyValidation(t *testing.T) {
 		expectError     bool
 	}{
 		{name: "unset is valid", updateFrequency: nil, expectError: false},
-		{name: "positive is valid", updateFrequency: base.Ptr(10 * time.Second), expectError: false},
-		{name: "zero is invalid", updateFrequency: base.Ptr(time.Duration(0)), expectError: true},
-		{name: "negative is invalid", updateFrequency: base.Ptr(-time.Second), expectError: true},
+		{name: "positive is valid", updateFrequency: new(10 * time.Second), expectError: false},
+		{name: "zero is invalid", updateFrequency: new(time.Duration(0)), expectError: true},
+		{name: "negative is invalid", updateFrequency: new(-time.Second), expectError: true},
 	}
 
 	for _, test := range testCases {
@@ -2547,24 +2547,24 @@ func TestStartupConfigNodeHeartbeatExpiryValidation(t *testing.T) {
 		},
 		{
 			name:            "exactly 2x default refresh frequency is valid",
-			heartbeatExpiry: base.Ptr(2 * persistentConfigDefaultUpdateFrequency),
+			heartbeatExpiry: new(2 * persistentConfigDefaultUpdateFrequency),
 			expectError:     false,
 		},
 		{
 			name:            "below 2x default refresh frequency is invalid",
-			heartbeatExpiry: base.Ptr(2*persistentConfigDefaultUpdateFrequency - time.Nanosecond),
+			heartbeatExpiry: new(2*persistentConfigDefaultUpdateFrequency - time.Nanosecond),
 			expectError:     true,
 		},
 		{
 			name:            "respects overridden config_update_frequency (above floor)",
-			updateFrequency: base.Ptr(30 * time.Second),
-			heartbeatExpiry: base.Ptr(60 * time.Second),
+			updateFrequency: new(30 * time.Second),
+			heartbeatExpiry: new(60 * time.Second),
 			expectError:     false,
 		},
 		{
 			name:            "respects overridden config_update_frequency (below floor)",
-			updateFrequency: base.Ptr(30 * time.Second),
-			heartbeatExpiry: base.Ptr(59 * time.Second),
+			updateFrequency: new(30 * time.Second),
+			heartbeatExpiry: new(59 * time.Second),
 			expectError:     true,
 		},
 	}
@@ -2617,19 +2617,19 @@ func Test_validateJavascriptFunction(t *testing.T) {
 		},
 		{
 			name:        "whitespace only",
-			jsFunc:      base.Ptr("   \t \n "),
+			jsFunc:      new("   \t \n "),
 			wantIsEmpty: true,
 			wantErr:     assert.NoError,
 		},
 		{
 			name:        "invalid js",
-			jsFunc:      base.Ptr("  func() { console.log(\"foo\"); } "),
+			jsFunc:      new("  func() { console.log(\"foo\"); } "),
 			wantIsEmpty: false,
 			wantErr:     assert.Error,
 		},
 		{
 			name:        "valid js",
-			jsFunc:      base.Ptr(" function() { console.log(\"foo\"); }  "),
+			jsFunc:      new(" function() { console.log(\"foo\"); }  "),
 			wantIsEmpty: false,
 			wantErr:     assert.NoError,
 		},
@@ -2747,7 +2747,7 @@ func TestCollectionsValidation(t *testing.T) {
 			name: "views=true,collections=false",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.Ptr(true),
+				UseViews: new(true),
 			},
 			expectedError: nil,
 		},
@@ -2755,7 +2755,7 @@ func TestCollectionsValidation(t *testing.T) {
 			name: "views=true,collections=true",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.Ptr(true),
+				UseViews: new(true),
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
 						map[string]*CollectionConfig{
@@ -2764,13 +2764,13 @@ func TestCollectionsValidation(t *testing.T) {
 					},
 				},
 			},
-			expectedError: base.Ptr("requires GSI"),
+			expectedError: new("requires GSI"),
 		},
 		{
 			name: "views_specified=false,collections=false",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.Ptr(false),
+				UseViews: new(false),
 			},
 			expectedError: nil,
 		},
@@ -2778,7 +2778,7 @@ func TestCollectionsValidation(t *testing.T) {
 			name: "views_specified=false,collections=true",
 			dbConfig: DbConfig{
 				Name:     "db",
-				UseViews: base.Ptr(false),
+				UseViews: new(false),
 				Scopes: ScopesConfig{
 					"fooScope": ScopeConfig{
 						map[string]*CollectionConfig{
@@ -3155,8 +3155,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Ptr(uint32(100)),
-		MaxMemoryCountMB: base.Ptr(uint32(51)),
+		MaxItemCount:     new(uint32(100)),
+		MaxMemoryCountMB: new(uint32(51)),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 
@@ -3177,8 +3177,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Ptr(uint32(100)),
-		MaxMemoryCountMB: base.Ptr(uint32(4)),
+		MaxItemCount:     new(uint32(100)),
+		MaxMemoryCountMB: new(uint32(4)),
 	}
 	resp = rt.UpsertDbConfig("db1", dbConfig)
 	if base.IsEnterpriseEdition() {
@@ -3191,8 +3191,8 @@ func TestRevCacheMemoryLimitConfig(t *testing.T) {
 	// test turing off the memory based rev cache
 	dbConfig.CacheConfig = &CacheConfig{}
 	dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{
-		MaxItemCount:     base.Ptr(uint32(100)),
-		MaxMemoryCountMB: base.Ptr(uint32(0)),
+		MaxItemCount:     new(uint32(100)),
+		MaxMemoryCountMB: new(uint32(0)),
 	}
 	RequireStatus(t, rt.UpsertDbConfig("db1", dbConfig), http.StatusCreated)
 
@@ -3213,8 +3213,8 @@ func TestTLSWithoutCerts(t *testing.T) {
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.Server = strings.ReplaceAll(config.Bootstrap.Server, "couchbase://", "couchbases://")
-			config.Bootstrap.ServerTLSSkipVerify = base.Ptr(true)
-			config.Bootstrap.UseTLSServer = base.Ptr(true)
+			config.Bootstrap.ServerTLSSkipVerify = new(true)
+			config.Bootstrap.UseTLSServer = new(true)
 		},
 	})
 	defer rt.Close()
@@ -3413,7 +3413,7 @@ func TestConfigUserXattrKeyValidation(t *testing.T) {
 			name: "userXattrKey=empty str",
 			dbConfig: DbConfig{
 				Name:         "db",
-				UserXattrKey: base.Ptr(""),
+				UserXattrKey: new(""),
 			},
 			expectedError: nil,
 		},
@@ -3421,7 +3421,7 @@ func TestConfigUserXattrKeyValidation(t *testing.T) {
 			name: "userXattrKey=shortstr",
 			dbConfig: DbConfig{
 				Name:         "db",
-				UserXattrKey: base.Ptr("shortstr"),
+				UserXattrKey: new("shortstr"),
 			},
 			expectedError: nil,
 		},
@@ -3429,9 +3429,9 @@ func TestConfigUserXattrKeyValidation(t *testing.T) {
 			name: "userXattrKey=veryveryveryverylongstr",
 			dbConfig: DbConfig{
 				Name:         "db",
-				UserXattrKey: base.Ptr("veryveryveryverylongstr"),
+				UserXattrKey: new("veryveryveryverylongstr"),
 			},
-			expectedError: base.Ptr("maximum of 15 characters"),
+			expectedError: new("maximum of 15 characters"),
 		},
 	}
 	for _, test := range testCases {
@@ -3468,22 +3468,22 @@ func TestValidateUnsupportedSameSiteCookies(t *testing.T) {
 		},
 		{
 			name:                "valid value Lax",
-			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("Lax")},
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: new("Lax")},
 			error:               "",
 		},
 		{
 			name:                "valid value Strict",
-			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("Strict")},
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: new("Strict")},
 			error:               "",
 		},
 		{
 			name:                "valid value None",
-			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("None")},
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: new("None")},
 			error:               "",
 		},
 		{
 			name:                "invalid value",
-			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: base.Ptr("invalid value")},
+			unsupportedSettings: &db.UnsupportedOptions{SameSiteCookie: new("invalid value")},
 			error:               "unsupported_options.same_site_cookie option",
 		},
 	}

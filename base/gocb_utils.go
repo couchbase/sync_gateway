@@ -31,7 +31,7 @@ func GoCBv2SecurityConfig(ctx context.Context, tlsSkipVerify *bool, caCertPath s
 		if err != nil {
 			return sc, err
 		}
-		tlsSkipVerify = Ptr(false)
+		tlsSkipVerify = new(false)
 	}
 	sc.TLSRootCAs = certPool
 	sc.TLSSkipVerify = *tlsSkipVerify
@@ -215,7 +215,7 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilRe
 		return nil, err
 	}
 
-	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(ctx, Ptr(spec.TLSSkipVerify), spec.CACertpath)
+	tlsRootCAProvider, err := GoCBCoreTLSRootCAProvider(ctx, new(spec.TLSSkipVerify), spec.CACertpath)
 	if err != nil {
 		return nil, err
 	}

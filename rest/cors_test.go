@@ -429,7 +429,7 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 		{
 			name: "With unsupported options and TLS",
 			unsupportedOptions: &db.UnsupportedOptions{
-				SameSiteCookie: base.Ptr("Strict"),
+				SameSiteCookie: new("Strict"),
 			},
 			sameSite: http.SameSiteStrictMode,
 			useTLS:   true,
@@ -437,7 +437,7 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 		{
 			name: "With unsupported options and no TLS",
 			unsupportedOptions: &db.UnsupportedOptions{
-				SameSiteCookie: base.Ptr("Strict"),
+				SameSiteCookie: new("Strict"),
 			},
 			sameSite: http.SameSiteStrictMode, // forces strict mode even though this would result in an unusable cookie
 			useTLS:   false,
@@ -568,16 +568,16 @@ func TestCORSBlipSync(t *testing.T) {
 	}{
 		{
 			name:   "CORS matching origin",
-			origin: base.Ptr("http://example.com"),
+			origin: new("http://example.com"),
 		},
 		{
 			name:         "CORS non-matching origin",
-			origin:       base.Ptr("http://example2.com"),
+			origin:       new("http://example2.com"),
 			errorMessage: "expected handshake response",
 		},
 		{
 			name:   "CORS empty",
-			origin: base.Ptr(""),
+			origin: new(""),
 		},
 	}
 	for _, test := range testCases {
