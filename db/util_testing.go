@@ -916,10 +916,13 @@ func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Conte
 // tapNotifier.L, so the two returned maps are consistent with each other.  The two locks are never
 // held at the same time, keeping principalCountsLock a leaf lock (see changeListener).
 func (listener *changeListener) PrincipalCountsForTest(_ testing.TB) (keyCounts, principalCounts map[channels.ID]uint64) {
-	listener.principalCountsLock.Lock()
-	counters := make(map[channels.ID]*atomic.Uint64, len(listener.principalCounts))
-	maps.Copy(counters, listener.principalCounts)
-	listener.principalCountsLock.Unlock()
+	counters := func() map[channels.ID]*atomic.Uint64 {
+		listener.principalCountsLock.Lock()
+		defer listener.principalCountsLock.Unlock()
+		snapshot := make(map[channels.ID]*atomic.Uint64, len(listener.principalCounts))
+		maps.Copy(snapshot, listener.principalCounts)
+		return snapshot
+	}()
 
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
@@ -939,9 +942,9 @@ func (listener *changeListener) CounterForTest(_ testing.TB) uint64 {
 	return listener.counter
 }
 
-// UserKeysForTest returns the waiter's current set of principal (user/role) keys.
-func (waiter *ChangeWaiter) UserKeysForTest(_ testing.TB) []channels.ID {
-	return waiter.userKeys
+// UserKeysCopyForTest returns a copy of the waiter's current set of principal (user/role) keys.
+func (waiter *ChangeWaiter) UserKeysCopyForTest(_ testing.TB) []channels.ID {
+	return slices.Clone(waiter.userKeys)
 }
 
 // InitChannel is a test-only function to initialize a channel in the channel cache.

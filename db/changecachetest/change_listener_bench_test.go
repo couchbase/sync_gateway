@@ -74,7 +74,7 @@ func newBenchWaiter(b *testing.B, database *db.Database, user auth.User, expecte
 	userDb, err := db.GetDatabase(database.DatabaseContext, user)
 	require.NoError(b, err)
 	w := userDb.NewUserWaiter()
-	require.Len(b, w.UserKeysForTest(b), expectedKeys)
+	require.Len(b, w.UserKeysCopyForTest(b), expectedKeys)
 	return w
 }
 

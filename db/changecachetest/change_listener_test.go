@@ -445,7 +445,7 @@ func TestUserWaiterRoleRebaselineMonotonic(t *testing.T) {
 	// property of RefreshUserKeys.
 	beforeRoleAdd := userWaiter.CurrentUserCount()
 	userWaiter.RefreshUserKeys(userWithRole, database.MetadataKeys)
-	require.Len(t, userWaiter.UserKeysForTest(t), 2, "user key + role key")
+	require.Len(t, userWaiter.UserKeysCopyForTest(t), 2, "user key + role key")
 	require.GreaterOrEqual(t, userWaiter.CurrentUserCount(), beforeRoleAdd,
 		"RefreshUserKeys re-baseline moved the count backwards on a role add")
 
@@ -471,7 +471,7 @@ func TestUserWaiterRoleRebaselineMonotonic(t *testing.T) {
 
 	beforeRoleRemove := userWaiter.CurrentUserCount()
 	userWaiter.RefreshUserKeys(userWithoutRole, database.MetadataKeys)
-	require.Len(t, userWaiter.UserKeysForTest(t), 1, "role key dropped")
+	require.Len(t, userWaiter.UserKeysCopyForTest(t), 1, "role key dropped")
 	require.GreaterOrEqual(t, userWaiter.CurrentUserCount(), beforeRoleRemove,
 		"RefreshUserKeys re-baseline moved the count backwards on a role removal")
 }
