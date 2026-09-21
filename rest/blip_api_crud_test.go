@@ -2712,14 +2712,22 @@ func TestBlipRevRejectionLogsDocID(t *testing.T) {
 		revRequest.SetBody([]byte(`{"_deleted": false}`))
 		client.addCollectionProperty(revRequest)
 
+		var (
+			resp    *blip.Message
+			body    []byte
+			bodyErr error
+		)
 		base.AssertLogContains(t, "Id:<ud>"+docID+"</ud>", func() {
 			client.pushReplication.sendMsg(revRequest)
-			resp := revRequest.Response()
-			body, err := resp.Body()
-			require.NoError(t, err)
-			require.Contains(t, string(body), "top-level property '_deleted' is a reserved internal property")
-			require.Equal(t, "404", resp.Properties[db.BlipErrorCode])
+			resp = revRequest.Response()
+			if resp != nil {
+				body, bodyErr = resp.Body()
+			}
 		})
+		require.NotNil(t, resp)
+		require.NoError(t, bodyErr)
+		require.Contains(t, string(body), "top-level property '_deleted' is a reserved internal property")
+		require.Equal(t, "404", resp.Properties[db.BlipErrorCode])
 	})
 }
 
