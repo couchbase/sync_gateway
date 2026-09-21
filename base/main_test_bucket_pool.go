@@ -154,7 +154,7 @@ type TestBucketPoolOptions struct {
 	NumCollectionsPerBucket int      // setting this value in main_test.go will override the default
 	TeardownFuncs           []func() // functions to be run after Main is completed but before standard teardown functions run
 	NeedsBucketTeardown     bool     // whether the test bucket pool needs to be torn down after tests are run, used for goroutine dump
-	NumBuckets              *int     // overrides the bucket pool size; use Ptr(0) for packages that create their own buckets via CreateTestBucket
+	NumBuckets              *int     // overrides the bucket pool size; use new(0) for packages that create their own buckets via CreateTestBucket
 }
 
 // XDCRConflictResolutionStrategy defines the conflict resolution strategy to use for XDCR, defined at bucket creation time.

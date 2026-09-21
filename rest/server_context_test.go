@@ -233,7 +233,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close(ctx)
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{UseTLSServer: base.Ptr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify())},
+		Bootstrap: BootstrapConfig{UseTLSServer: new(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: new(base.TestTLSSkipVerify())},
 		API:       APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(ctx, serverConfig, false)
 	defer serverContext.Close(ctx)
@@ -242,8 +242,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	dbConfig := DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb1),
 		Name:               "imdb1",
-		AllowEmptyPassword: base.Ptr(true),
-		NumIndexReplicas:   base.Ptr(uint(0)),
+		AllowEmptyPassword: new(true),
+		NumIndexReplicas:   new(uint(0)),
 		UseViews:           &useViews,
 	}
 	_, err := serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -254,8 +254,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfigFromTestBucket(tb2),
 		Name:               "imdb2",
-		AllowEmptyPassword: base.Ptr(true),
-		NumIndexReplicas:   base.Ptr(uint(0)),
+		AllowEmptyPassword: new(true),
+		NumIndexReplicas:   new(uint(0)),
 		UseViews:           &useViews,
 	}
 	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -313,7 +313,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	dbConfig = DbConfig{
 		BucketConfig:       bucketConfig,
 		Name:               databaseName,
-		AllowEmptyPassword: base.Ptr(true),
+		AllowEmptyPassword: new(true),
 		UseViews:           &useViews,
 	}
 	dbContext, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -350,7 +350,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	// config with disallowed allow_conflicts=true
 	dbConfig = DbConfig{
 		Name:           "imdb1",
-		AllowConflicts: base.Ptr(true),
+		AllowConflicts: new(true),
 		BucketConfig:   bucketConfig,
 	}
 	_, err = serverContext.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
@@ -609,7 +609,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 	}{
 		{
 			name:                "CA Provided, explicitly not skipping TLS validation",
-			serverTLSSkipVerify: base.Ptr(false),
+			serverTLSSkipVerify: new(false),
 			caCert:              "t.ca",
 			expectError:         false,
 		},
@@ -620,13 +620,13 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		},
 		{
 			name:                "CA Provided and skipping TLS validation",
-			serverTLSSkipVerify: base.Ptr(true),
+			serverTLSSkipVerify: new(true),
 			caCert:              "t.ca",
 			expectError:         true,
 		},
 		{
 			name:                "Skipping TLS validation, no CA",
-			serverTLSSkipVerify: base.Ptr(true),
+			serverTLSSkipVerify: new(true),
 			caCert:              "",
 			expectError:         false,
 		},
@@ -636,7 +636,7 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		},
 		{
 			name:                "No CA, no TLS validation skip explicitly",
-			serverTLSSkipVerify: base.Ptr(false),
+			serverTLSSkipVerify: new(false),
 			expectError:         false,
 		},
 	}
@@ -672,7 +672,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}{
 		{
 			name:                "CA Provided, explicitly not skipping TLS validation",
-			serverTLSSkipVerify: base.Ptr(false),
+			serverTLSSkipVerify: new(false),
 			caCert:              "t.ca",
 		},
 		{
@@ -681,7 +681,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		},
 		{
 			name:                "Skipping TLS validation, no CA",
-			serverTLSSkipVerify: base.Ptr(true),
+			serverTLSSkipVerify: new(true),
 			caCert:              "",
 		},
 		{
@@ -689,7 +689,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		},
 		{
 			name:                "No CA, no TLS validation skip explicitly",
-			serverTLSSkipVerify: base.Ptr(false),
+			serverTLSSkipVerify: new(false),
 		},
 	}
 	for _, test := range testCases {
@@ -702,7 +702,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, test.caCert, spec.CACertPath)
 			if test.serverTLSSkipVerify == nil {
-				test.serverTLSSkipVerify = base.Ptr(false)
+				test.serverTLSSkipVerify = new(false)
 			}
 			assert.Equal(t, spec.TLSSkipVerify, *test.serverTLSSkipVerify)
 		})
@@ -809,7 +809,7 @@ func TestLogFlush(t *testing.T) {
 			5,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.Ptr(true),
+					Enabled: new(true),
 				}
 				return config
 			},
@@ -819,10 +819,10 @@ func TestLogFlush(t *testing.T) {
 			6,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Debug = &base.FileLoggerConfig{
-					Enabled: base.Ptr(true),
+					Enabled: new(true),
 				}
 				config.Logging.Trace = &base.FileLoggerConfig{
-					Enabled: base.Ptr(true),
+					Enabled: new(true),
 				}
 				return config
 			},
@@ -832,7 +832,7 @@ func TestLogFlush(t *testing.T) {
 			3,
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Error = &base.FileLoggerConfig{
-					Enabled: base.Ptr(false),
+					Enabled: new(false),
 				}
 				return config
 			},
@@ -939,8 +939,8 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 
 				startupConfig := &StartupConfig{
 					Bootstrap: BootstrapConfig{
-						UseTLSServer:        base.Ptr(base.ServerIsTLS(base.UnitTestUrl())),
-						ServerTLSSkipVerify: base.Ptr(base.TestTLSSkipVerify()),
+						UseTLSServer:        new(base.ServerIsTLS(base.UnitTestUrl())),
+						ServerTLSSkipVerify: new(base.TestTLSSkipVerify()),
 					},
 				}
 
@@ -950,12 +950,12 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 				dbConfig := DbConfig{
 					Name: "db",
 					BucketConfig: BucketConfig{
-						Server:   base.Ptr(base.UnitTestUrl()),
-						Bucket:   base.Ptr(bucket.GetName()),
+						Server:   new(base.UnitTestUrl()),
+						Bucket:   new(bucket.GetName()),
 						Username: base.TestClusterUsername(),
 						Password: base.TestClusterPassword(),
 					},
-					UseViews: base.Ptr(base.TestsDisableGSI()),
+					UseViews: new(base.TestsDisableGSI()),
 				}
 				if scopes {
 					if !base.TestsUseNamedCollections() {
@@ -989,7 +989,7 @@ func TestOfflineDatabaseStartup(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				StartOffline: base.Ptr(true),
+				StartOffline: new(true),
 				AutoImport:   true,
 			},
 		},
@@ -1039,17 +1039,17 @@ func TestCompactIntervalFromConfig(t *testing.T) {
 		},
 		{
 			name:                        "explicit 1",
-			compactIntervalDays:         base.Ptr(float32(1)),
+			compactIntervalDays:         new(float32(1)),
 			expectedCompactIntervalSecs: uint32((24 * time.Hour).Seconds()),
 		},
 		{
 			name:                        "1.5",
-			compactIntervalDays:         base.Ptr(float32(1.5)),
+			compactIntervalDays:         new(float32(1.5)),
 			expectedCompactIntervalSecs: uint32((1.5 * 24 * time.Hour).Seconds()),
 		},
 		{
 			name:                        "2",
-			compactIntervalDays:         base.Ptr(float32(2)),
+			compactIntervalDays:         new(float32(2)),
 			expectedCompactIntervalSecs: uint32((2 * 24 * time.Hour).Seconds()),
 		},
 	}
@@ -1083,46 +1083,46 @@ func TestUseSystemMetadataCollectionConfigResolution(t *testing.T) {
 		},
 		{
 			name:      "bootstrap true, db nil",
-			bootstrap: base.Ptr(true),
+			bootstrap: new(true),
 			expected:  true,
 		},
 		{
 			name:      "bootstrap false, db nil",
-			bootstrap: base.Ptr(false),
+			bootstrap: new(false),
 			expected:  false,
 		},
 		{
 			name:     "bootstrap nil, db true",
-			dbLevel:  base.Ptr(true),
+			dbLevel:  new(true),
 			expected: true,
 		},
 		{
 			name:     "bootstrap nil, db false",
-			dbLevel:  base.Ptr(false),
+			dbLevel:  new(false),
 			expected: false,
 		},
 		{
 			name:      "bootstrap true, db true",
-			bootstrap: base.Ptr(true),
-			dbLevel:   base.Ptr(true),
+			bootstrap: new(true),
+			dbLevel:   new(true),
 			expected:  true,
 		},
 		{
 			name:      "bootstrap true, db false — bootstrap wins",
-			bootstrap: base.Ptr(true),
-			dbLevel:   base.Ptr(false),
+			bootstrap: new(true),
+			dbLevel:   new(false),
 			expected:  true,
 		},
 		{
 			name:      "bootstrap false, db true — db opt-in wins",
-			bootstrap: base.Ptr(false),
-			dbLevel:   base.Ptr(true),
+			bootstrap: new(false),
+			dbLevel:   new(true),
 			expected:  true,
 		},
 		{
 			name:      "bootstrap false, db false",
-			bootstrap: base.Ptr(false),
-			dbLevel:   base.Ptr(false),
+			bootstrap: new(false),
+			dbLevel:   new(false),
 			expected:  false,
 		},
 	}
@@ -1157,47 +1157,47 @@ func TestValidateChangesUseSystemMetadataCollection(t *testing.T) {
 		},
 		{
 			name:      "nil to true — opt in",
-			newValue:  base.Ptr(true),
+			newValue:  new(true),
 			expectErr: false,
 		},
 		{
 			name:      "nil to false — no-op",
-			newValue:  base.Ptr(false),
+			newValue:  new(false),
 			expectErr: false,
 		},
 		{
 			name:      "false to true — opt in",
-			oldValue:  base.Ptr(false),
-			newValue:  base.Ptr(true),
+			oldValue:  new(false),
+			newValue:  new(true),
 			expectErr: false,
 		},
 		{
 			name:      "true to true — no change",
-			oldValue:  base.Ptr(true),
-			newValue:  base.Ptr(true),
+			oldValue:  new(true),
+			newValue:  new(true),
 			expectErr: false,
 		},
 		{
 			name:      "true to false — rejected",
-			oldValue:  base.Ptr(true),
-			newValue:  base.Ptr(false),
+			oldValue:  new(true),
+			newValue:  new(false),
 			expectErr: true,
 		},
 		{
 			name:      "true to nil — rejected",
-			oldValue:  base.Ptr(true),
+			oldValue:  new(true),
 			newValue:  nil,
 			expectErr: true,
 		},
 		{
 			name:      "false to false — no change",
-			oldValue:  base.Ptr(false),
-			newValue:  base.Ptr(false),
+			oldValue:  new(false),
+			newValue:  new(false),
 			expectErr: false,
 		},
 		{
 			name:      "false to nil — no-op",
-			oldValue:  base.Ptr(false),
+			oldValue:  new(false),
 			newValue:  nil,
 			expectErr: false,
 		},
@@ -1247,7 +1247,7 @@ func TestHeapProfileValuesPopulated(t *testing.T) {
 		{
 			name: "HeapProfileCollectionThreshold",
 			startupConfig: &StartupConfig{
-				HeapProfileCollectionThreshold: base.Ptr(uint64(100)),
+				HeapProfileCollectionThreshold: new(uint64(100)),
 			},
 			heapProfileCollectionThreshold: 100,
 			heapProfileCollectionEnabled:   true,

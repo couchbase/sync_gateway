@@ -100,7 +100,7 @@ func deltaSyncConfig(enabled bool) *DeltaSyncConfig {
 	if !enabled {
 		return nil
 	}
-	return &DeltaSyncConfig{Enabled: base.Ptr(true)}
+	return &DeltaSyncConfig{Enabled: new(true)}
 }
 
 // TestISGRPeers contains two RestTesters to be used for ISGR testing.

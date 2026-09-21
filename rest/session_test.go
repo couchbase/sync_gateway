@@ -545,7 +545,7 @@ func TestSessionPasswordInvalidation(t *testing.T) {
 			if test.password == "" {
 				rtConfig.DatabaseConfig = &DatabaseConfig{
 					DbConfig: DbConfig{
-						AllowEmptyPassword: base.Ptr(true),
+						AllowEmptyPassword: new(true),
 					},
 				}
 

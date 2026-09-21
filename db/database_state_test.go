@@ -30,7 +30,7 @@ func TestDatabaseStateUpdate(t *testing.T) {
 	t.Run("persists state and updates in-memory CAS", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID, nil)
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		require.NotZero(t, mgr.CAS)
 
 		var storedState DatabaseState
@@ -44,13 +44,13 @@ func TestDatabaseStateUpdate(t *testing.T) {
 		mgr := NewDatabaseStateMgr(metadataStore, docID, nil)
 
 		// Write the initial state and capture the resulting CAS.
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		casBefore := mgr.CAS
 		require.NotZero(t, casBefore)
 
 		// Calling UpdateState with the same value should be a no-op: no write occurs,
 		// so neither the in-memory CAS nor the store CAS should change.
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		require.Equal(t, casBefore, mgr.CAS, "CAS should not change on a no-op update")
 
 		_, storeCAS, err := mgr.GetState(ctx)
@@ -61,9 +61,9 @@ func TestDatabaseStateUpdate(t *testing.T) {
 	t.Run("returns no error on stale CAS", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID, nil)
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		mgr.CAS = 0 // force stale CAS
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 	})
 }
 
@@ -88,7 +88,7 @@ func TestGetState(t *testing.T) {
 	t.Run("returns persisted state and CAS", func(t *testing.T) {
 		docID := base.NewMetadataKeys(t.Name()).DatabaseStateKey()
 		mgr := NewDatabaseStateMgr(metadataStore, docID, nil)
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		state, cas, err := mgr.GetState(ctx)
 		require.NoError(t, err)
 		require.NotZero(t, cas)
@@ -113,7 +113,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 			return nil
 		})
 		mgr.pollingInterval = 10 * time.Millisecond
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		mgr.CAS = 0 // simulate stale CAS so the poller sees a change
 
 		mgr.StartPolling(ctx)
@@ -132,7 +132,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 			return nil
 		})
 		mgr.pollingInterval = 10 * time.Millisecond
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 
 		mgr.StartPolling(ctx)
 
@@ -154,7 +154,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 			return nil
 		})
 		mgr.pollingInterval = 10 * time.Millisecond
-		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(true)}))
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(true)}))
 		mgr.CAS = 0 // simulate stale CAS so the poller sees a change on first tick
 
 		mgr.StartPolling(ctx)
@@ -189,7 +189,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		// Write a state document directly via the datastore (bypassing mgr.CAS) so that
 		// the poller sees a CAS mismatch and invokes the joinResync.
 		_, err := metadataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
-			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: base.Ptr(true)})
+			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: new(true)})
 			if err != nil {
 				return nil, nil, false, err
 			}
@@ -208,7 +208,7 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		// must not invoke joinResync because ResyncRunning is false, and it must not run at all
 		// because the poller has been stopped.
 		_, err = metadataStore.Update(ctx, docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
-			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: base.Ptr(false)})
+			bodyBytes, err := base.JSONMarshal(DatabaseState{ResyncRunning: new(false)})
 			if err != nil {
 				return nil, nil, false, err
 			}

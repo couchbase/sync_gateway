@@ -33,7 +33,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -112,7 +112,7 @@ func TestDeltaWithAttachmentJsonProperty(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -217,7 +217,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -442,7 +442,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 		GuestEnabled: true,
@@ -1135,7 +1135,7 @@ func TestSendDeltaWhenDeltaCalculatedFromBackup(t *testing.T) {
 		SyncFn: channels.DocChannelsSyncFunction,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 	}
@@ -1185,7 +1185,7 @@ func TestBlipDeltaNoAccessPush(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {}`, PersistentConfig: true})
 		defer rt.Close()
 		dbConfig := rt.NewDbConfig()
-		dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
+		dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: new(true)}
 		RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 		rt.CreateUser(username, nil)
 
@@ -1215,7 +1215,7 @@ func TestBlipDeltaComputationFromBackupRev(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 		SyncFn:       channels.DocChannelsSyncFunction,
@@ -1262,11 +1262,11 @@ func TestDeltaGenerationWithBypassRevCache(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Ptr[uint32](0),
+					MaxItemCount: new(uint32(0)),
 				},
 			},
 		}},
@@ -1313,12 +1313,12 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 			// force revs to be loaded from bucket, avoids need for flushing cache all the time
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Ptr[uint32](0),
+					MaxItemCount: new(uint32(0)),
 				},
 			},
 		}},
@@ -1422,12 +1422,12 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 			// force revs to be loaded from bucket, avoids need for flushing cache all the time
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
-					MaxItemCount: base.Ptr[uint32](0),
+					MaxItemCount: new(uint32(0)),
 				},
 			},
 		}},

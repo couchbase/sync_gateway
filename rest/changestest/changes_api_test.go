@@ -1243,7 +1243,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	shortWaitConfig := &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-		AllowConflicts: base.Ptr(true),
+		AllowConflicts: new(true),
 		CacheConfig: &rest.CacheConfig{
 			ChannelCacheConfig: &rest.ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -3438,7 +3438,7 @@ func TestTombstoneCompaction(t *testing.T) {
 	defer rt.Close()
 
 	// force compaction
-	rt.GetDatabase().Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
+	rt.GetDatabase().Options.TestPurgeIntervalOverride = new(time.Duration(0))
 
 	for _, test := range tests {
 		for _, runAsScheduledBackgroundTask := range []bool{false, true} {
@@ -3671,7 +3671,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 			}`,
 			DatabaseConfig: &rest.DatabaseConfig{
 				DbConfig: rest.DbConfig{
-					ChangesRequestPlus: base.Ptr(true),
+					ChangesRequestPlus: new(true),
 				},
 			},
 		})

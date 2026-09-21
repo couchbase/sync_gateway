@@ -63,7 +63,7 @@ func TestFreshDeploymentWithDroppedDefaultCollection(t *testing.T) {
 	// Create a database with use_system_metadata_collection=true targeting the named collection.
 	// Since _default._default is absent, the server must use _system._mobile for all metadata.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	dbConfig.Scopes = rest.ScopesConfig{
 		testScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{
@@ -130,7 +130,7 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 
 	// 1. Legacy mode: metadata lands in _default._default.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	dbConfig.Scopes = rest.ScopesConfig{
 		scope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{collection1: {}},
@@ -158,7 +158,7 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 
 	// 3. Opt into system metadata collection, flush this node's applied-config gate, then drive
 	// migration to completion for the per-DB entry and the bucket-wide bootstrap docs.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_metadata_migration?action=start", ""), http.StatusOK)
@@ -187,7 +187,7 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	// 5a. Force a full database reload via a benign config change (bump revs_limit) so the
 	// DatabaseContext is torn down and rebuilt, reopening its metadata store from scratch. The
 	// opt-in is irreversible, so it remains true in the updated config.
-	dbConfig.RevsLimit = base.Ptr(uint32(100))
+	dbConfig.RevsLimit = new(uint32(100))
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
 	rt.WaitForDatabaseState(dbName, "Online")
 	require.Eventually(t, func() bool {
@@ -217,7 +217,7 @@ func TestMigrationThenDropDefaultCollection(t *testing.T) {
 	// CBS only: on rosmar _default was never dropped, so this database would succeed.
 	if !sgtest.UnitTestUrlIsWalrus() {
 		newDbConfig := rt.NewDbConfig()
-		newDbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+		newDbConfig.UseSystemMobileMetadataCollection = new(false)
 		newDbConfig.Scopes = rest.ScopesConfig{
 			scope: rest.ScopeConfig{
 				Collections: rest.CollectionsConfig{collection2: {}},
@@ -274,7 +274,7 @@ func TestFreshDeploymentWithDroppedDefaultCollectionTwoDatabases(t *testing.T) {
 
 	makeDBConfig := func(col string) rest.DbConfig {
 		dbConfig := rt.NewDbConfig()
-		dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+		dbConfig.UseSystemMobileMetadataCollection = new(true)
 		dbConfig.Scopes = rest.ScopesConfig{
 			scope: rest.ScopeConfig{
 				Collections: rest.CollectionsConfig{col: {}},
@@ -362,7 +362,7 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 
 	// 1. Create db1 in legacy mode so its metadata lands in _default._default.
 	dbConfig1 := rt.NewDbConfig()
-	dbConfig1.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig1.UseSystemMobileMetadataCollection = new(false)
 	dbConfig1.Scopes = rest.ScopesConfig{
 		scope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{collection1: {}},
@@ -378,7 +378,7 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 	}
 
 	// 3. Opt db1 into system metadata, drive migration to completion.
-	dbConfig1.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig1.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(db1Name, dbConfig1), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/"+db1Name+"/_metadata_migration?action=start", ""), http.StatusOK)
@@ -396,7 +396,7 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 	// 5. Create db2 on the same bucket with use_system_metadata_collection=true from the start.
 	// _default._default is absent; db2 must initialise solely from _system._mobile.
 	dbConfig2 := rt.NewDbConfig()
-	dbConfig2.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig2.UseSystemMobileMetadataCollection = new(true)
 	dbConfig2.Scopes = rest.ScopesConfig{
 		scope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{collection2: {}},
@@ -412,7 +412,7 @@ func TestMigrationThenDropDefaultCollectionTwoDatabases(t *testing.T) {
 		"db2 must not start metadata migration when bootstrapped on a migrated bucket")
 
 	// 6. Reload db1 via a benign config change to exercise coming back online without _default._default.
-	dbConfig1.RevsLimit = base.Ptr(uint32(100))
+	dbConfig1.RevsLimit = new(uint32(100))
 	rest.RequireStatus(t, rt.UpsertDbConfig(db1Name, dbConfig1), http.StatusCreated)
 	rt.WaitForDatabaseState(db1Name, "Online")
 	require.Eventually(t, func() bool {
@@ -496,7 +496,7 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 
 	// 1. Create in legacy mode so all metadata lands in _default._default.
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	dbConfig.Scopes = rest.ScopesConfig{
 		testScope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{testCollection: {}},
@@ -515,7 +515,7 @@ func TestDropDefaultCollectionDuringMigration(t *testing.T) {
 	}
 
 	// 3. Opt into system metadata collection and start migration.
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, dbConfig), http.StatusCreated)
 	rt.ServerContext().ForceClusterCompatRefresh(t, ctx)
 	rest.RequireStatus(t, rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_metadata_migration?action=start", ""), http.StatusOK)
@@ -594,7 +594,7 @@ func TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(false)
+	dbConfig.UseSystemMobileMetadataCollection = new(false)
 	dbConfig.Scopes = rest.ScopesConfig{
 		scope: rest.ScopeConfig{
 			Collections: rest.CollectionsConfig{collection1: {}},
@@ -605,7 +605,7 @@ func TestFreshDeploymentWithNoDefaultAndOptOutMetadataCollection(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "must enable use_system_metadata_collection")
 
 	// recover by opting-in
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	resp = rt.CreateDatabase("db1", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 

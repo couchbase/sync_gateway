@@ -252,13 +252,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = base.Ptr(rt.RestTesterConfig.HideProductInfo)
+	sc.API.HideProductVersion = new(rt.RestTesterConfig.HideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.AdminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
-	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
+	sc.Bootstrap.ServerTLSSkipVerify = new(base.TestTLSSkipVerify())
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
@@ -266,7 +266,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.UseSystemScopeMetadataCollection != nil {
 		sc.Bootstrap.UseSystemMetadataCollection = rt.RestTesterConfig.UseSystemScopeMetadataCollection
 	} else {
-		sc.Bootstrap.UseSystemMetadataCollection = base.Ptr(base.TestUseSystemMetadataCollection())
+		sc.Bootstrap.UseSystemMetadataCollection = new(base.TestUseSystemMetadataCollection())
 	}
 
 	if rt.RestTesterConfig.GroupID != nil {
@@ -282,7 +282,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
 
-	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = new(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
 	require.NoError(rt.TB(), sc.Validate(base.TestCtx(rt.TB()), true))
@@ -301,7 +301,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.MutateStartupConfig(&sc)
 	}
 
-	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = new(rt.EnableUserQueries)
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
 
@@ -347,7 +347,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
 		if rt.DatabaseConfig.UseViews == nil {
-			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
+			rt.DatabaseConfig.UseViews = new(base.TestsDisableGSI())
 		}
 		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || sgtest.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
@@ -369,7 +369,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.Index == nil {
 			rt.DatabaseConfig.Index = &IndexConfig{}
 		}
-		rt.DatabaseConfig.Index.NumReplicas = base.Ptr(uint(0))
+		rt.DatabaseConfig.Index.NumReplicas = new(uint(0))
 
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
 		rt.DatabaseConfig.Username = username
@@ -381,13 +381,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.Name = "db"
 		}
 		if rt.AllowConflicts {
-			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
+			rt.DatabaseConfig.AllowConflicts = new(true)
 		}
 		if rt.DatabaseConfig.StoreLegacyRevTreeData == nil {
-			rt.DatabaseConfig.StoreLegacyRevTreeData = base.Ptr(db.DefaultStoreLegacyRevTreeData)
+			rt.DatabaseConfig.StoreLegacyRevTreeData = new(db.DefaultStoreLegacyRevTreeData)
 		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = new(rt.RestTesterConfig.SgReplicateEnabled)
 
 		if base.TestDisableRevCache() {
 			if rt.DatabaseConfig.CacheConfig == nil {
@@ -396,7 +396,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			if rt.DatabaseConfig.CacheConfig.RevCacheConfig == nil {
 				rt.DatabaseConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{}
 			}
-			rt.DatabaseConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr[uint32](0)
+			rt.DatabaseConfig.CacheConfig.RevCacheConfig.MaxItemCount = new(uint32(0))
 		}
 
 		// Check for override of AutoImport in the rt config
@@ -406,7 +406,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
+			rt.DatabaseConfig.ImportPartitions = new(uint16(1))
 		}
 		if rt.InitSyncSeq > 0 {
 			metadataKeys := base.DefaultMetadataKeys
@@ -2574,24 +2574,24 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
 	config := DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.Ptr(rt.Bucket().GetName()),
+			Bucket: new(rt.Bucket().GetName()),
 		},
 	}
 	if base.TestsDisableGSI() {
 		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
 		if !sgtest.UnitTestUrlIsWalrus() {
-			config.UseViews = base.Ptr(true)
+			config.UseViews = new(true)
 		}
 	} else {
 		config.Index = &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+			NumReplicas: new(uint(0)),
 		}
 	}
 
 	if base.TestDisableRevCache() {
 		config.CacheConfig = &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
-				MaxItemCount: base.Ptr[uint32](0),
+				MaxItemCount: new(uint32(0)),
 			},
 		}
 	}
@@ -2607,7 +2607,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	if rt.GuestEnabled {
 		config.Guest = &auth.PrincipalConfig{
 			Name:     stringPtrOrNil(base.GuestUsername),
-			Disabled: base.Ptr(false),
+			Disabled: new(false),
 		}
 		setChannelsAllCollections(config, config.Guest, "*")
 	}
@@ -2641,7 +2641,7 @@ func stringPtrOrNil(s string) *string {
 	if s == "" {
 		return nil
 	}
-	return base.Ptr(s)
+	return new(s)
 }
 
 func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {

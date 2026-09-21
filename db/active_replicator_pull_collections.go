@@ -36,7 +36,7 @@ func (apr *ActivePullReplicator) _startPullWithCollections() error {
 
 	err = apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		since := c.Checkpointer.lastCheckpointSeq.String()
-		err = apr._subChanges(base.Ptr(*c.collectionIdx), since)
+		err = apr._subChanges(new(*c.collectionIdx), since)
 		return err
 	})
 

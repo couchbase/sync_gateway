@@ -1252,7 +1252,7 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
 		return dbConfig.AllowConflicts
 	}
-	return base.Ptr(base.DefaultAllowConflicts)
+	return new(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) Redacted(ctx context.Context) (*DbConfig, error) {
@@ -1276,7 +1276,7 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 
 	for i := range config.Users {
 		if config.Users[i].Password != nil && *config.Users[i].Password != "" {
-			config.Users[i].Password = base.Ptr(base.RedactedStr)
+			config.Users[i].Password = new(base.RedactedStr)
 		}
 	}
 
@@ -1305,7 +1305,7 @@ func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
 			}
 			for i := range users {
 				if users[i].Password != nil && *users[i].Password != "" {
-					users[i].Password = base.Ptr(base.RedactedStr)
+					users[i].Password = new(base.RedactedStr)
 				}
 			}
 			redactedConfig["users"] = users
@@ -1338,7 +1338,7 @@ func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config any
 	}
 
 	// Expand environment variables.
-	b, err = sanitiseConfig(ctx, b, base.Ptr(true))
+	b, err = sanitiseConfig(ctx, b, new(true))
 	if err != nil {
 		return err
 	}

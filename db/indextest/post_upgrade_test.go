@@ -30,7 +30,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 		forceSingleDefaultCollection: true,
 	})
 	database, ctx := db.CreateTestDatabase(t, bucket, db.DatabaseContextOptions{
-		CacheOptions: base.Ptr(db.DefaultCacheOptions()),
+		CacheOptions: new(db.DefaultCacheOptions()),
 		Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 	})
 	defer database.Close(ctx)
@@ -109,7 +109,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 		numCollections:         numCollections,
 	})
 	database, ctx := db.CreateTestDatabase(t, bucket, db.DatabaseContextOptions{
-		CacheOptions: base.Ptr(db.DefaultCacheOptions()),
+		CacheOptions: new(db.DefaultCacheOptions()),
 		Scopes:       db.GetScopesOptions(t, bucket, numCollections),
 	})
 
@@ -169,7 +169,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 				forceSingleDefaultCollection: true,
 			})
 			database, ctx := db.CreateTestDatabase(t, bucket, db.DatabaseContextOptions{
-				CacheOptions: base.Ptr(db.DefaultCacheOptions()),
+				CacheOptions: new(db.DefaultCacheOptions()),
 				Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 				UseViews:     useViews,
 			})

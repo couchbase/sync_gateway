@@ -91,7 +91,7 @@ func TestGetConnSpecOption(t *testing.T) {
 			{
 				name:     "single value",
 				options:  map[string][]string{"kv_pool_size": {"8"}},
-				expected: Ptr(8),
+				expected: new(8),
 			},
 			{
 				name:          "multiple values",
@@ -132,7 +132,7 @@ func TestGetConnSpecOption(t *testing.T) {
 			{
 				name:     "single value",
 				options:  map[string][]string{networkKey: {"external"}},
-				expected: Ptr("external"),
+				expected: new("external"),
 			},
 			{
 				name:          "multiple values",
@@ -169,7 +169,7 @@ func TestGetIntFromConnStr(t *testing.T) {
 		{
 			name:          "kv_pool_size=8",
 			server:        "couchbase://127.0.0.1?kv_pool_size=8",
-			kvPoolSize:    Ptr(8),
+			kvPoolSize:    new(8),
 			expectedError: false,
 		},
 		{

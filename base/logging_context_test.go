@@ -31,9 +31,9 @@ func captureConsoleLogs(t testing.TB, logLevel LogLevel, logKeys []LogKey, f fun
 	config := &ConsoleLoggerConfig{
 		LogLevel:     &logLevel,
 		LogKeys:      keyNames,
-		ColorEnabled: Ptr(false),
+		ColorEnabled: new(false),
 		FileLoggerConfig: FileLoggerConfig{
-			Enabled: Ptr(true),
+			Enabled: new(true),
 		},
 	}
 	tempLogger, err := NewConsoleLogger(TestCtx(t), false, config)

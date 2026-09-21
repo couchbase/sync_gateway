@@ -71,5 +71,5 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newVersion DocVersion, pare
 
 	rt.WaitForPendingChanges()
 
-	return base.Ptr(DocVersionFromPutResponse(rt.TB(), resp))
+	return new(DocVersionFromPutResponse(rt.TB(), resp))
 }

@@ -818,7 +818,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.ReplicationStatsMap = allReplicationsStatsMap
 
 	// disable recovered panic reporting (test only)
-	rc.reportHandlerPanicsOnStop = base.Ptr(false)
+	rc.reportHandlerPanicsOnStop = new(false)
 
 	return NewActiveReplicator(m.loggingCtx, rc)
 }

@@ -161,11 +161,11 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 func dbConfigForTestBucket(tb *base.TestBucket) DbConfig {
 	return DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.Ptr(tb.GetName()),
+			Bucket: new(tb.GetName()),
 		},
 		Index: &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+			NumReplicas: new(uint(0)),
 		},
-		UseViews: base.Ptr(base.TestsDisableGSI()),
+		UseViews: new(base.TestsDisableGSI()),
 	}
 }

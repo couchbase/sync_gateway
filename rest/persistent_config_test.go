@@ -492,7 +492,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 
 			const dbName = "c1_db1"
 			collection1db1Config := getTestDatabaseConfig(bucketName, dbName, collection1ScopesConfig, "2-a")
-			collection1db1Config.RevsLimit = base.Ptr(uint32(1000))
+			collection1db1Config.RevsLimit = new(uint32(1000))
 			cas, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
 			require.NoError(t, err)
 			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
@@ -507,7 +507,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			docID := PersistentConfigKey(ctx, groupID, dbName)
 			updatedConfig := *collection1db1Config
 			updatedConfig.Version = "1-a"
-			updatedConfig.RevsLimit = base.Ptr(uint32(500))
+			updatedConfig.RevsLimit = new(uint32(500))
 			_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas, &updatedConfig)
 			require.NoError(t, err)
 
@@ -526,7 +526,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			// at this point the config and registry are re-aligned, but let's just write another config update to make sure it's in an updatable state
 			_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 				bucketDbConfig.Version = "3-c"
-				bucketDbConfig.RevsLimit = base.Ptr(uint32(1234))
+				bucketDbConfig.RevsLimit = new(uint32(1234))
 				return bucketDbConfig, nil
 			})
 			require.NoError(t, err)
@@ -1187,7 +1187,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 
 	// Set up test for persistent config
 	config := BootstrapStartupConfigForTest(t)
-	config.Unsupported.UseXattrConfig = base.Ptr(true)
+	config.Unsupported.UseXattrConfig = new(true)
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times.
 	// Clear NodeHeartbeatExpiry so validation does not enforce the 2x ConfigUpdateFrequency floor — this test
 	// does not exercise cluster-compat heartbeats and the long poll interval never fires.
@@ -1360,7 +1360,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 			Bucket: &bucketName,
 		},
 		Index: &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+			NumReplicas: new(uint(0)),
 		},
 		Scopes: scopesConfig,
 	}
@@ -1483,7 +1483,7 @@ func startBootstrapServerWithoutConfigPolling(t *testing.T, useXattrConfig bool)
 	// tests do not exercise cluster-compat heartbeats and the long poll interval never fires.
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
 	config.Bootstrap.NodeHeartbeatExpiry = nil
-	config.Unsupported.UseXattrConfig = base.Ptr(useXattrConfig)
+	config.Unsupported.UseXattrConfig = new(useXattrConfig)
 	return StartServerWithConfig(t, &config)
 }
 

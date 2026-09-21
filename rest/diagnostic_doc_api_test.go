@@ -1003,7 +1003,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
-				Expiry:   base.Ptr(uint32(10)),
+				Expiry:   new(uint32(10)),
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1025,7 +1025,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
-				Expiry:   base.Ptr(uint32(10)),
+				Expiry:   new(uint32(10)),
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1053,7 +1053,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
-				Expiry:   base.Ptr(uint32(10)),
+				Expiry:   new(uint32(10)),
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1077,7 +1077,7 @@ func TestSyncFuncDryRun(t *testing.T) {
 				Channels: base.SetFromArray([]string{"dynamicChan222"}),
 				Access:   channels.AccessMap{"user": channels.BaseSetOf(t, "dynamicChan5412")},
 				Roles:    channels.AccessMap{},
-				Expiry:   base.Ptr(uint32(10)),
+				Expiry:   new(uint32(10)),
 				Logging: DryRunLogging{
 					Errors: []string{},
 					Info:   []string{},
@@ -1703,7 +1703,7 @@ func TestSyncFuncDryRunUserXattrErrors(t *testing.T) {
 
 	dbConfig := rt.NewDbConfig()
 	dbConfig.Name = "db1"
-	dbConfig.UserXattrKey = base.Ptr("channelXattrs")
+	dbConfig.UserXattrKey = new("channelXattrs")
 
 	RequireStatus(t, rt.CreateDatabase("db1", dbConfig), http.StatusCreated)
 	// Invalid meta body

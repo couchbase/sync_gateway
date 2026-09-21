@@ -201,7 +201,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 		docsToCreate:                 docsToCreate,
 		updateSyncFuncAfterDocsAdded: true,
-		resyncPartitions:             base.Ptr(uint16(1)),
+		resyncPartitions:             new(uint16(1)),
 	})
 	defer db.Close(ctx)
 
@@ -368,7 +368,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 		docsToCreate:                 docsToCreate,
 		updateSyncFuncAfterDocsAdded: true,
-		resyncPartitions:             base.Ptr(uint16(1)),
+		resyncPartitions:             new(uint16(1)),
 	})
 	defer db.Close(ctx)
 
@@ -429,10 +429,10 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close(base.TestCtx(t))
 	dbOptions := DatabaseContextOptions{
-		CacheOptions: base.Ptr(DefaultCacheOptions()),
+		CacheOptions: new(DefaultCacheOptions()),
 		Scopes:       GetScopesOptions(t, tb, numCollections),
 		UnsupportedOptions: &UnsupportedOptions{
-			ResyncPartitions: base.Ptr(uint16(1)),
+			ResyncPartitions: new(uint16(1)),
 		},
 	}
 
@@ -519,7 +519,7 @@ type testDBForResyncOptions struct {
 func setupTestDBForResyncWithDocs(t testing.TB, opts testDBForResyncOptions) (*Database, context.Context) {
 
 	dbcOptions := DatabaseContextOptions{
-		CacheOptions: base.Ptr(DefaultCacheOptions()),
+		CacheOptions: new(DefaultCacheOptions()),
 	}
 	if opts.resyncPartitions != nil {
 		dbcOptions.UnsupportedOptions = &UnsupportedOptions{

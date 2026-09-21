@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/gorilla/mux"
 )
 
@@ -305,7 +304,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleStats)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix,
 		makeHandlerWithOptions(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar, handlerOptions{
-			httpLogLevel: base.Ptr(silentRequestLogLevel), // silent handler
+			httpLogLevel: new(silentRequestLogLevel), // silent handler
 			sgcollect:    true,
 		})).Methods("GET")
 	r.Handle("/_profile/{profilename}",
