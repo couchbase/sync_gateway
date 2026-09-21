@@ -68,7 +68,7 @@ pipeline {
     options {
         timestamps()
         timeout(time: 4, unit: 'HOURS')
-        buildDiscarder(logRotator(daysToKeepStr: '30', numToKeepStr: '-1', artifactDaysToKeepStr: '-1', artifactNumToKeepStr: '-1'))
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
         // A sweep still running when the next one is due is wedged, so drop it rather than doubling the
         // load on the integration-test agents.
         disableConcurrentBuilds(abortPrevious: true)

@@ -63,9 +63,7 @@ pipeline {
         skipDefaultCheckout()
         // A wedged run would otherwise hold one of the two integration-test agents indefinitely.
         timeout(time: 3, unit: 'HOURS')
-        // Deliberately asymmetric with MainIntegration/TopologyTests: this job caps build records and keeps
-        // artifacts by age, they cap artifacts and keep records. Not an oversight.
-        buildDiscarder(logRotator(daysToKeepStr: '-1', numToKeepStr: '30', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
 
