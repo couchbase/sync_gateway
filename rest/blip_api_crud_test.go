@@ -2692,6 +2692,37 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	})
 }
 
+// TestBlipRevRejectionLogsDocID confirms that a rejected rev's INFO-level SyncMsg log line includes the document ID.
+func TestBlipRevRejectionLogsDocID(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	defer rt.Close()
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		const docID = "docWithReservedProperty"
+		revRequest := blip.NewRequest()
+		revRequest.SetProfile(db.MessageRev)
+		revRequest.Properties[db.RevMessageID] = docID
+		revRequest.Properties[db.RevMessageRev] = "1-abc"
+		revRequest.SetBody([]byte(`{"_deleted": false}`))
+		client.addCollectionProperty(revRequest)
+
+		base.AssertLogContains(t, "Id:<ud>"+docID+"</ud>", func() {
+			client.pushReplication.sendMsg(revRequest)
+			resp := revRequest.Response()
+			body, err := resp.Body()
+			require.NoError(t, err)
+			require.Contains(t, string(body), "top-level property '_deleted' is a reserved internal property")
+			require.Equal(t, "404", resp.Properties[db.BlipErrorCode])
+		})
+	})
+}
+
 // CBG-2053: Test that the handleRev stats still increment correctly when going through the processRev function with
 // the stat mapping (processRevStats)
 func TestProcessRevIncrementsStat(t *testing.T) {
