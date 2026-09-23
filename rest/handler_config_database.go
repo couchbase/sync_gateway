@@ -49,6 +49,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	// Update persistently-stored config:
 	bucket := h.db.Bucket.GetName()
 	var updatedDbConfig *DatabaseConfig
+	contextNoCancel := base.NewNonCancelCtxForDatabase(h.ctx())
 	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
 		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
@@ -75,19 +76,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cfgCas = cas
-
-	dbCreds := h.server.Config.DatabaseCredentials[dbName]
-	bucketCreds := h.server.Config.BucketCredentials[bucket]
-	if err := updatedDbConfig.setup(h.ctx(), dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds); err != nil {
-		return err
-	}
-
-	h.server._databasesLock.Lock()
-	defer h.server._databasesLock.Unlock()
-
-	// TODO: Dynamic update instead of reload
-	if err := h.server._reloadDatabaseWithConfig(h.ctx(), *updatedDbConfig, false, false); err != nil {
+	if err := h.updateConfigAndReloadDatabase(contextNoCancel, dbName, bucket, cas, updatedDbConfig); err != nil {
 		return err
 	}
 	h.setEtag(updatedDbConfig.Version)
