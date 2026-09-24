@@ -903,7 +903,7 @@ func TestWriteTombstoneWithXattrs(t *testing.T) {
 
 			body, xattrs, _, err := col.GetWithXattrs(ctx, docID, xattrKeys)
 			require.NoError(t, err)
-			if test.finalBody == nil || UnitTestUrlIsWalrus() {
+			if test.finalBody == nil {
 				require.Equal(t, "", string(body))
 			} else {
 				require.JSONEq(t, string(test.finalBody), string(body))
@@ -1124,9 +1124,7 @@ func TestWriteUpdateWithXattrs(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			if UnitTestUrlIsWalrus() && test.updatedDoc.IsTombstone {
-				require.Equal(t, "", string(body))
-			} else if len(test.finalBody) > 0 {
+			if len(test.finalBody) > 0 {
 				require.JSONEq(t, string(test.finalBody), string(body))
 			} else {
 				require.Equal(t, string(test.finalBody), string(body))
