@@ -278,16 +278,7 @@ func SetXattrs(ctx context.Context, store *Collection, k string, xvs map[string]
 func RemoveXattrs(ctx context.Context, store *Collection, k string, xattrKeys []string, cas uint64) error {
 	worker := func() (shouldRetry bool, err error, value any) {
 		writeErr := store.subdocDeleteXattrs(k, xattrKeys, cas)
-		if writeErr == nil {
-			return false, nil, nil
-		}
-
-		shouldRetry = store.isRecoverableWriteError(writeErr)
-		if shouldRetry {
-			return shouldRetry, err, nil
-		}
-
-		return false, err, nil
+		return store.isRecoverableWriteError(writeErr), writeErr, nil
 	}
 
 	err, _ := RetryLoop(ctx, "RemoveXattrs", worker, DefaultRetrySleeper())
@@ -302,16 +293,7 @@ func RemoveXattrs(ctx context.Context, store *Collection, k string, xattrKeys []
 func removeSubdocPaths(ctx context.Context, store *Collection, k string, subdocPaths ...string) error {
 	worker := func() (shouldRetry bool, err error, value any) {
 		writeErr := store.subdocRemovePaths(k, subdocPaths...)
-		if writeErr == nil {
-			return false, nil, nil
-		}
-
-		shouldRetry = store.isRecoverableWriteError(writeErr)
-		if shouldRetry {
-			return shouldRetry, err, nil
-		}
-
-		return false, err, nil
+		return store.isRecoverableWriteError(writeErr), writeErr, nil
 	}
 
 	err, _ := RetryLoop(ctx, "RemoveSubdocPaths", worker, DefaultRetrySleeper())
