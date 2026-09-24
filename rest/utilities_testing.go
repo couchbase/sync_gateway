@@ -80,6 +80,7 @@ type RestTesterConfig struct {
 	maxConcurrentRevs                *int
 	UseXattrConfig                   bool
 	UseSystemScopeMetadataCollection *bool
+	LeakyBootstrapConnectionConfig   *base.LeakyBootstrapConnectionConfig // Set to wrap the bootstrap connection in a LeakyBootstrapConnection. Requires PersistentConfig.
 }
 
 type collectionConfiguration uint8
@@ -179,6 +180,9 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 		rt.RestTesterConfig = restConfig
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
+	}
+	if rt.RestTesterConfig.LeakyBootstrapConnectionConfig != nil && !rt.RestTesterConfig.PersistentConfig {
+		require.FailNow(tb, "LeakyBootstrapConnectionConfig requires PersistentConfig")
 	}
 	rt.RestTesterConfig.collectionConfig = collectionConfig
 	rt.RestTesterConfig.numCollections = numCollections
@@ -315,6 +319,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
+	rt.RestTesterServerContext.leakyBootstrapConnectionConfig = rt.RestTesterConfig.LeakyBootstrapConnectionConfig
 	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
