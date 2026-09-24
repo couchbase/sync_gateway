@@ -3595,9 +3595,9 @@ func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
 	require.True(t, IsDocNotFoundError(err))
 }
 
-// TestDeleteAndRemoveErrors checks the result of each delete and remove operation against a missing key, a
-// tombstone and a live document, with a CAS of 0 (no CAS check), the current CAS and a stale CAS.
-func TestDeleteAndRemoveErrors(t *testing.T) {
+// TestDataStoreOperationErrors checks the result of each write, delete and remove operation against a missing key,
+// a tombstone and a live document, with a CAS of 0 (no CAS check), the current CAS and a stale CAS.
+func TestDataStoreOperationErrors(t *testing.T) {
 	const (
 		success     = "success"
 		notFound    = "not found"
@@ -3639,7 +3639,8 @@ func TestDeleteAndRemoveErrors(t *testing.T) {
 	testCases := []struct {
 		name     string
 		op       func(key string, cas uint64) error
-		expected map[docState]map[casArg]string // a single zeroCas entry for operations that take no CAS
+		expected map[docState]map[casArg]string                 // a single zeroCas entry for operations that take no CAS
+		verify   func(t *testing.T, key string, state docState) // optional check of the document after a success
 	}{
 		{
 			name: "Delete",
@@ -3683,6 +3684,91 @@ func TestDeleteAndRemoveErrors(t *testing.T) {
 				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
 			},
 		},
+		{
+			name: "WriteCas",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteCas(ctx, key, 0, cas, map[string]any{"foo": "baz"}, 0)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success, currentCas: notFound, staleCas: notFound},
+				live:      {zeroCas: casMismatch, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteSubDoc",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteSubDoc(ctx, key, "foo", cas, []byte(`"baz"`))
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success, currentCas: success, staleCas: success},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteWithXattrs",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(`{"foo":"baz"}`), map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success, currentCas: notFound, staleCas: notFound},
+				live:      {zeroCas: casMismatch, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteResurrectionWithXattrs",
+			op: func(key string, _ uint64) error {
+				_, err := dataStore.WriteResurrectionWithXattrs(ctx, key, 0, []byte(`{"foo":"baz"}`), map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success},
+				live:      {zeroCas: casMismatch},
+			},
+		},
+		{
+			name: "SetXattrs",
+			op: func(key string, _ uint64) error {
+				_, err := dataStore.SetXattrs(ctx, key, map[string][]byte{xattrName: []byte(`{"seq":2}`)})
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success},
+				live:      {zeroCas: success},
+			},
+			verify: func(t *testing.T, key string, state docState) {
+				body, _, err := dataStore.GetRaw(ctx, key)
+				switch state {
+				case missing:
+					require.NoError(t, err)
+					require.JSONEq(t, `{}`, string(body))
+				case tombstone:
+					require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+				case live:
+					require.NoError(t, err)
+					require.JSONEq(t, `{"foo":"bar"}`, string(body))
+				}
+			},
+		},
+		{
+			name: "UpdateXattrs",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: success, currentCas: success, staleCas: casMismatch},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
 	}
 	for _, tc := range testCases {
 		for _, state := range []docState{missing, tombstone, live} {
@@ -3707,6 +3793,9 @@ func TestDeleteAndRemoveErrors(t *testing.T) {
 						require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
 					case casMismatch:
 						require.True(t, IsCasMismatch(err), "expected cas mismatch error, got %v", err)
+					}
+					if expected == success && tc.verify != nil {
+						tc.verify(t, key, state)
 					}
 				})
 			}
