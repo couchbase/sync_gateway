@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1513,4 +1514,67 @@ func persistentConfigTestCases() []persistentConfigTestCase {
 			},
 		}
 	}
+}
+
+// TestDeleteDbConfigAlreadyDeletedByPeer deletes a database on a node after another node deleted its config but before
+// this node's config poller removed it.
+func TestDeleteDbConfigAlreadyDeletedByPeer(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	require.NoError(t, sc.BootstrapContext.DeleteConfig(rt.Context(), rt.Bucket().GetName(), sc.Config.Bootstrap.ConfigGroupID, "db"))
+	require.NotNil(t, sc.GetDatabaseConfig("db"))
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+	assert.Nil(t, sc.GetDatabaseConfig("db"))
+}
+
+// peerDeletesConfigConnection deletes a database's config doc right after the first registry write, which in
+// DeleteConfig is the write that marks the database deleted, as a peer node could.
+type peerDeletesConfigConnection struct {
+	base.BootstrapConnection
+	configKey string
+	deleted   bool
+	deleteErr error
+}
+
+func (c *peerDeletesConfigConnection) WriteMetadataDocument(ctx context.Context, bucket, key string, cas uint64, value any) (uint64, error) {
+	casOut, err := c.BootstrapConnection.WriteMetadataDocument(ctx, bucket, key, cas, value)
+	if err == nil && key == base.SGRegistryKey && !c.deleted {
+		c.deleted = true
+		var config DatabaseConfig
+		var configCas uint64
+		configCas, c.deleteErr = c.BootstrapConnection.GetMetadataDocument(ctx, bucket, c.configKey, &config)
+		if c.deleteErr == nil {
+			c.deleteErr = c.BootstrapConnection.DeleteMetadataDocument(ctx, bucket, c.configKey, configCas)
+		}
+	}
+	return casOut, err
+}
+
+// TestDeleteDbConfigDocDeletedByPeerDuringDelete deletes a database while another node deletes the config doc
+// after this node marks the database deleted in the registry.
+func TestDeleteDbConfigDocDeletedByPeerDuringDelete(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required, Rosmar returns a CAS mismatch instead of ErrNotFound when removing a deleted config doc")
+	}
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	sc := rt.ServerContext()
+	conn := sc.BootstrapContext.Connection
+	peerConn := &peerDeletesConfigConnection{
+		BootstrapConnection: conn,
+		configKey:           PersistentConfigKey(rt.Context(), sc.Config.Bootstrap.ConfigGroupID, "db"),
+	}
+	sc.BootstrapContext.Connection = peerConn
+	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+	sc.BootstrapContext.Connection = conn
+	require.True(t, peerConn.deleted)
+	require.NoError(t, peerConn.deleteErr)
+	RequireStatus(t, resp, http.StatusOK)
+
+	assert.Nil(t, sc.GetDatabaseConfig("db"))
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 }

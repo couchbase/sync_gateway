@@ -1624,7 +1624,8 @@ func (h *handler) handleDeleteDB() error {
 	if h.server.persistentConfig {
 		bucket, _ = h.server.bucketNameFromDbName(h.ctx(), dbName)
 		err := h.server.BootstrapContext.DeleteConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
-		if err != nil {
+		// A not found error means another node deleted the config before this node's config poller removed the database.
+		if err != nil && !base.IsDocNotFoundError(err) {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
 		h.server.RemoveDatabase(h.ctx(), dbName, fmt.Sprintf("called from %s", h.rq.URL)) // unhandled 404 to allow broken config deletion (CBG-2420)
