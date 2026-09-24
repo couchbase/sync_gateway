@@ -16,7 +16,7 @@ require (
 	github.com/couchbase/sg-bucket v0.0.0-20260714130240-329df715dd61
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
-	github.com/couchbaselabs/rosmar v0.0.0-20260814160154-fdadaf72889b
+	github.com/couchbaselabs/rosmar v0.0.0-20260924215552-496948100143
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.1.5
@@ -74,7 +74,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260627054121-477a66015f15 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.49 // indirect
+	github.com/mattn/go-sqlite3 v1.14.50 // indirect
 	github.com/mattn/goveralls v0.0.12 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

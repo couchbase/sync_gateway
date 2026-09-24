@@ -70,8 +70,8 @@ github.com/couchbaselabs/gocaves/client v0.0.0-20250107114554-f96479220ae8 h1:MQ
 github.com/couchbaselabs/gocaves/client v0.0.0-20250107114554-f96479220ae8/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
 github.com/couchbaselabs/gocbconnstr/v2 v2.0.0 h1:HU9DlAYYWR69jQnLN6cpg0fh0hxW/8d5hnglCXXjW78=
 github.com/couchbaselabs/gocbconnstr/v2 v2.0.0/go.mod h1:o7T431UOfFVHDNvMBUmUxpHnhivwv7BziUao/nMl81E=
-github.com/couchbaselabs/rosmar v0.0.0-20260814160154-fdadaf72889b h1:3zuUciNlXE2wEVRKDCQOM0mzrlMkEOCKAS45qrunxng=
-github.com/couchbaselabs/rosmar v0.0.0-20260814160154-fdadaf72889b/go.mod h1:+m+45O98MMfLTHvIGikZkiNZZTmQaLicA3GL33yBzmo=
+github.com/couchbaselabs/rosmar v0.0.0-20260924215552-496948100143 h1:I9kxlTHIuNXL7zp/hzcfP58NgOYUD2oUu/KuVY1Cufg=
+github.com/couchbaselabs/rosmar v0.0.0-20260924215552-496948100143/go.mod h1:sgVA9eHcEx3Aux7YsonaLw5qOzU6tERznEjsGyjXYYQ=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dnephin/pflag v1.0.7 h1:oxONGlWxhmUct0YzKTgrpQv9AUA1wtPBn7zuSjJqptk=
@@ -143,8 +143,8 @@ github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovk
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
-github.com/mattn/go-sqlite3 v1.14.49 h1:B8jBHC3xhxZgxztrgruTuLucebnULQnx4W7cF7SAE9w=
-github.com/mattn/go-sqlite3 v1.14.49/go.mod h1:6JTjA44L93a0QCyJef5YvlPoKXntQPjzWv5gtm9sB6w=
+github.com/mattn/go-sqlite3 v1.14.50 h1:dmdFvo1XG4MPzA4IkAmE9upVz/Nj31uRoM5+jC8hYbY=
+github.com/mattn/go-sqlite3 v1.14.50/go.mod h1:6JTjA44L93a0QCyJef5YvlPoKXntQPjzWv5gtm9sB6w=
 github.com/mattn/goveralls v0.0.12 h1:PEEeF0k1SsTjOBQ8FOmrOAoCu4ytuMaWCnWe94zxbCg=
 github.com/mattn/goveralls v0.0.12/go.mod h1:44ImGEUfmqH8bBtaMrYKsM65LXfNLWmwaxFGjZwgMSQ=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
