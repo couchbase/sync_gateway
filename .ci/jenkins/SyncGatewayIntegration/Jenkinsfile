@@ -155,6 +155,19 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     chmod +x .ci/jenkins/integration-build.sh .ci/retry.sh
                 '''
                 script {
+                    // main's test runner needs the pinned CI tools module (and cbdinocluster within it),
+                    // which older revisions such as GA release tags lack. Those revisions still carry
+                    // their own runner at the repo root, written for the tooling they shipped with.
+                    if (fileExists('integration-test/tools/go.mod')) {
+                        env.INTEGRATION_BUILD_SCRIPT = './.ci/jenkins/integration-build.sh'
+                    } else {
+                        env.INTEGRATION_BUILD_SCRIPT = './jenkins-integration-build.sh'
+                        // The 3.3 and 4.0 runners read XATTRS under `set -u`. Keep xattrs on, as main has them.
+                        env.XATTRS = 'true'
+                    }
+                    echo("Running integration tests with ${env.INTEGRATION_BUILD_SCRIPT}")
+                }
+                script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
                     // "<branch> for <whoever triggered it> on <server version>". PARENT_JOB_NAME is only
@@ -174,7 +187,7 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                 sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
                     withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
                         script {
-                            // `set -e` propagates .ci/jenkins/integration-build.sh's exit status, which separates
+                            // `set -e` propagates the test runner's exit status, which separates
                             // test failures (50 -> UNSTABLE) from a test setup failure or unrecovered panic
                             // (1 -> FAILURE). A plain sh step would collapse both into FAILURE, so the
                             // unstable post block below would never run.
@@ -187,7 +200,7 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                                     IMAGE="couchbase/server:${COUCHBASE_SERVER_VERSION}"
                                 fi
                                 docker pull "$IMAGE"
-                                ./.ci/jenkins/integration-build.sh
+                                "$INTEGRATION_BUILD_SCRIPT"
                             ''')
                             if (exitCode == 50) {
                                 unstable('At least one integration test failed')
