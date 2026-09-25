@@ -1195,7 +1195,6 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 }
 
 func TestBackgroundManagerJoinConcurrentWhileStopping(t *testing.T) {
-	t.Skip("this test might not be valid pending CBG-5435")
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	defer testBucket.Close(ctx)
@@ -1863,4 +1862,359 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 			require.NoError(t, mgr.UpdateHeartbeatDocClusterAware(ctx))
 		})
 	}
+}
+
+// gatedInitProcess holds a run inside Init until the test releases it, and then runs until its terminator closes.
+type gatedInitProcess struct {
+	initEntered chan struct{}
+	releaseInit chan struct{}
+}
+
+func (p *gatedInitProcess) Init(context.Context, MockProcessOptions, []byte) (backgroundManagerInitMode, error) {
+	close(p.initEntered)
+	<-p.releaseInit
+	return backgroundManagerInitResume, nil
+}
+
+func (p *gatedInitProcess) Run(_ context.Context, _ MockProcessOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+	<-terminator.Done()
+	return nil
+}
+
+func (p *gatedInitProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) (statusOut []byte, meta []byte, err error) {
+	statusOut, err = base.JSONMarshal(status)
+	return statusOut, nil, err
+}
+
+func (p *gatedInitProcess) SetProcessStatus(context.Context, []byte, []byte) {}
+
+func (p *gatedInitProcess) ResetStatus() {}
+
+// TestBackgroundManagerJoinDoesNotResurrectStoppedProcess covers a Join that is admitted against a running cluster
+// status document and only gets as far as writing its own status after the process has been stopped everywhere.
+// The joining node has to end its run rather than put the cluster back to running, which would draw the other
+// nodes back into a process that is over.
+func TestBackgroundManagerJoinDoesNotResurrectStoppedProcess(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	clusterAwareOptions := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: testBucket.DefaultDataStore(ctx),
+		metaKeys:      base.NewMetadataKeys("test-join-after-stop"),
+		processSuffix: "join-after-stop",
+		multiNode:     true,
+	}
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+
+	runningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "join-after-stop-running",
+		Process:             &MockProcess{},
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	require.NoError(t, runningNode.Start(ctx, MockProcessOptions{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, timeout, 10*time.Millisecond)
+
+	process := &gatedInitProcess{initEntered: make(chan struct{}), releaseInit: make(chan struct{})}
+	joiningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "join-after-stop-joining",
+		Process:             process,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	var joinErr error
+	joined := make(chan struct{})
+	go func() {
+		defer close(joined)
+		joinErr = joiningNode.Join(ctx)
+	}()
+
+	// The joining node is admitted against a running status document, and then held before it writes its own.
+	base.RequireChanClosed(t, process.initEntered, "joining node did not reach Init")
+
+	require.NoError(t, runningNode.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateStopped, state)
+	}, timeout, 10*time.Millisecond)
+
+	close(process.releaseInit)
+	base.RequireChanClosed(t, joined, "Join did not return")
+	require.NoError(t, joinErr)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, BackgroundProcessStateStopped, joiningNode.GetRunState())
+	}, timeout, 10*time.Millisecond)
+
+	// The status writes the joining node has left to make must not move the cluster off the state it reached.
+	require.Never(t, func() bool {
+		state, err := runningNode.getClusterStatusState(ctx)
+		return err != nil || state != BackgroundProcessStateStopped
+	}, 2*BackgroundManagerStatusUpdateIntervalSecs*time.Second, 50*time.Millisecond)
+}
+
+// staleRunningStatusProcess reports a running status whatever state the manager passes in. It stands in for an update
+// whose status bytes were built while the run was still running, and which reaches the guard after the run state has
+// moved to terminal.
+type staleRunningStatusProcess struct {
+	MockProcess
+}
+
+func (p *staleRunningStatusProcess) GetProcessStatus(status BackgroundManagerStatus, _ []byte) (statusOut []byte, meta []byte, err error) {
+	status.State = BackgroundProcessStateRunning
+	statusOut, err = base.JSONMarshal(status)
+	return statusOut, nil, err
+}
+
+// TestBackgroundManagerUpdateGuardUsesStatusBeingWritten covers a status update that serialized a running status
+// before another node ended the process and this node adopted that state. The update must be refused on the strength
+// of the status it is about to write, rather than a run state read afterwards, or it puts the cluster back to running.
+func TestBackgroundManagerUpdateGuardUsesStatusBeingWritten(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:    "stale-running-status",
+		Process: &staleRunningStatusProcess{},
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: metadataStore,
+			metaKeys:      base.NewMetadataKeys("test-stale-running-status"),
+			processSuffix: "stale-running-status",
+			multiNode:     true,
+		},
+		terminator: base.NewSafeTerminator(),
+	}
+
+	// Another node has already ended the process, and this node has taken that state locally.
+	require.NoError(t, metadataStore.Set(ctx, mgr.clusterAwareOptions.StatusDocID(), 0, nil, map[string]json.RawMessage{
+		"status": json.RawMessage(`{"status":"stopped"}`),
+		"meta":   json.RawMessage(`{}`),
+	}))
+	mgr.setRunState(BackgroundProcessStateStopped)
+
+	var statusErr errBackgroundManagerStatusNotRunning
+	require.ErrorAs(t, mgr.updateMultiNodeClusterAwareStatus(ctx, backgroundManagerStatusUpdate), &statusErr)
+	require.Equal(t, BackgroundProcessStateStopped, statusErr.state)
+
+	state, err := mgr.getClusterStatusState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, BackgroundProcessStateStopped, state)
+}
+
+// gatedInitReturningProcess holds a run inside Init like gatedInitProcess, but returns from Run at once, so that a run
+// which reaches Run despite being refused entry goes on to write its own terminal status.
+type gatedInitReturningProcess struct {
+	gatedInitProcess
+	runCalled atomic.Bool
+}
+
+func (p *gatedInitReturningProcess) Run(context.Context, MockProcessOptions, updateStatusCallbackFunc, *base.SafeTerminator) error {
+	p.runCalled.Store(true)
+	return nil
+}
+
+// TestBackgroundManagerRefusedJoinDoesNotRunProcess covers a Join that is refused because the cluster ended the
+// process while this node was joining it. The node must not reach Process.Run at all: a run that got that far would
+// carry itself to a terminal state of its own and write that over the state the cluster reached.
+func TestBackgroundManagerRefusedJoinDoesNotRunProcess(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	clusterAwareOptions := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: testBucket.DefaultDataStore(ctx),
+		metaKeys:      base.NewMetadataKeys("test-refused-join"),
+		processSuffix: "refused-join",
+		multiNode:     true,
+	}
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+
+	runningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "refused-join-running",
+		Process:             &MockProcess{},
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	require.NoError(t, runningNode.Start(ctx, MockProcessOptions{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, timeout, 10*time.Millisecond)
+
+	process := &gatedInitReturningProcess{
+		gatedInitProcess: gatedInitProcess{initEntered: make(chan struct{}), releaseInit: make(chan struct{})},
+	}
+	joiningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "refused-join-joining",
+		Process:             process,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	var joinErr error
+	joined := make(chan struct{})
+	go func() {
+		defer close(joined)
+		joinErr = joiningNode.Join(ctx)
+	}()
+
+	// The joining node is admitted against a running status document, and then held before it claims the run.
+	base.RequireChanClosed(t, process.initEntered, "joining node did not reach Init")
+
+	require.NoError(t, runningNode.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateStopped, state)
+	}, timeout, 10*time.Millisecond)
+
+	close(process.releaseInit)
+	base.RequireChanClosed(t, joined, "Join did not return")
+	require.NoError(t, joinErr)
+	require.False(t, process.runCalled.Load(), "a refused join must not run the process")
+
+	require.Never(t, func() bool {
+		state, err := runningNode.getClusterStatusState(ctx)
+		return err != nil || state != BackgroundProcessStateStopped
+	}, 2*BackgroundManagerStatusUpdateIntervalSecs*time.Second, 50*time.Millisecond)
+}
+
+// TestBackgroundManagerRefusedJoinAfterLocalStop covers a Join that is refused because the cluster ended the process
+// while this node was joining it, with a Stop of this node landing in the same window. There is no Process.Run to
+// carry the local run state on from stopping, so the refusal has to leave the node in a terminal state itself.
+func TestBackgroundManagerRefusedJoinAfterLocalStop(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	clusterAwareOptions := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: testBucket.DefaultDataStore(ctx),
+		metaKeys:      base.NewMetadataKeys("test-join-local-stop"),
+		processSuffix: "join-local-stop",
+		multiNode:     true,
+	}
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+
+	runningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "join-local-stop-running",
+		Process:             &MockProcess{},
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	require.NoError(t, runningNode.Start(ctx, MockProcessOptions{}))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := runningNode.getClusterStatusState(ctx)
+		assert.NoError(c, err)
+		assert.Equal(c, BackgroundProcessStateRunning, state)
+	}, timeout, 10*time.Millisecond)
+
+	process := &gatedInitProcess{initEntered: make(chan struct{}), releaseInit: make(chan struct{})}
+	joiningNode := &BackgroundManager[MockProcessOptions]{
+		name:                "join-local-stop-joining",
+		Process:             process,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+	var joinErr error
+	joined := make(chan struct{})
+	go func() {
+		defer close(joined)
+		joinErr = joiningNode.Join(ctx)
+	}()
+
+	// The joining node is admitted against a running status document, and then held before it claims the run.
+	base.RequireChanClosed(t, process.initEntered, "joining node did not reach Init")
+
+	// A stop reaches the joining node itself while it is still inside Init, so its run state is already stopping
+	// by the time the claim is refused.
+	require.NoError(t, joiningNode.Stop(ctx))
+	require.Equal(t, BackgroundProcessStateStopping, joiningNode.GetRunState())
+
+	close(process.releaseInit)
+	base.RequireChanClosed(t, joined, "Join did not return")
+	require.NoError(t, joinErr)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, joiningNode.GetRunState().isTerminal(), "run state stuck at %q", joiningNode.GetRunState())
+	}, timeout, 10*time.Millisecond)
+}
+
+// blockedRunProcess keeps every Process.Run call in flight until the test releases it, and ignores its terminator, so
+// that a test can see what the manager does to the run state while the run is still working.
+type blockedRunProcess struct {
+	MockProcess
+	release    chan struct{}
+	activeRuns atomic.Int64
+}
+
+func (p *blockedRunProcess) Run(context.Context, MockProcessOptions, updateStatusCallbackFunc, *base.SafeTerminator) error {
+	p.activeRuns.Add(1)
+	defer p.activeRuns.Add(-1)
+	<-p.release
+	return nil
+}
+
+// TestBackgroundManagerPollerDoesNotAdmitRunWhileProcessRuns covers the multi-node poller learning that the cluster
+// ended the process while this node's Process.Run is still working. The poller may not leave the node in a terminal
+// run state, because a terminal state admits the next Start here, and two runs would then share one status.
+func TestBackgroundManagerPollerDoesNotAdmitRunWhileProcessRuns(t *testing.T) {
+	t.Skip("This test will pass after the fix in CBG-5600")
+
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	metadataStore := testBucket.DefaultDataStore(ctx)
+	clusterAwareOptions := &ClusterAwareBackgroundManagerOptions{
+		metadataStore: metadataStore,
+		metaKeys:      base.NewMetadataKeys("test-poller-terminal-state"),
+		processSuffix: "poller-terminal-state",
+		multiNode:     true,
+	}
+	timeout := sgtest.GetBackgroundManagerStatusTransitionTimeout(t)
+
+	process := &blockedRunProcess{release: make(chan struct{})}
+	mgr := &BackgroundManager[MockProcessOptions]{
+		name:                "poller-terminal-state",
+		Process:             process,
+		clusterAwareOptions: clusterAwareOptions,
+	}
+
+	var starts sync.WaitGroup
+	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	defer func() {
+		close(process.release)
+		starts.Wait()
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(0), process.activeRuns.Load())
+		}, timeout, 10*time.Millisecond)
+	}()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int64(1), process.activeRuns.Load())
+	}, timeout, 10*time.Millisecond, "Process.Run did not start")
+
+	// Another node finishes the run and writes its terminal status to the cluster.
+	require.NoError(t, metadataStore.Set(ctx, clusterAwareOptions.StatusDocID(), 0, nil, map[string]json.RawMessage{
+		"status": json.RawMessage(`{"status":"completed"}`),
+		"meta":   json.RawMessage(`{}`),
+	}))
+
+	// The poller picks that up and terminates this node's run.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, mgr.terminator.IsClosed())
+	}, timeout, 10*time.Millisecond, "poller did not terminate the run")
+	require.Equal(t, int64(1), process.activeRuns.Load(), "the first run is no longer in flight")
+
+	// Process.Run has not returned, so nothing has finished this run. A Start here must not put a second run to
+	// work: it is either refused or held until the first run is over.
+	starts.Go(func() {
+		assert.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	})
+	require.Never(t, func() bool {
+		return process.activeRuns.Load() > 1
+	}, 2*BackgroundManagerStatusUpdateIntervalSecs*time.Second, 10*time.Millisecond,
+		"a second run started while the first was still working")
 }
