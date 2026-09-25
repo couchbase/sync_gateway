@@ -16,7 +16,7 @@ require (
 	github.com/couchbase/sg-bucket v0.0.0-20260714130240-329df715dd61
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
-	github.com/couchbaselabs/rosmar v0.0.0-20260924215552-496948100143
+	github.com/couchbaselabs/rosmar v0.0.0-20260924222042-fcab0727af66
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.1.5
