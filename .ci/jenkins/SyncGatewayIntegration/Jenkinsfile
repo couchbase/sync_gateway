@@ -155,15 +155,15 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     chmod +x .ci/jenkins/integration-build.sh .ci/retry.sh
                 '''
                 script {
-                    // main's test runner needs the pinned CI tools module (and cbdinocluster within it),
-                    // which older revisions such as GA release tags lack. Those revisions still carry
-                    // their own runner at the repo root, written for the tooling they shipped with.
-                    if (fileExists('integration-test/tools/go.mod')) {
-                        env.INTEGRATION_BUILD_SCRIPT = './.ci/jenkins/integration-build.sh'
-                    } else {
+                    // Older revisions such as GA release tags predate the CI tooling main's test runner
+                    // relies on, but carry their own runner at the repo root, written for the tooling
+                    // they shipped with - so a revision that has one uses it.
+                    if (fileExists('jenkins-integration-build.sh')) {
                         env.INTEGRATION_BUILD_SCRIPT = './jenkins-integration-build.sh'
                         // The 3.3 and 4.0 runners read XATTRS under `set -u`. Keep xattrs on, as main has them.
                         env.XATTRS = 'true'
+                    } else {
+                        env.INTEGRATION_BUILD_SCRIPT = './.ci/jenkins/integration-build.sh'
                     }
                     echo("Running integration tests with ${env.INTEGRATION_BUILD_SCRIPT}")
                 }
