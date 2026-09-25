@@ -1373,3 +1373,59 @@ func TestSGReplicateManagerStopDrainsClusterUpdates(t *testing.T) {
 	}))
 	require.False(t, ran, "cluster update ran after Stop returned")
 }
+
+// TestReplicationStatusBeforeReplicatorStarts asserts that a replication assigned to a node that has not
+// initialized its replicator yet is reported as starting rather than running.  Nothing has connected to the
+// remote at this point, and callers waiting for running would otherwise proceed while a start is still to come.
+func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
+	testDB, ctx := SetupTestDB(t)
+	defer testDB.Close(ctx)
+
+	const localNodeUUID = "localNode"
+
+	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testDB.CfgSG)
+	require.NoError(t, err)
+	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+
+	for _, targetState := range []string{ReplicationStateRunning, ReplicationStateStopped} {
+		t.Run(targetState, func(t *testing.T) {
+			replicationID := "rep_" + targetState
+			require.NoError(t, mgr.AddReplication(&ReplicationCfg{
+				ReplicationConfig: ReplicationConfig{
+					ID:        replicationID,
+					Direction: ActiveReplicatorTypePush,
+					Remote:    "http://localhost:4984/remotedb",
+				},
+				AssignedNode: localNodeUUID,
+				TargetState:  targetState,
+			}))
+
+			// No RefreshReplicationCfg, so no replicator exists and no status has been published.
+			require.Nil(t, mgr.GetActiveReplicator(replicationID))
+
+			status, err := mgr.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
+			require.NoError(t, err)
+			expectedState := targetState
+			if targetState == ReplicationStateRunning {
+				expectedState = ReplicationStateStarting
+			}
+			require.Equal(t, expectedState, status.Status)
+
+			// activeOnly covers a replication that is starting, so a caller does not lose sight of it
+			// between the config write and the first connection.
+			options := DefaultReplicationStatusOptions()
+			options.ActiveOnly = true
+			activeStatuses, err := mgr.GetReplicationStatusAll(ctx, options)
+			require.NoError(t, err)
+			activeIDs := make([]string, 0, len(activeStatuses))
+			for _, activeStatus := range activeStatuses {
+				activeIDs = append(activeIDs, activeStatus.ID)
+			}
+			if targetState == ReplicationStateRunning {
+				require.Contains(t, activeIDs, replicationID)
+			} else {
+				require.NotContains(t, activeIDs, replicationID)
+			}
+		})
+	}
+}

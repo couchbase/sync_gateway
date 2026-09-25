@@ -300,7 +300,7 @@ replication-active-only:
   schema:
     type: boolean
     default: false
-  description: Only return replications that are actively running (`state=running`).
+  description: Only return replications that are actively running or starting up (`state=running` or `state=starting`).
 replication-include-config:
   name: includeConfig
   in: query

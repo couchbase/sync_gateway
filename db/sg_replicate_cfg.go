@@ -1628,6 +1628,12 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 					ID:     replicationID,
 					Status: ReplicationStateUnassigned,
 				}
+			} else if remoteCfg.TargetState == ReplicationStateRunning {
+				// Nothing is replicating until a replicator says so.
+				status = &ReplicationStatus{
+					ID:     replicationID,
+					Status: ReplicationStateStarting,
+				}
 			} else {
 				status = &ReplicationStatus{
 					ID:     replicationID,
@@ -1652,7 +1658,8 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 	if !options.IncludeError && status.Status == ReplicationStateError {
 		return nil, nil
 	}
-	if options.ActiveOnly && status.Status != ReplicationStateRunning {
+	// A replication on its way to running is still active.
+	if options.ActiveOnly && status.Status != ReplicationStateRunning && status.Status != ReplicationStateStarting {
 		return nil, nil
 	}
 
