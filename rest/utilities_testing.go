@@ -2751,7 +2751,7 @@ func JsonToMap(t *testing.T, jsonStr string) map[string]any {
 func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct, config, true, true)
 }
 
 // TestBucketPoolRestWithIndexes is the main function that should be used for TestMain in subpackages of rest.

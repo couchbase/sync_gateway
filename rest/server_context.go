@@ -595,10 +595,11 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, false)
+	return sc._reloadDatabaseWithConfig(nonContextStruct, config, true, false)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, loadFromBucket bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig, failFast bool, loadFromBucket bool) error {
+	ctx := nonContextStruct.Ctx
 	sc._removeDatabase(ctx, config.Name)
 	// use async initialization whenever using persistent config
 	asyncOnline := sc.persistentConfig
