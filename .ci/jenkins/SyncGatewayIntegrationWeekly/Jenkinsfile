@@ -1,5 +1,6 @@
 // Weekend sweep of the server versions and edition/flag combinations that the adhoc and per-commit runs do
-// not cover. Every combination is a separate SyncGatewayIntegration-Pipeline build and they all run in
+// not cover, plus the newest GA release of each supported Sync Gateway line against the in-development
+// server. Every combination is a separate SyncGatewayIntegration-Pipeline build and they all run in
 // parallel, so the sweep takes about as long as its slowest child - roughly 2 hours.
 
 // Note for whoever repoints the job at this file: a cron trigger declared in a Jenkinsfile only registers
@@ -49,6 +50,22 @@ def latestVanillaImage(List tags, String line) {
     return 'ghcr.io/cb-vanilla/server:' + onLine.last()
 }
 
+// Newest GA release tag of Sync Gateway on a release line, for example '4.1' -> '4.1.2'. Only GA releases
+// get a tag, so a release branch still in development is never picked. The optional fourth part admits
+// hotfix releases such as 4.1.0.1, which sort -V places before the next patch release.
+def latestSgGaTag(String line) {
+    def tag = sh(returnStdout: true, script: '''#!/bin/bash
+        set -euo pipefail
+        curl -sSf -H "Authorization: Bearer $GHCR_TOKEN" -H "Accept: application/vnd.github+json" \\
+            'https://api.github.com/repos/couchbase/sync_gateway/git/matching-refs/tags/LINE.' |
+            jq -r '.[].ref | ltrimstr("refs/tags/")' | grep -E "^LINE\\.[0-9]+(\\.[0-9]+)?$" | sort -V | tail -1
+    '''.replace('LINE', line)).trim()
+    if (!tag) {
+        error("Found no Sync Gateway GA tag on line ${line}")
+    }
+    return tag
+}
+
 // Stage name for a server version: '7.6.4' for a Docker Hub enterprise tag, '7.6.4-CE' for a community one,
 // and the bare version for a cb-vanilla image, whose tag carries no edition.
 def shortServer(String image) {
@@ -89,6 +106,9 @@ pipeline {
                     def tip76 = null
                     def tip80 = null
                     def tip85 = null
+                    def sg33 = null
+                    def sg40 = null
+                    def sg41 = null
                     node('very-lightweight-jobs-only') {
                         ga76 = latestDockerHubTag('enterprise-7.6')
                         ga80 = latestDockerHubTag('enterprise-8.0')
@@ -97,14 +117,19 @@ pipeline {
                             tip76 = latestVanillaImage(vanillaTags, '7.6')
                             tip80 = latestVanillaImage(vanillaTags, '8.0')
                             tip85 = latestVanillaImage(vanillaTags, '8.5')
+                            // The GitHub API allows few unauthenticated calls per hour, so reuse this token.
+                            sg33 = latestSgGaTag('3.3')
+                            sg40 = latestSgGaTag('4.0')
+                            sg41 = latestSgGaTag('4.1')
                         }
                     }
-                    echo("Resolved GA ${ga76}, ${ga80} and tips ${tip76}, ${tip80}, ${tip85}")
+                    echo("Resolved GA ${ga76}, ${ga80}, tips ${tip76}, ${tip80}, ${tip85} and Sync Gateway GA ${sg33}, ${sg40}, ${sg41}")
                     // The resolved tags change from sweep to sweep, so record them on the build itself
                     // rather than leaving the console log as the only place they appear.
-                    currentBuild.description = [ga76, ga80, shortServer(tip76), shortServer(tip80), shortServer(tip85)].join(', ')
+                    currentBuild.description = [ga76, ga80, shortServer(tip76), shortServer(tip80), shortServer(tip85)].join(', ') +
+                        " / SG ${sg33}, ${sg40}, ${sg41}"
 
-                    // Anything not named here takes the child job's own default: EE, rev cache enabled.
+                    // Anything not named here takes the child job's own default: SG main, EE, rev cache enabled.
                     def combinations = [
                         [server: 'enterprise-7.6.4'], // oldest supported
                         [server: ga76],
@@ -114,15 +139,23 @@ pipeline {
                         [server: tip85],
                         [server: ga76, sgEdition: 'CE'],
                         [server: ga76, disableRevCache: true],
+                        // Released Sync Gateway builds against the server that is still in development, so
+                        // a server change that breaks a shipped release shows up before that server ships.
+                        [server: tip85, sgCommit: sg33],
+                        [server: tip85, sgCommit: sg40],
+                        [server: tip85, sgCommit: sg41],
                     ]
 
                     parallel(combinations.collectEntries { combo ->
                         def edition = combo.sgEdition ?: 'EE'
                         def flags = combo.disableRevCache ? "no_revcache_${edition}" : edition
-                        def label = "${shortServer(combo.server)}__${flags}".toString()
+                        // Every other combination runs main, so only a release needs naming.
+                        def sgPrefix = combo.sgCommit ? "sg-${combo.sgCommit}__" : ''
+                        def label = "${sgPrefix}${shortServer(combo.server)}__${flags}".toString()
                         [(label): {
                             stage(label) {
                                 build job: 'SyncGatewayIntegration-Pipeline', parameters: [
+                                    string(name: 'SG_COMMIT', value: combo.sgCommit ?: 'main'),
                                     string(name: 'COUCHBASE_SERVER_VERSION', value: combo.server),
                                     booleanParam(name: 'DISABLE_REV_CACHE', value: combo.disableRevCache as boolean),
                                     string(name: 'SG_EDITION', value: edition),
