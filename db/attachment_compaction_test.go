@@ -14,6 +14,7 @@ import (
 	"maps"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -880,4 +881,125 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	require.Equal(t, count, stat.Value())
 	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
+}
+
+// waitForAttachmentCompactionMarked waits until the mark phase has marked at least count attachments.
+func waitForAttachmentCompactionMarked(t testing.TB, db *Database, count int64) {
+	// this intentionally uses a very short poll interval to catch progress as quickly as possible
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		// Poll the local status so the wait can stop as soon as the requested progress is observed,
+		// without waiting for the cluster status' periodic update.
+		rawStatus, _, err := db.AttachmentCompactionManager.Process.GetProcessStatus(BackgroundManagerStatus{}, nil)
+		assert.NoError(c, err)
+		var stats AttachmentManagerResponse
+		require.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
+		assert.GreaterOrEqual(c, stats.MarkedAttachments, count)
+	}, 1*time.Minute, 10*time.Millisecond)
+}
+
+// getAttachmentCompactionStatus returns the current attachment compaction status.
+func getAttachmentCompactionStatus(t testing.TB, db *Database) AttachmentManagerResponse {
+	t.Helper()
+	var status AttachmentManagerResponse
+	rawStatus, err := db.AttachmentCompactionManager.GetStatus(base.TestCtx(t))
+	require.NoError(t, err)
+	require.NoError(t, base.JSONUnmarshal(rawStatus, &status))
+	return status
+}
+
+// TestAttachmentCompactionResetPurgesStoppedRunCheckpoints asserts that a reset purges the
+// checkpoints of the run it abandons. A stopped run keeps its checkpoints on every backend, because
+// only a cleanly completed one-shot feed purges its own.
+//
+// Each phase runs its own one-shot feed, so a stopped run owns the checkpoints of the phase it
+// stopped in and no others. The subtests cover one phase each.
+func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
+	for _, stopPhase := range []attachmentCompactionPhase{MarkPhase, SweepPhase, CleanupPhase} {
+		t.Run(string(stopPhase), func(t *testing.T) {
+			testDb, ctx := SetupTestDBDefaultCollection(t)
+			defer testDb.Close(ctx)
+			dataStore := testDb.Bucket.DefaultDataStore(ctx)
+
+			// marked attachments give the mark phase progress to wait on, unmarked ones give the sweep
+			// phase work, and both keep each phase in flight long enough for the stop to land
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
+			for i := range 1000 {
+				attBody, err := base.JSONMarshal(map[string]any{"value": strconv.Itoa(i)})
+				require.NoError(t, err)
+				CreateLegacyAttachmentDoc(t, ctx, collection, fmt.Sprintf("testDoc-%d", i), []byte("{}"), fmt.Sprintf("att-%d", i), attBody)
+			}
+			for i := range 1000 {
+				require.NoError(t, dataStore.SetRaw(ctx, fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i), 0, nil, []byte("{}")))
+			}
+
+			mgr := testDb.AttachmentCompactionManager
+			process := mgr.Process.(*AttachmentCompactionManager)
+
+			require.NoError(t, mgr.Start(ctx, AttachmentCompactionOptions{Database: testDb}))
+			wg := sync.WaitGroup{}
+			defer base.WaitWithTimeout(t, &wg, 60*time.Second)
+			wg.Go(func() {
+				// stop once the run is inside the phase under test, so it owns that phase's checkpoints.
+				// The mark phase is entered immediately, so wait on its counter instead of the phase
+				// name, otherwise the stop races the first checkpoint persist.
+				if stopPhase == MarkPhase {
+					waitForAttachmentCompactionMarked(t, testDb, 1)
+				} else {
+					require.Eventually(t, func() bool { return process.getPhase() == string(stopPhase) },
+						60*time.Second, 1*time.Millisecond)
+				}
+				require.NoError(t, mgr.Stop(ctx))
+			})
+			RequireBackgroundManagerState(t, mgr, BackgroundProcessStateStopped)
+
+			stopped := getAttachmentCompactionStatus(t, testDb)
+			require.Equal(t, string(stopPhase), stopped.Phase)
+			require.NotEmpty(t, stopped.CompactID)
+
+			stoppedPrefix := GetAttachmentCompactionDCPCheckpointPrefix(testDb.DatabaseContext, stopped.CompactID, stopPhase)
+			requireDCPCheckpointsExist(t, ctx, testDb.DatabaseContext, stoppedPrefix,
+				"precondition: a stopped %s phase should have persisted checkpoints", stopPhase)
+
+			// reset - this abandons the stopped run in favour of a new compactID
+			require.NoError(t, mgr.Start(ctx, AttachmentCompactionOptions{Database: testDb, Reset: true}))
+			RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+			require.NotEqual(t, stopped.CompactID, getAttachmentCompactionStatus(t, testDb).CompactID,
+				"reset should have started a new compaction run")
+
+			requireDCPCheckpointsPurged(t, ctx, testDb.DatabaseContext, stoppedPrefix,
+				"reset left behind the %s phase checkpoints for the stopped compaction run %q", stopPhase, stopped.CompactID)
+		})
+	}
+}
+
+// TestAttachmentCompactionCheckpointsRemovedOnCompletion asserts that a completed run leaves no
+// checkpoints. Compaction persists one prefix per phase, so all three must be gone.
+func TestAttachmentCompactionCheckpointsRemovedOnCompletion(t *testing.T) {
+	testDb, ctx := SetupTestDBDefaultCollection(t)
+	defer testDb.Close(ctx)
+
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
+	const legacyAttachmentCount = 10
+	for i := range legacyAttachmentCount {
+		attBody, err := base.JSONMarshal(map[string]any{"value": strconv.Itoa(i)})
+		require.NoError(t, err)
+		CreateLegacyAttachmentDoc(t, ctx, collection, fmt.Sprintf("testDoc-%d", i), []byte("{}"), fmt.Sprintf("att-%d", i), attBody)
+	}
+
+	mgr := testDb.AttachmentCompactionManager
+
+	require.NoError(t, mgr.Start(ctx, AttachmentCompactionOptions{Database: testDb}))
+	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
+
+	status := getAttachmentCompactionStatus(t, testDb)
+	require.NotEmpty(t, status.CompactID)
+	// guards against a run that did no work, which would make the assertions below vacuous
+	require.Equal(t, int64(legacyAttachmentCount), status.MarkedAttachments)
+
+	for _, phase := range []attachmentCompactionPhase{MarkPhase, SweepPhase, CleanupPhase} {
+		prefix := GetAttachmentCompactionDCPCheckpointPrefix(testDb.DatabaseContext, status.CompactID, phase)
+		requireDCPCheckpointsPurged(t, ctx, testDb.DatabaseContext, prefix,
+			"completed compaction run %q left its %s phase checkpoints behind", status.CompactID, phase)
+	}
 }
