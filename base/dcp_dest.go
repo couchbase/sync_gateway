@@ -17,6 +17,7 @@ import (
 	"expvar"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/gomemcached"
@@ -72,11 +73,11 @@ func NewDCPDest(
 
 	if d.partitionCountStat != nil {
 		d.partitionCountStat.Add(1)
-		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed. Total partitions:%v", d.partitionCountStat.String())
+		InfofCtx(d.ctx, KeyDCP, "Starting sharded feed. Total partitions:%v", d.partitionCountStat.String())
 	}
 
-	if LogDebugEnabled(d.loggingCtx, KeyDCP) {
-		InfofCtx(d.loggingCtx, KeyDCP, "Using DCP Logging Receiver")
+	if LogDebugEnabled(d.ctx, KeyDCP) {
+		InfofCtx(d.ctx, KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingDest{dest: d}
 		return logRec, nil
 	}
@@ -84,13 +85,21 @@ func NewDCPDest(
 	return d, nil
 }
 
+// Close stops new data callbacks from running and waits for in-flight ones to finish.
 func (d *DCPDest) Close(_ bool) error {
 	// ignore param remove since sync gateway pindexes are not persisted on disk, cbgt.Manager dataDir is set to empty string
+	d.cancel(errors.New("DCPDest closed"))
+	for deadline := time.Now().Add(time.Minute); d.activeCallbacks.Load() > 0 && time.Now().Before(deadline); {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if active := d.activeCallbacks.Load(); active > 0 {
+		WarnfCtx(d.ctx, "DCPDest closed with %d data updates still in progress", active)
+	}
 	if d.partitionCountStat != nil {
 		d.partitionCountStat.Add(-1)
-		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed. Total partitions:%v", d.partitionCountStat.String())
+		InfofCtx(d.ctx, KeyDCP, "Closing sharded feed. Total partitions:%v", d.partitionCountStat.String())
 	}
-	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest")
+	DebugfCtx(d.ctx, KeyDCP, "Closing DCPDest")
 	return nil
 }
 
@@ -100,7 +109,7 @@ func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
 	if isMetadataDocumentName(key) {
 		return nil
 	}
-	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpMutation)
+	event := makeFeedEventForDest(key, val, cas, partitionToVbNo(d.ctx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpMutation)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -124,7 +133,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpMutation)
+		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(d.ctx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpMutation)
 
 	}
 
@@ -139,7 +148,7 @@ func (d *DCPDest) DataDelete(partition string, key []byte, seq uint64,
 		return nil
 	}
 
-	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.loggingCtx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpDeletion)
+	event := makeFeedEventForDest(key, nil, cas, partitionToVbNo(d.ctx, partition), collectionIDFromExtras(extras), 0, 0, 0, sgbucket.FeedOpDeletion)
 	d.dataUpdate(seq, event)
 	return nil
 }
@@ -162,7 +171,7 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.loggingCtx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpDeletion)
+		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(d.ctx, partition), dcpExtras.CollectionId, dcpExtras.Expiry, dcpExtras.Datatype, dcpExtras.RevNo, sgbucket.FeedOpDeletion)
 
 	}
 	d.dataUpdate(seq, event)
@@ -171,12 +180,12 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 
 func (d *DCPDest) SnapshotStart(partition string,
 	snapStart, snapEnd uint64) error {
-	d.snapshotStart(partitionToVbNo(d.loggingCtx, partition), snapStart, snapEnd)
+	d.snapshotStart(partitionToVbNo(d.ctx, partition), snapStart, snapEnd)
 	return nil
 }
 
 func (d *DCPDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err error) {
-	vbNo := partitionToVbNo(d.loggingCtx, partition)
+	vbNo := partitionToVbNo(d.ctx, partition)
 	if !d.metaInitComplete[vbNo] {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
@@ -190,7 +199,7 @@ func (d *DCPDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err
 }
 
 func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
-	vbNo := partitionToVbNo(d.loggingCtx, partition)
+	vbNo := partitionToVbNo(d.ctx, partition)
 	if !d.metaInitComplete[vbNo] {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
@@ -202,7 +211,7 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 // Rollback is required by cbgt.Dest interface but will not work when called by Sync Gateway as we need additional information to perform a rollback. Due to the design of cbgt.Dest this will not be called without a programming error.
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
 	err := errors.New("DCPDest.Rollback called but only RollbackEx should be called, this function is required to be implemented by cbgt.Dest interface. This function does not provide Sync Gateway with enough information to rollback and this DCP stream will not longer be running.")
-	WarnfCtx(d.loggingCtx, "%s", err)
+	WarnfCtx(d.ctx, "%s", err)
 	return err
 }
 
@@ -212,7 +221,7 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 	if rollbackSeq == 0 {
 		vbucketUUID = 0
 	}
-	vbNo := partitionToVbNo(d.loggingCtx, partition)
+	vbNo := partitionToVbNo(d.ctx, partition)
 	cbgtMeta, err := d.makeVbucketMetadataForSequence(vbNo, vbucketUUID, rollbackSeq)
 	if err != nil {
 		return err
@@ -223,18 +232,18 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 // TODO: Not implemented, review potential usage
 func (d *DCPDest) ConsistencyWait(partition, partitionUUID string,
 	consistencyLevel cbgt.ConsistencyLevel, consistencySeq uint64, cancelCh <-chan bool) error {
-	WarnfCtx(d.loggingCtx, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.ctx, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
 func (d *DCPDest) Count(pindex *cbgt.PIndex, cancelCh <-chan bool) (uint64, error) {
-	WarnfCtx(d.loggingCtx, "Dest.Count being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.ctx, "Dest.Count being invoked by cbgt - not supported by Sync Gateway")
 	return 0, nil
 }
 
 func (d *DCPDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 	cancelCh <-chan bool) error {
-	WarnfCtx(d.loggingCtx, "Dest.Query being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.ctx, "Dest.Query being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
@@ -249,12 +258,12 @@ func (d *DCPDest) ForceCheckpointWrite() {
 		if init {
 			value, _, err := d.getMetaData(uint16(vbNo))
 			if err != nil {
-				WarnfCtx(d.loggingCtx, "Could not retrieve metadata for vbNo %d during ForceCheckpointWrite: %v. Skipping checkpoint write", vbNo, err)
+				WarnfCtx(d.ctx, "Could not retrieve metadata for vbNo %d during ForceCheckpointWrite: %v. Skipping checkpoint write", vbNo, err)
 				continue
 			}
 			err = d.setMetaData(uint16(vbNo), value, true)
 			if err != nil {
-				WarnfCtx(d.loggingCtx, "Could not persist metadata for vbNo %d during ForceCheckpointWrite: %v. Skipping checkpoint write", vbNo, err)
+				WarnfCtx(d.ctx, "Could not persist metadata for vbNo %d during ForceCheckpointWrite: %v. Skipping checkpoint write", vbNo, err)
 			}
 		}
 	}
@@ -292,52 +301,52 @@ func (d *DCPLoggingDest) Close(remove bool) error {
 func (d *DCPLoggingDest) DataUpdate(partition string, key []byte, seq uint64,
 	val []byte, cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
 
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "DataUpdate:%s, %s, %d", partition, UD(string(key)), seq)
+	TracefCtx(d.dest.ctx, KeyDCP, "DataUpdate:%s, %s, %d", partition, UD(string(key)), seq)
 	return d.dest.DataUpdate(partition, key, seq, val, cas, extrasType, extras)
 }
 
 func (d *DCPLoggingDest) DataUpdateEx(partition string, key []byte, seq uint64, val []byte,
 	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
 
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "DataUpdateEx:%s, %s, %d", partition, UD(string(key)), seq)
+	TracefCtx(d.dest.ctx, KeyDCP, "DataUpdateEx:%s, %s, %d", partition, UD(string(key)), seq)
 	return d.dest.DataUpdateEx(partition, key, seq, val, cas, extrasType, req)
 }
 
 func (d *DCPLoggingDest) DataDelete(partition string, key []byte, seq uint64,
 	cas uint64, extrasType cbgt.DestExtrasType, extras []byte) error {
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "DataDelete:%s, %s, %d", partition, UD(string(key)), seq)
+	TracefCtx(d.dest.ctx, KeyDCP, "DataDelete:%s, %s, %d", partition, UD(string(key)), seq)
 	return d.dest.DataDelete(partition, key, seq, cas, extrasType, extras)
 }
 
 func (d *DCPLoggingDest) DataDeleteEx(partition string, key []byte, seq uint64,
 	cas uint64, extrasType cbgt.DestExtrasType, req any) error {
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "DataDeleteEx:%s, %s, %d", partition, UD(string(key)), seq)
+	TracefCtx(d.dest.ctx, KeyDCP, "DataDeleteEx:%s, %s, %d", partition, UD(string(key)), seq)
 	return d.dest.DataDeleteEx(partition, key, seq, cas, extrasType, req)
 }
 
 func (d *DCPLoggingDest) SnapshotStart(partition string,
 	snapStart, snapEnd uint64) error {
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "SnapshotStart:%s, %d, %d", partition, snapStart, snapEnd)
+	TracefCtx(d.dest.ctx, KeyDCP, "SnapshotStart:%s, %d, %d", partition, snapStart, snapEnd)
 	return d.dest.SnapshotStart(partition, snapStart, snapEnd)
 }
 
 func (d *DCPLoggingDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err error) {
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "OpaqueGet:%s", partition)
+	TracefCtx(d.dest.ctx, KeyDCP, "OpaqueGet:%s", partition)
 	return d.dest.OpaqueGet(partition)
 }
 
 func (d *DCPLoggingDest) OpaqueSet(partition string, value []byte) error {
-	TracefCtx(d.dest.loggingCtx, KeyDCP, "OpaqueSet:%s, %s", partition, value)
+	TracefCtx(d.dest.ctx, KeyDCP, "OpaqueSet:%s, %s", partition, value)
 	return d.dest.OpaqueSet(partition, value)
 }
 
 func (d *DCPLoggingDest) Rollback(partition string, rollbackSeq uint64) error {
-	InfofCtx(d.dest.loggingCtx, KeyDCP, "Rollback:%s, %d", partition, rollbackSeq)
+	InfofCtx(d.dest.ctx, KeyDCP, "Rollback:%s, %d", partition, rollbackSeq)
 	return d.dest.Rollback(partition, rollbackSeq)
 }
 
 func (d *DCPLoggingDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
-	InfofCtx(d.dest.loggingCtx, KeyDCP, "RollbackEx:%s, %v, %d", partition, vbucketUUID, rollbackSeq)
+	InfofCtx(d.dest.ctx, KeyDCP, "RollbackEx:%s, %v, %d", partition, vbucketUUID, rollbackSeq)
 	return d.dest.RollbackEx(partition, vbucketUUID, rollbackSeq)
 }
 
