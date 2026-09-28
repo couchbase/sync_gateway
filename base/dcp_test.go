@@ -144,9 +144,7 @@ func TestDCPIsMetadataDocument(t *testing.T) {
 }
 
 func TestCBGTIndexCreation(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 
 	shortDbName := "testDB"
 	shortDbImportIndexName, err := GenerateCBGTIndexName(shortDbName, ShardedDCPFeedTypeImport)
@@ -302,9 +300,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 
 func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -382,9 +378,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -469,9 +463,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
 func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -555,9 +547,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 // node joining, or a node restarting. Covers both feed types, since they share this code path but
 // use different Cfg wiring (see useNodePoller below).
 func TestCreateCBGTIndexIdempotent(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -636,9 +626,7 @@ func TestCreateCBGTIndexIdempotent(t *testing.T) {
 // Semantic equality helpers are used instead of raw string comparison because JSON key
 // order is not preserved during the CBGT config round-trip.
 func TestCBGTPersistsParamsVerbatim(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -722,9 +710,7 @@ func (c *leakyCfg) failNextGet(key string) {
 // class of error for its legacy-name lookup (discarding it via `_`); this confirms the same
 // tolerance holds for the lookup the "already up to date" skip-check in createCBGTIndex relies on.
 func TestCreateCBGTIndexTransientReadErrorTolerated(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -785,9 +771,7 @@ func TestCreateCBGTIndexTransientReadErrorTolerated(t *testing.T) {
 // the now-stale UUID. If this test starts failing, either the race has been closed (update the
 // comment in createCBGTIndex) or cbgt's error text has changed (update StartManager's match).
 func TestCreateCBGTIndexUpdateRaceWithConcurrentDelete(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket")
-	}
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)

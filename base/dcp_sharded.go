@@ -178,6 +178,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(ctx, opts)
 	if err != nil {
+		cbgtContext.Stop(ctx)
 		return nil, err
 	}
 
@@ -185,6 +186,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 	// other SG nodes stop sending heartbeats.
 	listener, err := registerHeartbeatListener(ctx, opts.Heartbeater, cbgtContext, opts.Datastore, opts.FeedType)
 	if err != nil {
+		cbgtContext.Stop(ctx)
 		return nil, err
 	}
 

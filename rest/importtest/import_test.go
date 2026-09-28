@@ -2149,9 +2149,7 @@ func TestImportRollback(t *testing.T) {
 		t.Skip("This test only works against EE")
 	}
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
-	}
+	base.TestRequiresCbgt(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP)
 	const (
@@ -2240,9 +2238,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		t.Skip("This test only works against EE")
 	}
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
-	}
+	base.TestRequiresCbgt(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster, base.KeyCRUD)
 	bucket := base.GetTestBucket(t)
@@ -2490,9 +2486,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		t.Skip("This test only works against EE")
 	}
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - needs cbgt and import checkpointing")
-	}
+	base.TestRequiresCbgt(t)
 
 	clog.SetLevel(clog.LevelDebug)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster)

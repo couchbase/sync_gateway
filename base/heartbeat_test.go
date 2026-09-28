@@ -286,9 +286,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 // one second, so retry polling is required.
 func TestCBGTManagerHeartbeater(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test requires cbgt and CBS")
-	}
+	TestRequiresCbgt(t)
 
 	if testing.Short() {
 		t.Skip("Skipping heartbeattest in short mode")
