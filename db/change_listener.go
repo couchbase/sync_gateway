@@ -41,23 +41,13 @@ type changeListener struct {
 	counter                uint64                 // Event counter; increments on every doc update
 	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
 	keyCounts              map[channels.ID]uint64 // Latest count at which each doc key was updated
-	// principalCountsLock guards principalCounts.  It is a leaf lock: it must never be taken while
-	// tapNotifier.L is held (see notifyKey), so it can never nest with it either way.  Only a
-	// principal's first notify inserts; everything else, including every waiter-side lookup, only
-	// reads, so those can proceed in parallel.
-	principalCountsLock sync.RWMutex
-	// principalCounts is a per-principal copy of keyCounts, populated only for user/role keys (see
-	// notifyKey), readable without tapNotifier.L.  This is what lets refreshUser check the user
-	// count on every inbound BLIP message without queueing behind a caching-feed broadcast.
-	// Entries are created only by notifyKey, so this holds the same principal keys as keyCounts; a
-	// principal that has never been notified has no entry and reads as zero.  Entries are never
-	// replaced or removed: a ChangeWaiter caches the *atomic.Uint64 pointer directly, so replacing
-	// the map entry would silently orphan every waiter still holding the old pointer.
-	principalCounts map[channels.ID]*atomic.Uint64
-	// principalCountsInserted is the number of entries ever inserted into principalCounts, updated
-	// under principalCountsLock.  A waiter tracking a principal with no entry yet compares it
-	// against the value it last resolved at, so it only needs principalCountsLock to look again
-	// once some entry has actually been created.
+	principalCountsLock    sync.RWMutex           // Guards principalCounts
+	// principalCounts holds the latest count for each user/role, keyed by doc key, readable without
+	// tapNotifier.L.  Entries are created only by notifyKey; a principal with no entry reads as zero.
+	// Entries are never replaced or removed, as ChangeWaiters hold the counter pointers directly.
+	principalCounts map[string]*atomic.Uint64
+	// principalCountsInserted counts entries ever added to principalCounts, under principalCountsLock.
+	// A waiter with a missing counter only re-checks the map once this has moved.
 	principalCountsInserted  atomic.Uint64
 	OnChangeCallback         DocChangedFunc
 	terminator               chan bool          // Signal to cause DCP feed to exit
@@ -84,7 +74,7 @@ func newChangeListener(name string, groupID string, db *DatabaseContext) (*chang
 	listener.counter = 1
 	listener._terminateCheckCounter = 0
 	listener.keyCounts = map[channels.ID]uint64{}
-	listener.principalCounts = map[channels.ID]*atomic.Uint64{}
+	listener.principalCounts = map[string]*atomic.Uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = db.MetadataKeys.SGCfgPrefix(groupID)
 	listener.metaKeys = db.MetadataKeys
@@ -342,18 +332,16 @@ func (listener *changeListener) broadcastInterval(skippedSequencePresent bool) t
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
 func (listener *changeListener) notifyKey(ctx context.Context, key channels.ID) {
-	// Resolve the principal counter before taking tapNotifier.L: principalCountsLock is a leaf
-	// lock and must never be taken while tapNotifier.L is held.
-	principalCount := listener.principalCounter(key)
+	// Resolve the principal counter before taking tapNotifier.L, to keep principalCountsLock out of
+	// its critical section.
+	principalCount := listener.principalCounter(key.Name)
 
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	listener.counter++
 	listener.keyCounts[key] = listener.counter
-	// Store while still holding tapNotifier.L, with the same value just written to keyCounts.  A
-	// waiter woken by this notification re-acquires tapNotifier.L (inside Cond.Wait) before
-	// checking keyCounts, so this store happens-before that check, and the waiter is guaranteed to
-	// observe at least this value when it reads the counter lock-free afterwards.
+	// Store under tapNotifier.L: a waiter woken by this notify re-acquires it before returning from
+	// Wait, so is guaranteed to see this value when it reads the counter lock-free afterwards.
 	principalCount.Store(listener.counter)
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(key), listener.counter)
@@ -421,7 +409,7 @@ func (listener *changeListener) _currentCount(keys []channels.ID) uint64 {
 // the key has been notified.  Only notifyKey should call this - see principalCounts.  An existing
 // counter is always returned as-is: replacing it would orphan any ChangeWaiter that has already
 // cached the old pointer, silently cutting it off from further updates for that key.
-func (listener *changeListener) principalCounter(key channels.ID) *atomic.Uint64 {
+func (listener *changeListener) principalCounter(key string) *atomic.Uint64 {
 	if counter := listener.existingPrincipalCounter(key); counter != nil {
 		return counter
 	}
@@ -439,7 +427,7 @@ func (listener *changeListener) principalCounter(key channels.ID) *atomic.Uint64
 }
 
 // existingPrincipalCounter returns the counter for a principal key, or nil if it has never been notified.
-func (listener *changeListener) existingPrincipalCounter(key channels.ID) *atomic.Uint64 {
+func (listener *changeListener) existingPrincipalCounter(key string) *atomic.Uint64 {
 	listener.principalCountsLock.RLock()
 	defer listener.principalCountsLock.RUnlock()
 	return listener.principalCounts[key]
@@ -449,18 +437,14 @@ func (listener *changeListener) existingPrincipalCounter(key channels.ID) *atomi
 // entry for any key that has never been notified, plus the principalCountsInserted value they were
 // resolved at.  principalCountsInserted is only updated under the write lock, so the two are
 // consistent under the read lock here, and a caller that later sees the same inserted value knows
-// its nil entries are still missing.  Returns nil counters for an empty key set (the nil-user
-// waiter shape).
+// its nil entries are still missing.
 func (listener *changeListener) lookupPrincipalCounters(keys []channels.ID) (counters []*atomic.Uint64, inserted uint64, missing bool) {
 	listener.principalCountsLock.RLock()
 	defer listener.principalCountsLock.RUnlock()
 	inserted = listener.principalCountsInserted.Load()
-	if len(keys) == 0 {
-		return nil, inserted, false
-	}
 	counters = make([]*atomic.Uint64, len(keys))
 	for i, key := range keys {
-		counters[i] = listener.principalCounts[key]
+		counters[i] = listener.principalCounts[key.Name]
 		missing = missing || counters[i] == nil
 	}
 	return counters, inserted, missing
@@ -528,6 +512,9 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 		waitKeys = append(waitKeys, channel)
 	}
 	var userKeys []channels.ID
+	var userCounters []*atomic.Uint64
+	var inserted uint64
+	var missing bool
 	if user != nil {
 		usrID := channels.NewID(listener.metaKeys.UserKey(user.Name()), principalDocCollectionIDForChannelID)
 		userKeys = []channels.ID{usrID}
@@ -535,12 +522,12 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 			userKeys = append(userKeys, channels.NewID(listener.metaKeys.RoleKey(role), principalDocCollectionIDForChannelID))
 		}
 		waitKeys = append(waitKeys, userKeys...)
+		// Resolve the user's counters and baseline the user count before taking tapNotifier.L below.
+		// Reading it here rather than under L can only make the baseline older, never newer: at worst
+		// that costs one redundant user reload later, whereas a baseline taken after a concurrent
+		// principal update landed could swallow it.
+		userCounters, inserted, missing = listener.lookupPrincipalCounters(userKeys)
 	}
-	// Resolve the user's counters and baseline the user count before taking tapNotifier.L below.
-	// Reading it here rather than under L can only make the baseline older, never newer: at worst
-	// that costs one redundant user reload later, whereas a baseline taken after a concurrent
-	// principal update landed could swallow it (see the equivalent tradeoff in RefreshUserKeys).
-	userCounters, inserted, missing := listener.lookupPrincipalCounters(userKeys)
 	lastUserCount := maxPrincipalCount(userCounters)
 
 	listener.tapNotifier.L.Lock()
@@ -559,10 +546,8 @@ func (waiter *ChangeWaiter) Wait(ctx context.Context) uint32 {
 	lastTerminateCheckCounter := waiter.lastTerminateCheckCounter
 	lastCounter := waiter.lastCounter
 	waiter.lastCounter, waiter.lastTerminateCheckCounter = waiter.listener.Wait(ctx, waiter.keys, waiter.lastCounter, waiter.lastTerminateCheckCounter)
-	// listener.Wait (above) re-acquires tapNotifier.L before returning, and notifyKey stores into
-	// userCounters inside that same critical section (see notifyKey), so this read is guaranteed to
-	// observe any principal update that could have satisfied the wait - no separate acquisition of
-	// tapNotifier.L is needed here.
+	// No tapNotifier.L needed: notifyKey updates the counters before releasing it, and listener.Wait
+	// has re-acquired it since.
 	waiter.lastUserCount = waiter.currentPrincipalCount()
 	countChanged := waiter.lastCounter > lastCounter
 

@@ -101,9 +101,7 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 	for i := range waiters {
 		chanKey := channels.NewID(fmt.Sprintf("herd-chan-%d", i), 0)
 		w := listener.NewWaiterWithChannels(channels.SetOfNoValidate(chanKey), nil, false)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				select {
 				case <-stop:
@@ -112,13 +110,15 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 				}
 				w.Wait(ctx)
 			}
-		}()
+		})
 	}
 
 	driverKey := channels.NewID("herd-driver-channel", 0)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
+		// The broadcaster's pinned interval, not this rate, sets how often the herd is woken: the
+		// driver only has to move the counter before every broadcast tick, so each one fires.
+		// Running well inside the interval covers ticker drift and the driver itself being delayed
+		// on tapNotifier.L by a broadcast.
 		ticker := time.NewTicker(time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -129,7 +129,7 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 				listener.Notify(ctx, channels.SetOfNoValidate(driverKey))
 			}
 		}
-	}()
+	})
 
 	return func() {
 		close(stop)
@@ -144,15 +144,6 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 	}
 }
 
-// shortModeGrid collapses a parameter grid to a single cheap arm under -short, the mode CI's
-// test-benchmark-compile job runs on every push.
-func shortModeGrid[T any](full []T, short []T) []T {
-	if testing.Short() {
-		return short
-	}
-	return full
-}
-
 // BenchmarkRefreshUserUnderHerd measures RefreshUserCount() - the check refreshUser performs on
 // every inbound BLIP message - while W unrelated changes-feed waiters are parked and being
 // broadcast to on tapNotifier.L.  ns/op should stay flat in `waiters`, since the check reads
@@ -162,9 +153,13 @@ func shortModeGrid[T any](full []T, short []T) []T {
 func BenchmarkRefreshUserUnderHerd(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 
-	keyCountSizes := shortModeGrid([]int{1, 20000}, []int{1})
-	roleCounts := shortModeGrid([]int{0, 5, 50}, []int{0})
-	waiterCounts := shortModeGrid([]int{0, 100, 1000, 10000}, []int{10})
+	keyCountSizes := []int{1, 20000}
+	roleCounts := []int{0, 5, 50}
+	waiterCounts := []int{0, 100, 1000, 10000}
+	if testing.Short() {
+		// CI's test-benchmark-compile job runs every benchmark once under -short.
+		keyCountSizes, roleCounts, waiterCounts = []int{1}, []int{0}, []int{10}
+	}
 
 	for _, keyCountSize := range keyCountSizes {
 		for _, roles := range roleCounts {
@@ -208,8 +203,11 @@ func BenchmarkRefreshUserUnderHerd(b *testing.B) {
 func BenchmarkChangeWaiterWakeCost(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 
-	keyCountSizes := shortModeGrid([]int{1, 20000}, []int{1})
-	roleCounts := shortModeGrid([]int{0, 5}, []int{0})
+	keyCountSizes := []int{1, 20000}
+	roleCounts := []int{0, 5}
+	if testing.Short() {
+		keyCountSizes, roleCounts = []int{1}, []int{0}
+	}
 
 	for _, keyCountSize := range keyCountSizes {
 		for _, roles := range roleCounts {
@@ -226,9 +224,7 @@ func BenchmarkChangeWaiterWakeCost(b *testing.B) {
 
 				driverStop := make(chan struct{})
 				var driverWG sync.WaitGroup
-				driverWG.Add(1)
-				go func() {
-					defer driverWG.Done()
+				driverWG.Go(func() {
 					for {
 						select {
 						case <-driverStop:
@@ -237,7 +233,7 @@ func BenchmarkChangeWaiterWakeCost(b *testing.B) {
 							listener.NotifyKeyForTest(b, ctx, userKey)
 						}
 					}
-				}()
+				})
 
 				b.ReportAllocs()
 				b.ResetTimer()
@@ -262,8 +258,11 @@ func BenchmarkChangeWaiterWakeCost(b *testing.B) {
 func BenchmarkNotifyBroadcastWake(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyCache, base.KeyChanges)
 
-	roleCounts := shortModeGrid([]int{0, 5}, []int{0})
-	waiterCounts := shortModeGrid([]int{100, 1000, 10000}, []int{10})
+	roleCounts := []int{0, 5}
+	waiterCounts := []int{100, 1000, 10000}
+	if testing.Short() {
+		roleCounts, waiterCounts = []int{0}, []int{10}
+	}
 
 	for _, roles := range roleCounts {
 		for _, waiters := range waiterCounts {
@@ -285,9 +284,7 @@ func BenchmarkNotifyBroadcastWake(b *testing.B) {
 				var wg sync.WaitGroup
 				for range waiters {
 					w := newBenchWaiter(b, database, user, roles+1)
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						for {
 							select {
 							case <-stop:
@@ -296,7 +293,7 @@ func BenchmarkNotifyBroadcastWake(b *testing.B) {
 							}
 							w.Wait(ctx)
 						}
-					}()
+					})
 				}
 
 				b.ReportAllocs()

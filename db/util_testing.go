@@ -911,15 +911,14 @@ func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Conte
 }
 
 // PrincipalCountsForTest returns copies of keyCounts and principalCounts.  The counter pointers are
-// snapshotted under principalCountsLock - the lock that guards that map, and the only one that makes
-// iterating it safe against a concurrent first-use insert - and their values are then read under
-// tapNotifier.L, so the two returned maps are consistent with each other.  The two locks are never
-// held at the same time, keeping principalCountsLock a leaf lock (see changeListener).
+// snapshotted under principalCountsLock, and their values are then read under tapNotifier.L, so the
+// two returned maps are consistent with each other.  principalCounts is returned keyed in the same
+// channels.ID form keyCounts uses for principals, so the two can be compared key for key.
 func (listener *changeListener) PrincipalCountsForTest(_ testing.TB) (keyCounts, principalCounts map[channels.ID]uint64) {
-	counters := func() map[channels.ID]*atomic.Uint64 {
+	counters := func() map[string]*atomic.Uint64 {
 		listener.principalCountsLock.RLock()
 		defer listener.principalCountsLock.RUnlock()
-		snapshot := make(map[channels.ID]*atomic.Uint64, len(listener.principalCounts))
+		snapshot := make(map[string]*atomic.Uint64, len(listener.principalCounts))
 		maps.Copy(snapshot, listener.principalCounts)
 		return snapshot
 	}()
@@ -930,7 +929,7 @@ func (listener *changeListener) PrincipalCountsForTest(_ testing.TB) (keyCounts,
 	maps.Copy(keyCounts, listener.keyCounts)
 	principalCounts = make(map[channels.ID]uint64, len(counters))
 	for k, v := range counters {
-		principalCounts[k] = v.Load()
+		principalCounts[channels.NewID(k, principalDocCollectionIDForChannelID)] = v.Load()
 	}
 	return keyCounts, principalCounts
 }

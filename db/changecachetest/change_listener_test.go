@@ -215,10 +215,12 @@ func TestChangeWaiterWakeObservesUserCount(t *testing.T) {
 	user, err := authenticator.NewUser(username, "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err)
 	user.SetExplicitRoles(channels.AtSequence(base.SetOf("role1", "role2"), 1), 1)
+	require.NoError(t, authenticator.RebuildRoles(user))
 
 	userDb, err := db.GetDatabase(database.DatabaseContext, user)
 	require.NoError(t, err)
 	waiter := userDb.NewUserWaiter()
+	require.Len(t, waiter.UserKeysCopyForTest(t), 3, "user key + both role keys")
 
 	listener := database.GetMutationListener(t)
 	userKey := channels.NewID(database.MetadataKeys.UserKey(username), 0)
@@ -346,9 +348,7 @@ func TestUserWaiterConcurrentRefreshRace(t *testing.T) {
 	for i := range readers {
 		w := newWaiter()
 		slot := &observed[i]
-		rg.Add(1)
-		go func() {
-			defer rg.Done()
+		rg.Go(func() {
 			var last uint64
 			for {
 				select {
@@ -362,15 +362,13 @@ func TestUserWaiterConcurrentRefreshRace(t *testing.T) {
 				last = cur
 				slot.Store(cur)
 			}
-		}()
+		})
 	}
 
 	var pg sync.WaitGroup
 	for range parked {
 		w := newWaiter()
-		pg.Add(1)
-		go func() {
-			defer pg.Done()
+		pg.Go(func() {
 			for {
 				select {
 				case <-stop:
@@ -379,7 +377,7 @@ func TestUserWaiterConcurrentRefreshRace(t *testing.T) {
 				}
 				w.Wait(ctx)
 			}
-		}()
+		})
 	}
 
 	for range writes {
