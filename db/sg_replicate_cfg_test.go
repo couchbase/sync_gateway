@@ -1415,10 +1415,10 @@ func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
 			const replicationID = "rep"
 			created, err := mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{
 				ID:                 replicationID,
-				Remote:             base.Ptr("http://localhost:4984/remotedb"),
-				Direction:          base.Ptr(string(ActiveReplicatorTypePush)),
-				CollectionsEnabled: base.Ptr(!testDB.OnlyDefaultCollection()),
-				InitialState:       base.Ptr(tc.initialState),
+				Remote:             new("http://localhost:4984/remotedb"),
+				Direction:          new(string(ActiveReplicatorTypePush)),
+				CollectionsEnabled: new(!testDB.OnlyDefaultCollection()),
+				InitialState:       new(tc.initialState),
 			})
 			require.NoError(t, err)
 			require.True(t, created)
@@ -1456,7 +1456,7 @@ func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
 			}
 
 			// An upsert needs a stopped replication, and a replication that is starting is not stopped.
-			created, err = mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{ID: replicationID, Remote: base.Ptr("http://localhost:4984/otherdb")})
+			created, err = mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{ID: replicationID, Remote: new("http://localhost:4984/otherdb")})
 			if tc.active {
 				require.Error(t, err)
 				status, _ := base.ErrorAsHTTPStatus(err)
