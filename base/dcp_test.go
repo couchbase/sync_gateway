@@ -229,14 +229,13 @@ func TestCBGTIndexCreation(t *testing.T) {
 			cfg, err := NewCbgtCfgMem()
 			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName, nil)
-			assert.NoError(t, err)
-			defer context.RemoveFeedCredentials(tc.dbName)
+			require.NoError(t, err)
+			defer context.Stop(ctx)
 
 			// Start Manager
 			registerType := cbgt.NODE_DEFS_WANTED
 			err = context.Manager.Start(registerType)
 			require.NoError(t, err)
-			defer context.Manager.Stop()
 
 			// Define index type
 			configGroup := "configGroup" + t.Name()
@@ -312,8 +311,8 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName, nil)
-	assert.NoError(t, err)
-	defer context.RemoveFeedCredentials(testDbName)
+	require.NoError(t, err)
+	defer context.Stop(ctx)
 
 	// Start Manager
 	registerType := cbgt.NODE_DEFS_WANTED
@@ -393,8 +392,8 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName, nil)
-	assert.NoError(t, err)
-	defer context.RemoveFeedCredentials(unsafeTestDBName)
+	require.NoError(t, err)
+	defer context.Stop(ctx)
 
 	// Start Manager
 	registerType := cbgt.NODE_DEFS_WANTED
@@ -499,46 +498,51 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 		// Note: Would need to increase partition count if increasing test concurrency beyond 16
 		managerCount := 10
 
-		var managerWg sync.WaitGroup
-		managerWg.Add(managerCount)
+		indexName, err := GenerateCBGTIndexName(testDBName, feedType)
+		require.NoError(t, err)
+		opts := ShardedDCPOptions{
+			DBName:        testDBName,
+			Bucket:        bucket,
+			NumPartitions: DefaultImportPartitions,
+			IndexType:     indexType,
+			IndexName:     indexName,
+		}
+
+		var startedWg, stoppedWg sync.WaitGroup
+		startedWg.Add(managerCount)
 
 		for i := range managerCount {
-			go func(i int, terminatorChan chan struct{}) {
+			stoppedWg.Go(func() {
+				markStarted := sync.OnceFunc(startedWg.Done)
+				defer markStarted()
+
 				// random sleep to hit race conditions that depend on initial creation
 				time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
 
 				ctx := TestCtx(t)
 				managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
 				context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName, nil)
-				assert.NoError(t, err)
+				if !assert.NoError(t, err) {
+					return
+				}
+				defer context.Stop(ctx)
 
 				// StartManager starts the manager and creates the index
 				log.Printf("Starting manager for %s", managerUUID)
-				indexName, err := GenerateCBGTIndexName(testDBName, feedType)
-				require.NoError(t, err)
-				opts := ShardedDCPOptions{
-					DBName:        testDBName,
-					Bucket:        bucket,
-					NumPartitions: DefaultImportPartitions,
-					IndexType:     indexType,
-					IndexName:     indexName,
-				}
-				startErr := context.StartManager(ctx, opts)
-				require.NoError(t, startErr)
-				managerWg.Done()
+				assert.NoError(t, context.StartManager(ctx, opts))
+				markStarted()
 
 				// ensure all goroutines start the manager before we start closing them
 				select {
-				case <-terminatorChan:
-					context.Manager.Stop()
+				case <-terminator:
 				case <-time.After(20 * time.Second):
-					require.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
+					assert.Fail(t, fmt.Sprintf("manager goroutine not terminated: %v", managerUUID))
 				}
-
-			}(i, terminator)
+			})
 		}
-		managerWg.Wait()
+		startedWg.Wait()
 		close(terminator)
+		stoppedWg.Wait()
 	}
 }
 
@@ -582,7 +586,7 @@ func TestCreateCBGTIndexIdempotent(t *testing.T) {
 			// First node creates the index.
 			nodeA, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeA-"+t.Name(), testDBName, nil)
 			require.NoError(t, err)
-			defer nodeA.Manager.Stop()
+			defer nodeA.Stop(ctx)
 			require.NoError(t, nodeA.StartManager(ctx, opts))
 
 			_, indexDefsMap, err := nodeA.Manager.GetIndexDefs(true)
@@ -594,7 +598,7 @@ func TestCreateCBGTIndexIdempotent(t *testing.T) {
 			// A second node joins with an identical configuration - must not rotate the index UUID.
 			nodeB, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeB-"+t.Name(), testDBName, nil)
 			require.NoError(t, err)
-			defer nodeB.Manager.Stop()
+			defer nodeB.Stop(ctx)
 			require.NoError(t, nodeB.StartManager(ctx, opts))
 
 			_, indexDefsMap, err = nodeB.Manager.GetIndexDefs(true)
@@ -663,7 +667,7 @@ func TestCBGTPersistsParamsVerbatim(t *testing.T) {
 
 	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
 	require.NoError(t, err)
-	defer node.Manager.Stop()
+	defer node.Stop(ctx)
 	require.NoError(t, node.StartManager(ctx, opts))
 
 	_, indexDefsMap, err := node.Manager.GetIndexDefs(true)
@@ -685,10 +689,12 @@ func TestCBGTPersistsParamsVerbatim(t *testing.T) {
 }
 
 // leakyCfg wraps a cbgt.Cfg and can be told to fail the next Get call for a given key, to
-// simulate a transient error reading cbgt's persisted metadata (e.g. its index defs document).
+// simulate a transient error reading cbgt's persisted metadata (e.g. its index defs document),
+// or to fail every Set call for a given key.
 type leakyCfg struct {
 	cbgt.Cfg
 	failNextGetKey atomic.Pointer[string]
+	failSetKey     atomic.Pointer[string]
 }
 
 func (c *leakyCfg) Get(key string, cas uint64) ([]byte, uint64, error) {
@@ -702,6 +708,17 @@ func (c *leakyCfg) Get(key string, cas uint64) ([]byte, uint64, error) {
 
 func (c *leakyCfg) failNextGet(key string) {
 	c.failNextGetKey.Store(&key)
+}
+
+func (c *leakyCfg) Set(key string, val []byte, cas uint64) (uint64, error) {
+	if failKey := c.failSetKey.Load(); failKey != nil && *failKey == key {
+		return 0, errors.New("simulated Cfg write error")
+	}
+	return c.Cfg.Set(key, val, cas)
+}
+
+func (c *leakyCfg) failSets(key string) {
+	c.failSetKey.Store(&key)
 }
 
 // TestCreateCBGTIndexTransientReadErrorTolerated verifies that a transient error reading cbgt's
@@ -740,7 +757,7 @@ func TestCreateCBGTIndexTransientReadErrorTolerated(t *testing.T) {
 
 	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
 	require.NoError(t, err)
-	defer node.Manager.Stop()
+	defer node.Stop(ctx)
 	require.NoError(t, node.StartManager(ctx, opts))
 
 	_, indexDefsMap, err := node.Manager.GetIndexDefs(true)
@@ -756,6 +773,71 @@ func TestCreateCBGTIndexTransientReadErrorTolerated(t *testing.T) {
 	_, indexDefsMap, err = node.Manager.GetIndexDefs(true)
 	require.NoError(t, err)
 	assert.Equal(t, firstUUID, indexDefsMap[indexName].UUID, "index should be unchanged after tolerating the transient read error")
+}
+
+// TestStartShardedDCPFeedCleanupOnError verifies that StartShardedDCPFeed stops the cbgt context, which removes
+// its feed credentials, when it fails after the cbgt manager is created.
+func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
+	TestRequiresCbgt(t)
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	dataStore := bucket.GetSingleDataStore()
+	indexType := CBGTIndexTypeSyncGatewayImport + "configGroup" + t.Name()
+	cbgt.RegisterPIndexImplType(indexType, &cbgt.PIndexImplType{})
+
+	shardedDCPOptions := func(t *testing.T, dbName string, cfg cbgt.Cfg, heartbeater Heartbeater) ShardedDCPOptions {
+		indexName, err := GenerateCBGTIndexName(dbName, ShardedDCPFeedTypeImport)
+		require.NoError(t, err)
+		collections := []string{dataStore.CollectionName()}
+		return ShardedDCPOptions{
+			Bucket:      bucket,
+			Cfg:         cfg,
+			Collections: CollectionNames{dataStore.ScopeName(): collections},
+			DBName:      dbName,
+			DestKey:     DestKey(dbName, dataStore.ScopeName(), collections, ShardedDCPFeedTypeImport),
+			Heartbeater: heartbeater,
+			IndexName:   indexName,
+			IndexType:   indexType,
+			UUID:        "node-" + dbName,
+			Datastore:   dataStore,
+			FeedType:    ShardedDCPFeedTypeImport,
+		}
+	}
+
+	// The heartbeater is not started, so registerHeartbeatListener fails if StartManager succeeds.
+	newUnstartedHeartbeater := func(t *testing.T, dbName string) Heartbeater {
+		heartbeater, err := NewCouchbaseHeartbeater(dataStore, "heartbeat-"+dbName, "node-"+dbName)
+		require.NoError(t, err)
+		return heartbeater
+	}
+
+	t.Run("StartManager error", func(t *testing.T) {
+		dbName := "startManagerErrorDB"
+		baseCfg, err := NewCbgtCfgMem()
+		require.NoError(t, err)
+		cfg := &leakyCfg{Cfg: baseCfg}
+		cfg.failSets(cbgt.INDEX_DEFS_KEY)
+
+		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
+		require.ErrorContains(t, err, "simulated Cfg write error")
+		require.Nil(t, cbgtContext)
+		_, found := getCbgtCredentials(dbName)
+		require.False(t, found)
+	})
+
+	t.Run("registerHeartbeatListener error", func(t *testing.T) {
+		dbName := "heartbeatListenerErrorDB"
+		cfg, err := NewCbgtCfgMem()
+		require.NoError(t, err)
+
+		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
+		require.ErrorContains(t, err, "Heartbeater must be started before registering listeners")
+		require.Nil(t, cbgtContext)
+		_, found := getCbgtCredentials(dbName)
+		require.False(t, found)
+	})
 }
 
 // TestCreateCBGTIndexUpdateRaceWithConcurrentDelete documents a known, currently-unfixed gap
@@ -800,7 +882,7 @@ func TestCreateCBGTIndexUpdateRaceWithConcurrentDelete(t *testing.T) {
 
 	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
 	require.NoError(t, err)
-	defer node.Manager.Stop()
+	defer node.Stop(ctx)
 	require.NoError(t, node.StartManager(ctx, opts))
 
 	// Capture previousIndexUUID and existingDef exactly as createCBGTIndex does on a node

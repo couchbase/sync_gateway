@@ -692,6 +692,7 @@ func registerHeartbeatListener(ctx context.Context, heartbeater Heartbeater, cbg
 
 	err = heartbeater.RegisterListener(shardedDCPHeartbeatListener)
 	if err != nil {
+		shardedDCPHeartbeatListener.Stop()
 		return nil, err
 	}
 
