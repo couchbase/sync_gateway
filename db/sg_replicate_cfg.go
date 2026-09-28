@@ -1628,7 +1628,7 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 					ID:     replicationID,
 					Status: ReplicationStateUnassigned,
 				}
-			} else if remoteCfg.TargetState == ReplicationStateRunning {
+			} else if remoteCfg.TargetState == "" || remoteCfg.TargetState == ReplicationStateRunning {
 				// Nothing is replicating until a replicator says so.
 				status = &ReplicationStatus{
 					ID:     replicationID,
@@ -1658,12 +1658,16 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 	if !options.IncludeError && status.Status == ReplicationStateError {
 		return nil, nil
 	}
-	// A replication on its way to running is still active.
-	if options.ActiveOnly && status.Status != ReplicationStateRunning && status.Status != ReplicationStateStarting {
+	if options.ActiveOnly && !isActiveReplicationState(status.Status) {
 		return nil, nil
 	}
 
 	return status, nil
+}
+
+// isActiveReplicationState returns true for a replication that is running or on its way to running.
+func isActiveReplicationState(state string) bool {
+	return state == ReplicationStateRunning || state == ReplicationStateStarting || state == ReplicationStateReconnecting
 }
 
 // PutReplicationStatus updates the state of a replication.

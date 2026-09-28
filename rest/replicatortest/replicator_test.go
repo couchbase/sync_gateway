@@ -1453,6 +1453,47 @@ func TestGetStatusWithReplication(t *testing.T) {
 	require.Len(t, status.Databases["db"].ReplicationStatus, 0)
 }
 
+// TestReplicationStatusActiveOnly asserts that activeOnly=true returns a replication that is reconnecting
+// and leaves out one that is stopped.
+func TestReplicationStatusActiveOnly(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+	defer rt.Close()
+
+	// A closed server refuses connections, which keeps the replicator reconnecting.
+	unreachable := httptest.NewServer(http.NotFoundHandler())
+	unreachable.Close()
+	remoteURL := unreachable.URL + "/db"
+
+	const (
+		reconnectingID = "reconnecting"
+		stoppedID      = "stopped"
+	)
+	for id, initialState := range map[string]string{reconnectingID: db.ReplicationStateRunning, stoppedID: db.ReplicationStateStopped} {
+		replicationConfig := db.ReplicationConfig{
+			ID:                 id,
+			Remote:             remoteURL,
+			Direction:          db.ActiveReplicatorTypePull,
+			Continuous:         true,
+			InitialState:       initialState,
+			CollectionsEnabled: !rt.GetDatabase().OnlyDefaultCollection(),
+		}
+		response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/"+id, rest.MarshalConfig(t, replicationConfig))
+		rest.RequireStatus(t, response, http.StatusCreated)
+	}
+	rt.WaitForReplicationStatus(reconnectingID, db.ReplicationStateReconnecting)
+	rt.WaitForReplicationStatus(stoppedID, db.ReplicationStateStopped)
+
+	statusIDs := func(queryString string) []string {
+		var ids []string
+		for _, status := range rt.GetReplicationStatuses(queryString) {
+			ids = append(ids, status.ID)
+		}
+		return ids
+	}
+	require.ElementsMatch(t, []string{reconnectingID, stoppedID}, statusIDs(""))
+	require.ElementsMatch(t, []string{reconnectingID}, statusIDs("?activeOnly=true"))
+}
+
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
