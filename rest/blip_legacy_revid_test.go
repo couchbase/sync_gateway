@@ -1304,6 +1304,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			require.Equal(t, sgVersion1, cblVersion1.RevTreeID)
 			sgVersion2, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"_rev": sgVersion1, "action": "update"})
 			btcRunner.StartPull(client.id)
+			defer btcRunner.UnsubPullChanges(client.id)
 			btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: sgVersion2})
 		})
 		t.Run("push CBL legacy rev 2-bcd, both sides have 1-abc", func(t *testing.T) {
@@ -1316,6 +1317,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			cblVersion2 := btcRunner.AddRevTreeRev(client.id, docID, "2-bcd", &cblVersion1, []byte(`{"action": "update"}`))
 
 			btcRunner.StartPush(client.id)
+			defer btcRunner.StopPush(client.id)
 			rt.WaitForVersion(docID, cblVersion2)
 		})
 	})
