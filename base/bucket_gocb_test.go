@@ -3603,3 +3603,37 @@ func TestReadDoesNotGoToFallbackWhenMigrationComplete(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, IsDocNotFoundError(err))
 }
+
+// TestRemoveXattrsAndDeleteSubDocPathsErrors checks that RemoveXattrs and DeleteSubDocPaths return the error from
+// the underlying write rather than success.
+func TestRemoveXattrsAndDeleteSubDocPathsErrors(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	const xattrName = "_testxattr"
+	writeDoc := func(t *testing.T) (key string, cas uint64) {
+		key = t.Name()
+		cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: []byte(`{"seq":1}`)}, nil, nil)
+		require.NoError(t, err)
+		return key, cas
+	}
+
+	t.Run("RemoveXattrs stale cas on live doc", func(t *testing.T) {
+		key, cas := writeDoc(t)
+		err := dataStore.RemoveXattrs(ctx, key, []string{xattrName}, cas-1)
+		require.True(t, IsCasMismatch(err), "expected cas mismatch error, got %v", err)
+	})
+	t.Run("RemoveXattrs stale cas on tombstone", func(t *testing.T) {
+		key, cas := writeDoc(t)
+		cas, err := dataStore.Remove(ctx, key, cas)
+		require.NoError(t, err)
+		err = dataStore.RemoveXattrs(ctx, key, []string{xattrName}, cas-1)
+		require.True(t, IsCasMismatch(err), "expected cas mismatch error, got %v", err)
+	})
+	t.Run("DeleteSubDocPaths missing doc", func(t *testing.T) {
+		err := dataStore.DeleteSubDocPaths(ctx, t.Name(), xattrName)
+		require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+	})
+}
