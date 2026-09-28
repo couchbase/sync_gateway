@@ -15,7 +15,6 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1379,45 +1378,59 @@ func TestSGReplicateManagerStopDrainsClusterUpdates(t *testing.T) {
 // initialized its replicator yet is reported as starting rather than running.  Nothing has connected to the
 // remote at this point, and callers waiting for running would otherwise proceed while a start is still to come.
 func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
-	testDB, ctx := SetupTestDB(t)
-	defer testDB.Close(ctx)
-
 	const (
 		localNodeUUID = "localNode"
 		otherNodeUUID = "otherNode"
 	)
 
-	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testDB.CfgSG)
-	require.NoError(t, err)
-	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
-	require.NoError(t, mgr.RegisterNode(otherNodeUUID))
-
 	testCases := []struct {
 		name           string
-		assignedNode   string
-		targetState    string
+		otherNodeOwns  bool
+		initialState   string
 		expectedStatus string
 		active         bool
 	}{
-		{name: "running", assignedNode: localNodeUUID, targetState: ReplicationStateRunning, expectedStatus: ReplicationStateStarting, active: true},
-		{name: "stopped", assignedNode: localNodeUUID, targetState: ReplicationStateStopped, expectedStatus: ReplicationStateStopped, active: false},
-		// startup treats an unset target state as running
-		{name: "unset", assignedNode: localNodeUUID, targetState: "", expectedStatus: ReplicationStateStarting, active: true},
-		{name: "other node running", assignedNode: otherNodeUUID, targetState: ReplicationStateRunning, expectedStatus: ReplicationStateStarting, active: true},
-		{name: "other node stopped", assignedNode: otherNodeUUID, targetState: ReplicationStateStopped, expectedStatus: ReplicationStateStopped, active: false},
+		{name: "running", initialState: ReplicationStateRunning, expectedStatus: ReplicationStateStarting, active: true},
+		{name: "stopped", initialState: ReplicationStateStopped, expectedStatus: ReplicationStateStopped, active: false},
+		{name: "other node running", otherNodeOwns: true, initialState: ReplicationStateRunning, expectedStatus: ReplicationStateStarting, active: true},
+		{name: "other node stopped", otherNodeOwns: true, initialState: ReplicationStateStopped, expectedStatus: ReplicationStateStopped, active: false},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			replicationID := "rep_" + strings.ReplaceAll(tc.name, " ", "_")
-			require.NoError(t, mgr.AddReplication(&ReplicationCfg{
-				ReplicationConfig: ReplicationConfig{
-					ID:        replicationID,
-					Direction: ActiveReplicatorTypePush,
-					Remote:    "http://localhost:4984/remotedb",
-				},
-				AssignedNode: tc.assignedNode,
-				TargetState:  tc.targetState,
-			}))
+			testDB, ctx := SetupTestDB(t)
+			defer testDB.Close(ctx)
+
+			mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testDB.CfgSG)
+			require.NoError(t, err)
+
+			// The first node to join owns the replication, and a second node joining does not move it.
+			expectedNode := localNodeUUID
+			if tc.otherNodeOwns {
+				expectedNode = otherNodeUUID
+				require.NoError(t, mgr.RegisterNode(otherNodeUUID))
+			} else {
+				require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+			}
+
+			const replicationID = "rep"
+			created, err := mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{
+				ID:                 replicationID,
+				Remote:             base.Ptr("http://localhost:4984/remotedb"),
+				Direction:          base.Ptr(string(ActiveReplicatorTypePush)),
+				CollectionsEnabled: base.Ptr(!testDB.OnlyDefaultCollection()),
+				InitialState:       base.Ptr(tc.initialState),
+			})
+			require.NoError(t, err)
+			require.True(t, created)
+
+			if tc.otherNodeOwns {
+				require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+			} else {
+				require.NoError(t, mgr.RegisterNode(otherNodeUUID))
+			}
+			cluster, err := mgr.GetSGRCluster()
+			require.NoError(t, err)
+			require.Equal(t, expectedNode, cluster.Replications[replicationID].AssignedNode)
 
 			// No RefreshReplicationCfg, so no replicator exists and no status has been published.
 			require.Nil(t, mgr.GetActiveReplicator(replicationID))
@@ -1443,7 +1456,7 @@ func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
 			}
 
 			// An upsert needs a stopped replication, and a replication that is starting is not stopped.
-			created, err := mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{ID: replicationID, Remote: base.Ptr("http://localhost:4984/otherdb")})
+			created, err = mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{ID: replicationID, Remote: base.Ptr("http://localhost:4984/otherdb")})
 			if tc.active {
 				require.Error(t, err)
 				status, _ := base.ErrorAsHTTPStatus(err)
@@ -1456,8 +1469,9 @@ func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
 	}
 }
 
-// TestReplicationStatusActiveOnlyForReplicatorStates asserts which states of a local replicator activeOnly includes.
-func TestReplicationStatusActiveOnlyForReplicatorStates(t *testing.T) {
+// TestReplicationStatusUnsetTargetState asserts that a cfg without a target state reports like a running one,
+// since startup treats it as running. No API writes this, so the cfg is written directly.
+func TestReplicationStatusUnsetTargetState(t *testing.T) {
 	testDB, ctx := SetupTestDB(t)
 	defer testDB.Close(ctx)
 
@@ -1471,43 +1485,20 @@ func TestReplicationStatusActiveOnlyForReplicatorStates(t *testing.T) {
 	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
 	require.NoError(t, mgr.AddReplication(&ReplicationCfg{
 		ReplicationConfig: ReplicationConfig{
-			ID:                 replicationID,
-			Direction:          ActiveReplicatorTypePush,
-			Remote:             "http://localhost:4984/remotedb",
-			CollectionsEnabled: !testDB.OnlyDefaultCollection(),
+			ID:        replicationID,
+			Direction: ActiveReplicatorTypePush,
+			Remote:    "http://localhost:4984/remotedb",
 		},
 		AssignedNode: localNodeUUID,
-		TargetState:  ReplicationStateStopped,
 	}))
-	// Initializes the replicator without starting it, so the test controls its state.
-	require.NoError(t, mgr.RefreshReplicationCfg(ctx))
-	replicator := mgr.GetActiveReplicator(replicationID)
-	require.NotNil(t, replicator)
 
-	testCases := []struct {
-		state  string
-		active bool
-	}{
-		{state: ReplicationStateRunning, active: true},
-		{state: ReplicationStateStarting, active: true},
-		{state: ReplicationStateReconnecting, active: true},
-		{state: ReplicationStateStopped, active: false},
-		{state: ReplicationStateError, active: false},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.state, func(t *testing.T) {
-			replicator.Push.setState(tc.state)
+	status, err := mgr.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
+	require.NoError(t, err)
+	require.Equal(t, ReplicationStateStarting, status.Status)
 
-			options := DefaultReplicationStatusOptions()
-			options.ActiveOnly = true
-			status, err := mgr.GetReplicationStatus(ctx, replicationID, options)
-			require.NoError(t, err)
-			if tc.active {
-				require.NotNil(t, status)
-				require.Equal(t, tc.state, status.Status)
-			} else {
-				require.Nil(t, status)
-			}
-		})
-	}
+	options := DefaultReplicationStatusOptions()
+	options.ActiveOnly = true
+	status, err = mgr.GetReplicationStatus(ctx, replicationID, options)
+	require.NoError(t, err)
+	require.NotNil(t, status)
 }
