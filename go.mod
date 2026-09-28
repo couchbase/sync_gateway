@@ -7,12 +7,12 @@ require (
 	github.com/KimMachineGun/automemlimit v1.0.0
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/couchbase/cbgt v1.4.15-0.20260520122852-6e34ff79a0e6
+	github.com/couchbase/cbgt v1.4.15-0.20260925074949-0c7e969a5c41
 	github.com/couchbase/clog v0.1.0
 	github.com/couchbase/go-blip v0.0.0-20260106113615-002c1b20b67a
 	github.com/couchbase/gocb/v2 v2.12.4
 	github.com/couchbase/gocbcore/v10 v10.9.3
-	github.com/couchbase/gomemcached v0.2.1
+	github.com/couchbase/gomemcached v0.3.3
 	github.com/couchbase/sg-bucket v0.0.0-20260714130240-329df715dd61
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
@@ -48,12 +48,12 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/couchbase/blance v0.1.6 // indirect
-	github.com/couchbase/cbauth v0.1.13 // indirect
+	github.com/couchbase/cbauth v0.1.23-0.20260807235904-eda1f2edba77 // indirect
 	github.com/couchbase/go-couchbase v0.1.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.5-0.20260107140814-1c3a03f888f8 // indirect
 	github.com/couchbase/goprotostellar v1.0.6-0.20260407143512-d7af25156dcc // indirect
-	github.com/couchbase/goutils v0.1.2 // indirect
-	github.com/couchbase/tools-common/cloud/v8 v8.1.3 // indirect
+	github.com/couchbase/goutils v0.3.0 // indirect
+	github.com/couchbase/tools-common/cloud/v8 v8.1.4 // indirect
 	github.com/couchbase/tools-common/fs v1.0.3 // indirect
 	github.com/couchbase/tools-common/testing v1.0.3 // indirect
 	github.com/couchbase/tools-common/types/v2 v2.2.2 // indirect
@@ -67,6 +67,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/addlicense v1.2.0 // indirect
+	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/pprof v0.0.0-20260709232956-b9395ee17fa0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
