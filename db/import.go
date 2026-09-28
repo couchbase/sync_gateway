@@ -34,7 +34,6 @@ const (
 type importDocOptions struct {
 	expiry   *uint32
 	isDelete bool
-	revSeqNo uint64
 	mode     ImportMode
 }
 
@@ -65,7 +64,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		Cas:    cas,
 	}
 
-	return db.importDoc(ctx, docid, body, importOpts.expiry, importOpts.isDelete, importOpts.revSeqNo, existingBucketDoc, importOpts.mode)
+	return db.importDoc(ctx, docid, body, importOpts.expiry, importOpts.isDelete, existingBucketDoc, importOpts.mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
@@ -110,8 +109,13 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	if err != nil {
 		return nil, err
 	}
+	if existingBucketDoc.Xattrs != nil {
+		// importDoc reads the revSeqNo off the document like any other xattr, so the snapshot has to carry
+		// the one this document was loaded with
+		existingBucketDoc.Xattrs[base.VirtualXattrRevSeqNo] = marshalRevSeqNo(existingDoc.RevSeqNo)
+	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(ctx), importOpts.expiry, importOpts.isDelete, importOpts.revSeqNo, existingBucketDoc, importOpts.mode)
+	return db.importDoc(ctx, docid, existingDoc.Body(ctx), importOpts.expiry, importOpts.isDelete, existingBucketDoc, importOpts.mode)
 }
 
 // Import document
@@ -121,7 +125,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	isDelete - whether the document to be imported is a delete
 //	existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
-func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, revNo uint64, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
+func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
@@ -273,7 +277,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 		}
 
-		shouldGenerateNewRev := bodyChanged || len(existingDoc.Xattrs[db.UserXattrKey()]) == 0
+		shouldGenerateNewRev := bodyChanged || len(doc.rawUserXattr) == 0
 
 		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.
@@ -325,7 +329,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If this is a metadata-only update, set metadataOnlyUpdate based on old doc's cas and mou
 		if metadataOnlyUpdate {
-			newDoc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, revNo, doc.MetadataOnlyUpdate)
+			newDoc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil

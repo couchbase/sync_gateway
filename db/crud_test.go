@@ -2958,12 +2958,11 @@ func TestWritePathRepairMouChain(t *testing.T) {
 
 	// the SDK write is the last real body mutation
 	require.NoError(t, collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"sdk":true}`)))
-	sdkWriteRevSeqNo, sdkWriteCas, err := collection.getRevSeqNo(ctx, docID)
-	require.NoError(t, err)
+	sdkWriteRevSeqNo, sdkWriteCas := docRevSeqNoAndCas(t, collection, docID)
 	dbCtx.FlushRevisionCacheForTest()
 
-	// a write on top: the callback imports, bails to a CAS retry, then repairs on the retry
-	_, _, err = collection.Put(ctx, docID, Body{"fromSG": true})
+	// a write on top: the callback imports, then repairs the imported document in the same callback
+	_, _, err := collection.Put(ctx, docID, Body{"fromSG": true})
 	require.Error(t, err, "a Put with no matching rev against an existing document is a conflict")
 
 	_, casAfterRepair, err := collection.dataStore.GetRaw(ctx, docID)
