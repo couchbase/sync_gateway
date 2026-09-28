@@ -479,7 +479,6 @@ func TestHLVImport(t *testing.T) {
 				isDelete: false,
 				expiry:   nil,
 				mode:     ImportFromFeed,
-				revSeqNo: revSeqNo,
 			}
 			_, err = collection.ImportDocRaw(ctx, docID, standardBody, existingXattrs, importOpts, preImportCas)
 			require.NoError(t, err, "import error")
@@ -594,9 +593,15 @@ func TestRestampVersionCASSkipsConcurrentWrite(t *testing.T) {
 func TestRestampVersionCASMou(t *testing.T) {
 	testCases := []struct {
 		name string
-		// write makes the body write whose version-CAS correction is under test, over the document left by
-		// setup at revID.
-		write       func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) *Document
+		// prepare runs after the document's initial revisions and before the state _mou is measured
+		// against is captured, for a case whose write under test needs the document left in some other
+		// state first.
+		prepare func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string)
+		// write makes the write whose version-CAS correction is under test, over the document left at revID.
+		write func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) *Document
+		// hasPriorMou is true when prepare leaves a metadata-only update on the document, so the write
+		// under test is not the first mutation _mou has described.
+		hasPriorMou bool
 		isTombstone bool
 	}{
 		{
@@ -616,6 +621,23 @@ func TestRestampVersionCASMou(t *testing.T) {
 			},
 			isTombstone: true,
 		},
+		{
+			// The document's most recent mutation is already a metadata-only update, so the re-stamp has to
+			// start a new chain from the write being corrected rather than carry that one's values forward.
+			name: "over an earlier metadata-only update",
+			prepare: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				// resync only writes when the sync function changes the document's channels
+				_, err := collection.UpdateSyncFun(ctx, `function(doc){channel(doc.chan); channel("resynced");}`)
+				require.NoError(t, err)
+				require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+			},
+			write: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, revID string) *Document {
+				_, doc, err := collection.Put(ctx, docID, Body{BodyRev: revID, "value": 5678, "chan": "B"})
+				require.NoError(t, err)
+				return doc
+			},
+			hasPriorMou: true,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -634,10 +656,13 @@ func TestRestampVersionCASMou(t *testing.T) {
 			require.NoError(t, err)
 			rev2ID, _, err := collection.Put(ctx, docID, Body{BodyRev: rev1ID, "value": 1234, "chan": "B"})
 			require.NoError(t, err)
+			if testCase.prepare != nil {
+				testCase.prepare(t, ctx, collection, docID)
+			}
 
 			// the state before the write under test - _mou must end up naming a mutation after this one
 			_, mou, priorCas := getSyncAndMou(t, collection, docID)
-			require.Nil(t, mou, "a write of the body should not leave a metadata-only update behind")
+			require.Equal(t, testCase.hasPriorMou, mou != nil, "the document is not in the state this case is testing")
 			priorRevSeqNo := docRevSeqNo(t, collection, docID)
 
 			retryCount := dbc.DbStats.Database().HLVVersionCASRetryCount

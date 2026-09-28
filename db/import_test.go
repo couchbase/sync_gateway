@@ -152,8 +152,7 @@ func TestOnDemandImport(t *testing.T) {
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 		writeCas, err := collection.dataStore.WriteCas(ctx, getKey, 0, 0, bodyBytes, 0)
 		require.NoError(t, err)
-		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, getKey)
-		require.NoError(t, err)
+		startingRevSeqNo := docRevSeqNo(t, collection, getKey)
 
 		// fetch the document to trigger on-demand import
 		doc, err := collection.GetDocument(ctx, getKey, DocUnmarshalAll)
@@ -184,8 +183,7 @@ func TestOnDemandImport(t *testing.T) {
 					ID: writeKey,
 				}
 				newDoc.UpdateBodyBytes([]byte(`{"foo": "baz"}`))
-				startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, writeKey)
-				require.NoError(t, err)
+				startingRevSeqNo := docRevSeqNo(t, collection, writeKey)
 
 				_, rawBucketDoc, err := collection.GetDocumentWithRaw(ctx, writeKey, DocUnmarshalSync)
 				require.NoError(t, err)
@@ -286,8 +284,7 @@ func TestOnDemandImport(t *testing.T) {
 		// Capture revSeqNo before import — it must appear as _mou.pRev after import.
 		// Without the fix, GetDocSyncData fetches without _revseqno, so doc.RevSeqNo=0
 		// and _mou.pRev is written as 0 instead of the correct value.
-		startingRevSeqNo, _, err := collection.getRevSeqNo(ctx, docKey)
-		require.NoError(t, err)
+		startingRevSeqNo := docRevSeqNo(t, collection, docKey)
 
 		// GetDocSyncData detects a non-SG-write and triggers on-demand import.
 		_, err = collection.GetDocSyncData(ctx, docKey)
@@ -538,7 +535,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, 0, existingBucketDoc, ImportOnDemand)
+			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -674,8 +671,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
-			_, existingBucketDoc, err = collection.GetDocWithXattrs(ctx, testcase.docname, DocUnmarshalAll)
-			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+			existingBucketDoc = getBucketDocument(t, collection.DatabaseCollection, testcase.docname)
 
 			importD := `{"new":"Val"}`
 			bodyD := Body{}
@@ -684,7 +680,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 			runOnce = true
 			// Trigger import
-			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, 0, existingBucketDoc, ImportOnDemand)
+			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -752,7 +748,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 1, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
 	assert.Equal[error](t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -773,7 +769,6 @@ func TestImportNullDocRaw(t *testing.T) {
 	importOpts := importDocOptions{
 		isDelete: false,
 		expiry:   &exp,
-		revSeqNo: 1,
 		mode:     ImportFromFeed,
 	}
 	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, importOpts, 1)
@@ -864,29 +859,20 @@ func TestImportStampClusterUUID(t *testing.T) {
 	_, err := collection.dataStore.Add(ctx, key, 0, bodyBytes)
 	require.NoError(t, err)
 
-	_, cas, err := collection.dataStore.GetRaw(ctx, key)
-	require.NoError(t, err)
-
-	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.VirtualXattrRevSeqNo})
-	require.NoError(t, err)
-	docXattr, ok := xattrs[base.VirtualXattrRevSeqNo]
-	require.True(t, ok)
-	revSeqNo := RetrieveDocRevSeqNo(t, docXattr)
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
 
 	body := Body{}
 	err = body.Unmarshal(rawDocNoMeta())
 	require.NoError(t, err)
-	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes, Cas: cas}
+	existingDoc := getBucketDocument(t, collection.DatabaseCollection, key)
 
-	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, revSeqNo, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
 		require.Len(t, importedDoc.ClusterUUID, 32)
 	}
 
-	xattrs, _, err = collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
+	xattrs, _, err := collection.dataStore.GetXattrs(ctx, key, []string{base.SyncXattrName})
 	require.NoError(t, err)
 	require.Contains(t, maps.Keys(xattrs), base.SyncXattrName)
 	var xattr map[string]any
@@ -1693,9 +1679,14 @@ func TestImportTombstoneAttachmentMetadata(t *testing.T) {
 	testCases := []struct {
 		name      string
 		unmigrate bool
+		// resurrect writes a body back through the SDK after the tombstone has been loaded, so the
+		// import's CAS-guarded write loses to that mutation and re-targets at it. The import is still
+		// carrying the tombstone's isDelete, which it does not re-derive.
+		resurrect bool
 	}{
 		{name: "migrated attachment metadata", unmigrate: false},
 		{name: "unmigrated attachment metadata", unmigrate: true},
+		{name: "resurrected before the import lands", resurrect: true},
 	}
 
 	for _, tc := range testCases {
@@ -1732,12 +1723,28 @@ func TestImportTombstoneAttachmentMetadata(t *testing.T) {
 			require.True(t, existingDoc.Deleted, "SDK delete should leave a body-less document")
 			require.NotEmpty(t, existingDoc.Attachments(), "attachment metadata should be visible on the loaded tombstone")
 
-			importedDoc, err := collection.ImportDoc(ctx, docID, existingDoc, importDocOptions{ // nolint:staticcheck
+			if tc.resurrect {
+				require.NoError(t, ds.Set(ctx, docID, 0, nil, []byte(`{"value": "resurrected"}`)))
+				// recreating the document does not carry the tombstone's xattrs over, which is what makes
+				// the re-targeted import below safe
+				_, _, err := ds.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+				require.True(t, base.IsXattrNotFoundError(err), "a resurrected document must not keep the tombstone's sync metadata, got %v", err)
+			}
+
+			importedDoc, err := collection.ImportDoc(ctx, docID, existingDoc, importDocOptions{
 				isDelete: true,
 				mode:     ImportOnDemand,
-				revSeqNo: existingDoc.RevSeqNo,
 			})
 			require.NoError(t, err)
+			if tc.resurrect {
+				// with no sync metadata to find, the re-targeted import is cancelled as an SG purge rather
+				// than applying the tombstone's isDelete to a document that is live again
+				require.Nil(t, importedDoc, "a re-targeted import of a resurrected document has to be cancelled")
+				body, _, err := ds.GetRaw(ctx, docID)
+				require.NoError(t, err)
+				require.JSONEq(t, `{"value": "resurrected"}`, string(body), "the resurrected body must survive the import")
+				return
+			}
 			require.True(t, importedDoc.IsDeleted(), "import of an SDK delete should produce a tombstone revision")
 
 			// the pre-4.0 location must not be left populated by the import
@@ -1836,9 +1843,17 @@ func attachmentMetaFromGlobalXattr(t *testing.T, rawGlobalSync []byte) Attachmen
 // docRevSeqNo returns the document's current server revision sequence number.
 func docRevSeqNo(t *testing.T, collection *DatabaseCollectionWithUser, docID string) uint64 {
 	t.Helper()
-	xattrs, _, err := collection.dataStore.GetXattrs(base.TestCtx(t), docID, []string{base.VirtualXattrRevSeqNo})
+	revSeqNo, _ := docRevSeqNoAndCas(t, collection, docID)
+	return revSeqNo
+}
+
+// docRevSeqNoAndCas returns the document's current server revision sequence number, along with the cas it
+// was read at.
+func docRevSeqNoAndCas(t *testing.T, collection *DatabaseCollectionWithUser, docID string) (revSeqNo, cas uint64) {
+	t.Helper()
+	xattrs, cas, err := collection.dataStore.GetXattrs(base.TestCtx(t), docID, []string{base.VirtualXattrRevSeqNo})
 	require.NoError(t, err)
-	return RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])
+	return RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]), cas
 }
 
 // mouWritePath is one code path that persists a metadata-only update: a mutation that changes a document's
@@ -2010,6 +2025,239 @@ func TestMetadataOnlyUpdateWritePaths(t *testing.T) {
 	}
 }
 
+// TestOnDemandImportMouRetargetedByConcurrentWrite covers an on-demand import that loses a CAS race and
+// re-targets at the newer mutation, so _mou has to name that mutation rather than the snapshot's.
+func TestOnDemandImportMouRetargetedByConcurrentWrite(t *testing.T) {
+	dbc, ctx := SetupTestDB(t)
+	defer dbc.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+	docID := SafeDocumentName(t, t.Name())
+	_, _, err := collection.Put(ctx, docID, Body{"value": 1234})
+	require.NoError(t, err)
+	_, _, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(t, err)
+
+	// the external write the import is triggered for, and the snapshot of it the caller hands to the import
+	cas, err = collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"value": "written outside Sync Gateway"}`), 0)
+	require.NoError(t, err)
+	value, xattrs, snapshotCas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName, base.VvXattrName, base.MouXattrName, base.VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	require.Equal(t, cas, snapshotCas)
+
+	// a second external write lands before the import's write, so the import re-targets at this mutation.
+	// It is the last write to the body, and the one _mou then has to point back at.
+	bodyCas, err := collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"value": "written outside Sync Gateway again"}`), 0)
+	require.NoError(t, err)
+	bodyRevSeqNo := docRevSeqNo(t, collection, docID)
+
+	importOpts := importDocOptions{
+		mode: ImportOnDemand,
+	}
+	_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importOpts, snapshotCas)
+	require.NoError(t, err)
+
+	_, mou, importCas := getSyncAndMou(t, collection, docID)
+	require.NotNil(t, mou, "the import has to record a metadata-only update")
+	require.Equal(t, base.CasToString(importCas), mou.HexCAS, "_mou.cas has to name the import, so it is not imported again as an external write")
+	require.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "_mou.pCas has to name the mutation the import re-targeted at")
+	require.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "_mou.pRev has to name the same mutation as pCas")
+}
+
+// TestMouChainEndedByBodyWrite covers the other half of _mou chaining: a write that changes the body ends
+// the chain, so the next metadata-only update names that write instead of carrying forward what it found.
+// The two cases differ in what the body write leaves behind - Sync Gateway deletes _mou, while an SDK write
+// leaves the earlier one in place for computeMetadataOnlyUpdate to reject.
+func TestMouChainEndedByBodyWrite(t *testing.T) {
+	// bodyWrite makes the write that has to end the chain, and returns the cas and revSeqNo _mou then has
+	// to name.
+	testCases := []struct {
+		name      string
+		bodyWrite func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (cas, revSeqNo uint64)
+		// metadataWrite makes the metadata-only write whose _mou is under test.
+		metadataWrite func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string)
+	}{
+		{
+			// The SDK leaves the previous _mou on the document, so the rejection is the part under test:
+			// carrying it forward would leave _mou naming a body the document no longer holds.
+			name: "SDK body write, imported",
+			bodyWrite: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (uint64, uint64) {
+				_, _, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
+				require.NoError(t, err)
+				cas, err = collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"value": "second write outside Sync Gateway"}`), 0)
+				require.NoError(t, err)
+				return cas, docRevSeqNo(t, collection, docID)
+			},
+			metadataWrite: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				_, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "Sync Gateway body write, resynced",
+			bodyWrite: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (uint64, uint64) {
+				doc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+				_, written, err := collection.Put(ctx, docID, Body{BodyRev: doc.GetRevTreeID(), "value": "written by Sync Gateway"})
+				require.NoError(t, err)
+				_, mou, _ := getSyncAndMou(t, collection, docID)
+				require.Nil(t, mou, "a Sync Gateway write of the body has to remove the metadata-only update")
+				return written.Cas, docRevSeqNo(t, collection, docID)
+			},
+			metadataWrite: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				// resync only writes when the sync function changes the document's channels
+				_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("resynced");}`)
+				require.NoError(t, err)
+				require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dbc, ctx := SetupTestDB(t)
+			defer dbc.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+			docID := SafeDocumentName(t, t.Name())
+			_, _, err := collection.Put(ctx, docID, Body{"value": 1234})
+			require.NoError(t, err)
+
+			// an SDK write and its import, so the document carries a metadata-only update before the body
+			// write that has to end it
+			_, _, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
+			require.NoError(t, err)
+			_, err = collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"value": "written outside Sync Gateway"}`), 0)
+			require.NoError(t, err)
+			_, err = collection.GetDocument(ctx, docID, DocUnmarshalAll)
+			require.NoError(t, err)
+
+			_, endedMou, _ := getSyncAndMou(t, collection, docID)
+			require.NotNil(t, endedMou, "precondition: the import has to leave a metadata-only update to end")
+
+			bodyCas, bodyRevSeqNo := testCase.bodyWrite(t, ctx, collection, docID)
+			testCase.metadataWrite(t, ctx, collection, docID)
+
+			_, mou, cas := getSyncAndMou(t, collection, docID)
+			require.NotNil(t, mou, "a metadata-only write has to record a metadata-only update")
+			require.Equal(t, base.CasToString(cas), mou.HexCAS)
+			require.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "pCas has to name the body write, not the metadata-only update before it")
+			require.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "pRev has to name the same mutation as pCas")
+			require.NotEqual(t, endedMou.PreviousHexCAS, mou.PreviousHexCAS, "the body write has to end the chain, not extend it")
+		})
+	}
+}
+
+// TestUserXattrImportMou covers the import of a write to the user xattr - the one import whose mutation
+// changes neither the body nor Sync Gateway's own metadata, so it creates no revision but still has to
+// record a metadata-only update, and still has to be chainable by a later one.
+func TestUserXattrImportMou(t *testing.T) {
+	const userXattrKey = "userXattr"
+	dbc, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{UserXattrKey: userXattrKey})
+	defer dbc.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+	docID := SafeDocumentName(t, t.Name())
+	_, doc, err := collection.Put(ctx, docID, Body{"value": 1234})
+	require.NoError(t, err)
+	revBeforeImport := doc.GetRevTreeID()
+
+	// a write to the user xattr alone. The body is untouched, so the import below creates no revision.
+	userXattrCas, err := collection.dataStore.UpdateXattrs(ctx, docID, 0, doc.Cas, map[string][]byte{userXattrKey: []byte(`{"channels": ["a"]}`)}, nil)
+	require.NoError(t, err)
+	userXattrRevSeqNo := docRevSeqNo(t, collection, docID)
+
+	importedDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, revBeforeImport, importedDoc.GetRevTreeID(), "a user xattr write does not change the body, so it creates no revision")
+
+	syncData, mou, importCas := getSyncAndMou(t, collection, docID)
+	require.NotNil(t, mou, "the import has to record a metadata-only update")
+	require.Equal(t, base.CasToString(importCas), mou.HexCAS, "_mou.cas has to name the import, so it is not imported again as an external write")
+	// the user xattr write is the mutation being imported, and the document holds no earlier _mou to carry
+	// forward, so it is what the previous values name
+	require.Equal(t, base.CasToString(userXattrCas), mou.PreviousHexCAS)
+	require.Equal(t, userXattrRevSeqNo, mou.PreviousRevSeqNo, "_mou.pRev has to name the same mutation as pCas")
+	require.NotNil(t, syncData)
+
+	// a second metadata-only write chains onto it, so both previous values have to be carried forward
+	_, err = collection.UpdateSyncFun(ctx, `function(doc, oldDoc, meta){channel("resynced");}`)
+	require.NoError(t, err)
+	require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+
+	_, resyncMou, resyncCas := getSyncAndMou(t, collection, docID)
+	require.NotNil(t, resyncMou)
+	require.Equal(t, base.CasToString(resyncCas), resyncMou.HexCAS)
+	require.Equal(t, mou.PreviousHexCAS, resyncMou.PreviousHexCAS, "pCas has to survive a second metadata-only write")
+	require.Equal(t, mou.PreviousRevSeqNo, resyncMou.PreviousRevSeqNo, "pRev has to survive a second metadata-only write alongside pCas")
+}
+
+// TestDuplicateImportLeavesMouAlone covers a second import of a mutation that has already been imported,
+// which the feed can deliver at any time. The import has to decline rather than stamp a fresh _mou over the
+// first one - a second stamp would move the previous values onto the first import, and they would stop
+// naming the write that last changed the body.
+func TestDuplicateImportLeavesMouAlone(t *testing.T) {
+	testCases := []struct {
+		name string
+		mode ImportMode
+		// snapshotAfterImport takes the document state handed to the second import from after the first one
+		// rather than from before it, so the import recognises it as Sync Gateway's own write up front.
+		snapshotAfterImport bool
+		expectedErr         error
+	}{
+		{
+			// the feed redelivering the mutation the first import consumed
+			name:        "feed replay",
+			mode:        ImportFromFeed,
+			expectedErr: base.ErrImportCasFailure,
+		},
+		{
+			// an on-demand import whose trigger read the document before the import that then beat it
+			name:                "on-demand over an imported document",
+			mode:                ImportOnDemand,
+			snapshotAfterImport: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dbc, ctx := SetupTestDB(t)
+			defer dbc.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+
+			docID := SafeDocumentName(t, t.Name())
+			_, doc, err := collection.Put(ctx, docID, Body{"value": 1234})
+			require.NoError(t, err)
+
+			_, err = collection.dataStore.WriteCas(ctx, docID, 0, doc.Cas, []byte(`{"value": "written outside Sync Gateway"}`), 0)
+			require.NoError(t, err)
+			value, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+			require.NoError(t, err)
+
+			_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: testCase.mode}, cas)
+			require.NoError(t, err)
+			_, firstMou, firstCas := getSyncAndMou(t, collection, docID)
+			require.NotNil(t, firstMou, "precondition: the first import has to record a metadata-only update")
+
+			if testCase.snapshotAfterImport {
+				value, xattrs, cas, err = collection.dataStore.GetWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+				require.NoError(t, err)
+			}
+
+			_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: testCase.mode}, cas)
+			if testCase.expectedErr != nil {
+				require.ErrorIs(t, err, testCase.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
+
+			_, secondMou, secondCas := getSyncAndMou(t, collection, docID)
+			require.Equal(t, firstCas, secondCas, "the second import must not write")
+			require.Equal(t, *firstMou, *secondMou, "the second import must leave the metadata-only update alone")
+		})
+	}
+}
+
 // TestAttachmentMigrationMouCarriedForward covers attachment metadata migration of a document whose previous
 // mutation was already a metadata-only update, as happens to a document replicated by mobile XDCR from a
 // cluster that had not migrated its attachment metadata. The migration has to carry the previous values
@@ -2058,4 +2306,133 @@ func TestAttachmentMigrationMouCarriedForward(t *testing.T) {
 	require.Equal(t, base.CasToString(migratedCas), mou.HexCAS)
 	require.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "pCas has to be carried forward from the update being replaced")
 	require.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "pRev has to be carried forward alongside pCas")
+}
+
+// TestWriteWithPreImportExistingDoc covers a write handed GetDocumentWithRaw's pre-import snapshot, as blip's
+// processRev does for a revision with attachments. Each push is a child of the imported revision, so it has to be accepted.
+func TestWriteWithPreImportExistingDoc(t *testing.T) {
+	const pushedBody = `{"foo":"pushed"}`
+
+	// push replays the client's write with the pre-import snapshot the read handed back, the way blip does
+	// for a revision carrying attachments.
+	testCases := []struct {
+		name string
+		push func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, imported *Document, preImport *sgbucket.BucketDocument) error
+	}{
+		{
+			name: "PutExistingRev",
+			push: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, imported *Document, preImport *sgbucket.BucketDocument) error {
+				newDoc := &Document{ID: docID}
+				newDoc.UpdateBodyBytes([]byte(pushedBody))
+				_, _, err := collection.PutExistingRev(ctx, newDoc, childHistoryOf(ctx, imported, pushedBody), false, false, preImport, ExistingVersionWithUpdateToHLV)
+				return err
+			},
+		},
+		{
+			name: "PutExistingRev, no conflicts",
+			push: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, imported *Document, preImport *sgbucket.BucketDocument) error {
+				newDoc := &Document{ID: docID}
+				newDoc.UpdateBodyBytes([]byte(pushedBody))
+				_, _, err := collection.PutExistingRev(ctx, newDoc, childHistoryOf(ctx, imported, pushedBody), true, false, preImport, ExistingVersionWithUpdateToHLV)
+				return err
+			},
+		},
+		{
+			name: "PutExistingCurrentVersion",
+			push: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, imported *Document, preImport *sgbucket.BucketDocument) error {
+				newDoc := &Document{ID: docID}
+				newDoc.UpdateBodyBytes([]byte(pushedBody))
+				// a client that has replicated the imported version and written on top of it
+				require.NotNil(t, imported.HLV)
+				incomingHLV := &HybridLogicalVector{
+					SourceID:         "clientSource",
+					Version:          imported.HLV.Version + 10,
+					PreviousVersions: HLVVersions{imported.HLV.SourceID: imported.HLV.Version},
+				}
+				_, _, _, err := collection.PutExistingCurrentVersion(ctx, PutDocOptions{
+					NewDoc:      newDoc,
+					NewDocHLV:   incomingHLV,
+					ExistingDoc: preImport,
+				})
+				return err
+			},
+		},
+	}
+
+	// What the pre-import snapshot holds decides how much the write loses by being made from it. A document
+	// with no sync data in the snapshot is treated as an insert, which is why a document that has never
+	// been anything but an SDK write does not show the problem on its own.
+	priorStates := []struct {
+		name string
+		// setup leaves the document needing an import, with its last write made outside Sync Gateway.
+		setup func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string)
+	}{
+		{
+			name: "SDK write, never imported",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				writeOutsideSyncGateway(t, ctx, collection, docID, 0, "written outside Sync Gateway")
+			},
+		},
+		{
+			name: "SDK write over an earlier import",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				// the first import gives the document sync data, so the snapshot of the second external
+				// write carries a rev tree even though Sync Gateway never wrote the body
+				writeOutsideSyncGateway(t, ctx, collection, docID, 0, "written outside Sync Gateway")
+				imported, err := collection.GetDocument(ctx, docID, DocUnmarshalSync)
+				require.NoError(t, err)
+				writeOutsideSyncGateway(t, ctx, collection, docID, imported.Cas, "written outside Sync Gateway again")
+			},
+		},
+		{
+			name: "SDK write over a Sync Gateway write",
+			setup: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				_, written, err := collection.Put(ctx, docID, Body{"foo": "sync gateway"})
+				require.NoError(t, err)
+				writeOutsideSyncGateway(t, ctx, collection, docID, written.Cas, "written outside Sync Gateway")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		for _, prior := range priorStates {
+			t.Run(tc.name+", "+prior.name, func(t *testing.T) {
+				dbCtx, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+				defer dbCtx.Close(ctx)
+				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+				docID := SafeDocumentName(t, t.Name())
+				prior.setup(t, ctx, collection, docID)
+
+				// the read that imports, and hands back the snapshot it read before importing
+				imported, preImport, err := collection.GetDocumentWithRaw(ctx, docID, DocUnmarshalSync)
+				require.NoError(t, err)
+				require.NotEqual(t, imported.Cas, preImport.Cas, "the snapshot under test has to predate the import")
+
+				require.NoError(t, tc.push(t, ctx, collection, docID, imported, preImport),
+					"a push against the imported revision should not be rejected for carrying the pre-import snapshot")
+
+				written, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+				require.JSONEq(t, pushedBody, string(written._rawBody), "the push did not reach the bucket")
+			})
+		}
+	}
+}
+
+// writeOutsideSyncGateway writes the document body from outside Sync Gateway, guarded on the supplied cas,
+// leaving any metadata xattrs in place for the import to find. The body has to differ from the one already
+// on the document, or its crc32 still matches the sync metadata and nothing needs importing.
+func writeOutsideSyncGateway(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, cas uint64, value string) {
+	t.Helper()
+	_, err := collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"foo":"`+value+`"}`), 0)
+	require.NoError(t, err)
+}
+
+// childHistoryOf returns the rev tree history a client would push for a new revision on top of the
+// document's current revision.
+func childHistoryOf(ctx context.Context, doc *Document, body string) []string {
+	parent := doc.GetRevTreeID()
+	generation, _ := ParseRevID(ctx, parent)
+	return []string{CreateRevIDWithBytes(generation+1, parent, []byte(body)), parent}
 }
