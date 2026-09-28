@@ -2773,7 +2773,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 		defer func() { require.NoError(t, ar.Stop()) }()
 
 		activeRT.WaitForPendingChanges()
-		sgrRunner.WaitForVersion(docID, activeRT, version)
+		sgrRunner.RequireDocReplicated(docID, remoteRT, activeRT, version)
 
 		base.RequireWaitForStat(t, pullStats.HandleRevCount.Value, 1)
 		assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())

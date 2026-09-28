@@ -2121,9 +2121,9 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 		rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 		// Be sure docs have arrived
-		sgrRunner.WaitForVersion("docA", rt1, docAVersion)
-		sgrRunner.WaitForVersion("docA1", rt1, docA1Version)
-		sgrRunner.WaitForVersion("docA2", rt1, docA2Version)
+		sgrRunner.RequireDocReplicated("docA", rt2, rt1, docAVersion)
+		sgrRunner.RequireDocReplicated("docA1", rt2, rt1, docA1Version)
+		sgrRunner.RequireDocReplicated("docA2", rt2, rt1, docA2Version)
 
 		// Reset checkpoint (since 0)
 		require.NoError(t, ar.Reset())

@@ -2117,7 +2117,9 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 		newRev := db.CreateRevIDWithBytes(2, rt2Version.RevTreeID, docBodyBytes) // generate what the new revID will be after conflict resolution
 		conflictResVersion := rt1Version
 		conflictResVersion.RevTreeID = newRev
-		rt2.WaitForVersion(docID, conflictResVersion)
+		// rt1 has resolved once the result reaches rt2. Don't wait on rt1 over REST: that would populate the rev
+		// cache this test asserts on.
+		sgrRunner.RequireDocReplicated(docID, rt1, rt2, conflictResVersion)
 
 		// assert we cannot keep old cache entry for original wrote (before conflict resolution) on active cluster rest testers
 		collectionActive1, ctxActive1 := active.GetSingleTestDatabaseCollectionWithUser()
@@ -2172,8 +2174,10 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 		conflictResVersion := rt1Version
 		conflictResVersion.RevTreeID = newRev
 
-		// expect local doc to win and still be tombstone with remote docs revision history
-		sgrRunner.WaitForTombstone(docID, activeRT, conflictResVersion)
+		// expect local doc to win and still be tombstone with remote docs revision history. The local CV is new to
+		// passiveRT, so the resolved tombstone is pushed back.
+		activeRT.WaitForTombstone(docID, conflictResVersion)
+		sgrRunner.RequireDocReplicated(docID, activeRT, passiveRT, conflictResVersion)
 
 		rt1Doc := activeRT.GetDocument(docID)
 		// assert that remote cv is in pv now
@@ -2202,6 +2206,7 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		rt2Version := passiveRT.PutDoc(docID, `{"source":"passiveRT","channels":["alice"]}`)
 		rt2Version = passiveRT.DeleteDoc(docID, rt2Version)
 		passiveRT.WaitForPendingChanges()
+		passiveDocBeforeReplication := rest.ExpectedISGRDocFromPeer(t, passiveRT, docID)
 		// create conflicting update on activeRT
 		rt1Version := activeRT.PutDoc(docID, `{"source":"activeRT","channels":["alice"]}`)
 		// delete local version
@@ -2223,7 +2228,9 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		newRev := getRevTreeID(t, rt1Version.RevTreeID, []byte(db.DeletedDocument))
 		conflictResVersion := rt2Version
 		conflictResVersion.RevTreeID = newRev
-		sgrRunner.WaitForTombstone(docID, activeRT, conflictResVersion)
+		sgrRunner.RequireDoc(docID, activeRT, rest.ExpectedISGRDoc{Version: conflictResVersion, Deleted: true})
+		// activeRT adopted passiveRT's CV, so there is nothing new to push back and passiveRT must be unchanged
+		sgrRunner.RequireDoc(docID, passiveRT, passiveDocBeforeReplication)
 
 		rt1Doc := activeRT.GetDocument(docID)
 		// assert that remote cv is in pv now

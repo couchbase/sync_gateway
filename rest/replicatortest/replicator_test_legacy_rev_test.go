@@ -65,8 +65,8 @@ func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
 		// Start the replicator
 		require.NoError(t, ar.Start(ctx1))
 
-		rt1.WaitForLegacyRev(docIDRT2, legacyRevRt2, []byte(`{"source":"rt2","channels":["alice"]}`))
-		rt2.WaitForLegacyRev(docIDRT1, legacyRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
+		sgrRunner.RequireDocReplicated(docIDRT2, rt2, rt1, rest.DocVersion{RevTreeID: legacyRevRt2})
+		sgrRunner.RequireDocReplicated(docIDRT1, rt1, rt2, rest.DocVersion{RevTreeID: legacyRevRt1})
 	})
 }
 
@@ -174,14 +174,14 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 				require.NoError(t, ar.Start(ctx1))
 
 				if tc.newRevOnActivePeer {
-					rt2.WaitForLegacyRev(docID, legacyRevRT1, []byte(`{"source":"rt1","channels":["alice"]}`))
+					sgrRunner.RequireDocReplicated(docID, rt1, rt2, rest.DocVersion{RevTreeID: legacyRevRT1})
 					rt2Doc := rt2.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{legacyRevRT1, initLegacyRevRT1})
 
 					// add new doc for some replication activity on pull side to allow us to assert that legacy rev 2-abc added
 					// isn't pulled back to rt1 now it has a legacy revID encoded CV
 					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					rt1.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt2
+					sgrRunner.RequireDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt2
 
 					// assert that the document isn't replicated back to rt1 after legacy rev CV is written on rt2
 					rt1Doc := rt1.GetDocument(docID)
@@ -189,14 +189,14 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 					assert.Nil(t, rt1Doc.HLV)
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1})
 				} else {
-					rt1.WaitForLegacyRev(docID, legacyRevRT2, []byte(`{"source":"rt2","channels":["alice"]}`))
+					sgrRunner.RequireDocReplicated(docID, rt2, rt1, rest.DocVersion{RevTreeID: legacyRevRT2})
 					rt1Doc := rt1.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{initLegacyRevRT2, legacyRevRT2})
 
 					// add new doc for some replication activity on push side to allow us to assert that legacy rev 2-abc added
 					// isn't pushed back to rt2 now it has a legacy revID encoded CV
 					newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					rt2.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt2
+					sgrRunner.RequireDocReplicated("newdoc", rt1, rt2, newDocVersion) // wait for it to arrive at rt2
 
 					// assert that the document isn't replicated back to rt2 after legacy rev CV is written on rt1
 					rt2Doc := rt2.GetDocument(docID)
@@ -424,7 +424,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 				require.NoError(t, ar.Start(ctx1))
 
 				if !tc.activePeerHasUpgradedRev {
-					rt1.WaitForVersion(docID, upgradedDocVersion)
+					sgrRunner.RequireDocReplicated(docID, rt2, rt1, upgradedDocVersion)
 
 					rt1Doc := rt1.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1, upgradedRevID})
@@ -442,7 +442,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 					require.JSONEq(t, expectedBody, string(actualBodyRT2))
 					require.JSONEq(t, expectedBody, string(actualBodyRT1))
 				} else {
-					rt2.WaitForVersion(docID, upgradedDocVersion)
+					sgrRunner.RequireDocReplicated(docID, rt1, rt2, upgradedDocVersion)
 
 					rt2Doc := rt2.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{legacyRevRT2, initLegacyRevRT2, upgradedRevID})
@@ -530,8 +530,8 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 		// Start the replicator
 		require.NoError(t, ar.Start(ctx1))
 
-		rt1.WaitForLegacyRev(docIDToPull, legacyRevRt2, []byte(`{"source":"rt2","channels":["alice"]}`))
-		rt2.WaitForLegacyRev(docIDToPush, legacyRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
+		sgrRunner.RequireDocReplicated(docIDToPull, rt2, rt1, rest.DocVersion{RevTreeID: legacyRevRt2})
+		sgrRunner.RequireDocReplicated(docIDToPush, rt1, rt2, rest.DocVersion{RevTreeID: legacyRevRt1})
 
 		// now update both docs to create a new revision on each side giving them each hlv based off their nodes source
 		cvVersion, err := db.LegacyRevToRevTreeEncodedVersion(legacyRevRt1)
@@ -540,7 +540,7 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 			RevTreeID: legacyRevRt1,
 		}
 		updateVer := rt1.UpdateDoc(docIDToPush, rt1DocVersion, `{"channels": ["alice"], "source": "rt1-updated"}`)
-		rt2.WaitForVersion(docIDToPush, updateVer)
+		sgrRunner.RequireDocReplicated(docIDToPush, rt1, rt2, updateVer)
 		// check rev tree encoded version is in pv
 		finalRT2Doc := rt2.GetDocument(docIDToPush)
 		assert.Equal(t, cvVersion.Value, finalRT2Doc.HLV.PreviousVersions[cvVersion.SourceID])
@@ -551,7 +551,7 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 			RevTreeID: legacyRevRt2,
 		}
 		updateVer = rt2.UpdateDoc(docIDToPull, rt2DocVersion, `{"channels": ["alice"], "source": "rt2-updated"}`)
-		rt1.WaitForVersion(docIDToPull, updateVer)
+		sgrRunner.RequireDocReplicated(docIDToPull, rt2, rt1, updateVer)
 		finalRT1Doc := rt1.GetDocument(docIDToPull)
 		assert.Equal(t, cvVersion.Value, finalRT1Doc.HLV.PreviousVersions[cvVersion.SourceID])
 
@@ -779,13 +779,13 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 						verPostConflictRes, _ = rt1.GetDoc(docID)
 						assert.NotEqual(c, legacyRevRT1, verPostConflictRes.RevTreeID)
 					}, 10*time.Second, 50*time.Millisecond)
-					rt2.WaitForLegacyRev(docID, verPostConflictRes.RevTreeID, []byte(`{"channels":["alice"],"source":"rt1"}`))
+					sgrRunner.RequireDocReplicated(docID, rt1, rt2, rest.DocVersion{RevTreeID: verPostConflictRes.RevTreeID})
 					rt2Doc := rt2.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2, verPostConflictRes.RevTreeID})
 
 					// add doc for some replication activity on pull to assert that local doesn't change after remote is written with legacy CV
 					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					rt1.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt1
+					sgrRunner.RequireDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt1
 
 					// assert active side doc hasn't changed
 					rt1Doc := rt1.GetDocument(docID)
@@ -802,14 +802,14 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 						return replicationStats.ConflictResolvedRemoteCount.Value()
 					}, 1)
 
-					rt1.WaitForLegacyRev(docID, legacyRevRT2, []byte(`{"channels":["alice"],"source":"rt2"}`))
+					sgrRunner.RequireDocReplicated(docID, rt2, rt1, rest.DocVersion{RevTreeID: legacyRevRT2})
 					rt1Doc := rt1.GetDocument(docID)
 					tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{initLegacyRevRT1, legacyRevRT1, legacyRevRT2, tombstonedID})
 
 					// add doc for some replication activity on push to assert that local doesn't change after remote is written with legacy CV
 					newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					rt2.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt2
+					sgrRunner.RequireDocReplicated("newdoc", rt1, rt2, newDocVersion) // wait for it to arrive at rt2
 
 					// assert passive side doc hasn't changed
 					rt2Doc := rt2.GetDocument(docID)
@@ -944,6 +944,8 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					require.NoError(t, ar.Stop())
 				}()
 
+				passiveDocBeforeReplication := rest.ExpectedISGRDocFromPeer(t, rt2, docID)
+
 				// Start the replicator
 				require.NoError(t, ar.Start(ctx1))
 
@@ -961,7 +963,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 						assert.NotEqual(c, legacyRevRT1, verPostConflictRes.RevTreeID)
 					}, 10*time.Second, 50*time.Millisecond)
 					// wait for this resolution to be pushed back to passive peer
-					rt2.WaitForVersion(docID, verPostConflictRes)
+					sgrRunner.RequireDocReplicated(docID, rt1, rt2, verPostConflictRes)
 
 					// assert original upgraded version in PV history
 					assert.Equal(t, upgradedDocVersion.CV.Value, replicatedDoc.HLV.PreviousVersions[upgradedDocVersion.CV.SourceID])
@@ -976,7 +978,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 
 					// add doc for some replication activity on pull to assert that local doesn't change after remote is written with legacy CV
 					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					rt1.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt1
+					sgrRunner.RequireDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt1
 
 					// assert active side doc hasn't changed
 					rt1Doc := rt1.GetDocument(docID)
@@ -993,7 +995,12 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					base.RequireWaitForStat(t, func() int64 {
 						return replicationStats.ConflictResolvedRemoteCount.Value()
 					}, 1)
-					rt1.WaitForVersion(docID, upgradedDocVersion)
+					// rt1 adopts rt2's CV and keeps its losing legacy branch in pv, so its HLV legitimately differs from rt2's
+					sgrRunner.RequireDoc(docID, rt1, rest.ExpectedISGRDoc{
+						Version:  upgradedDocVersion,
+						Body:     expectedBody,
+						Channels: []string{username},
+					})
 
 					rt1Doc := rt1.GetDocument(docID)
 					tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
@@ -1004,10 +1011,10 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 
 					// add doc for some replication activity on push to assert that remote doesn't change after remote wins conflict res is done
 					newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					rt2.WaitForVersion("newdoc", newDocVersion) // wait for it to arrive at rt2
+					sgrRunner.RequireDocReplicated("newdoc", rt1, rt2, newDocVersion) // wait for it to arrive at rt2
 
-					// assert passive side doc hasn't changed
-					rt2Doc := rt2.GetDocument(docID)
+					// assert passive side doc hasn't changed - rt1 adopted its CV, so there was nothing to push back
+					rt2Doc := sgrRunner.RequireDoc(docID, rt2, passiveDocBeforeReplication)
 					rest.RequireDocVersionEqual(t, upgradedDocVersion, rt2Doc.ExtractDocVersion())
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, upgradedDocVersion.RevTreeID})
 
@@ -1019,7 +1026,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 
 					// update doc on active side to ensure we can push with no conflict
 					updateVer := rt1.UpdateDoc(docID, upgradedDocVersion, `{"channels": ["alice"], "source": "rt1-updated"}`)
-					rt2.WaitForVersion(docID, updateVer)
+					sgrRunner.RequireDocReplicated(docID, rt1, rt2, updateVer)
 				}
 			})
 		}
@@ -1088,7 +1095,7 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 		// Start the replicator
 		require.NoError(t, ar.Start(ctx1))
 
-		rt2.WaitForLegacyRev(docIDToPush, legacyRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
+		sgrRunner.RequireDocReplicated(docIDToPush, rt1, rt2, rest.DocVersion{RevTreeID: legacyRevRt1})
 
 		base.RequireWaitForStat(t, func() int64 {
 			return replicationStats.PushDeltaSentCount.Value()
@@ -1144,7 +1151,7 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 		// Start the replicator
 		require.NoError(t, ar.Start(ctx1))
 
-		rt2.WaitForLegacyRev(docIDToPush, legacyInitRevRt1, []byte(`{"source":"rt1","channels":["alice"]}`))
+		sgrRunner.RequireDocReplicated(docIDToPush, rt1, rt2, rest.DocVersion{RevTreeID: legacyInitRevRt1})
 
 		// flush revision cache to remove old reference to rev 1 in rev cache
 		rt1.GetDatabase().FlushRevisionCacheForTest()
@@ -1154,7 +1161,7 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 		// 1. update doc on rt1 to give HLV based of rt1 sourceID
 		// 2. push doc to rt2 with delta from rev1 to rev2
 		upgradeVersion := rt1.UpdateDoc(docIDToPush, db.DocVersion{RevTreeID: legacyInitRevRt1}, `{"channels": ["alice"], "source": "rt1-updated"}`)
-		rt1.WaitForVersion(docIDToPush, upgradeVersion)
+		sgrRunner.RequireDocReplicated(docIDToPush, rt1, rt2, upgradeVersion)
 
 		base.RequireWaitForStat(t, func() int64 {
 			return replicationStats.PushDeltaSentCount.Value()

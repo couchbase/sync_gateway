@@ -2077,7 +2077,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt2 to arrive at rt1
-		sgrRunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.RequireDocReplicated(docID, rt2, rt1, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -2170,7 +2170,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 		// wait for the documents originally written to rt2 to arrive at rt1
-		sgrRunner.WaitForVersion(docID1, rt1, doc1Version)
+		sgrRunner.RequireDocReplicated(docID1, rt2, rt1, doc1Version)
 
 		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ExpectedSequenceCount }, 1)
 		base.RequireWaitForStat(t, func() int64 { return pullCheckpointer.Stats().ProcessedSequenceCount }, 1)
@@ -2594,7 +2594,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		assert.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt2 to arrive at rt1
-		sgrRunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.RequireDocReplicated(docID, rt2, rt1, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -2610,7 +2610,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 		// wait for the new document written to rt2 to arrive at rt1
-		sgrRunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.RequireDocReplicated(docID, rt2, rt1, version)
 
 		doc2, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
@@ -3211,20 +3211,8 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt1 to arrive at rt2
-		sgrRunner.WaitForVersion(docID, rt2, version)
-
-		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
-
-		// the receiving peer must run its own sync function and persist the resulting channels - ChannelMap values
-		// are nil for channels the doc is currently in, so check for key presence
-		_, inChannel := doc.Channels[username]
-		assert.True(t, inChannel, "channels not persisted on pushed doc, channels=%v", doc.Channels)
+		// the receiving peer runs its own sync function, so this also requires the channel set to be persisted
+		sgrRunner.RequireDocReplicated(docID, rt1, rt2, version)
 
 		assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus(ctx1).LastSeqPush)
 	})
@@ -3279,16 +3267,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		assert.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt1 to arrive at rt2
-		sgrRunner.WaitForVersion(docID, rt2, version)
-
-		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
-		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err := doc.GetDeepMutableBody()
-		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
-		assert.Equal[any](t, json.Number("1"), body["doc_num"])
+		sgrRunner.RequireDocReplicated(docID, rt1, rt2, version)
 
 		assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
 
@@ -3296,15 +3275,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		version = rt1.PutDoc(docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 		// wait for the new document written to rt1 to arrive at rt2
-		sgrRunner.WaitForVersion(docID, rt2, version)
-
-		doc2, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		body, err = doc2.GetDeepMutableBody()
-		require.NoError(t, err)
-		assert.Equal(t, "rt1", body["source"])
-		assert.Equal[any](t, json.Number("2"), body["doc_num"])
+		sgrRunner.RequireDocReplicated(docID, rt1, rt2, version)
 
 		// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
 		// the attachment only once. However, targeting a Lithium node sends the attachment twice like
@@ -3679,7 +3650,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 		doc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
 
-		sgrRunner.WaitForVersion(docID, rt2, version)
+		sgrRunner.RequireDocReplicated(docID, rt1, rt2, version)
 
 		body, err := doc.GetDeepMutableBody()
 		require.NoError(t, err)
@@ -3731,7 +3702,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt2 to arrive at rt1
-		sgrRunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.RequireDocReplicated(docID, rt2, rt1, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -3745,7 +3716,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		deletedVersion := rt2.DeleteDoc(docID, version)
 
 		// wait for the tombstone written to rt2 to arrive at rt1
-		sgrRunner.WaitForTombstone(docID, rt1, deletedVersion)
+		sgrRunner.RequireDocReplicated(docID, rt2, rt1, deletedVersion)
 		doc, err = rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 		assert.True(t, doc.IsDeleted())
@@ -3797,7 +3768,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt2 to arrive at rt1
-		sgrRunner.WaitForVersion(docID, rt1, version)
+		sgrRunner.RequireDocReplicated(docID, rt2, rt1, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -4017,14 +3988,13 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 						test.expectedLocalVersion.CV = rt2Version.CV
 					}
 				}
+				// A pull-only replication resolves on rt1 without pushing back, so rt2 isn't a valid source to compare
+				// against. Tombstones have no body to assert against.
+				expectedDoc := rest.ExpectedISGRDoc{Version: test.expectedLocalVersion, Deleted: test.skipBodyAssertion}
 				if !test.skipBodyAssertion {
-					sgrRunner.WaitForVersion(docID, rt1, test.expectedLocalVersion)
-					// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
-					// against
-					requireBodyEqual(t, test.expectedLocalBody, doc)
-				} else {
-					sgrRunner.WaitForTombstone(docID, rt1, test.expectedLocalVersion)
+					expectedDoc.Body = test.expectedLocalBody
 				}
+				sgrRunner.RequireDoc(docID, rt1, expectedDoc)
 				t.Logf("Doc %s is %+v", docID, doc)
 				for revID, revInfo := range doc.SyncData.History {
 					t.Logf("doc revision [%s]: %+v", revID, revInfo)
@@ -4165,6 +4135,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 				remoteDoc, err := rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalSync)
 				require.NoError(t, err)
+				remoteDocBeforeReplication := rest.ExpectedISGRDocFromPeer(t, rt2, docID)
 
 				ctx1 := rt1.Context()
 				// Create revision on rt1 (local)
@@ -4269,9 +4240,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				rest.RequireChangeRev(t, test.expectedVersion, changesResults.Results[0].Changes[0], db.ChangesVersionTypeRevTreeID)
 				t.Logf("Changes response is %+v", changesResults)
 
-				doc, err = rt2collection.GetDocument(rt2ctx, docID, db.DocUnmarshalAll)
-				require.NoError(t, err)
-				sgrRunner.WaitForVersion(docID, rt2, test.expectedVersion)
+				if sgrRunner.IsV4Protocol() && test.winner == remote {
+					// rt1 adopted rt2's CV, so there is nothing new to push back: rt2 must be exactly as it was. rt1's
+					// HLV also carries its losing version in pv, which rt2 never needs to learn about.
+					doc = sgrRunner.RequireDoc(docID, rt2, remoteDocBeforeReplication)
+				} else {
+					// rt1's resolution produced a version rt2 doesn't have, which is pushed back, so rt2 must now
+					// hold rt1's document
+					doc = sgrRunner.RequireDocReplicated(docID, rt1, rt2, test.expectedVersion)
+				}
 				requireBodyEqual(t, test.expectedBody, doc)
 				t.Logf("Remote Doc %s is %+v", docID, doc)
 				t.Logf("Remote Doc %s attachments are %+v", docID, doc.Attachments())
@@ -4354,7 +4331,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt1 to arrive at rt2
-		sgrRunner.WaitForVersion(docID, rt2, version)
+		sgrRunner.RequireDocReplicated(docID, rt1, rt2, version)
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -5022,7 +4999,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// wait for the document originally written to rt1 to arrive at rt2
-		sgrRunner.WaitForVersion(rt1docID, rt2, rt1Version)
+		sgrRunner.RequireDocReplicated(rt1docID, rt1, rt2, rt1Version)
 
 		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
 		doc, err := rt2collection.GetDocument(rt2ctx, rt1docID, db.DocUnmarshalAll)
@@ -5036,7 +5013,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		rt2Version := rt2.PutDoc(rt2docID, `{"source":"rt2","channels":["alice"]}`)
 
 		// ... and wait to arrive at rt1
-		sgrRunner.WaitForVersion(rt2docID, rt1, rt2Version)
+		sgrRunner.RequireDocReplicated(rt2docID, rt2, rt1, rt2Version)
 		changesResults := rt1.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0", "", true)
 		assert.Equal(t, rt1docID, changesResults.Results[0].ID)
 		assert.Equal(t, rt2docID, changesResults.Results[1].ID)
@@ -5854,8 +5831,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				const doc2ID = "docid2"
 				doc2Version := rest.DocVersion{RevTreeID: "3-abc"}
-				sgrRunner.WaitForVersion(doc2ID, localActiveRT, doc2Version)
-				sgrRunner.WaitForVersion(doc2ID, remotePassiveRT, doc2Version)
+				sgrRunner.RequireDocReplicated(doc2ID, localActiveRT, remotePassiveRT, doc2Version)
 
 				// Stop the replication
 				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
@@ -5896,8 +5872,12 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 				// Wait for the recently longest branch to show up on both sides
-				sgrRunner.WaitForTombstone(doc2ID, localActiveRT, deleteVersion)
-				sgrRunner.WaitForTombstone(doc2ID, remotePassiveRT, deleteVersion)
+				source, dest := localActiveRT, remotePassiveRT
+				if !test.longestBranchLocal {
+					source, dest = remotePassiveRT, localActiveRT
+				}
+				source.WaitForTombstoneRevIDOnly(doc2ID, deleteVersion)
+				sgrRunner.RequireDocReplicated(doc2ID, source, dest, deleteVersion)
 
 				// Stop the replication
 				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=stop", ""), http.StatusOK)
@@ -5953,9 +5933,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Wait for doc to replicate from side resurrection was done on to the other side
 				if test.resurrectLocal {
-					remotePassiveRT.WaitForVersion(doc2ID, expectedVersion)
+					sgrRunner.RequireDocReplicated(doc2ID, localActiveRT, remotePassiveRT, expectedVersion)
 				} else {
-					localActiveRT.WaitForVersion(doc2ID, expectedVersion)
+					sgrRunner.RequireDocReplicated(doc2ID, remotePassiveRT, localActiveRT, expectedVersion)
 				}
 			})
 		}
@@ -6337,7 +6317,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverLocalWins, "")
 				activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-				sgrRunner.WaitForVersion(docID, remoteRT, newVersion)
+				sgrRunner.RequireDocReplicated(docID, activeRT, remoteRT, newVersion)
 
 				// Stop the replication
 				response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
@@ -6534,7 +6514,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 				defer activeRT.DeleteReplication(replicationID)
 				activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-				passiveRT.WaitForVersion(docID, newVersion)
+				sgrRunner.RequireDocReplicated(docID, activeRT, passiveRT, newVersion)
 
 				response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 				rest.RequireStatus(t, response, http.StatusOK)
@@ -6561,6 +6541,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 				remoteGen++
 				newRemoteVersion = rest.NewDocVersionFromFakeRev(fmt.Sprintf("%d-remote", remoteGen))
 				remoteWinsVersion := passiveRT.PutNewEditsFalse(docID, newRemoteVersion, &remoteParentVersion, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
+				passiveDocBeforeReplication := rest.ExpectedISGRDocFromPeer(t, passiveRT, docID)
 
 				response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 				rest.RequireStatus(t, response, http.StatusOK)
@@ -6579,8 +6560,13 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 						}
 					}
 				}
-				activeRT.WaitForVersion(docID, expVersion)
-				passiveRT.WaitForVersion(docID, expVersion)
+				if sgrRunner.IsV4Protocol() && test.conflictResolution == db.ConflictResolverRemoteWins {
+					// activeRT adopted passiveRT's CV, so there is nothing new to push back and passiveRT must be unchanged
+					sgrRunner.RequireDoc(docID, activeRT, rest.ExpectedISGRDoc{Version: expVersion})
+					sgrRunner.RequireDoc(docID, passiveRT, passiveDocBeforeReplication)
+				} else {
+					sgrRunner.RequireDocReplicated(docID, activeRT, passiveRT, expVersion)
+				}
 
 				localDoc := activeRT.GetDocBody(docID)
 				localVersion := localDoc.ExtractRev()
@@ -6695,20 +6681,20 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		require.NoError(t, ar.Start(activeCtx))
 
 		// Wait for active to replicate to passive
-		sgrRunner.WaitForVersion("test", passiveRT, version)
+		sgrRunner.RequireDocReplicated("test", activeRT, passiveRT, version)
 
 		// Delete active document
 		deletedVersion := activeRT.DeleteDoc("test", version)
 
 		// Assert that the tombstone is replicated to passive
 		// Get revision 2 on passive peer to assert it has been (a) replicated and (b) deleted
-		sgrRunner.WaitForTombstone("test", passiveRT, deletedVersion)
+		sgrRunner.RequireDocReplicated("test", activeRT, passiveRT, deletedVersion)
 
 		// Resurrect tombstoned document
 		resurrectedVersion := activeRT.UpdateDoc("test", deletedVersion, `{"field2":"f2_2"}`)
 
 		// Replicate resurrection to passive
-		sgrRunner.WaitForVersion("test", passiveRT, resurrectedVersion)
+		sgrRunner.RequireDocReplicated("test", activeRT, passiveRT, resurrectedVersion)
 
 		base.RequireWaitForStat(t, func() int64 {
 			// should be 1 given delta is sent for delete, but not for resurrection
@@ -6771,7 +6757,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 		require.NoError(t, ar.Start(activeCtx))
 
-		sgrRunner.WaitForVersion("test", passiveRT, version)
+		sgrRunner.RequireDocReplicated("test", activeRT, passiveRT, version)
 
 		require.NoError(t, ar.Stop())
 
@@ -6792,7 +6778,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 		base.AssertLogContains(t, "Unable to unmarshal mutable body for doc test", func() {
 			require.NoError(t, ar.Start(activeCtx))
 			// Check if it replicated
-			sgrRunner.WaitForVersion("test", passiveRT, version2)
+			sgrRunner.RequireDocReplicated("test", activeRT, passiveRT, version2)
 			require.NoError(t, ar.Stop())
 		})
 	})
@@ -6819,15 +6805,15 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		// Create the docs //
 		// Doc rev 1
 		version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
-		sgrRunner.WaitForVersion(docID, activeRT, version1)
+		activeRT.WaitForVersion(docID, version1)
 
 		// doc rev 2
 		version2 := activeRT.UpdateDoc(docID, version1, `{"key":"12","channels":["rev2+3chan"]}`)
-		sgrRunner.WaitForVersion(docID, activeRT, version2)
+		activeRT.WaitForVersion(docID, version2)
 
 		// Doc rev 3
 		version3 := activeRT.UpdateDoc(docID, version2, `{"key":"3","channels":["rev2+3chan"]}`)
-		sgrRunner.WaitForVersion(docID, activeRT, version3)
+		activeRT.WaitForVersion(docID, version3)
 
 		activeRT.GetDatabase().FlushRevisionCacheForTest()
 		err := collection.PurgeOldRevisionJSON(activeCtx, docID, version2.RevTreeID)
@@ -7125,7 +7111,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 		activeRT.CreateReplication(replicationID, remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-		sgrRunner.WaitForVersion("test", passiveRT, rest.DocVersion{RevTreeID: revID, CV: *doc.HLV.ExtractCurrentVersionFromHLV()})
+		sgrRunner.RequireDocReplicated("test", activeRT, passiveRT, rest.DocVersion{RevTreeID: revID, CV: *doc.HLV.ExtractCurrentVersionFromHLV()})
 
 		// assert on the processed seq list being updated before stopping the active replicator
 		ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, replicationID)
@@ -8138,7 +8124,7 @@ func TestActiveReplicatorPullNewDocChannels(t *testing.T) {
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := passiveRT.PutDoc(docID, `{"source":"rt2","channels":["`+chanName+`"]}`)
 
-		sgrRunner.WaitForVersion(docID, activeRT, version)
+		sgrRunner.RequireDocReplicated(docID, passiveRT, activeRT, version)
 
 		rt1collection, rt1ctx := activeRT.GetSingleTestDatabaseCollection()
 		doc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -8193,7 +8179,7 @@ func TestActiveReplicatorPushNewDocChannels(t *testing.T) {
 		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		version := activeRT.PutDoc(docID, `{"source":"rt1","channels":["`+chanName+`"]}`)
 
-		sgrRunner.WaitForVersion(docID, passiveRT, version)
+		sgrRunner.RequireDocReplicated(docID, activeRT, passiveRT, version)
 
 		passiveRTCollection, passiveRTCtx := passiveRT.GetSingleTestDatabaseCollection()
 		doc, err := passiveRTCollection.GetDocument(passiveRTCtx, docID, db.DocUnmarshalAll)
@@ -8255,11 +8241,11 @@ func TestActiveReplicatorPullUpdatedDocChannels(t *testing.T) {
 		_, hasA := localDoc.Channels[chanA]
 		require.True(t, hasA, "precondition: local write should set chanA, channels=%v", localDoc.Channels)
 
-		sgrRunner.WaitForVersion(docID, passiveRT, v1)
+		sgrRunner.RequireDocReplicated(docID, activeRT, passiveRT, v1)
 
 		// now update the doc on rt2, moving it from chanA to chanB, and let it replicate back to rt1
 		v2 := passiveRT.UpdateDoc(docID, v1, `{"channels":["`+chanB+`"]}`)
-		sgrRunner.WaitForVersion(docID, activeRT, v2)
+		sgrRunner.RequireDocReplicated(docID, passiveRT, activeRT, v2)
 
 		doc, err := activeRTCollection.GetDocument(activeRTCtx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
