@@ -756,10 +756,6 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 // TestWriteCasTombstoneResurrect.  Verifies writing a new document body and xattr to a logically deleted document (xattr still exists)
 func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket when using xattrs")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -1573,11 +1569,6 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 // TestXattrMutateDocAndXattr.  Validates mutation of doc + xattr in various possible previous states of the document.
 func TestXattrMutateDocAndXattr(t *testing.T) {
-	// Skipping on non-Couchbase until CBG-3392 is fixed
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Test requires Couchbase Server bucket when using xattrs")
-	}
-
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -3636,4 +3627,416 @@ func TestRemoveXattrsAndDeleteSubDocPathsErrors(t *testing.T) {
 		err := dataStore.DeleteSubDocPaths(ctx, t.Name(), xattrName)
 		require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
 	})
+}
+
+// TestDataStoreOperationErrors checks the result of each write, delete and remove operation against a missing key,
+// a tombstone and a live document, with a CAS of 0 (no CAS check), the current CAS and a stale CAS.
+func TestDataStoreOperationErrors(t *testing.T) {
+	const (
+		success     = "success"
+		notFound    = "not found"
+		casMismatch = "cas mismatch"
+		xattrName   = "_testxattr"
+	)
+	type docState string
+	const (
+		missing   docState = "missing"
+		tombstone docState = "tombstone"
+		live      docState = "live"
+	)
+	type casArg string
+	const (
+		zeroCas    casArg = "zeroCas"
+		currentCas casArg = "currentCas"
+		staleCas   casArg = "staleCas"
+	)
+
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	createDoc := func(t *testing.T, state docState) (key string, cas uint64) {
+		key = t.Name()
+		if state == missing {
+			return key, 0
+		}
+		cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{xattrName: []byte(`{"seq":1}`)}, nil, nil)
+		require.NoError(t, err)
+		if state == tombstone {
+			cas, err = dataStore.Remove(ctx, key, cas)
+			require.NoError(t, err)
+		}
+		return key, cas
+	}
+
+	testCases := []struct {
+		name     string
+		op       func(key string, cas uint64) error
+		expected map[docState]map[casArg]string                 // a single zeroCas entry for operations that take no CAS
+		verify   func(t *testing.T, key string, state docState) // optional check of the document after a success
+	}{
+		{
+			name: "Delete",
+			op:   func(key string, _ uint64) error { return dataStore.Delete(ctx, key) },
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: notFound},
+				live:      {zeroCas: success},
+			},
+		},
+		{
+			name: "Remove",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.Remove(ctx, key, cas)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: notFound, currentCas: notFound, staleCas: notFound},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "DeleteWithXattrs",
+			op:   func(key string, _ uint64) error { return dataStore.DeleteWithXattrs(ctx, key, []string{xattrName}) },
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: success},
+				live:      {zeroCas: success},
+			},
+		},
+		{
+			name: "WriteTombstoneWithXattrs",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, cas, map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil, true, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: notFound, currentCas: notFound, staleCas: notFound},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteCas",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteCas(ctx, key, 0, cas, map[string]any{"foo": "baz"}, 0)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success, currentCas: notFound, staleCas: notFound},
+				live:      {zeroCas: casMismatch, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteSubDoc",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteSubDoc(ctx, key, "foo", cas, []byte(`"baz"`))
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success, currentCas: success, staleCas: success},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteWithXattrs",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.WriteWithXattrs(ctx, key, 0, cas, []byte(`{"foo":"baz"}`), map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success, currentCas: notFound, staleCas: notFound},
+				live:      {zeroCas: casMismatch, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "WriteResurrectionWithXattrs",
+			op: func(key string, _ uint64) error {
+				_, err := dataStore.WriteResurrectionWithXattrs(ctx, key, 0, []byte(`{"foo":"baz"}`), map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success},
+				live:      {zeroCas: casMismatch},
+			},
+		},
+		{
+			name: "SetXattrs",
+			op: func(key string, _ uint64) error {
+				_, err := dataStore.SetXattrs(ctx, key, map[string][]byte{xattrName: []byte(`{"seq":2}`)})
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: success},
+				tombstone: {zeroCas: success},
+				live:      {zeroCas: success},
+			},
+			verify: func(t *testing.T, key string, state docState) {
+				body, _, err := dataStore.GetRaw(ctx, key)
+				switch state {
+				case missing:
+					require.NoError(t, err)
+					require.JSONEq(t, `{}`, string(body))
+				case tombstone:
+					require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+				case live:
+					require.NoError(t, err)
+					require.JSONEq(t, `{"foo":"bar"}`, string(body))
+				}
+			},
+		},
+		{
+			name: "UpdateXattrs",
+			op: func(key string, cas uint64) error {
+				_, err := dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{xattrName: []byte(`{"seq":2}`)}, nil)
+				return err
+			},
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: success, currentCas: success, staleCas: casMismatch},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		for _, state := range []docState{missing, tombstone, live} {
+			for _, arg := range []casArg{zeroCas, currentCas, staleCas} {
+				expected, ok := tc.expected[state][arg]
+				if !ok {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/%s/%s", tc.name, state, arg), func(t *testing.T) {
+					key, cas := createDoc(t, state)
+					switch arg {
+					case zeroCas:
+						cas = 0
+					case staleCas:
+						cas--
+					}
+					err := tc.op(key, cas)
+					switch expected {
+					case success:
+						require.NoError(t, err)
+					case notFound:
+						require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+					case casMismatch:
+						require.True(t, IsCasMismatch(err), "expected cas mismatch error, got %v", err)
+					}
+					if expected == success && tc.verify != nil {
+						tc.verify(t, key, state)
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestDeleteAfterTombstoneResurrection checks that a document written over a tombstone is live again, and that a
+// document removed by DeleteWithXattrs is a tombstone, by deleting it afterwards.
+func TestDeleteAfterTombstoneResurrection(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	body := map[string]any{"foo": "bar"}
+	rawBody := []byte(`{"foo":"bar"}`)
+	writes := map[string]func(key string) error{
+		"Set":    func(key string) error { return dataStore.Set(ctx, key, 0, nil, body) },
+		"SetRaw": func(key string) error { return dataStore.SetRaw(ctx, key, 0, nil, rawBody) },
+		"Incr": func(key string) error {
+			_, err := dataStore.Incr(ctx, key, 1, 1, 0)
+			return err
+		},
+		"Add": func(key string) error {
+			added, err := dataStore.Add(ctx, key, 0, body)
+			require.True(t, added)
+			return err
+		},
+		"AddRaw": func(key string) error {
+			added, err := dataStore.AddRaw(ctx, key, 0, rawBody)
+			require.True(t, added)
+			return err
+		},
+		"WriteCas": func(key string) error {
+			_, err := dataStore.WriteCas(ctx, key, 0, 0, body, 0)
+			return err
+		},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			key := t.Name()
+			require.NoError(t, dataStore.SetRaw(ctx, key, 0, nil, rawBody))
+			require.NoError(t, dataStore.Delete(ctx, key))
+
+			require.NoError(t, write(key))
+			require.NoError(t, dataStore.Delete(ctx, key))
+		})
+	}
+
+	t.Run("DeleteWithXattrs", func(t *testing.T) {
+		key := t.Name()
+		_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, rawBody, map[string][]byte{"_testxattr": []byte(`{"seq":1}`)}, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, dataStore.DeleteWithXattrs(ctx, key, []string{"_testxattr"}))
+		err = dataStore.Delete(ctx, key)
+		require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+	})
+}
+
+// TestDeleteWithXattrsMissingXattr checks the result and the remaining document when DeleteWithXattrs is asked to
+// delete an xattr that the document does not have.
+func TestDeleteWithXattrsMissingXattr(t *testing.T) {
+	const (
+		success     = "success"
+		notFound    = "not found"
+		otherError  = "other error"
+		missingName = "_missingxattr"
+	)
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	testCases := []struct {
+		name              string
+		tombstone         bool
+		xattrs            []string
+		deleteXattrs      []string
+		expected          string
+		expectedRemaining []string
+	}{
+		{
+			name:              "live doc, delete present and missing xattr",
+			xattrs:            []string{"_xattr1"},
+			deleteXattrs:      []string{"_xattr1", missingName},
+			expected:          success,
+			expectedRemaining: []string{"_xattr1"},
+		},
+		{
+			name:              "live doc, delete one of two xattrs and a missing xattr",
+			xattrs:            []string{"_xattr1", "_xattr2"},
+			deleteXattrs:      []string{"_xattr1", missingName},
+			expected:          success,
+			expectedRemaining: []string{"_xattr1", "_xattr2"},
+		},
+		{
+			name:              "live doc, delete missing xattr",
+			xattrs:            []string{"_xattr1"},
+			deleteXattrs:      []string{missingName},
+			expected:          success,
+			expectedRemaining: []string{"_xattr1"},
+		},
+		{
+			name:         "live doc with no xattrs, delete missing xattr",
+			deleteXattrs: []string{missingName},
+			expected:     success,
+		},
+		{
+			name:              "tombstone, delete present and missing xattr",
+			tombstone:         true,
+			xattrs:            []string{"_xattr1"},
+			deleteXattrs:      []string{"_xattr1", missingName},
+			expected:          otherError,
+			expectedRemaining: []string{"_xattr1"},
+		},
+		{
+			name:              "tombstone, delete missing xattr",
+			tombstone:         true,
+			xattrs:            []string{"_xattr1"},
+			deleteXattrs:      []string{missingName},
+			expected:          notFound,
+			expectedRemaining: []string{"_xattr1"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			key := t.Name()
+			xattrs := make(map[string][]byte, len(tc.xattrs))
+			for _, xattrName := range tc.xattrs {
+				xattrs[xattrName] = []byte(`{"seq":1}`)
+			}
+			var cas uint64
+			var err error
+			if len(xattrs) > 0 {
+				cas, err = dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), xattrs, nil, nil)
+			} else {
+				cas, err = dataStore.WriteCas(ctx, key, 0, 0, map[string]any{"foo": "bar"}, 0)
+			}
+			require.NoError(t, err)
+			if tc.tombstone {
+				_, err = dataStore.Remove(ctx, key, cas)
+				require.NoError(t, err)
+			}
+
+			err = dataStore.DeleteWithXattrs(ctx, key, tc.deleteXattrs)
+			switch tc.expected {
+			case success:
+				require.NoError(t, err)
+			case notFound:
+				require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+			case otherError:
+				require.Error(t, err)
+				require.False(t, IsDocNotFoundError(err), "expected an error other than not found, got %v", err)
+			}
+
+			_, _, err = dataStore.GetRaw(ctx, key)
+			require.True(t, IsDocNotFoundError(err), "expected no document body, got %v", err)
+			var remaining []string
+			for _, xattrName := range append(tc.xattrs, missingName) {
+				xattrValues, _, err := dataStore.GetXattrs(ctx, key, []string{xattrName})
+				if err == nil && len(xattrValues[xattrName]) > 0 {
+					remaining = append(remaining, xattrName)
+				}
+			}
+			require.Equal(t, tc.expectedRemaining, remaining)
+		})
+	}
+}
+
+// TestXattrOnlyWriteKeepsTombstone checks that writing only xattrs to a tombstone keeps it a tombstone.
+func TestXattrOnlyWriteKeepsTombstone(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	writes := map[string]func(key string, cas uint64) error{
+		"WriteTombstoneWithXattrs": func(key string, cas uint64) error {
+			_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, 0, cas, map[string][]byte{SyncXattrName: []byte(`{"seq":2}`)}, nil, false, nil)
+			return err
+		},
+		"UpdateXattrs": func(key string, cas uint64) error {
+			_, err := dataStore.UpdateXattrs(ctx, key, 0, cas, map[string][]byte{SyncXattrName: []byte(`{"seq":2}`)}, nil)
+			return err
+		},
+		"SetXattrs": func(key string, _ uint64) error {
+			_, err := dataStore.SetXattrs(ctx, key, map[string][]byte{SyncXattrName: []byte(`{"seq":2}`)})
+			return err
+		},
+		"RemoveXattrs": func(key string, cas uint64) error {
+			return dataStore.RemoveXattrs(ctx, key, []string{SyncXattrName}, cas)
+		},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			key := t.Name()
+			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
+			require.NoError(t, err)
+			cas, err = dataStore.Remove(ctx, key, cas)
+			require.NoError(t, err)
+
+			require.NoError(t, write(key, cas))
+			_, _, err = dataStore.GetRaw(ctx, key)
+			require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+			err = dataStore.Delete(ctx, key)
+			require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+		})
+	}
 }
