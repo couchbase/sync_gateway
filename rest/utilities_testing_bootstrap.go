@@ -38,7 +38,7 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 		LogKeys:  base.ConsoleLogKey().EnabledLogKeys(),
 	}
 
-	config.API.AdminInterfaceAuthentication = base.Ptr(false)
+	config.API.AdminInterfaceAuthentication = new(false)
 
 	randomPort := "127.0.0.1:0"
 
@@ -50,8 +50,8 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.Server = sgtest.UnitTestUrl()
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
-	config.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
-	config.Bootstrap.UseTLSServer = base.Ptr(base.ServerIsTLS(sgtest.UnitTestUrl()))
+	config.Bootstrap.ServerTLSSkipVerify = new(base.TestTLSSkipVerify())
+	config.Bootstrap.UseTLSServer = new(base.ServerIsTLS(sgtest.UnitTestUrl()))
 
 	uniqueUUID, err := uuid.NewRandom()
 	require.NoError(t, err)

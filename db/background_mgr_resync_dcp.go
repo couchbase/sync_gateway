@@ -140,7 +140,7 @@ func NewResyncManagerDCP(db *DatabaseContext, distributed bool) *BackgroundManag
 			if db.DBStateManager == nil {
 				return nil
 			}
-			return db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+			return db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: new(running)})
 		}
 	}
 	return b
@@ -263,7 +263,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
 	defer func() {
-		stateErr := db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(false)})
+		stateErr := db.DBStateManager.UpdateState(ctx, DatabaseState{ResyncRunning: new(false)})
 		if stateErr != nil {
 			base.WarnfCtx(ctx, "failed to update the database state: %v", stateErr)
 		}

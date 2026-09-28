@@ -1305,8 +1305,8 @@ func TestImportConflictWithTombstone(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport, base.KeyCRUD)
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
-		UnsupportedOptions: &UnsupportedOptions{WarningThresholds: &WarningThresholds{XattrSize: base.Ptr(uint32(base.DefaultWarnThresholdXattrSize))}},
-		AllowConflicts:     base.Ptr(true)})
+		UnsupportedOptions: &UnsupportedOptions{WarningThresholds: &WarningThresholds{XattrSize: new(uint32(base.DefaultWarnThresholdXattrSize))}},
+		AllowConflicts:     new(true)})
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)

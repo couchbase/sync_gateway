@@ -674,7 +674,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	})
-	db, ctx := SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx := SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1650,7 +1650,7 @@ func TestReleaseSequenceOnDocWriteFailure(t *testing.T) {
 func TestReleaseSequenceOnRecalculateSyncFnFailure(t *testing.T) {
 	defer SuspendSequenceBatching()()
 
-	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -1709,7 +1709,7 @@ func TestReleaseSequencesAcrossCASRetries(t *testing.T) {
 	}
 
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{UpdateCallback: updateCallback})
-	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 	collection, collectionCtx = GetSingleDatabaseCollectionWithUser(ctx, t, db)
 

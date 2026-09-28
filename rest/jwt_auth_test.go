@@ -76,14 +76,14 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 				testProviderName: auth.LocalJWTAuthConfig{
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Issuer:        testIssuer,
-						ClientID:      base.Ptr(testClientID),
+						ClientID:      new(testClientID),
 						Register:      register,
 						UsernameClaim: usernameClaim,
 						UserPrefix:    usernamePrefix,
 					},
 					Algorithms:      []string{"RS256"},
 					Keys:            []jose.JSONWebKey{testRSAJWK},
-					SkipExpiryCheck: base.Ptr(true),
+					SkipExpiryCheck: new(true),
 				},
 			}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: providers}}}
@@ -214,7 +214,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 
 	common := auth.JWTConfigCommon{
 		Issuer:   testIssuer,
-		ClientID: base.Ptr(testClientID),
+		ClientID: new(testClientID),
 	}
 	baseProvider := auth.LocalJWTAuthConfig{
 		JWTConfigCommon: common,
@@ -339,7 +339,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 					oidcProviderName: &auth.OIDCProvider{
 						JWTConfigCommon: auth.JWTConfigCommon{
 							Issuer:     "TEST", // replaced by refreshProviderConfig
-							ClientID:   base.Ptr(clientID),
+							ClientID:   new(clientID),
 							Register:   true,
 							UserPrefix: oidcUserPrefix,
 						},
@@ -350,7 +350,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 				localProviderName: auth.LocalJWTAuthConfig{
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Issuer:     localIssuer,
-						ClientID:   base.Ptr(clientID),
+						ClientID:   new(clientID),
 						Register:   true,
 						UserPrefix: localUserPrefix,
 					},
@@ -434,7 +434,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	baseProvider := auth.LocalJWTAuthConfig{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:        testIssuer,
-			ClientID:      base.Ptr(testClientID),
+			ClientID:      new(testClientID),
 			RolesClaim:    "roles",
 			ChannelsClaim: "channels",
 			Register:      true,

@@ -985,8 +985,8 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 				ctx2 := rt2.Context()
 
 				// disable pruning window so we can avoid HLV compaction for the artificially low HLV values in this test
-				rt1.GetDatabase().Options.TestVersionPruningWindowOverride = base.Ptr(time.Duration(0))
-				rt2.GetDatabase().Options.TestVersionPruningWindowOverride = base.Ptr(time.Duration(0))
+				rt1.GetDatabase().Options.TestVersionPruningWindowOverride = new(time.Duration(0))
+				rt2.GetDatabase().Options.TestVersionPruningWindowOverride = new(time.Duration(0))
 
 				docID := "doc1_"
 				version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)

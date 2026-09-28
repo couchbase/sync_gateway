@@ -35,7 +35,7 @@ func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket, symm
 		CustomTestBucket: bucket.NoCloseClone(),
 	})
 	config := rt.NewDbConfig()
-	config.AutoImport = base.Ptr(true)
+	config.AutoImport = new(true)
 	rest.RequireStatus(t, rt.CreateDatabase(rest.SafeDatabaseName(t, name), config), http.StatusCreated)
 	return &SyncGatewayPeer{
 		name:               name,
@@ -81,7 +81,7 @@ func (p *SyncGatewayPeer) GetDocumentIfExists(dsName sgbucket.DataStoreName, doc
 	if doc.IsDeleted() {
 		return meta, nil, true
 	}
-	return meta, base.Ptr(doc.Body(ctx)), true
+	return meta, new(doc.Body(ctx)), true
 }
 
 // CreateDocument creates a document on the peer. The test will fail if the document already exists.

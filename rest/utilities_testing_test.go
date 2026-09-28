@@ -257,7 +257,7 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	dbConfig = rt.NewDbConfig()
 	dbConfig.Scopes = GetCollectionsConfig(rt.TB(), bucket2, numCollections)
 	dbConfig.BucketConfig = BucketConfig{
-		Bucket: base.Ptr(bucket2.GetName()),
+		Bucket: new(bucket2.GetName()),
 	}
 	dbTwo := "dbtwo"
 	bucket2Datastore1, err := rt.TestBucket.GetNamedDataStore(0)

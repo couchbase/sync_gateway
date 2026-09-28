@@ -98,7 +98,7 @@ func TestDatabaseInitPostMigrationExcludesDefault(t *testing.T) {
 
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
 
 	// migrationComplete=true models a system-metadata database that has finished migrating off _default.
@@ -214,7 +214,7 @@ func TestDatabaseInitCollectionsForMetadataStoreMode(t *testing.T) {
 			}
 
 			dbConfig := makeDbConfig(tb.GetName(), dbName, scopesConfig)
-			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(testCase.useSystemMetadataCollection)
+			dbConfig.UseSystemMobileMetadataCollection = new(testCase.useSystemMetadataCollection)
 
 			// Index initialization runs synchronously for this create (the database isn't started
 			// offline and no initialization is already in flight), so it has completed for every
@@ -343,7 +343,7 @@ func TestDatabaseInitDefaultCollectionForMetadataStoreMode(t *testing.T) {
 
 			// No scopes in the config - _default._default is the database's only data collection.
 			dbConfig := makeDbConfig(tb.GetName(), dbName, nil)
-			dbConfig.UseSystemMobileMetadataCollection = base.Ptr(testCase.useSystemMetadataCollection)
+			dbConfig.UseSystemMobileMetadataCollection = new(testCase.useSystemMetadataCollection)
 
 			// Index initialization runs synchronously for this create (the database isn't started
 			// offline and no initialization is already in flight), so it has completed for every
@@ -484,7 +484,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
 
 	// Start first async index creation, blocks after first collection
@@ -576,7 +576,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 
 	// Start first async index creation, should block after first collection
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -588,7 +588,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
 	require.NoError(t, modifiedDbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
-	modifiedDbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	modifiedDbConfig.UseSystemMobileMetadataCollection = new(true)
 	modifiedDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, modifiedDbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
@@ -676,12 +676,12 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb1.GetName(), db1Name, collection1and2ScopesConfig)
 	require.NoError(t, db1Config.setup(ctx, db1Name, sc.Config.Bootstrap, nil, nil))
-	db1Config.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Config.UseSystemMobileMetadataCollection = new(true)
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb2.GetName(), db2Name, collection1and2ScopesConfig)
 	require.NoError(t, db2Config.setup(ctx, db2Name, sc.Config.Bootstrap, nil, nil))
-	db2Config.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db2Config.UseSystemMobileMetadataCollection = new(true)
 
 	// Start first async index creation, should block after first collection
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, db1Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -754,7 +754,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	dbName := "dbName"
 	dbConfig := makeDbConfig(tb.GetName(), dbName, collection1and2ScopesConfig)
 	require.NoError(t, dbConfig.setup(ctx, dbName, sc.Config.Bootstrap, nil, nil))
-	dbConfig.UseSystemMobileMetadataCollection = base.Ptr(true)
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -810,8 +810,8 @@ func waitForWorkerDone(t *testing.T, manager *DatabaseInitManager, dbName string
 }
 
 func TestBuildCollectionIndexData(t *testing.T) {
-	bootstrapEnabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: base.Ptr(true)}}
-	bootstrapDisabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: base.Ptr(false)}}
+	bootstrapEnabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: new(true)}}
+	bootstrapDisabled := &StartupConfig{Bootstrap: BootstrapConfig{UseSystemMetadataCollection: new(false)}}
 
 	tests := []struct {
 		name                    string
@@ -826,7 +826,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 		{
 			name: "implicit default collection",
 			config: &DatabaseConfig{DbConfig: DbConfig{
-				UseSystemMobileMetadataCollection: base.Ptr(true),
+				UseSystemMobileMetadataCollection: new(true),
 			}},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
@@ -850,7 +850,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
+					UseSystemMobileMetadataCollection: new(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -877,7 +877,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
+					UseSystemMobileMetadataCollection: new(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -891,7 +891,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			name: "one named and explicit default collection",
 			config: &DatabaseConfig{DbConfig: DbConfig{
 				Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
-				UseSystemMobileMetadataCollection: base.Ptr(true),
+				UseSystemMobileMetadataCollection: new(true),
 			}},
 			// a configured _default necessarily exists; callers never report it as absent
 			defaultCollectionExists: true,
@@ -905,7 +905,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 		// Uses implicit default collection as a representative scope.
 		{
 			name:   "per-DB enabled, no startup config",
-			config: &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(true)}},
+			config: &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: new(true)}},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
@@ -928,7 +928,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			// per-DB false falls through to the cluster flag, which is true
 			name:          "bootstrap enabled, per-DB explicitly disabled",
 			startupConfig: bootstrapEnabled,
-			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(false)}},
+			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: new(false)}},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
@@ -946,7 +946,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			// per-DB true always wins, regardless of cluster flag
 			name:          "bootstrap disabled, per-DB explicitly enabled",
 			startupConfig: bootstrapDisabled,
-			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: base.Ptr(true)}},
+			config:        &DatabaseConfig{DbConfig: DbConfig{UseSystemMobileMetadataCollection: new(true)}},
 			want: CollectionInitData{
 				base.DefaultScopeAndCollectionName():      db.IndexesAll,
 				base.MobileSystemScopeAndCollectionName(): db.IndexesMetadataOnly,
@@ -959,7 +959,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
+					UseSystemMobileMetadataCollection: new(true),
 				},
 			},
 			defaultCollectionExists: false,
@@ -1011,7 +1011,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
+					UseSystemMobileMetadataCollection: new(true),
 				},
 			},
 			defaultCollectionExists: true,
@@ -1027,7 +1027,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes:                            makeScopesConfig("scope1", []string{"collection1"}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
+					UseSystemMobileMetadataCollection: new(true),
 				},
 			},
 			defaultCollectionExists: false,
@@ -1043,7 +1043,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			// case below, reached through the no-scopes branch.
 			name: "system metadata: migration complete, implicit default collection",
 			config: &DatabaseConfig{DbConfig: DbConfig{
-				UseSystemMobileMetadataCollection: base.Ptr(true),
+				UseSystemMobileMetadataCollection: new(true),
 			}},
 			defaultCollectionExists: true,
 			migrationComplete:       true,
@@ -1073,7 +1073,7 @@ func TestBuildCollectionIndexData(t *testing.T) {
 			config: &DatabaseConfig{
 				DbConfig: DbConfig{
 					Scopes:                            makeScopesConfig(base.DefaultScope, []string{base.DefaultCollection, "collection1"}),
-					UseSystemMobileMetadataCollection: base.Ptr(true),
+					UseSystemMobileMetadataCollection: new(true),
 				},
 			},
 			defaultCollectionExists: true,

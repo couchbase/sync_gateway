@@ -328,7 +328,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			requiresAttachmentMigration: true,
 			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
-					newSyncInfo := &SyncInfo{MetadataID: Ptr(expectedMetadataID)}
+					newSyncInfo := &SyncInfo{MetadataID: new(expectedMetadataID)}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
 					require.NoError(t, err)
@@ -345,7 +345,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
-						MetadataID: Ptr("another metadataID"),
+						MetadataID: new("another metadataID"),
 					}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
 					require.True(t, added)
@@ -363,7 +363,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
-						MetadataID:      Ptr(expectedMetadataID),
+						MetadataID:      new(expectedMetadataID),
 						MetaDataVersion: minimumAttachmentMigrationMetadataVersion,
 					}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
@@ -382,7 +382,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
-						MetadataID:      Ptr("another metadataID"),
+						MetadataID:      new("another metadataID"),
 						MetaDataVersion: minimumAttachmentMigrationMetadataVersion,
 					}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
@@ -401,7 +401,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
-						MetadataID:      Ptr(expectedMetadataID),
+						MetadataID:      new(expectedMetadataID),
 						MetaDataVersion: "3.0.0",
 					}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
@@ -420,7 +420,7 @@ func TestInitSyncInfoErrors(t *testing.T) {
 			writeCasCallback: func(docID string) (uint64, error) {
 				if shouldFailAdd.CompareAndSwap(false, true) {
 					newSyncInfo := &SyncInfo{
-						MetadataID:      Ptr("another metadataID"),
+						MetadataID:      new("another metadataID"),
 						MetaDataVersion: "3.0.0",
 					}
 					added, err := ds.Add(ctx, docID, 0, newSyncInfo)
@@ -594,7 +594,7 @@ func TestSetSyncInfoBinaryFormat(t *testing.T) {
 }
 
 func TestDecodeSyncInfo(t *testing.T) {
-	populated := SyncInfo{MetadataID: Ptr("x"), MetaDataVersion: "4.0.0"}
+	populated := SyncInfo{MetadataID: new("x"), MetaDataVersion: "4.0.0"}
 	populatedJSON := `{"metadataID":"x","metadata_version":"4.0.0"}`
 
 	testCases := []struct {

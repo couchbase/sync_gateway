@@ -119,7 +119,7 @@ func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
 
 	dbConfig := dbConfigForTestBucket(rtc.testBucket)
 	dbConfig.AutoImport = true
-	dbConfig.ImportPartitions = base.Ptr(uint16(numPartitions))
+	dbConfig.ImportPartitions = new(uint16(numPartitions))
 
 	node0 := rtc.Node(0)
 
@@ -213,7 +213,7 @@ func TestCbgtRebalanceOnThirdNodeJoinOnlyMovesMinimalShare(t *testing.T) {
 
 	dbConfig := dbConfigForTestBucket(rtc.testBucket)
 	dbConfig.AutoImport = true
-	dbConfig.ImportPartitions = base.Ptr(uint16(numPartitions))
+	dbConfig.ImportPartitions = new(uint16(numPartitions))
 
 	node0 := rtc.Node(0)
 	resp := node0.CreateDatabase(dbName, dbConfig)

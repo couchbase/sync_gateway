@@ -173,7 +173,7 @@ func TestAddPendingLogs(t *testing.T) {
 			// process overlapping unused sequence ranges that should end up going to pending without duplicates
 			// acquire cache lock to push to pending logs
 			testChangeCache.lock.Lock()
-			backdatedTimeReceived := channels.NewFeedTimestamp(base.Ptr(time.Now().Add(-1 * time.Hour)))
+			backdatedTimeReceived := channels.NewFeedTimestamp(new(time.Now().Add(-1 * time.Hour)))
 			for i, incomingRange := range testCase.incoming {
 				if incomingRange.end == 0 {
 					// treat as a document pushed to pending

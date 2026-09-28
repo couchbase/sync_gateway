@@ -56,7 +56,7 @@ func getTestBucketSpec(clusterSpec CouchbaseClusterSpec, testBucketName tbpBucke
 		BucketName:    string(testBucketName),
 		TLSSkipVerify: clusterSpec.TLSSkipVerify,
 		// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
-		BucketOpTimeout: Ptr(time.Duration(30) * time.Second),
+		BucketOpTimeout: new(time.Duration(30) * time.Second),
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"expvar"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -58,9 +59,11 @@ type DCPCommon struct {
 	updatesSinceCheckpoint []uint64                       // Number of updates since the last checkpoint. Used to avoid checkpoint persistence feedback loop
 	lastCheckpointTime     []time.Time                    // Time of last checkpoint persistence, per vbucket.  Used to manage checkpoint persistence volume
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
-	loggingCtx             context.Context                // Logging context, prefixes feedID
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 	endSeqNos              map[uint16]uint64              // endSeqNos mark the sequence numbers keyed by vBucket ID that are the end sequence numbers for a stream
+	ctx                    context.Context                // Logging context, prefixes feedID. Cancelled on close, after which data updates are skipped.
+	cancel                 context.CancelCauseFunc        // Cancels ctx
+	activeCallbacks        atomic.Int64                   // Number of data updates in progress, which close waits for
 }
 
 // NewDCPCommon creates a new DCPCommon instance which manages updates coming from a cbgt-based DCP feed.
@@ -68,6 +71,8 @@ func NewDCPCommon(
 	ctx context.Context,
 	opts DCPDestOptions) (*DCPCommon, error) {
 
+	// Detach from the caller's cancellation so data updates stop only on close.
+	ctx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	c := &DCPCommon{
 		dbStatsExpvars:         opts.DcpStats,
 		metaStore:              opts.MetadataStore,
@@ -78,15 +83,19 @@ func NewDCPCommon(
 		callback:               opts.Callback,
 		lastCheckpointTime:     make([]time.Time, opts.MaxVbNo),
 		checkpointPrefix:       opts.CheckpointPrefix,
-		loggingCtx:             ctx,
 		endSeqNos:              opts.EndSeqNos,
+		ctx:                    ctx,
+		cancel:                 cancel,
 	}
 
 	return c, nil
 }
 
 func (c *DCPCommon) dataUpdate(seq uint64, event sgbucket.FeedEvent) {
-	if !c.shouldProcessSequence(event.VbNo, seq) {
+	// Increment before checking ctx, so close either waits for this callback or this callback sees the close.
+	c.activeCallbacks.Add(1)
+	defer c.activeCallbacks.Add(-1)
+	if c.ctx.Err() != nil || !c.shouldProcessSequence(event.VbNo, seq) {
 		return
 	}
 	shouldPersistCheckpoint := c.callback(event)
@@ -120,7 +129,7 @@ func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte, mustPersist bool
 
 		err := c.persistCheckpoint(vbucketId, value, c.seqs[vbucketId])
 		if err != nil {
-			WarnfCtx(c.loggingCtx, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
+			WarnfCtx(c.ctx, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
 			return fmt.Errorf("Unable to persist DCP metadata")
 		}
 		c.updatesSinceCheckpoint[vbucketId] = 0
@@ -149,14 +158,14 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 
 // rollbackEx is called when a DCP open stream issues a rollback. The metadata persisted for a given uuid and sequence number and stream reopening is deferred to cbgt via AutoReconnectAfterRollback feed parameter.
 func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte) error {
-	InfofCtx(c.loggingCtx, KeyDCP, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
+	InfofCtx(c.ctx, KeyDCP, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	if c.dbStatsExpvars != nil {
 		c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	}
 	c.updateSeq(vbucketId, rollbackSeq, false)
 	err := c.setMetaData(vbucketId, rollbackMetaData, true)
 	if err != nil {
-		WarnfCtx(c.loggingCtx, "Error setting metadata during DCP rollback for vBucket %d: %v", vbucketId, err)
+		WarnfCtx(c.ctx, "Error setting metadata during DCP rollback for vBucket %d: %v", vbucketId, err)
 	}
 	return err
 }
@@ -170,7 +179,7 @@ func (c *DCPCommon) incrementCheckpointCount(vbucketId uint16) {
 // loadCheckpoint retrieves previously persisted DCP metadata, along with the last sequence SG processed for the
 // vbucket, so the feed can resume from that sequence rather than the start of the last persisted snapshot.
 func (c *DCPCommon) loadCheckpoint(vbNo uint16) (rawMetadata []byte, lastSeq uint64, err error) {
-	rawValue, _, err := c.metaStore.GetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
+	rawValue, _, err := c.metaStore.GetRaw(c.ctx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsDocNotFoundError(err) {
@@ -198,7 +207,7 @@ func (c *DCPCommon) endSeqForVbucket(vbNo uint16) (endSeq uint64, ok bool) {
 	}
 	endSeq, ok = c.endSeqNos[vbNo]
 	if !ok {
-		AssertfCtx(c.loggingCtx, "vbno %d is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
+		AssertfCtx(c.ctx, "vbno %d is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets.", vbNo, c.endSeqNos)
 	}
 	return endSeq, ok
 }
@@ -207,7 +216,7 @@ func (c *DCPCommon) InitVbMeta(vbNo uint16) {
 	metadata, lastSeq, err := c.loadCheckpoint(vbNo)
 	c.m.Lock()
 	if err != nil {
-		WarnfCtx(c.loggingCtx, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", vbNo, err)
+		WarnfCtx(c.ctx, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", vbNo, err)
 		c.meta[vbNo] = []byte{}
 		c.seqs[vbNo] = 0
 	} else {
@@ -223,14 +232,14 @@ func (c *DCPCommon) InitVbMeta(vbNo uint16) {
 //	  - Would only result in some repeated entry processing, which is already handled by the indexer
 //	  - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte, lastSeq uint64) error {
-	TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
+	TracefCtx(c.ctx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
 
 	persistedValue, err := createCbgtCheckpoint(value, lastSeq)
 	if err != nil {
 		return fmt.Errorf("unable to marshal DCP checkpoint metadata for vbno %d: %w", vbNo, err)
 	}
 
-	return c.metaStore.SetRaw(c.loggingCtx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, persistedValue)
+	return c.metaStore.SetRaw(c.ctx, fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, persistedValue)
 }
 
 // shouldProcessSequence checks the incoming sequence number against the expected end sequence number, and returns true
@@ -247,7 +256,7 @@ func (c *DCPCommon) shouldProcessSequence(vBucketID uint16, seq uint64) bool {
 	// DCP will provide mutations that run to the end of the snapshot that contains the end sequence number.
 	endSeq, ok := c.endSeqNos[vBucketID]
 	if !ok {
-		AssertfCtx(c.loggingCtx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets. Processing this sequence anyway", vBucketID, c.endSeqNos)
+		AssertfCtx(c.ctx, "Received DCP event for vbno %d which is not tracked by the expected endSeqNos %#+v. This means that endSeqNos was specified with the incorrect number of vBuckets. Processing this sequence anyway", vBucketID, c.endSeqNos)
 		return true
 	}
 	return seq <= endSeq
@@ -290,7 +299,7 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 	previousSequence := c.seqs[vbucketId]
 
 	if seq < previousSequence && warnOnLowerSeqNo == true {
-		WarnfCtx(c.loggingCtx, "Setting to _lower_ sequence number than previous: %v -> %v", c.seqs[vbucketId], seq)
+		WarnfCtx(c.ctx, "Setting to _lower_ sequence number than previous: %v -> %v", c.seqs[vbucketId], seq)
 	}
 
 	// Update c.seqs for use by GetMetaData()

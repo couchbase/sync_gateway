@@ -952,7 +952,7 @@ func newTestManagerWithStateDoc(metadataStore base.DataStore, metaKeys *base.Met
 		},
 		terminator: base.NewSafeTerminator(),
 		updateDatabaseState: func(ctx context.Context, running bool) error {
-			return dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+			return dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(running)})
 		},
 	}
 	return mgr, dbStateMgr
@@ -1042,7 +1042,7 @@ func TestUpdateDatabaseStateConcurrentManagersSharedStateDoc(t *testing.T) {
 			},
 			terminator: base.NewSafeTerminator(),
 			updateDatabaseState: func(ctx context.Context, running bool) error {
-				return dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+				return dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(running)})
 			},
 		}
 	}
@@ -1122,7 +1122,7 @@ func TestUpdateDatabaseStateJoinOverwritesRunningState(t *testing.T) {
 		terminator: base.NewSafeTerminator(),
 		updateDatabaseState: func(ctx context.Context, running bool) error {
 			// B's updateDatabaseState writes to the SAME state doc as A.
-			return dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+			return dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(running)})
 		},
 	}
 
@@ -1164,7 +1164,7 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 			defer wg.Done()
 			for range iters {
 				running := w%2 == 0
-				_ = dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: base.Ptr(running)})
+				_ = dbStateMgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(running)})
 			}
 		}(w)
 	}

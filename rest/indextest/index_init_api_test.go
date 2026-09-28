@@ -56,7 +56,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 		{
 			name:                "non-persistent config 2 to 4",
 			usePersistentConfig: false,
-			initialPartitions:   base.Ptr(uint32(2)),
+			initialPartitions:   new(uint32(2)),
 			newPartitions:       4,
 			removedIndexes: []string{
 				"sg_allDocs_x1_p2",
@@ -66,7 +66,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 		{
 			name:                "persistent config 2 to 4",
 			usePersistentConfig: true,
-			initialPartitions:   base.Ptr(uint32(2)),
+			initialPartitions:   new(uint32(2)),
 			newPartitions:       4,
 			removedIndexes: []string{
 				"sg_allDocs_x1_p2",
@@ -84,7 +84,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 		},
 		{
 			name:              "1 to 4",
-			initialPartitions: base.Ptr(uint32(1)),
+			initialPartitions: new(uint32(1)),
 			newPartitions:     4,
 			removedIndexes: []string{
 				"sg_allDocs_x1",
@@ -93,7 +93,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 		},
 		{
 			name:              "4 to 1",
-			initialPartitions: base.Ptr(uint32(4)),
+			initialPartitions: new(uint32(4)),
 			newPartitions:     1,
 			removedIndexes: []string{
 				"sg_allDocs_x1_p4",
@@ -102,7 +102,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 		},
 		{
 			name:              "2 to 2",
-			initialPartitions: base.Ptr(uint32(2)),
+			initialPartitions: new(uint32(2)),
 			newPartitions:     2,
 		},
 	}
@@ -161,7 +161,7 @@ func TestChangeIndexPartitions(t *testing.T) {
 			if dbConfig.Index == nil {
 				dbConfig.Index = &rest.IndexConfig{}
 			}
-			dbConfig.Index.NumPartitions = base.Ptr(test.newPartitions)
+			dbConfig.Index.NumPartitions = new(test.newPartitions)
 			rest.RequireStatus(t, rt.ReplaceDbConfig(dbName, dbConfig), http.StatusCreated)
 			require.Equal(t, test.newPartitions, *rt.GetDatabase().Options.NumIndexPartitions)
 
@@ -278,7 +278,7 @@ func TestChangeIndexPartitionsDbOffline(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.StartOffline = new(true)
 	rest.RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	rt.ServerContext().DatabaseInitManager.SetInitializeIndexesFunc(t, getNoopInitializeIndexes())
@@ -326,7 +326,7 @@ func TestChangeIndexPartitionsStartStopAndRestart(t *testing.T) {
 func TestChangeIndexPartitionsWithViews(t *testing.T) {
 	base.TestRequiresViews(t)
 	// force views - doesn't matter what mode test framework is in since we're not actually using any
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: base.Ptr(true)}}})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{UseViews: new(true)}}})
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_index_init", `{"num_partitions":2}`)

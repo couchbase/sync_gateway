@@ -86,7 +86,7 @@ func TestImportFeedWithRecursiveSyncFunction(t *testing.T) {
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn:     `function access(doc) { access("foo", "bar"); }`,
-		AutoImport: base.Ptr(true),
+		AutoImport: new(true),
 	})
 	defer rt.Close()
 
@@ -1574,7 +1574,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportBackupOldRev: base.Ptr(true),
+			ImportBackupOldRev: new(true),
 			AutoImport:         false,
 		}},
 	}
@@ -1629,7 +1629,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			ImportBackupOldRev: base.Ptr(true),
+			ImportBackupOldRev: new(true),
 			AutoImport:         false,
 		}},
 	}
@@ -1852,7 +1852,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
-			ImportFilter: base.Ptr(`function (doc) {
+			ImportFilter: new(`function (doc) {
 				console.log("Doc in Import Filter:" + JSON.stringify(doc));
 				if (doc.channels || doc._deleted) {
 					return true
@@ -1911,13 +1911,13 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "Invalid _sync",
 			importBody:         map[string]any{"_sync": true},
 			expectReject:       true,
-			expectedStatusCode: base.Ptr(500), // Internal server error due to unmarshal error
+			expectedStatusCode: new(500), // Internal server error due to unmarshal error
 		},
 		{
 			name:               "Valid _id",
 			importBody:         map[string]any{"_id": "documentid"},
 			expectReject:       true,
-			expectedStatusCode: base.Ptr(http.StatusNotFound),
+			expectedStatusCode: new(http.StatusNotFound),
 		},
 		{
 			name:         "Valid _rev",
@@ -1958,13 +1958,13 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			name:               "_purged true",
 			importBody:         map[string]any{"_purged": true},
 			expectReject:       true,
-			expectedStatusCode: base.Ptr(404), // Import gets cancelled and returns not found
+			expectedStatusCode: new(404), // Import gets cancelled and returns not found
 		},
 		{
 			name:               "_removed",
 			importBody:         map[string]any{"_removed": false},
 			expectReject:       true,
-			expectedStatusCode: base.Ptr(404),
+			expectedStatusCode: new(404),
 		},
 		{
 			name:         "_sync_cookies",
@@ -2125,7 +2125,7 @@ func TestImportFilterTimeout(t *testing.T) {
 
 	importFilter := `function(doc) { while(true) { } }`
 
-	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Ptr(uint32(1))}}}
+	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: new(uint32(1))}}}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
@@ -2256,7 +2256,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(uint16(2)),
+				ImportPartitions: new(uint16(2)),
 			},
 		},
 	})
@@ -2336,7 +2336,7 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(uint16(2)),
+				ImportPartitions: new(uint16(2)),
 			},
 		},
 	})
@@ -2430,7 +2430,7 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyCRUD, base.KeyImport)
 
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		AutoImport: base.Ptr(true),
+		AutoImport: new(true),
 	})
 	defer rt.Close()
 
@@ -2508,7 +2508,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(importPartitions),
+				ImportPartitions: new(importPartitions),
 			},
 		},
 	})
@@ -2563,7 +2563,7 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		PersistentConfig: false,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				ImportPartitions: base.Ptr(importPartitions),
+				ImportPartitions: new(importPartitions),
 			},
 		},
 	})

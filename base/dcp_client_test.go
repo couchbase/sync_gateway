@@ -1023,7 +1023,7 @@ func newDCPClientWithFastCheckpointing(t *testing.T, bucket *TestBucket, dcpOpti
 	require.NoError(t, err)
 
 	if dc, ok := dcpClient.(*GoCBDCPClient); ok {
-		dc.checkpointPersistFrequency = Ptr(0 * time.Second)
+		dc.checkpointPersistFrequency = new(0 * time.Second)
 	}
 	return dcpClient
 }

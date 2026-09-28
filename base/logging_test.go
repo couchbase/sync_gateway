@@ -63,11 +63,11 @@ func TestLogRotationInterval(t *testing.T) {
 
 	rotationInterval := time.Millisecond * 100
 	config := &FileLoggerConfig{
-		Enabled:             Ptr(true),
-		CollationBufferSize: Ptr(0),
+		Enabled:             new(true),
+		CollationBufferSize: new(0),
 		Rotation: logRotationConfig{
 			RotationInterval: NewConfigDuration(rotationInterval),
-			compress:         Ptr(false),
+			compress:         new(false),
 		},
 	}
 

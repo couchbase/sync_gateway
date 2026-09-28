@@ -246,7 +246,7 @@ func TestInitOIDCClient(t *testing.T) {
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer: "http://127.0.0.1:12345/auth",
 			},
-			CallbackURL: base.Ptr("http://127.0.0.1:12345/callback"),
+			CallbackURL: new("http://127.0.0.1:12345/callback"),
 		})
 		err := provider.initOIDCClient(ctx)
 		require.Error(t, err, "openid connect client with unavailable issuer")
@@ -256,10 +256,10 @@ func TestInitOIDCClient(t *testing.T) {
 	t.Run("initialize openid connect client with valid provider config", func(t *testing.T) {
 		provider := oidcProviderForTest(t, &OIDCProvider{
 			JWTConfigCommon: JWTConfigCommon{
-				ClientID: base.Ptr("foo"),
+				ClientID: new("foo"),
 				Issuer:   "https://accounts.google.com",
 			},
-			CallbackURL: base.Ptr("http://sgw-test:4984/_callback"),
+			CallbackURL: new("http://sgw-test:4984/_callback"),
 		})
 		err := provider.initOIDCClient(ctx)
 		require.NoError(t, err, "openid connect client with unavailable issuer")
@@ -270,10 +270,10 @@ func TestConcurrentSetConfig(t *testing.T) {
 	providerLock := sync.Mutex{}
 	provider := oidcProviderForTest(t, &OIDCProvider{
 		JWTConfigCommon: JWTConfigCommon{
-			ClientID: base.Ptr("foo"),
+			ClientID: new("foo"),
 			Issuer:   "https://accounts.google.com",
 		},
-		CallbackURL: base.Ptr("http://sgw-test:4984/_callback"),
+		CallbackURL: new("http://sgw-test:4984/_callback"),
 	})
 
 	ctx := base.TestCtx(t)
@@ -1268,7 +1268,7 @@ func TestSetRevalidationFlags(t *testing.T) {
 		return &OIDCProvider{
 			JWTConfigCommon: JWTConfigCommon{
 				Issuer:   "https://issuer.example.com",
-				ClientID: base.Ptr("client-id"),
+				ClientID: new("client-id"),
 			},
 			DiscoveryURI:            "https://issuer.example.com/.well-known/openid-configuration",
 			DisableConfigValidation: false,
@@ -1330,7 +1330,7 @@ func TestSetRevalidationFlags(t *testing.T) {
 			existing: OIDCProviderMap{"provider": newProvider()},
 			incoming: func() *OIDCProvider {
 				p := newProvider()
-				p.ClientID = base.Ptr("other-client-id")
+				p.ClientID = new("other-client-id")
 				return p
 			},
 			expected: true,
@@ -1401,7 +1401,7 @@ func TestSetRevalidationFlagsNilSafety(t *testing.T) {
 
 	t.Run("nil provider alongside a valid one is rejected", func(t *testing.T) {
 		valid := &OIDCProvider{
-			JWTConfigCommon: JWTConfigCommon{Issuer: "https://issuer.example.com", ClientID: base.Ptr("client-id")},
+			JWTConfigCommon: JWTConfigCommon{Issuer: "https://issuer.example.com", ClientID: new("client-id")},
 		}
 		opts := &OIDCOptions{Providers: OIDCProviderMap{"valid": valid, "broken": nil}}
 		require.Error(t, opts.SetRevalidationFlags(nil))

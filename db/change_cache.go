@@ -407,7 +407,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
 	var rawVV *rawHLV
 	if vv := doc.Xattrs[base.VvXattrName]; len(vv) > 0 {
-		rawVV = base.Ptr(rawHLV(vv))
+		rawVV = new(rawHLV(vv))
 	}
 	isDelete := event.Opcode == sgbucket.FeedOpDeletion
 

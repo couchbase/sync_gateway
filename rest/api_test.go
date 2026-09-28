@@ -164,9 +164,9 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				DisablePasswordAuth: base.Ptr(true),
+				DisablePasswordAuth: new(true),
 				Guest: &auth.PrincipalConfig{
-					Disabled: base.Ptr(true),
+					Disabled: new(true),
 				},
 			},
 		},
@@ -635,7 +635,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
 	assert.NoError(t, err, "Unexpected error")
-	dbConfigCopy.Sync = base.Ptr("")
+	dbConfigCopy.Sync = new("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
@@ -726,7 +726,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
 	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
-	dbConfigCopy.Sync = base.Ptr("")
+	dbConfigCopy.Sync = new("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
@@ -824,7 +824,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
 	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
-	dbConfigCopy.Sync = base.Ptr("")
+	dbConfigCopy.Sync = new("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
@@ -2818,7 +2818,7 @@ func TestRejectWritesWhenInBroadcastSlowMode(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			CacheConfig: &CacheConfig{
 				ChannelCacheConfig: &ChannelCacheConfig{
-					MaxWaitPending: base.Ptr(uint32(100)),
+					MaxWaitPending: new(uint32(100)),
 				},
 			},
 			Unsupported: &db.UnsupportedOptions{
@@ -2931,7 +2931,7 @@ func TestDatabaseXattrConfigHandlingForDBConfigUpdate(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 			rt.WaitForDBOnline()
 
-			dbConfig.EnableXattrs = base.Ptr(false)
+			dbConfig.EnableXattrs = new(false)
 
 			if testCase.upsertConfig {
 				resp = rt.UpsertDbConfig(dbName, dbConfig)
@@ -2961,7 +2961,7 @@ func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	)
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.EnableXattrs = base.Ptr(false)
+	dbConfig.EnableXattrs = new(false)
 
 	resp := rt.CreateDatabase(dbName, dbConfig)
 	RequireStatus(t, resp, http.StatusInternalServerError)
@@ -2972,7 +2972,7 @@ func TestCreateDBWithXattrsDisabled(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	rt.updatePersistedConfig(dbName, func(config *DatabaseConfig) {
-		config.EnableXattrs = base.Ptr(false)
+		config.EnableXattrs = new(false)
 	})
 
 	_, err := rt.RestTesterServerContext.ReloadDatabase(t.Context(), dbName, false)
@@ -3142,7 +3142,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	defer rt.Close()
 
 	// force compaction
-	rt.GetDatabase().Options.TestPurgeIntervalOverride = base.Ptr(time.Duration(0))
+	rt.GetDatabase().Options.TestPurgeIntervalOverride = new(time.Duration(0))
 
 	for i := range 100 {
 		docID := fmt.Sprintf("doc%d", i)
@@ -3499,8 +3499,8 @@ func TestFetchBackupWhenOppositeRevIsDeleted(t *testing.T) {
 			DbConfig: DbConfig{
 				// enable delta sync to ensure we have a backup revision stored for cv
 				DeltaSync: &DeltaSyncConfig{
-					Enabled:          base.Ptr(true),
-					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+					Enabled:          new(true),
+					RevMaxAgeSeconds: new(db.DefaultDeltaSyncRevMaxAge),
 				},
 			},
 		},
@@ -3559,7 +3559,7 @@ func TestAllowConflictsConfig(t *testing.T) {
 	)
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AllowConflicts = base.Ptr(true)
+	dbConfig.AllowConflicts = new(true)
 
 	resp := rt.CreateDatabase(dbName, dbConfig)
 
@@ -3579,7 +3579,7 @@ func TestAllowConflictsConfig(t *testing.T) {
 
 	// Set the `AllowConflicts` property to true in the persisted database configuration and try to load it (this covers cases where the config value was previously set from an older SGW version that allowed this configuration).
 	rt.updatePersistedConfig(dbName, func(config *DatabaseConfig) {
-		config.DbConfig.AllowConflicts = base.Ptr(true)
+		config.DbConfig.AllowConflicts = new(true)
 	})
 
 	// Reload the database configuration and verify that an error is returned.
@@ -3624,7 +3624,7 @@ func TestDisableAllowStarChannel(t *testing.T) {
 
 	// Attempting to disable `enable_star_channel`
 	rt.updatePersistedConfig(dbName, func(config *DatabaseConfig) {
-		config.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.Ptr(false)
+		config.CacheConfig.ChannelCacheConfig.EnableStarChannel = new(false)
 	})
 
 	// Reloading the database after updating the config
@@ -3639,8 +3639,8 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 			DbConfig: DbConfig{
 				// enable delta sync to ensure we have a backup revision stored for cv
 				DeltaSync: &DeltaSyncConfig{
-					Enabled:          base.Ptr(true),
-					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+					Enabled:          new(true),
+					RevMaxAgeSeconds: new(db.DefaultDeltaSyncRevMaxAge),
 				},
 			},
 		},
@@ -3800,7 +3800,7 @@ func TestGetConfigAfterFailToStartOnlineProcess(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.StartOffline = new(true)
 	resp := rt.CreateDatabase("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -3835,8 +3835,8 @@ func TestFetchBackupRevisionByCVThroughAPI(t *testing.T) {
 			DbConfig: DbConfig{
 				// enable delta sync to ensure we have a backup revision stored for cv
 				DeltaSync: &DeltaSyncConfig{
-					Enabled:          base.Ptr(true),
-					RevMaxAgeSeconds: base.Ptr(db.DefaultDeltaSyncRevMaxAge),
+					Enabled:          new(true),
+					RevMaxAgeSeconds: new(db.DefaultDeltaSyncRevMaxAge),
 				},
 			},
 		},

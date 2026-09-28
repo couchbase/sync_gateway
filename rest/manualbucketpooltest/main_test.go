@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	tbpOptions := base.TestBucketPoolOptions{
 		MemWatermarkThresholdMB: 8192,
-		NumBuckets:              base.Ptr(0),
+		NumBuckets:              new(0),
 	}
 	base.TestBucketPoolMain(ctx, m, base.NoopTBPBucketReadierFunc, base.NoopInitFunc, tbpOptions)
 }

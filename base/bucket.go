@@ -151,7 +151,7 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 
 // //GetGoCBConnStringforDCP builds a gocb connection string from BucketSpec.Server for DCP connections.
 func (spec *BucketSpec) GetGoCBConnStringForDCP() (string, error) {
-	return spec.getGoCBConnString(Ptr(GoCBPoolSizeDCP))
+	return spec.getGoCBConnString(new(GoCBPoolSizeDCP))
 }
 
 // getGoCBConnString builds a gocb connection string based on BucketSpec.server values. This is used for bucket connections. KvPoolSize can be forced despite the values of the connection values.

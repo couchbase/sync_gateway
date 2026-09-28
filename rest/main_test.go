@@ -23,7 +23,7 @@ func TestBootstrapConnectionOptsConfigs(t *testing.T) {
 	bucketCreds := base.PerBucketCredentialsConfig{
 		"bucket1": {Username: "b1user", Password: "b1pass"},
 	}
-	tlsSkipVerify := base.Ptr(true)
+	tlsSkipVerify := new(true)
 
 	testCases := []struct {
 		name          string
@@ -67,7 +67,7 @@ func TestBootstrapConnectionOptsConfigs(t *testing.T) {
 			},
 			dbConfig: DbConfig{
 				BucketConfig: BucketConfig{
-					Server:   base.Ptr("couchbase://db-host"),
+					Server:   new("couchbase://db-host"),
 					Username: "dbUser",
 					Password: "dbPass",
 				},
@@ -96,7 +96,7 @@ func TestBootstrapConnectionOptsConfigs(t *testing.T) {
 				Bootstrap: BootstrapConfig{Server: "couchbase://startup-host"},
 			},
 			dbConfig: DbConfig{
-				BucketConfig: BucketConfig{Server: base.Ptr("")},
+				BucketConfig: BucketConfig{Server: new("")},
 			},
 			expected: bootstrapConnectionOpts{
 				server:                      "couchbase://startup-host",
@@ -152,7 +152,7 @@ func TestBootstrapConnectionOptsConfigs(t *testing.T) {
 			startupConfig: StartupConfig{
 				Bootstrap: BootstrapConfig{Server: "couchbase://host"},
 				Unsupported: UnsupportedConfig{
-					UseXattrConfig: base.Ptr(true),
+					UseXattrConfig: new(true),
 				},
 			},
 			dbConfig: DbConfig{},
@@ -167,7 +167,7 @@ func TestBootstrapConnectionOptsConfigs(t *testing.T) {
 			startupConfig: StartupConfig{
 				Bootstrap: BootstrapConfig{
 					Server:                      "couchbase://host",
-					UseSystemMetadataCollection: base.Ptr(true),
+					UseSystemMetadataCollection: new(true),
 				},
 			},
 			dbConfig: DbConfig{},
@@ -211,7 +211,7 @@ func TestConfigOverwritesLegacyFlags(t *testing.T) {
 
 	require.NotNil(t, sc)
 	// Overwrote
-	assert.Equal(t, base.Ptr(base.LevelDebug), sc.Logging.Console.LogLevel)
+	assert.Equal(t, new(base.LevelDebug), sc.Logging.Console.LogLevel)
 	assert.Equal(t, "127.0.0.1", sc.Bootstrap.Server)
 	// Not overwrote
 	assert.Equal(t, "1.2.3.4", sc.API.PublicInterface)
@@ -229,26 +229,26 @@ func TestParseFlags(t *testing.T) {
 		{
 			name:                            "Help error returned on -h",
 			osArgs:                          []string{"-h"},
-			expectedError:                   base.Ptr("help requested"),
+			expectedError:                   new("help requested"),
 			expectedDisablePersistentConfig: nil,
 		},
 		{
 			name:                            "Unknown flag",
 			osArgs:                          []string{"-unknown-flag"},
-			expectedError:                   base.Ptr("flag provided but not defined: -unknown-flag"),
+			expectedError:                   new("flag provided but not defined: -unknown-flag"),
 			expectedDisablePersistentConfig: nil,
 		},
 		{
 			name:                            "Disable persistent config",
 			osArgs:                          []string{"-disable_persistent_config"},
 			expectedError:                   nil,
-			expectedDisablePersistentConfig: base.Ptr(true),
+			expectedDisablePersistentConfig: new(true),
 		},
 		{
 			name:                            "Config flag",
 			osArgs:                          []string{"-bootstrap.server", "1.2.3.4"},
 			expectedError:                   nil,
-			expectedDisablePersistentConfig: base.Ptr(false),
+			expectedDisablePersistentConfig: new(false),
 		},
 	}
 	for _, test := range testCases {
@@ -286,34 +286,34 @@ func TestSanitizeDbConfigs(t *testing.T) {
 		},
 		{
 			name:          "Empty server",
-			input:         DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("")}}},
+			input:         DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: new("")}}},
 			expectedError: serverAddressErrorString,
 		},
 		{
 			name: "Filled in server, and nil server",
-			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("1.2.3.4")}},
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: new("1.2.3.4")}},
 				"2": &DbConfig{}},
 			expectedError: serverAddressErrorString,
 		},
 		{
 			name: "Filled in server, and empty server",
-			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("")}},
-				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("1.2.3.4")}}},
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: new("")}},
+				"2": &DbConfig{BucketConfig: BucketConfig{Server: new("1.2.3.4")}}},
 			expectedError: serverAddressErrorString,
 		},
 		{
 			name: "Filled in matching servers",
-			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("1.2.3.4")}},
-				"2": &DbConfig{BucketConfig: BucketConfig{Server: base.Ptr("1.2.3.4")}}},
+			input: DbConfigMap{"1": &DbConfig{BucketConfig: BucketConfig{Server: new("1.2.3.4")}},
+				"2": &DbConfig{BucketConfig: BucketConfig{Server: new("1.2.3.4")}}},
 		},
 		{
 			name: "Multiple buckets with same db",
 			input: DbConfigMap{
 				"db": &DbConfig{
-					BucketConfig: BucketConfig{Server: base.Ptr("1.2.3.4"), Bucket: base.Ptr("bucket")},
+					BucketConfig: BucketConfig{Server: new("1.2.3.4"), Bucket: new("bucket")},
 				},
 				"db2": &DbConfig{
-					BucketConfig: BucketConfig{Server: base.Ptr("1.2.3.4"), Bucket: base.Ptr("bucket")},
+					BucketConfig: BucketConfig{Server: new("1.2.3.4"), Bucket: new("bucket")},
 				},
 			},
 			// Cannot specify bucket names exactly due to un-deterministic iteration over map

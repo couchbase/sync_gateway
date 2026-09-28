@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
@@ -32,13 +31,13 @@ func TestDisablePublicAllDocs(t *testing.T) {
 		},
 		{
 			name:                 "disabled",
-			disablePublicAllDocs: base.Ptr(true),
+			disablePublicAllDocs: new(true),
 			expectedPublicStatus: http.StatusForbidden,
 			expectedPublicError:  "public access to _all_docs is disabled for this database",
 		},
 		{
 			name:                 "enabled",
-			disablePublicAllDocs: base.Ptr(false),
+			disablePublicAllDocs: new(false),
 			expectedPublicStatus: http.StatusOK,
 		},
 	}

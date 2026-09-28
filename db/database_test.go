@@ -42,10 +42,10 @@ func init() {
 
 func setupTestDBAllowConflicts(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
-		AllowConflicts: base.Ptr(true),
-		CacheOptions:   base.Ptr(DefaultCacheOptions()),
+		AllowConflicts: new(true),
+		CacheOptions:   new(DefaultCacheOptions()),
 		UnsupportedOptions: &UnsupportedOptions{
-			ResyncPartitions: base.Ptr(uint16(2)),
+			ResyncPartitions: new(uint16(2)),
 		},
 	}
 	return SetupTestDBWithOptions(t, dbcOptions)
@@ -1071,7 +1071,7 @@ func TestDeltaSyncWhenFromRevIsLegacyRevTreeID(t *testing.T) {
 			Enabled:          true,
 			RevMaxAgeSeconds: 300,
 		},
-		StoreLegacyRevTreeData: base.Ptr(true),
+		StoreLegacyRevTreeData: new(true),
 	})
 
 	defer db.Close(ctx)
@@ -2204,7 +2204,7 @@ func TestConflictRevLimitDefault(t *testing.T) {
 func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.Ptr(true),
+		AllowConflicts: new(true),
 	}
 
 	db, ctx := SetupTestDBWithOptions(t, dbOptions)
@@ -2214,7 +2214,7 @@ func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 
 func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.Ptr(false),
+		AllowConflicts: new(false),
 	}
 
 	db, ctx := SetupTestDBWithOptions(t, dbOptions)
@@ -2229,7 +2229,7 @@ func TestNoConflictsMode(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
-	db.Options.AllowConflicts = base.Ptr(false)
+	db.Options.AllowConflicts = new(false)
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -2333,7 +2333,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.Ptr(false)
+	db.Options.AllowConflicts = new(false)
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-c", "1-a"}, false, ExistingVersionWithUpdateToHLV)
@@ -2410,7 +2410,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.Ptr(false)
+	db.Options.AllowConflicts = new(false)
 	delete(body, "n")
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
@@ -3243,7 +3243,7 @@ func mockOIDCProvider() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.google.com",
-			ClientID: base.Ptr(clientID),
+			ClientID: new(clientID),
 		},
 		Name:          "Google",
 		CallbackURL:   &callbackURL,
@@ -3255,7 +3255,7 @@ func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.google.com",
-			ClientID: base.Ptr(clientID),
+			ClientID: new(clientID),
 		},
 		Name:          "Google",
 		CallbackURL:   &callbackURLWithQuery,
@@ -3269,7 +3269,7 @@ func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 		CallbackURL: &callbackURL,
 		JWTConfigCommon: auth.JWTConfigCommon{
 			Issuer:   "https://accounts.yahoo.com",
-			ClientID: base.Ptr(clientID),
+			ClientID: new(clientID),
 		},
 	}
 }
@@ -3483,7 +3483,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 		},
 	})
 
-	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3538,7 +3538,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 			}
 		},
 	})
-	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3595,7 +3595,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 		},
 	})
 
-	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx = SetupTestDBForBucketWithOptions(t, leakyBucket, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
@@ -3784,7 +3784,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{
-		TestPurgeIntervalOverride: base.Ptr(time.Duration(0)),
+		TestPurgeIntervalOverride: new(time.Duration(0)),
 	})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -3965,7 +3965,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	base.LongRunningTest(t)
 
-	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: base.Ptr(true)})
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{AllowConflicts: new(true)})
 	defer db.Close(ctx)
 
 	sequenceAllocator, err := newSequenceAllocator(base.DatabaseLogCtx(base.TestCtx(t), db.Name, nil), db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
@@ -4231,7 +4231,7 @@ func TestImportCompactPanic(t *testing.T) {
 	// Set the compaction and purge interval unrealistically low to reproduce faster
 	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
 		CompactInterval:           1,
-		TestPurgeIntervalOverride: base.Ptr(time.Duration(0)),
+		TestPurgeIntervalOverride: new(time.Duration(0)),
 	})
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
@@ -4637,7 +4637,7 @@ func TestSettingSyncInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "1",
-		MetadataID:      base.Ptr("someID"),
+		MetadataID:      new("someID"),
 	}, syncInfo)
 
 	// remove sync info to test another permutation
@@ -4652,7 +4652,7 @@ func TestSettingSyncInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "1",
-		MetadataID:      base.Ptr("someID"),
+		MetadataID:      new("someID"),
 	}, syncInfo)
 
 	// test updating each element in sync info now both elements are defined
@@ -4661,7 +4661,7 @@ func TestSettingSyncInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "4",
-		MetadataID:      base.Ptr("someID"),
+		MetadataID:      new("someID"),
 	}, syncInfo)
 
 	require.NoError(t, base.SetSyncInfoMetadataID(ctx, ds, "test", nil))
@@ -4669,7 +4669,7 @@ func TestSettingSyncInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, base.SyncInfo{
 		MetaDataVersion: "4",
-		MetadataID:      base.Ptr("test"),
+		MetadataID:      new("test"),
 	}, syncInfo)
 }
 
@@ -4692,7 +4692,7 @@ func TestSetSyncInfoDefaultMetadataID(t *testing.T) {
 	require.Equal(t, base.DefaultMetadataID, db.DatabaseContext.Options.MetadataID)
 
 	// Simulate a collection previously owned by a different database, including metadata_version for realism
-	oldSyncInfo := &base.SyncInfo{MetadataID: base.Ptr("previous_database"), MetaDataVersion: MetaVersionValue}
+	oldSyncInfo := &base.SyncInfo{MetadataID: new("previous_database"), MetaDataVersion: MetaVersionValue}
 	require.NoError(t, ds.Set(ctx, base.SGSyncInfo, 0, nil, oldSyncInfo))
 
 	// InitSyncInfo should detect the mismatch and require resync

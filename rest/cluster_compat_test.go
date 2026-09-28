@@ -405,7 +405,7 @@ func TestClusterCompatDowngradeBlockedByLiveNewerPeer(t *testing.T) {
 	seedRegistryNode(t, rt, bucketName, "newer-peer", base.NewClusterCompatVersion(99, 9))
 
 	cfg := rt.NewDbConfig()
-	cfg.StartOffline = base.Ptr(true)
+	cfg.StartOffline = new(true)
 	resp := rt.CreateDatabase("db1", cfg)
 	RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), bucketName)
@@ -426,7 +426,7 @@ func TestClusterCompatDowngradeAllowedSameOrOlderPeers(t *testing.T) {
 	seedRegistryNode(t, rt, bucketName, "older-peer", base.NewClusterCompatVersion(0, 1))
 
 	cfg := rt.NewDbConfig()
-	cfg.StartOffline = base.Ptr(true)
+	cfg.StartOffline = new(true)
 	resp := rt.CreateDatabase("db1", cfg)
 	RequireStatus(t, resp, http.StatusCreated)
 }
@@ -472,7 +472,7 @@ func TestClusterCompatDowngradeBlockedByPersistentHWM(t *testing.T) {
 	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
 
 	cfg := rt.NewDbConfig()
-	cfg.StartOffline = base.Ptr(true)
+	cfg.StartOffline = new(true)
 	resp := rt.CreateDatabase("db1", cfg)
 	RequireStatus(t, resp, http.StatusInternalServerError)
 	assert.Contains(t, resp.Body.String(), "newer Sync Gateway cluster compat version")
@@ -610,7 +610,7 @@ func TestClusterCompatAppliedDBVersionUpdatedByHandlePutDbConfig(t *testing.T) {
 	require.NotEmpty(t, versionAfterCreate, "version must be tracked after initial create")
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AutoImport = base.Ptr(false)
+	dbConfig.AutoImport = new(false)
 	resp := rt.UpsertDbConfig("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -943,7 +943,7 @@ func TestIsConfigFullyAppliedRollback(t *testing.T) {
 	versionV := rtA.ServerContext().ClusterCompat.getAppliedDBVersionsForBucket(bucketName)["db"]
 	require.NotEmpty(t, versionV)
 
-	dbConfig.AutoImport = base.Ptr(false)
+	dbConfig.AutoImport = new(false)
 	resp = rtA.UpsertDbConfig("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)

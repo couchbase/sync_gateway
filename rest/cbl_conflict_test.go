@@ -39,7 +39,7 @@ func TestBlipConflictResolution(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: base.Ptr(true)}
+	dbConfig.DeltaSync = &DeltaSyncConfig{Enabled: new(true)}
 	dbConfig.AutoImport = false
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 

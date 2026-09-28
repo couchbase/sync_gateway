@@ -508,6 +508,41 @@ func TestPushReplicationAPI(t *testing.T) {
 	})
 }
 
+// TestPushReplicationAfterDbAuditConfigUpdate ensures a database reloaded by PUT /{db}/_config/audit can still run
+// replications once the request that triggered the reload has completed and its context has been cancelled.
+func TestPushReplicationAfterDbAuditConfigUpdate(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	activeRT := rest.NewRestTesterPersistentConfig(t)
+	t.Cleanup(activeRT.Close)
+	passiveRT := rest.NewRestTesterPersistentConfig(t)
+	t.Cleanup(passiveRT.Close)
+
+	const username = "alice"
+	passiveRT.CreateUser(username, []string{"*"})
+	passiveDBURL := userDBURL(passiveRT, username)
+
+	// RestTester requests use a context that is never cancelled, so go over real HTTP to get net/http behaviour.
+	resp, err := http.Post(adminDBURL(activeRT).String()+"/_config/audit", "application/json", strings.NewReader(`{"enabled":false}`))
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	activeRT.WaitForDBOnline()
+
+	const replicationID = "rep1"
+	activeRT.CreateReplication(replicationID, passiveDBURL.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
+	activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	const docID = "doc1"
+	version := activeRT.CreateTestDoc(docID)
+	passiveRT.WaitForVersion(docID, version)
+
+	changes := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, changes.Last_Seq.String(), activeRT.GetReplicationStatus(replicationID).LastSeqPush)
+	}, 20*time.Second, 50*time.Millisecond)
+}
+
 // TestPullReplicationAPI
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates documents on rt2.
@@ -1842,13 +1877,13 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 		db1 = "db1"
 	)
 	db2Config := rt.NewDbConfig()
-	db2Config.Bucket = base.Ptr(tb.GetName())
+	db2Config.Bucket = new(tb.GetName())
 	rest.RequireStatus(t, rt.CreateDatabase(db2, db2Config), http.StatusCreated)
 
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
 	db1Config := rt.NewDbConfig()
-	db1Config.Bucket = base.Ptr(tb2.GetName())
+	db1Config.Bucket = new(tb2.GetName())
 	rest.RequireStatus(t, rt.CreateDatabase(db1, db1Config), http.StatusCreated)
 
 	rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
@@ -1971,7 +2006,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 		// just change the sync function to cause the database to reload
 		dbConfig := *rt2.ServerContext().GetDbConfig("db")
-		dbConfig.Sync = base.Ptr(`function(doc){channel(doc.channels);}`)
+		dbConfig.Sync = new(`function(doc){channel(doc.channels);}`)
 		resp := rt2.ReplaceDbConfig("db", dbConfig)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -2000,7 +2035,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.Ptr(rest.RestTesterDefaultUserPassword)},
+					username: {Password: new(rest.RestTesterDefaultUserPassword)},
 				},
 			}},
 		})
@@ -2146,7 +2181,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 		peers := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{
 			// shorten pending sequence handling to speed up test
-			PassiveMaxWaitPending: base.Ptr(uint32(1)),
+			PassiveMaxWaitPending: new(uint32(1)),
 		})
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 		remoteURL, err := url.Parse(remoteURLString)
@@ -4143,7 +4178,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			localVersion:          rest.NewDocVersionFromFakeRev("2-a"),
 			remoteRevisionBody:    `{"_deleted": true}`,
 			remoteVersion:         rest.NewDocVersionFromFakeRev("2-b"),
-			commonAncestorVersion: base.Ptr(rest.NewDocVersionFromFakeRev("1-a")),
+			commonAncestorVersion: new(rest.NewDocVersionFromFakeRev("1-a")),
 			conflictResolver:      `function(conflict) {return conflict.LocalDocument;}`,
 			expectedBody:          `{"source": "local"}`,
 			expectedVersion:       rest.NewDocVersionFromFakeRev(db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`))), // rev for local body, transposed under parent 2-b
@@ -5647,7 +5682,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 		{
 			name:                  "mergeReadIntlPropsDeletedWithLocalTombstone",
 			localRevisionBody:     `{"source": "local", "_deleted": true}`,
-			commonAncestorVersion: base.Ptr(rest.NewDocVersionFromFakeRev("1-a")),
+			commonAncestorVersion: new(rest.NewDocVersionFromFakeRev("1-a")),
 			localVersion:          rest.NewDocVersionFromFakeRev("2-a"),
 			remoteRevisionBody:    `{"source": "remote"}`,
 			remoteVersion:         rest.NewDocVersionFromFakeRev("2-b"),
@@ -6461,7 +6496,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-				AllowConflicts: base.Ptr(false),
+				AllowConflicts: new(false),
 			}},
 		})
 	defer rt2.Close()
@@ -7023,7 +7058,7 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
-				"alice": {Password: base.Ptr("pass")},
+				"alice": {Password: new("pass")},
 			},
 		}},
 	})
@@ -7060,7 +7095,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 			DbConfig: rest.DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
 					"alice": {
-						Password: base.Ptr("pass"),
+						Password: new("pass"),
 					},
 				},
 			},
@@ -7198,17 +7233,17 @@ func TestGroupIDReplications(t *testing.T) {
 		dbConfig := rest.DbConfig{
 			AutoImport: true,
 			BucketConfig: rest.BucketConfig{
-				Bucket: base.Ptr(activeBucket.GetName()),
+				Bucket: new(activeBucket.GetName()),
 			},
 		}
 		if !base.UnitTestUrlIsWalrus() {
-			dbConfig.UseViews = base.Ptr(base.TestsDisableGSI())
+			dbConfig.UseViews = new(base.TestsDisableGSI())
 		}
 
 		if rt.GetDatabase().OnlyDefaultCollection() {
-			dbConfig.Sync = base.Ptr(channels.DocChannelsSyncFunction)
+			dbConfig.Sync = new(channels.DocChannelsSyncFunction)
 		} else {
-			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, 1, base.Ptr(channels.DocChannelsSyncFunction), nil)
+			dbConfig.Scopes = rest.GetCollectionsConfigWithFiltering(rt.TB(), rt.TestBucket, 1, new(channels.DocChannelsSyncFunction), nil)
 		}
 		dbcJSON, err := base.JSONMarshal(dbConfig)
 		require.NoError(t, err)

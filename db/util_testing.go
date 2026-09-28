@@ -502,7 +502,7 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 		info.Channels = channels.AsSet()
 		email := user.Email()
 		info.Email = &email
-		info.Disabled = base.Ptr(user.Disabled())
+		info.Disabled = new(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		info.RoleNames = user.RoleNames().AllKeys()
 	} else {

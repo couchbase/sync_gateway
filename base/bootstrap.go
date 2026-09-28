@@ -252,7 +252,7 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 	perBucketCreds PerBucketCredentialsConfig,
 	useXattrConfig bool, useSystemMetadataCollection bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
-	securityConfig, err := GoCBv2SecurityConfig(ctx, Ptr(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
+	securityConfig, err := GoCBv2SecurityConfig(ctx, new(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
 	if err != nil {
 		return nil, err
 	}

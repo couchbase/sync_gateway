@@ -57,8 +57,8 @@ func TestGetOldRevisionBodyByRevTreeID(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := NewRestTester(t, &RestTesterConfig{
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					DeltaSync:              &DeltaSyncConfig{Enabled: base.Ptr(tc.deltaSyncEnabled)},
-					StoreLegacyRevTreeData: base.Ptr(tc.storeLegacyRevTreeData),
+					DeltaSync:              &DeltaSyncConfig{Enabled: new(tc.deltaSyncEnabled)},
+					StoreLegacyRevTreeData: new(tc.storeLegacyRevTreeData),
 				}},
 			})
 			defer rt.Close()
