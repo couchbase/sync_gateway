@@ -917,8 +917,8 @@ func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Conte
 // held at the same time, keeping principalCountsLock a leaf lock (see changeListener).
 func (listener *changeListener) PrincipalCountsForTest(_ testing.TB) (keyCounts, principalCounts map[channels.ID]uint64) {
 	counters := func() map[channels.ID]*atomic.Uint64 {
-		listener.principalCountsLock.Lock()
-		defer listener.principalCountsLock.Unlock()
+		listener.principalCountsLock.RLock()
+		defer listener.principalCountsLock.RUnlock()
 		snapshot := make(map[channels.ID]*atomic.Uint64, len(listener.principalCounts))
 		maps.Copy(snapshot, listener.principalCounts)
 		return snapshot
@@ -940,6 +940,11 @@ func (listener *changeListener) CounterForTest(_ testing.TB) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	return listener.counter
+}
+
+// PrincipalCountsInsertedForTest returns the number of principal counters ever created.
+func (listener *changeListener) PrincipalCountsInsertedForTest(_ testing.TB) uint64 {
+	return listener.principalCountsInserted.Load()
 }
 
 // UserKeysCopyForTest returns a copy of the waiter's current set of principal (user/role) keys.

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package changecachetest
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -239,6 +240,73 @@ func TestChangeWaiterWakeObservesUserCount(t *testing.T) {
 	}
 }
 
+// TestChangeWaiterWakeObservesFirstNotify is TestChangeWaiterWakeObservesUserCount for a principal
+// that had no counter when the waiter was created: the notify that wakes the waiter is the one that
+// creates the counter, so the waiter has to discover it before reading the count.  Each iteration
+// uses a new, never-saved user so that every notify is a first notify, and nothing but the direct
+// notify (no DCP event from a principal doc write) can wake the waiter.
+func TestChangeWaiterWakeObservesFirstNotify(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	listener := database.GetMutationListener(t)
+
+	for i := range 100 {
+		username := fmt.Sprintf("user%d", i)
+		// No password: bcrypt per iteration makes 100 iterations take over a minute under -race.
+		user, err := database.Authenticator(ctx).NewUser(username, "", channels.BaseSetOf(t, "ABC"))
+		require.NoError(t, err)
+		userDb, err := db.GetDatabase(database.DatabaseContext, user)
+		require.NoError(t, err)
+		waiter := userDb.NewUserWaiter()
+		require.Zero(t, waiter.CurrentUserCount())
+
+		done := make(chan uint32, 1)
+		go func() {
+			done <- waiter.Wait(ctx)
+		}()
+		// Give the waiter a chance to park; if it hasn't, Wait returns immediately via the same
+		// user count refresh, which is also a correct outcome.
+		time.Sleep(time.Millisecond)
+		listener.NotifyKeyForTest(t, ctx, channels.NewID(database.MetadataKeys.UserKey(username), 0))
+
+		select {
+		case result := <-done:
+			require.Equal(t, db.WaiterHasChanges, result)
+		case <-time.After(10 * time.Second):
+			require.FailNow(t, "waiter was not woken by the user's first notify")
+		}
+		require.NotZero(t, waiter.CurrentUserCount())
+	}
+}
+
+// TestUserWaiterConcurrentFirstNotify races several first notifies for the same principal.  Only
+// one counter may ever be created per principal: if a second insert replaced the first, any waiter
+// that had already picked up the replaced counter would silently stop seeing updates for it.
+func TestUserWaiterConcurrentFirstNotify(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	listener := database.GetMutationListener(t)
+
+	const notifiers = 8
+	for i := range 500 {
+		userKey := channels.NewID(database.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)), 0)
+		insertedBefore := listener.PrincipalCountsInsertedForTest(t)
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for range notifiers {
+			wg.Go(func() {
+				<-start
+				listener.NotifyKeyForTest(t, ctx, userKey)
+			})
+		}
+		close(start)
+		wg.Wait()
+
+		require.Equal(t, insertedBefore+1, listener.PrincipalCountsInsertedForTest(t), "exactly one counter per principal")
+	}
+}
+
 // TestUserWaiterConcurrentRefreshRace races readers spinning RefreshUserCount and feed waiters
 // parked in Wait against a stream of principal notifies, and asserts no reader ever observes the
 // count moving backwards, and all readers converge on the final value.
@@ -394,7 +462,12 @@ func TestUserWaiterBeforeFirstNotify(t *testing.T) {
 	require.False(t, w2.RefreshUserCount())
 	require.Zero(t, w1.CurrentUserCount())
 
+	// Only notifyKey creates principal counters, so registering waiters must not have added one.
 	userKey := channels.NewID(database.MetadataKeys.UserKey("bob"), 0)
+	_, principalCounts := listener.PrincipalCountsForTest(t)
+	_, hasPrincipalCounter := principalCounts[userKey]
+	require.False(t, hasPrincipalCounter, "waiter construction must not create a principal counter")
+
 	listener.NotifyKeyForTest(t, ctx, userKey)
 
 	require.True(t, w1.RefreshUserCount())
