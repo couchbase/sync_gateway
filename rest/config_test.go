@@ -30,6 +30,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1059,6 +1061,35 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	require.True(t, errors.As(multiError.Errors[0], &sharedBucketError))
 	assert.Equal(t, tb1.BucketSpec.BucketName, sharedBucketError.GetSharedBucket().bucketName)
 	assert.Subset(t, []string{"db1", "db2"}, sharedBucketError.GetSharedBucket().dbNames)
+}
+
+func TestSharedBucketDatabaseCheckRace(t *testing.T) {
+	if !base.IsRaceDetectorEnabled(t) {
+		t.Skip("This test requires RACE detector to be enabled")
+	}
+	ctx := base.TestCtx(t)
+
+	rt := NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+	sc := rt.ServerContext()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Name = "db"
+
+	var writerDone atomic.Bool
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		defer writerDone.Store(true)
+		for range 20 {
+			_, err := sc.AddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig})
+			require.NoError(t, err)
+			assert.True(t, sc.RemoveDatabase(ctx, "db", "test"))
+		}
+	})
+	for !writerDone.Load() {
+		_ = sharedBucketDatabaseCheck(ctx, sc)
+	}
+	wg.Wait()
+
 }
 
 func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {

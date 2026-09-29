@@ -1774,35 +1774,57 @@ func (h *handler) handleGetStatus() error {
 		}
 	}
 
-	for _, database := range h.server._databases {
-		lastSeq := uint64(0)
-		runState := db.RunStateString[atomic.LoadUint32(&database.State)]
+	var databases []*db.DatabaseContext
+	if snapshot := h.server.databasesSnapshot.Load(); snapshot != nil {
+		databases = *snapshot
+	}
+	for _, database := range databases {
+		err := func() error {
+			// Close takes BucketLock for write, so the database stays open while this read lock is held.
+			database.BucketLock.RLock()
+			defer database.BucketLock.RUnlock()
+			if database.Bucket == nil {
+				return nil
+			}
+			lastSeq := uint64(0)
+			runState := db.RunStateString[atomic.LoadUint32(&database.State)]
 
-		// Don't bother trying to lookup LastSequence() if offline
-		if runState != db.RunStateString[db.DBOffline] {
-			lastSeq, _ = database.LastSequence(h.ctx())
-		}
+			// Don't bother trying to lookup LastSequence() if offline
+			if runState != db.RunStateString[db.DBOffline] {
+				lastSeq, _ = database.LastSequence(h.ctx())
+			}
 
-		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(h.ctx(), db.DefaultReplicationStatusOptions())
+			var replicationsStatus []*db.ReplicationStatus
+			var cluster *db.SGRCluster
+			// A failed StartOnlineProcesses leaves the database registered with no replication manager.
+			if database.SGReplicateMgr != nil {
+				var err error
+				replicationsStatus, err = database.SGReplicateMgr.GetReplicationStatusAll(h.ctx(), db.DefaultReplicationStatusOptions())
+				if err != nil {
+					return err
+				}
+				cluster, err = database.SGReplicateMgr.GetSGRCluster()
+				if err != nil {
+					return err
+				}
+				for _, replication := range cluster.Replications {
+					replication.ReplicationConfig = *replication.Redacted(h.ctx())
+				}
+			}
+
+			status.Databases[database.Name] = DatabaseStatus{
+				SequenceNumber:    lastSeq,
+				State:             runState,
+				ServerUUID:        database.ServerUUID,
+				ReplicationStatus: replicationsStatus,
+				SGRCluster:        cluster,
+				RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
+				MetadataStoreMode: base.GetMetadataStoreMode(database.MetadataStore),
+			}
+			return nil
+		}()
 		if err != nil {
 			return err
-		}
-		cluster, err := database.SGReplicateMgr.GetSGRCluster()
-		if err != nil {
-			return err
-		}
-		for _, replication := range cluster.Replications {
-			replication.ReplicationConfig = *replication.Redacted(h.ctx())
-		}
-
-		status.Databases[database.Name] = DatabaseStatus{
-			SequenceNumber:    lastSeq,
-			State:             runState,
-			ServerUUID:        database.ServerUUID,
-			ReplicationStatus: replicationsStatus,
-			SGRCluster:        cluster,
-			RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
-			MetadataStoreMode: base.GetMetadataStoreMode(database.MetadataStore),
 		}
 	}
 
