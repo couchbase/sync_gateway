@@ -181,7 +181,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 					// add new doc for some replication activity on pull side to allow us to assert that legacy rev 2-abc added
 					// isn't pulled back to rt1 now it has a legacy revID encoded CV
 					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					sgrRunner.RequireDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt2
+					sgrRunner.RequireDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt1
 
 					// assert that the document isn't replicated back to rt1 after legacy rev CV is written on rt2
 					rt1Doc := rt1.GetDocument(docID)

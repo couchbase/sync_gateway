@@ -266,6 +266,9 @@ type ExpectedISGRDoc struct {
 	// HLV is compared in full apart from cvCAS, which each peer sets from its own write. Only checked in v4, since in
 	// v3 the receiving peer mints a new HLV of its own.
 	HLV *db.HybridLogicalVector
+	// NoHLV is true if the document must have no HLV at all - a document written before HLVs existed, that nothing has
+	// written to since. Needed as well as HLV because a nil HLV means the HLV isn't checked.
+	NoHLV bool
 	// RevChain is the ancestry of the current revision, current revision first.
 	RevChain []string
 	// Channels are the channels the document is currently in, ignoring channels it has been removed from.
@@ -287,7 +290,18 @@ func (runner *SGRTestRunner) RequireDocReplicated(docID string, source, dest *Re
 	// and dest can already be at version before the replication has done anything.
 	runner.waitForDocVersion(source, docID, version)
 	runner.waitForDocVersion(dest, docID, version)
-	return runner.RequireDoc(docID, dest, ExpectedISGRDocFromPeer(t, source, docID))
+	expected := ExpectedISGRDocFromPeer(t, source, docID)
+	if expected.NoHLV {
+		// A document written before HLVs existed replicates with a CV encoded from its revTreeID, so that's the HLV
+		// dest must end up with.
+		encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(expected.Version.RevTreeID)
+		require.NoError(t, err)
+		expected.HLV = db.NewHybridLogicalVector()
+		require.NoError(t, expected.HLV.AddVersion(encodedCV))
+		expected.Version.CV = encodedCV
+		expected.NoHLV = false
+	}
+	return runner.RequireDoc(docID, dest, expected)
 }
 
 // RequireDoc waits for exp.Version to arrive on rt, then requires the document to match every field set in exp.
@@ -300,13 +314,18 @@ func (runner *SGRTestRunner) RequireDoc(docID string, rt *RestTester, exp Expect
 	actual := expectedISGRDocFromDoc(t, rt.Context(), doc)
 	peer := rt.GetDatabase().Name
 
-	require.NotNil(t, doc.HLV, "doc %q has no HLV on %s", docID, peer)
-	if runner.IsV4Protocol() {
+	switch {
+	case exp.NoHLV:
+		// HLVDebugString isn't nil-safe, and message arguments are evaluated even when the assertion passes
+		assert.Nil(t, doc.HLV, "doc %q on %s should have no HLV, HLV: %+v", docID, peer, doc.HLV)
+	case doc.HLV == nil:
+		require.FailNow(t, "doc has no HLV", "doc %q on %s", docID, peer)
+	case runner.IsV4Protocol():
 		if exp.HLV != nil {
 			assert.True(t, hlvEqualAllowingEncodedRevs(t, exp.HLV, doc.HLV, exp.RevChain),
 				"HLV mismatch for doc %q on %s. Expected: %s, Actual: %s", docID, peer, exp.HLV.HLVDebugString(), doc.HLV.HLVDebugString())
 		}
-	} else {
+	default:
 		assert.Equal(t, rt.GetDatabase().EncodedSourceID, doc.HLV.SourceID,
 			"doc %q on %s should have a CV minted locally in v3, HLV: %s", docID, peer, doc.HLV.HLVDebugString())
 	}
@@ -402,25 +421,21 @@ func ExpectedISGRDocFromPeer(t testing.TB, rt *RestTester, docID string) Expecte
 	return expectedISGRDocFromDoc(t, rt.Context(), rt.GetDocument(docID))
 }
 
-// expectedISGRDocFromDoc returns the replication-relevant state of doc, with every field populated.
+// expectedISGRDocFromDoc returns the replication-relevant state of doc as it is, with every field populated. A document
+// with no HLV is described as one, with NoHLV set and a revTreeID-only Version.
 func expectedISGRDocFromDoc(t testing.TB, ctx context.Context, doc *db.Document) ExpectedISGRDoc {
 	t.Helper()
-	hlv := doc.HLV.Copy()
-	if hlv == nil {
-		// A document written before HLVs existed replicates with a CV encoded from its revTreeID, so that's the HLV a
-		// peer receiving it must end up with.
-		encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
-		require.NoError(t, err)
-		hlv = db.NewHybridLogicalVector()
-		require.NoError(t, hlv.AddVersion(encodedCV))
-	}
 	exp := ExpectedISGRDoc{
-		Version:     DocVersion{RevTreeID: doc.GetRevTreeID(), CV: *hlv.ExtractCurrentVersionFromHLV()},
+		Version:     DocVersion{RevTreeID: doc.GetRevTreeID()},
 		Deleted:     doc.IsDeleted(),
-		HLV:         hlv,
+		HLV:         doc.HLV.Copy(),
+		NoHLV:       doc.HLV == nil,
 		RevChain:    []string{},
 		Channels:    []string{},
 		Attachments: map[string]string{},
+	}
+	if doc.HLV != nil {
+		exp.Version.CV = *doc.HLV.ExtractCurrentVersionFromHLV()
 	}
 	for revID := doc.GetRevTreeID(); revID != ""; {
 		revInfo, ok := doc.History[revID]
