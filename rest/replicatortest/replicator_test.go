@@ -5871,7 +5871,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				rest.RequireStatus(t, localActiveRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication?action=start", ""), http.StatusOK)
 				localActiveRT.WaitForReplicationStatus("replication", db.ReplicationStateRunning)
 
-				// Wait for the recently longest branch to show up on both sides
+				// Wait for the recently longest branch to show up on both sides. The side that wrote the winning tombstone
+				// is the source, so a mismatch is reported against the peer that received it.
 				source, dest := localActiveRT, remotePassiveRT
 				if !test.longestBranchLocal {
 					source, dest = remotePassiveRT, localActiveRT
