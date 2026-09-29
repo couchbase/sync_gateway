@@ -4379,8 +4379,11 @@ func TestServerGetStatusRace(t *testing.T) {
 			assert.True(t, sc.RemoveDatabase(ctx, "db2", "test"))
 		}
 	})
-	for !writerDone.Load() {
+	for {
 		assert.Equal(t, http.StatusOK, getStatus().Code)
+		if writerDone.Load() {
+			break
+		}
 	}
 	wg.Wait()
 }

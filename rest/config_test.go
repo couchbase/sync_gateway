@@ -1085,8 +1085,11 @@ func TestSharedBucketDatabaseCheckRace(t *testing.T) {
 			assert.True(t, sc.RemoveDatabase(ctx, "db", "test"))
 		}
 	})
-	for !writerDone.Load() {
+	for {
 		_ = sharedBucketDatabaseCheck(ctx, sc)
+		if writerDone.Load() {
+			break
+		}
 	}
 	wg.Wait()
 
