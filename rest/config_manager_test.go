@@ -266,8 +266,8 @@ func TestGetDatabaseConfigDeletedAfterRegistryRead(t *testing.T) {
 	sc := rt.ServerContext()
 	bucketName := rt.Bucket().GetName()
 	groupID := sc.Config.Bootstrap.ConfigGroupID
-	const retryTimeout = 5 * time.Second
-	sc.BootstrapContext.configRetryTimeout = retryTimeout
+	// Waiting for the deleted config makes the test hang until the go test timeout, instead of passing after a rollback.
+	sc.BootstrapContext.configRetryTimeout = 24 * time.Hour
 
 	staleRegistry, staleConfig, err := sc.BootstrapContext.getRegistryAndDatabase(ctx, bucketName, groupID, "db")
 	require.NoError(t, err)
@@ -275,8 +275,6 @@ func TestGetDatabaseConfigDeletedAfterRegistryRead(t *testing.T) {
 
 	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
 
-	start := time.Now()
 	_, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
 	require.ErrorIs(t, err, base.ErrConfigRegistryReloadRequired)
-	assert.Less(t, time.Since(start), retryTimeout/2, "waited for a config that was deleted")
 }
