@@ -1166,16 +1166,6 @@ func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	return rawResponse
 }
 
-// ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
-// cluster to pick up the changes
-func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
-	rt.ServerContext().Config.BucketCredentials = config
-	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB()), rt.ServerContext().Config, base.PerUseClusterConnections)
-	require.NoError(rt.TB(), err)
-	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
-}
-
 // Context returns a context for a rest tester with server and database log context, if available an unambiguous.
 func (rt *RestTester) Context() context.Context {
 	ctx := base.TestCtx(rt.TB())
