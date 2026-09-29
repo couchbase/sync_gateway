@@ -281,6 +281,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 //  4. Update the registry to remove the database definition altogether
 func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID, dbName string) (err error) {
 	var existingCas uint64
+	var existingVersion string
 	err, _ = base.RetryLoopWithOptions(ctx, "DeleteConfig", func(retryState base.RetryState) (bool, error, any) {
 		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", retryState.Attempt, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
@@ -293,6 +294,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 			return false, base.ErrNotFound, nil
 		}
 		existingCas = existingConfig.cfgCas
+		existingVersion = existingConfig.Version
 
 		// Step 2. Update registry, mark database deleted in registry
 		if err := registry.deleteDatabase(groupID, dbName); err != nil {
@@ -323,11 +325,15 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	}
 
 	err = b.Connection.DeleteMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, dbName), existingCas)
-	if err != nil {
+	if base.IsDocNotFoundError(err) {
+		// A peer deleted the config doc, but may not have removed the registry entry, so finalize anyway.
+		base.InfofCtx(ctx, base.KeyConfig, "Database config was already deleted, finalizing registry")
+	} else if err != nil {
 		base.InfofCtx(ctx, base.KeyConfig, "Delete for database config returned error %v", err)
 		return err
+	} else {
+		base.DebugfCtx(ctx, base.KeyConfig, "Delete for database config was successful")
 	}
-	base.DebugfCtx(ctx, base.KeyConfig, "Delete for database config was successful")
 
 	// Step 3. After config is successfully deleted, finalize the delete by removing the previous
 	// version from the registry. Re-read + CAS retry tolerates concurrent registry writers
@@ -337,10 +343,17 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		if err != nil {
 			return false, base.RedactErrorf("Error fetching registry to finalize delete of config group: %s, database: %s: %w", base.MD(groupID), base.MD(dbName), err), nil
 		}
-		if !registry.removeDatabase(groupID, dbName) {
+		registryDb, found := registry.getRegistryDatabase(groupID, dbName)
+		if !found {
 			base.InfofCtx(ctx, base.KeyConfig, "Database not found in registry during finalization")
 			return false, nil, nil
 		}
+		// A peer can recreate the database once the config doc is gone, so only remove the delete this node marked.
+		if !registryDb.IsDeleted() || registryDb.PreviousVersion == nil || registryDb.PreviousVersion.Version != existingVersion {
+			base.InfofCtx(ctx, base.KeyConfig, "Database was recreated in registry during finalization, leaving it in place")
+			return false, nil, nil
+		}
+		registry.removeDatabase(groupID, dbName)
 		writeErr := b.setGatewayRegistry(ctx, bucketName, registry)
 		if writeErr == nil {
 			return false, nil, nil
@@ -1084,12 +1097,16 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 				}
 			} else if registryDb.PreviousVersion != nil {
 				// Previous Version without current version represents in-progress delete.  Wait for delete to complete
-				err := b.waitForConfigDelete(ctx, bucketName, groupID, dbName, registryDb.PreviousVersion.Version, registry)
-				if err == base.ErrConfigRegistryReloadRequired {
+				err = b.waitForConfigDelete(ctx, bucketName, groupID, dbName, registryDb.PreviousVersion.Version, registry)
+				if errors.Is(err, base.ErrConfigRegistryReloadRequired) {
 					// ReloadRegistry is returned by waitForConfigDelete immediately if the config exists but the
 					// version does not match the previous version. Indicates a concurrent author has recreated the
 					// database - continue to reload the registry.
 					continue
+				}
+				// This node finished the interrupted delete, so the database no longer exists.
+				if errors.Is(err, base.ErrConfigRegistryRollback) {
+					return registry, nil, nil
 				}
 			}
 

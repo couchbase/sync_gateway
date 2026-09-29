@@ -79,10 +79,11 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 	expectedDbNames := nodes[0].ServerContext().AllDatabaseNames()
 
 	rtConfig := &RestTesterConfig{
-		GroupID:             &rtc.groupID,
-		PersistentConfig:    true,
-		CustomTestBucket:    rtc.testBucket.NoCloseClone(),
-		MutateStartupConfig: rtc.config.MutateStartupConfig,
+		GroupID:                        &rtc.groupID,
+		PersistentConfig:               true,
+		CustomTestBucket:               rtc.testBucket.NoCloseClone(),
+		MutateStartupConfig:            rtc.config.MutateStartupConfig,
+		LeakyBootstrapConnectionConfig: rtc.config.LeakyBootstrapConnectionConfigs[len(nodes)],
 	}
 	rt := NewRestTester(rtc.t, rtConfig)
 	sc := rt.ServerContext()
@@ -92,8 +93,8 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 	require.ElementsMatch(rtc.t, expectedDbNames, sc.AllDatabaseNames(), "new node did not discover the same databases as the rest of the cluster")
 
 	rtc.restTestersLock.Lock()
+	defer rtc.restTestersLock.Unlock()
 	rtc._restTesters = append(rtc._restTesters, rt)
-	rtc.restTestersLock.Unlock()
 	return rt
 }
 
@@ -109,6 +110,8 @@ func (rtc *RestTesterCluster) Close(ctx context.Context) {
 type RestTesterClusterConfig struct {
 	NumNodes            uint8                // Number of RestTester objects to create
 	MutateStartupConfig func(*StartupConfig) // Passes this option to the RestTesterConfig for each RestTester
+	// LeakyBootstrapConnectionConfigs maps a node index to the LeakyBootstrapConnectionConfig for that node, including nodes started by AddNode
+	LeakyBootstrapConnectionConfigs map[int]*base.LeakyBootstrapConnectionConfig
 }
 
 func defaultRestTesterClusterConfig() *RestTesterClusterConfig {
@@ -135,10 +138,11 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 		wg.Go(func() {
 			// RestTesterConfig is mutated by NewRestTester, make a new instance in each loop
 			rtConfig := &RestTesterConfig{
-				GroupID:             &groupID,
-				PersistentConfig:    true,
-				CustomTestBucket:    tb.NoCloseClone(),
-				MutateStartupConfig: config.MutateStartupConfig,
+				GroupID:                        &groupID,
+				PersistentConfig:               true,
+				CustomTestBucket:               tb.NoCloseClone(),
+				MutateStartupConfig:            config.MutateStartupConfig,
+				LeakyBootstrapConnectionConfig: config.LeakyBootstrapConnectionConfigs[int(i)],
 			}
 			rt := NewRestTester(t, rtConfig)
 			// initialize the RestTester before we attempt to use it

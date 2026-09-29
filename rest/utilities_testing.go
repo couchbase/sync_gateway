@@ -80,6 +80,7 @@ type RestTesterConfig struct {
 	maxConcurrentRevs                *int
 	UseXattrConfig                   bool
 	UseSystemScopeMetadataCollection *bool
+	LeakyBootstrapConnectionConfig   *base.LeakyBootstrapConnectionConfig // Set to wrap the bootstrap connection in a LeakyBootstrapConnection. Requires PersistentConfig.
 }
 
 type collectionConfiguration uint8
@@ -179,6 +180,9 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 		rt.RestTesterConfig = restConfig
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
+	}
+	if rt.RestTesterConfig.LeakyBootstrapConnectionConfig != nil && !rt.RestTesterConfig.PersistentConfig {
+		require.FailNow(tb, "LeakyBootstrapConnectionConfig requires PersistentConfig")
 	}
 	rt.RestTesterConfig.collectionConfig = collectionConfig
 	rt.RestTesterConfig.numCollections = numCollections
@@ -315,6 +319,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
+	rt.RestTesterServerContext.leakyBootstrapConnectionConfig = rt.RestTesterConfig.LeakyBootstrapConnectionConfig
 	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
@@ -1159,16 +1164,6 @@ func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
 	return rawResponse
-}
-
-// ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
-// cluster to pick up the changes
-func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
-	rt.ServerContext().Config.BucketCredentials = config
-	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB()), rt.ServerContext().Config, base.PerUseClusterConnections)
-	require.NoError(rt.TB(), err)
-	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
 // Context returns a context for a rest tester with server and database log context, if available an unambiguous.
