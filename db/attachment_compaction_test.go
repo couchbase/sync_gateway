@@ -923,10 +923,14 @@ func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
 			// marked attachments give the mark phase progress to wait on, unmarked ones give the sweep
 			// phase work, and both keep each phase in flight long enough for the stop to land
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, testDb)
+			var firstAttKey string
 			for i := range 1000 {
 				attBody, err := base.JSONMarshal(map[string]any{"value": strconv.Itoa(i)})
 				require.NoError(t, err)
-				CreateLegacyAttachmentDoc(t, ctx, collection, fmt.Sprintf("testDoc-%d", i), []byte("{}"), fmt.Sprintf("att-%d", i), attBody)
+				attKey := CreateLegacyAttachmentDoc(t, ctx, collection, fmt.Sprintf("testDoc-%d", i), []byte("{}"), fmt.Sprintf("att-%d", i), attBody)
+				if i == 0 {
+					firstAttKey = attKey
+				}
 			}
 			for i := range 1000 {
 				require.NoError(t, dataStore.SetRaw(ctx, fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i), 0, nil, []byte("{}")))
@@ -939,14 +943,24 @@ func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
 			wg := sync.WaitGroup{}
 			defer base.WaitWithTimeout(t, &wg, 60*time.Second)
 			wg.Go(func() {
-				// stop once the run is inside the phase under test, so it owns that phase's checkpoints.
-				// The mark phase is entered immediately, so wait on its counter instead of the phase
-				// name, otherwise the stop races the first checkpoint persist.
-				if stopPhase == MarkPhase {
+				// Stop once the phase under test has made progress, so it has checkpoints to persist. Waiting
+				// on the phase name alone races the phase's first event.
+				switch stopPhase {
+				case MarkPhase:
 					waitForAttachmentCompactionMarked(t, testDb, 1)
-				} else {
-					require.Eventually(t, func() bool { return process.getPhase() == string(stopPhase) },
+				case SweepPhase:
+					require.Eventually(t, func() bool { return process.PurgedAttachments.Value() >= 1 },
 						60*time.Second, 1*time.Millisecond)
+				case CleanupPhase:
+					// mark reaches the first attachment first, so cleanup does too
+					compactIDXattr := base.AttachmentCompactionXattrName + "." + CompactionIDKey
+					require.Eventually(t, func() bool {
+						if process.getPhase() != string(CleanupPhase) {
+							return false
+						}
+						_, _, err := dataStore.GetXattrs(ctx, firstAttKey, []string{compactIDXattr})
+						return base.IsXattrNotFoundError(err)
+					}, 60*time.Second, 1*time.Millisecond)
 				}
 				require.NoError(t, mgr.Stop(ctx))
 			})
