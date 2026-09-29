@@ -1097,12 +1097,16 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 				}
 			} else if registryDb.PreviousVersion != nil {
 				// Previous Version without current version represents in-progress delete.  Wait for delete to complete
-				err := b.waitForConfigDelete(ctx, bucketName, groupID, dbName, registryDb.PreviousVersion.Version, registry)
-				if err == base.ErrConfigRegistryReloadRequired {
+				err = b.waitForConfigDelete(ctx, bucketName, groupID, dbName, registryDb.PreviousVersion.Version, registry)
+				if errors.Is(err, base.ErrConfigRegistryReloadRequired) {
 					// ReloadRegistry is returned by waitForConfigDelete immediately if the config exists but the
 					// version does not match the previous version. Indicates a concurrent author has recreated the
 					// database - continue to reload the registry.
 					continue
+				}
+				// This node finished the interrupted delete, so the database no longer exists.
+				if errors.Is(err, base.ErrConfigRegistryRollback) {
+					return registry, nil, nil
 				}
 			}
 
