@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/google/uuid"
 )
@@ -83,6 +84,7 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 		PersistentConfig:               true,
 		CustomTestBucket:               rtc.testBucket.NoCloseClone(),
 		MutateStartupConfig:            rtc.config.MutateStartupConfig,
+		ConnectToBucketFn:              rtc.config.ConnectToBucketFn,
 		LeakyBootstrapConnectionConfig: rtc.config.LeakyBootstrapConnectionConfigs[len(nodes)],
 	}
 	rt := NewRestTester(rtc.t, rtConfig)
@@ -110,6 +112,7 @@ func (rtc *RestTesterCluster) Close(ctx context.Context) {
 type RestTesterClusterConfig struct {
 	NumNodes            uint8                // Number of RestTester objects to create
 	MutateStartupConfig func(*StartupConfig) // Passes this option to the RestTesterConfig for each RestTester
+	ConnectToBucketFn   db.OpenBucketFn      // Passes this option to the RestTesterConfig for each RestTester
 	// LeakyBootstrapConnectionConfigs maps a node index to the LeakyBootstrapConnectionConfig for that node, including nodes started by AddNode
 	LeakyBootstrapConnectionConfigs map[int]*base.LeakyBootstrapConnectionConfig
 }
@@ -142,6 +145,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 				PersistentConfig:               true,
 				CustomTestBucket:               tb.NoCloseClone(),
 				MutateStartupConfig:            config.MutateStartupConfig,
+				ConnectToBucketFn:              config.ConnectToBucketFn,
 				LeakyBootstrapConnectionConfig: config.LeakyBootstrapConnectionConfigs[int(i)],
 			}
 			rt := NewRestTester(t, rtConfig)

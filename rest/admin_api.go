@@ -1081,7 +1081,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 	h.setEtag(updatedDbConfig.Version)
 	h.server._databasesLock.Lock()
 	defer h.server._databasesLock.Unlock()
-	h.server._dbConfigs[dbName].cfgCas = cas
+	// Another request or the config poller can remove or reload the database after this update loaded it.
+	if loadedConfig, ok := h.server._dbConfigs[dbName]; ok && loadedConfig.Version == updatedDbConfig.Version {
+		loadedConfig.cfgCas = cas
+	}
 
 	base.Audit(h.ctx(), base.AuditIDUpdateDatabaseConfig, auditFields)
 	return base.HTTPErrorf(http.StatusCreated, "updated")

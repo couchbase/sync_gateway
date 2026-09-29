@@ -160,6 +160,7 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 //  4. Update the registry to remove the previous version
 func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID, dbName string, updateCallback func(bucketConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error)) (newCAS uint64, err error) {
 	var updatedConfig *DatabaseConfig
+	var callbackCfgCas uint64 // cfgCas of the bucket config that produced updatedConfig
 	var previousVersion string
 	var createdAtTime *time.Time
 
@@ -183,10 +184,15 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 
 		// Step 2. Update registry to update registry entry, and move previous registry entry to PreviousVersion
 		previousVersion = existingConfig.Version
-		var callbackErr error
-		updatedConfig, callbackErr = updateCallback(existingConfig)
-		if callbackErr != nil {
-			return false, callbackErr, nil
+		// A retry after a concurrent registry write (e.g. a heartbeat) reuses the callback's result, because the callback
+		// can have side effects such as reloading the database. An unchanged cfgCas means the bucket config is unchanged.
+		if updatedConfig == nil || existingConfig.cfgCas != callbackCfgCas {
+			var callbackErr error
+			updatedConfig, callbackErr = updateCallback(existingConfig)
+			if callbackErr != nil {
+				return false, callbackErr, nil
+			}
+			callbackCfgCas = existingConfig.cfgCas
 		}
 
 		// Update database in registry
@@ -459,6 +465,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 // getConfigVersionWithRetry attempts to retrieve the specified config file.
 // On file not found, will perform backoff retry up to specified timeout.  On timeout, returns the nil and rollback error.
 // On mismatched version when registry version is newer, will perform backoff retry up to timeout.  On timeout, returns the config and rollback error.
+// While retrying, returns ErrConfigRegistryReloadRequired if the registry no longer has the requested version.
 // On mismatched version when config version is newer, returns the config and ErrConfigVersionMismatch.
 func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucketName, groupID, dbName, version string) (*DatabaseConfig, error) {
 
@@ -472,7 +479,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 		metadataKey := PersistentConfigKey(ctx, groupID, dbName)
 		cas, err := b.Connection.GetMetadataDocument(ctx, bucketName, metadataKey, config)
 		if base.IsDocNotFoundError(err) {
-			return true, base.ErrConfigRegistryRollback, nil
+			return b.retryUnlessRegistryVersionChanged(ctx, bucketName, groupID, dbName, version, nil)
 		}
 		if err != nil {
 			return false, err, nil
@@ -501,7 +508,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 		}
 
 		base.InfofCtx(ctx, base.KeyConfig, "getConfigVersionWithRetry for key %s found version mismatch, retrying.  Requested: %s, Found: %s", metadataKey, version, config.Version)
-		return true, base.ErrConfigRegistryRollback, config
+		return b.retryUnlessRegistryVersionChanged(ctx, bucketName, groupID, dbName, version, config)
 	}
 
 	// Kick off the retry loop
@@ -528,6 +535,21 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 	return nil, err
 }
 
+// retryUnlessRegistryVersionChanged keeps waiting for an in-flight write of version while the registry still has it,
+// and otherwise (for example after a concurrent delete) asks the caller to reload the registry.
+func (b *bootstrapContext) retryUnlessRegistryVersionChanged(ctx context.Context, bucketName, groupID, dbName, version string, config *DatabaseConfig) (shouldRetry bool, err error, value any) {
+	registry, err := b.getGatewayRegistry(ctx, bucketName)
+	if err != nil {
+		return false, err, nil
+	}
+	registryDb, ok := registry.getRegistryDatabase(groupID, dbName)
+	if !ok || registryDb.IsDeleted() || registryDb.Version != version {
+		base.InfofCtx(ctx, base.KeyConfig, "Registry no longer has version %s for db %s while waiting for its config - reload required", version, base.MD(dbName))
+		return false, base.ErrConfigRegistryReloadRequired, nil
+	}
+	return true, base.ErrConfigRegistryRollback, config
+}
+
 // getDatabaseConfig retrieves the database config, and enforces version match.  On config not found or mismatched
 // version, will retry with backoff (to wait for in-flight updates to complete).  After retry timeout,
 // triggers registry rollback and returns rollback error
@@ -536,7 +558,11 @@ func (b *bootstrapContext) getDatabaseConfig(ctx context.Context, bucketName, gr
 	ctx = b.addDatabaseLogContext(ctx, &DbConfig{Name: dbName})
 	config, err := b.getConfigVersionWithRetry(ctx, bucketName, groupID, dbName, version)
 	if err != nil {
-		if err == base.ErrConfigRegistryRollback {
+		// A config newer than the registry means a concurrent update wrote both after the registry was read.
+		if errors.Is(err, base.ErrConfigVersionMismatch) {
+			return nil, base.ErrConfigRegistryReloadRequired
+		}
+		if errors.Is(err, base.ErrConfigRegistryRollback) {
 			base.InfofCtx(ctx, base.KeyConfig, "Registry rollback required for bucket: %s, groupID: %s, dbName:%s", bucketName, groupID, dbName)
 			rollbackErr := b.rollbackRegistry(ctx, bucketName, groupID, dbName, config, registry)
 			// On successful registry rollback, caller needs reload registry
