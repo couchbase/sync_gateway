@@ -1323,3 +1323,44 @@ func TestResyncCheckpointsRemovedOnCompletion(t *testing.T) {
 	requireDCPCheckpointsPurged(t, ctx, db.DatabaseContext, prefix,
 		"completed resync run %q left its DCP checkpoints behind", completed.ResyncID)
 }
+
+// TestResyncResetPurgesStoppedRunCheckpoints asserts that a reset purges the checkpoints of the run it
+// abandons.
+func TestResyncResetPurgesStoppedRunCheckpoints(t *testing.T) {
+	t.Skip("TODO: CBG-5842 resync reset does not purge the previous run's checkpoints")
+	docsToCreate := 1000
+	if base.UnitTestUrlIsWalrus() || usingShardedResync(t) {
+		// rosmar runs too quickly, increase doc count
+		docsToCreate *= 5
+	}
+	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
+		docsToCreate:                 docsToCreate,
+		updateSyncFuncAfterDocsAdded: true,
+		resyncPartitions:             new(uint16(1)),
+	})
+	defer db.Close(ctx)
+
+	process := db.ResyncManager.Process.(*ResyncManagerDCP)
+
+	require.NoError(t, db.ResyncManager.Start(ctx, ResyncOptions{Collections: base.NewCollectionNames()}))
+	wg := sync.WaitGroup{}
+	defer base.WaitWithTimeout(t, &wg, 30*time.Second)
+	wg.Go(func() {
+		waitForResyncDocsProcessed(t, db, 200)
+		require.NoError(t, db.ResyncManager.Stop(ctx))
+	})
+	stopped := waitForResyncState(t, db, BackgroundProcessStateStopped)
+	require.NotEmpty(t, stopped.ResyncID)
+
+	stoppedPrefix := GetResyncDCPCheckpointPrefix(db.DatabaseContext, stopped.ResyncID, process.Distributed)
+	requireDCPCheckpointsExist(t, ctx, db.DatabaseContext, stoppedPrefix,
+		"precondition: a stopped resync should have persisted checkpoints")
+
+	// reset - this abandons the stopped run's ID rather than resuming it
+	require.NoError(t, db.ResyncManager.Start(ctx, ResyncOptions{Collections: base.NewCollectionNames(), Reset: true}))
+	completed := waitForResyncState(t, db, BackgroundProcessStateCompleted)
+	require.NotEqual(t, stopped.ResyncID, completed.ResyncID, "reset should have started a new resync run")
+
+	requireDCPCheckpointsPurged(t, ctx, db.DatabaseContext, stoppedPrefix,
+		"reset left behind the checkpoints for abandoned resync run %q", stopped.ResyncID)
+}

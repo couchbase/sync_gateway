@@ -995,16 +995,15 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	require.NoError(t, err)
 	RequireChanClosed(t, doneChan)
 
-	// every key the purge targets must exist, so the deletion assertions below cannot pass vacuously
-	feedMode := DCPFeedGocb
+	// build the keys here rather than with the purge code, so the test checks the purge independently
+	var checkpointKeys []string
 	if UnitTestUrlIsWalrus() {
-		feedMode = DCPFeedRosmar
+		checkpointKeys = []string{checkpointPrefix}
+	} else {
+		for i := range DefaultNumWorkers {
+			checkpointKeys = append(checkpointKeys, fmt.Sprintf("%s%d", checkpointPrefix, i))
+		}
 	}
-	numVbuckets, err := bucket.GetMaxVbno(ctx)
-	require.NoError(t, err)
-	checkpointKeys, err := DCPCheckpointKeys(checkpointPrefix, feedMode, numVbuckets)
-	require.NoError(t, err)
-	require.NotEmpty(t, checkpointKeys)
 
 	metadataStore := bucket.Bucket.DefaultDataStore(ctx)
 	for _, key := range checkpointKeys {

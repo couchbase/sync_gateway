@@ -883,20 +883,6 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 }
 
-// waitForAttachmentCompactionMarked waits until the mark phase has marked at least count attachments.
-func waitForAttachmentCompactionMarked(t testing.TB, db *Database, count int64) {
-	// this intentionally uses a very short poll interval to catch progress as quickly as possible
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		// Poll the local status so the wait can stop as soon as the requested progress is observed,
-		// without waiting for the cluster status' periodic update.
-		rawStatus, _, err := db.AttachmentCompactionManager.Process.GetProcessStatus(BackgroundManagerStatus{}, nil)
-		assert.NoError(c, err)
-		var stats AttachmentManagerResponse
-		require.NoError(c, base.JSONUnmarshal(rawStatus, &stats))
-		assert.GreaterOrEqual(c, stats.MarkedAttachments, count)
-	}, 1*time.Minute, 10*time.Millisecond)
-}
-
 // getAttachmentCompactionStatus returns the current attachment compaction status.
 func getAttachmentCompactionStatus(t testing.TB, db *Database) AttachmentManagerResponse {
 	t.Helper()
@@ -947,7 +933,8 @@ func TestAttachmentCompactionResetPurgesStoppedRunCheckpoints(t *testing.T) {
 				// on the phase name alone races the phase's first event.
 				switch stopPhase {
 				case MarkPhase:
-					waitForAttachmentCompactionMarked(t, testDb, 1)
+					require.Eventually(t, func() bool { return process.MarkedAttachments.Value() >= 1 },
+						60*time.Second, 1*time.Millisecond)
 				case SweepPhase:
 					require.Eventually(t, func() bool { return process.PurgedAttachments.Value() >= 1 },
 						60*time.Second, 1*time.Millisecond)

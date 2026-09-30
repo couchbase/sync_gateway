@@ -373,38 +373,31 @@ func PurgeDCPCheckpoints(ctx context.Context, datastore DataStore, checkpointPre
 	if err != nil {
 		return err
 	}
-	keys, err := DCPCheckpointKeys(checkpointPrefix, feedMode, numVbuckets)
-	if err != nil {
-		return err
-	}
-	var errs []error
-	for _, key := range keys {
-		if err := datastore.Delete(ctx, key); err != nil && !IsDocNotFoundError(err) {
-			errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", key, err))
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// DCPCheckpointKeys returns every document key a DCP feed using checkpointPrefix persists. Rosmar
-// writes one document at the prefix, gocb one per worker, and cbgt one per vBucket.
-func DCPCheckpointKeys(checkpointPrefix string, feedMode DCPFeedMode, numVbuckets uint16) ([]string, error) {
 	switch feedMode {
 	case DCPFeedRosmar:
-		return []string{checkpointPrefix}, nil
+		err := datastore.Delete(ctx, checkpointPrefix)
+		if err != nil && !IsDocNotFoundError(err) {
+			return err
+		}
+		return nil
 	case DCPFeedGocb:
-		keys := make([]string, 0, DefaultNumWorkers)
-		for workerID := range DefaultNumWorkers {
-			keys = append(keys, fmt.Sprintf("%s%d", checkpointPrefix, workerID))
-		}
-		return keys, nil
+		metadata := NewDCPMetadataCS(ctx, datastore, numVbuckets, DefaultNumWorkers, checkpointPrefix)
+		metadata.Purge(ctx, DefaultNumWorkers)
+		return nil
 	case DCPFeedSharded:
-		keys := make([]string, 0, numVbuckets)
+		var errs []error
 		for vbNo := range numVbuckets {
-			keys = append(keys, fmt.Sprintf("%s%d", checkpointPrefix, vbNo))
+			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, vbNo)
+			err := datastore.Delete(ctx, checkpointID)
+			if err != nil && !IsDocNotFoundError(err) {
+				errs = append(errs, fmt.Errorf("error deleting checkpoint %s: %w", checkpointID, err))
+			}
 		}
-		return keys, nil
+		if errs != nil {
+			return errors.Join(errs...)
+		}
+		return nil
 	default:
-		return nil, fmt.Errorf("Unrecognized dcp feed mode: %s", feedMode)
+		return fmt.Errorf("Unrecognized dcp feed mode: %s", feedMode)
 	}
 }
