@@ -13,35 +13,11 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"net/http"
 	"slices"
-	"sync"
 
 	"github.com/couchbase/cbgt"
 )
-
-// cbgtCredentials are global map of dbname to basic auth creds.  Updated on cbgt manager creation, required
-// for couchbase-dcp-sg feed type to retrieve per-db credentials without requiring server context handle
-// Cannot use the serverContext to retrieve this information, as the cbgt manager for a database is initialized
-// before the database is added to the server context's set of databases
-var cbgtCredentials map[string]cbgtCreds
-
-// cbgtBucketToDBName maps bucket names to DB names for DBs currently registered with CBGT. Necessary because in some
-// contexts we only have access to the bucket name.
-var cbgtBucketToDBName map[string]string
-
-var cbgtGlobalsLock sync.Mutex
-
-// cbgtCredentials are bucket specific credentials for connecting to Couchbase Server
-type cbgtCreds struct {
-	username       string         // Couchbase Server username, if using basic authentication
-	password       string         // Couchbase Server username, if using basic authentication
-	clientCertPath string         // Couchbase Server client certificate(public key), if using x509 authentication. If specified, username and password will be ignored.
-	clientKeyPath  string         // Couchbase Server client certificate(private key), if using x509 authentication. If specified, username and password will be ignored.
-	certPool       *x509.CertPool // If using TLS, the root certificates for verifying Couchbase Server. If TLSSkipVerify is set, this value should be nil.
-	useTLS         bool           // If using couchbases:// this should be true.
-}
 
 // This used to be called SOURCE_GOCOUCHBASE_DCP_SG (with the same string value).
 const SOURCE_DCP_SG = "couchbase-dcp-sg"
@@ -64,7 +40,7 @@ func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x5
 		return nil
 	}
 
-	creds, ok := getCbgtCredentials(feedParams.DbName)
+	creds, ok := cbgtGlobals.getDBCredentials(feedParams.DbName)
 	if !ok {
 		// consider switching to AssertfCtx one CBG-4730 is fixed
 		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db %s from sourceParams during cbgtRootCAsProvider. Continuing without TLS authentication.", MD(feedParams.DbName))
@@ -79,46 +55,26 @@ func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x5
 }
 
 // cbgt's default GetPoolsDefaultForBucket only works with cbauth
-func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, error) {
-	ctx := BucketNameCtx(context.Background(), bucket) // this function is global, so reconstruct context
-	cbgtGlobalsLock.Lock()
-	dbName, ok := cbgtBucketToDBName[bucket]
+func cbgtGetPoolsDefaultForBucket(server, bucketName string, scopes bool) ([]byte, error) {
+	ctx := BucketNameCtx(context.Background(), bucketName) // this function is global, so reconstruct context
+	bucket, ok := cbgtGlobals.getBucket(bucketName)
 	if !ok {
-		cbgtGlobalsLock.Unlock()
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no DB for bucket %v", MD(bucket).Redact())
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no cbgt manager registered for bucket %v", MD(bucketName).Redact())
 	}
-	creds, ok := cbgtCredentials[dbName]
-	if !ok {
-		cbgtGlobalsLock.Unlock()
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: no credentials for DB %v (bucket %v)", MD(dbName).Redact(), MD(bucket).Redact())
-	}
-	// creds is not a pointer, safe to unlock
-	cbgtGlobalsLock.Unlock()
 
-	url := server + "/pools/default/buckets/" + bucket
+	uri := "/pools/default/buckets/" + bucketName
 	if scopes {
-		url += "/scopes"
+		uri += "/scopes"
 	}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	ctx, cancel := context.WithDeadline(ctx, bucket.getBucketOpDeadline())
+	defer cancel()
+	body, statusCode, err := bucket.MgmtRequest(ctx, http.MethodGet, uri, "", nil)
 	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to init request: %v", err)
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %w", err)
 	}
-	req.SetBasicAuth(creds.username, creds.password)
-
-	res, err := cbgt.HttpClient().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed request: %v", err)
-	}
-	defer func() {
-		if err := res.Body.Close(); err != nil {
-			WarnfCtx(ctx, "Failed to close %v request body: %v", MD(url).Redact(), err)
-		}
-	}()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: failed to read body: %v", err)
+	// cbgt detects a deleted bucket from the body of a 404 response, so return that body without an error.
+	if statusCode != http.StatusOK && statusCode != http.StatusNotFound {
+		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: unexpected status code %d: %s", statusCode, body)
 	}
 	if len(body) == 0 {
 		return nil, fmt.Errorf("SG GetPoolsDefaultForBucket: empty body")
@@ -129,12 +85,10 @@ func cbgtGetPoolsDefaultForBucket(server, bucket string, scopes bool) ([]byte, e
 // When SG isn't using x.509 authentication, it's necessary to pass bucket credentials
 // to cbgt for use when setting up the DCP feed.  These need to be passed as AuthUser and
 // AuthPassword in the DCP source parameters.
-// The dbname is stored in the cfg, and the credentials for that db retrieved from databaseCredentials.
+// The credentials are looked up from the cbgt manager that starts the feed.
 // The SOURCE_DCP_SG feed type is a wrapper for SOURCE_GOCB_DCP that adds
 // the credential information to the DCP parameters before calling the underlying method.
 func init() {
-	cbgtCredentials = make(map[string]cbgtCreds)
-	cbgtBucketToDBName = make(map[string]string)
 	// NB: we use the same feed type *name* as Lithium nodes, but run it using gocbcore rather than cbdatasource. If only
 	// streaming the default collection, there is no functional difference.
 	cbgt.RegisterFeedType(SOURCE_DCP_SG, &cbgt.FeedType{
@@ -268,24 +222,50 @@ func cbgtIndexParams(destKey string) (string, error) {
 func SGGoCBFeedStartDCPFeed(mgr *cbgt.Manager, feedName, indexName, indexUUID,
 	sourceType, sourceName, bucketUUID, params string,
 	dests map[string]cbgt.Dest) error {
-	ctx := context.TODO() // this global and we don't have bucket name here to add to context
-	paramsWithAuth := addCbgtAuthToDCPParams(ctx, params)
+	ctx := BucketNameCtx(context.Background(), sourceName) // this function is global, so reconstruct context
+	feedParams, err := getSGFeedSourceParams(params)
+	if err != nil {
+		return fmt.Errorf("unable to unmarshal params provided by cbgt as sgSourceParams: %w", err)
+	}
+	creds, ok := cbgtGlobals.getManagerCredentials(mgr)
+	if !ok {
+		return fmt.Errorf("no feed credentials stored for cbgt manager %s", MD(mgr.UUID()).Redact())
+	}
+	paramsWithAuth := addCredsToDCPParams(ctx, feedParams, creds, params)
 	return cbgt.StartGocbcoreDCPFeed(mgr, feedName, indexName, indexUUID, sourceType, sourceName, bucketUUID,
 		paramsWithAuth, dests)
 }
 
+// SGGoCBFeedPartitions returns one partition per vbucket of the registered bucket, instead of cbgt.CBPartitions
+// opening a new connection to Couchbase Server to count vbuckets.
 func SGGoCBFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	serverIn string, options map[string]string) (partitions []string, err error) {
-
-	ctx := context.TODO() // this global and we don't have bucket name here to add to context
-	sourceParamsWithAuth := addCbgtAuthToDCPParams(ctx, sourceParams)
-	return cbgt.CBPartitions(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
-		serverIn, options)
+	ctx := BucketNameCtx(context.Background(), sourceName) // this function is global, so reconstruct context
+	bucket, ok := cbgtGlobals.getBucket(sourceName)
+	if !ok {
+		return nil, fmt.Errorf("SG FeedPartitions: no cbgt manager registered for bucket %v", MD(sourceName).Redact())
+	}
+	numVBuckets, err := bucket.GetMaxVbno(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("SG FeedPartitions: %w", err)
+	}
+	partitions = make([]string, numVBuckets)
+	for vbNo := range numVBuckets {
+		partitions[vbNo] = cbgtVbNoToPartition(vbNo)
+	}
+	return partitions, nil
 }
 
+// SGGocbSourceUUIDLookup returns the UUID of the registered bucket, instead of cbgt.CBSourceUUIDLookUp creating
+// cbgt's cached stats agent for the bucket without credentials.
 func SGGocbSourceUUIDLookup(sourceName, sourceParams, serverIn string,
 	options map[string]string) (string, error) {
-	return cbgt.CBSourceUUIDLookUp(sourceName, sourceParams, serverIn, options)
+	ctx := BucketNameCtx(context.Background(), sourceName) // this function is global, so reconstruct context
+	bucket, ok := cbgtGlobals.getBucket(sourceName)
+	if !ok {
+		return "", fmt.Errorf("SG SourceUUIDLookup: no cbgt manager registered for bucket %v", MD(sourceName).Redact())
+	}
+	return bucket.UUID(ctx)
 }
 
 // getSGFeedSourceParams unmarshals the feed parameters from cbgt DCP feed sourceParams. Returns an error if the parameters can not be unmarshalled.
@@ -295,30 +275,8 @@ func getSGFeedSourceParams(params string) (SGFeedSourceParams, error) {
 	return sgSourceParams, err
 }
 
-// addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
-// stored in databaseCredentials.  If found, adds those to the params as authUser/authPassword.
-// If dbname is present,
-func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
-	feedParams, err := getSGFeedSourceParams(dcpParams)
-	if err != nil {
-		AssertfCtx(ctx, "Unable to unmarshal params provided by cbgt as sgSourceParams: %v: %s", err, UD(dcpParams))
-		return dcpParams
-	}
-
-	if feedParams.DbName == "" {
-		// consider switching to AssertfCtx one CBG-4730 is fixed
-		InfofCtx(ctx, KeyDCP, "Database name not specified in dcp params, feed credentials not added, import feed will not be able to authenticate.")
-		return dcpParams
-	}
-
-	creds, ok := getCbgtCredentials(feedParams.DbName)
-	if !ok {
-		// consider switching to AssertfCtx one CBG-4730 is fixed
-		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db from sourceParams: %s, import feed will not be able to authenticate.", MD(feedParams.DbName))
-		return dcpParams
-	}
-
-	// Add creds to params
+// addCredsToDCPParams returns feedParams marshalled with creds added, or originalParams if marshalling fails.
+func addCredsToDCPParams(ctx context.Context, feedParams SGFeedSourceParams, creds cbgtCreds, originalParams string) string {
 	if creds.clientCertPath != "" && creds.clientKeyPath != "" {
 		feedParams.ClientCertPath = creds.clientCertPath
 		feedParams.ClientKeyPath = creds.clientKeyPath
@@ -330,36 +288,10 @@ func addCbgtAuthToDCPParams(ctx context.Context, dcpParams string) string {
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParams)
 	if marshalErr != nil {
 		WarnfCtx(ctx, "Unable to marshal updated cbgt dcp params: %v. Import feed will not be able to authenticate.", marshalErr)
-		return dcpParams
+		return originalParams
 	}
 
 	return string(marshalledParamsWithAuth)
-}
-
-// addCbgtCredentials registers a particular bucket and database name for cbgt's global lookup callbacks.
-func addCbgtCredentials(dbName, bucketName string, creds cbgtCreds) {
-	cbgtGlobalsLock.Lock()
-	cbgtCredentials[dbName] = creds
-	cbgtBucketToDBName[bucketName] = dbName
-	cbgtGlobalsLock.Unlock()
-}
-
-func removeCbgtCredentials(dbName string) {
-	cbgtGlobalsLock.Lock()
-	delete(cbgtCredentials, dbName)
-	for bucket, db := range cbgtBucketToDBName {
-		if db == dbName {
-			delete(cbgtBucketToDBName, bucket)
-		}
-	}
-	cbgtGlobalsLock.Unlock()
-}
-
-func getCbgtCredentials(dbName string) (cbgtCreds, bool) {
-	cbgtGlobalsLock.Lock()
-	creds, found := cbgtCredentials[dbName]
-	cbgtGlobalsLock.Unlock() // cbgtCreds is not a pointer type, safe to unlock
-	return creds, found
 }
 
 // GetHighSeqNos retrieves the maximum sequence numbers for each vbucket.
