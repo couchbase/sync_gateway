@@ -590,6 +590,13 @@ func (c *CbgtContext) Stop(ctx context.Context) {
 
 	// Close open PIndexes before stopping the manager.
 	_, pindexes := c.Manager.CurrentMaps()
+	// A feed that fails to start requeues janitor work, which can starve ClosePIndex, so stop the dests first to keep
+	// the janitor from restarting their feeds.
+	for _, pIndex := range pindexes {
+		if dest, ok := pIndex.Dest.(SGDest); ok {
+			dest.Stop()
+		}
+	}
 	for _, pIndex := range pindexes {
 		err := c.Manager.ClosePIndex(pIndex)
 		if err != nil {

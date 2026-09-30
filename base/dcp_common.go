@@ -61,7 +61,7 @@ type DCPCommon struct {
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 	endSeqNos              map[uint16]uint64              // endSeqNos mark the sequence numbers keyed by vBucket ID that are the end sequence numbers for a stream
-	ctx                    context.Context                // Logging context, prefixes feedID. Cancelled on close, after which data updates are skipped.
+	ctx                    context.Context                // Logging context, prefixes feedID. Cancelled on Stop or Close, after which data updates are skipped.
 	cancel                 context.CancelCauseFunc        // Cancels ctx
 	activeCallbacks        atomic.Int64                   // Number of data updates in progress, which close waits for
 }

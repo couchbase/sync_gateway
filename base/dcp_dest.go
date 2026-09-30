@@ -31,7 +31,11 @@ func init() {
 type SGDest interface {
 	cbgt.Dest
 	cbgt.DestEx
+	cbgt.Feedable
 	ForceCheckpointWrite()
+	// Stop skips further data updates and makes the dest not feedable, so cbgt's janitor stops starting its feed.
+	// Unlike Close, it does not wait for in-flight updates, and it can run before cbgt closes the pindex.
+	Stop()
 }
 
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a
@@ -101,6 +105,17 @@ func (d *DCPDest) Close(_ bool) error {
 	}
 	DebugfCtx(d.ctx, KeyDCP, "Closing DCPDest")
 	return nil
+}
+
+// IsFeedable implements cbgt.Feedable. cbgt's janitor only starts or restarts a feed for a feedable dest.
+func (d *DCPDest) IsFeedable() (bool, error) {
+	return d.ctx.Err() == nil, nil
+}
+
+// Stop cancels the dest without waiting for in-flight updates. cbgt only calls Close from ClosePIndex, which a janitor
+// busy restarting a failing feed can starve, so CbgtContext.Stop calls this first.
+func (d *DCPDest) Stop() {
+	d.cancel(errors.New("DCPDest stopped"))
 }
 
 func (d *DCPDest) DataUpdate(partition string, key []byte, seq uint64,
@@ -366,6 +381,14 @@ func (d *DCPLoggingDest) Stats(w io.Writer) error {
 
 func (d *DCPLoggingDest) ForceCheckpointWrite() {
 	d.dest.ForceCheckpointWrite()
+}
+
+func (d *DCPLoggingDest) IsFeedable() (bool, error) {
+	return d.dest.IsFeedable()
+}
+
+func (d *DCPLoggingDest) Stop() {
+	d.dest.Stop()
 }
 
 var _ SGDest = &DCPDest{}
