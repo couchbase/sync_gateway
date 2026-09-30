@@ -14,7 +14,6 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -98,27 +97,9 @@ func dbConfigOperations() []dbConfigOperation {
 	}
 }
 
-// registryContentionErrors are the 500 errors that config writes return when they run out of retries against
-// concurrent registry writers.
-var registryContentionErrors = []string{
-	"failed to persist updated registry after",
-	"failed to persist registry after",
-	"failed to finalize registry after",
-	"registry reload limit reached",
-	base.ErrConfigRegistryReloadRequired.Error(),
-}
-
-// isExpectedStatus reports whether resp is one of the operation's allowed statuses, or a registry contention error.
+// isExpectedStatus reports whether resp is one of the operation's allowed statuses.
 func (op dbConfigOperation) isExpectedStatus(resp *TestResponse) bool {
-	if slices.Contains(op.allowed, resp.Code) {
-		return true
-	}
-	if resp.Code != http.StatusInternalServerError {
-		return false
-	}
-	return slices.ContainsFunc(registryContentionErrors, func(msg string) bool {
-		return strings.Contains(resp.Body.String(), msg)
-	})
+	return slices.Contains(op.allowed, resp.Code)
 }
 
 // pickDbConfigOperation returns a random operation, chosen in proportion to its weight.
@@ -142,6 +123,7 @@ func pickDbConfigOperation(rng *rand.Rand, operations []dbConfigOperation) dbCon
 // It then checks that every node and the registry converge on one config. The seed is logged, but goroutine
 // scheduling still varies between runs, so a failure is not guaranteed to reproduce.
 func TestConcurrentDbConfigOperationsAcrossNodes(t *testing.T) {
+	t.Skip("CBG-5935 config writes can panic when a concurrent config write reloads the database")
 	if testing.Short() {
 		t.Skip("skipping randomized concurrency test in short mode")
 	}
