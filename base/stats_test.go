@@ -324,7 +324,9 @@ func TestStatsSerializationConcurrentWithReplicatorRegistration(t *testing.T) {
 
 	// The map is cheapest to marshal, and the window widest, while it is still small.
 	var wg sync.WaitGroup
+	var registered atomic.Bool
 	wg.Go(func() {
+		defer registered.Store(true)
 		for i := range 500 {
 			_, err := dbStats.DBReplicatorStats(fmt.Sprintf("repl_%d", i))
 			if !assert.NoError(t, err) {
@@ -332,8 +334,12 @@ func TestStatsSerializationConcurrentWithReplicatorRegistration(t *testing.T) {
 			}
 		}
 	})
+	// Marshalling can only race with a registration, so stop once the last one has finished rather
+	// than spend time marshalling a map that no longer changes. Marshal before the first check, so
+	// that even if this goroutine is only scheduled after registration ends, the race detector
+	// still sees one read that is unordered with the writes.
 	wg.Go(func() {
-		for range 500 {
+		for done := false; !done; done = registered.Load() {
 			_ = stats.String()
 		}
 	})
