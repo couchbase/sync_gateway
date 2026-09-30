@@ -18,9 +18,7 @@ import (
 )
 
 func TestImportPartitionsOnConcurrentStart(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	base.TestRequiresCbgt(t)
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("This test only works against EE")
