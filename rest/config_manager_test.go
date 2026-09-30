@@ -10,7 +10,9 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -229,4 +231,50 @@ func TestLongMetadataID(t *testing.T) {
 	rehashMetadataID := bootstrapContext.standardMetadataID(longMetadataID)
 	assert.NotEqual(t, rehashMetadataID, longMetadataID)
 
+}
+
+// TestGetDatabaseConfigNewerThanRegistry verifies that reading a config written by a concurrent update after the
+// registry was read asks the caller to reload the registry, rather than failing.
+func TestGetDatabaseConfigNewerThanRegistry(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+	bucketName := rt.Bucket().GetName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+
+	staleRegistry, staleConfig, err := sc.BootstrapContext.getRegistryAndDatabase(ctx, bucketName, groupID, "db")
+	require.NoError(t, err)
+	require.NotNil(t, staleConfig)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.RevsLimit = new(uint32(123))
+	RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+
+	_, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
+	require.ErrorIs(t, err, base.ErrConfigRegistryReloadRequired)
+}
+
+// TestGetDatabaseConfigDeletedAfterRegistryRead verifies that reading a config deleted by a concurrent delete after
+// the registry was read asks the caller to reload the registry, rather than waiting for the config to reappear.
+func TestGetDatabaseConfigDeletedAfterRegistryRead(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+	bucketName := rt.Bucket().GetName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	// Waiting for the deleted config makes the test hang until the go test timeout, instead of passing after a rollback.
+	sc.BootstrapContext.configRetryTimeout = 24 * time.Hour
+
+	staleRegistry, staleConfig, err := sc.BootstrapContext.getRegistryAndDatabase(ctx, bucketName, groupID, "db")
+	require.NoError(t, err)
+	require.NotNil(t, staleConfig)
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+
+	_, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
+	require.ErrorIs(t, err, base.ErrConfigRegistryReloadRequired)
 }

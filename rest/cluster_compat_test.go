@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -641,6 +642,48 @@ func TestClusterCompatAppliedDBVersionUpdatedByUpdateConfigAndReloadDatabase(t *
 	versionAfterOffline := ccm.getAppliedDBVersionsForBucket(bucketName)["db"]
 	require.NotEmpty(t, versionAfterOffline, "version must be tracked after offline")
 	assert.NotEqual(t, versionAfterCreate, versionAfterOffline, "version should change after taking db offline")
+}
+
+// TestUpdateDbConfigWithConcurrentPeerHeartbeats verifies that POST /{db}/_config succeeds when a peer
+// heartbeat writes the registry during every database reload, and that the reload is not repeated.
+func TestUpdateDbConfigWithConcurrentPeerHeartbeats(t *testing.T) {
+	// Heartbeat from inside the reload, between UpdateConfig's registry read and write, so every
+	// attempt that reloads the database gets a CAS mismatch.
+	var reloads atomic.Int32
+	var rt *RestTester
+	rt = NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		ConnectToBucketFn: func(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
+			reloads.Add(1)
+			_, err := rt.ServerContext().BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+				BucketName:      spec.BucketName,
+				NodeUID:         "peer",
+				Version:         base.NodeClusterCompatVersion,
+				HeartbeatExpiry: time.Hour,
+			})
+			assert.NoError(t, err)
+			return db.ConnectToBucket(ctx, spec, failFast)
+		},
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	reloads.Store(0)
+	sc := rt.ServerContext()
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.RevsLimit = new(uint32(123))
+	RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
+	assert.Equal(t, int32(1), reloads.Load())
+
+	var bucketConfig DatabaseConfig
+	bucketCas, err := sc.BootstrapContext.GetConfig(rt.Context(), rt.Bucket().GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", &bucketConfig)
+	require.NoError(t, err)
+	require.Equal(t, uint32(123), *bucketConfig.RevsLimit)
+	loadedConfig := sc.GetDatabaseConfig("db")
+	require.NotNil(t, loadedConfig)
+	assert.Equal(t, bucketConfig.Version, loadedConfig.Version)
+	assert.Equal(t, bucketCas, loadedConfig.cfgCas)
+	assert.Equal(t, uint32(123), *loadedConfig.RevsLimit)
 }
 
 // TestIsConfigFullyApplied is a truth-table test covering the edge cases of
