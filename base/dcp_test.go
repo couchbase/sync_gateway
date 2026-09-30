@@ -226,7 +226,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 
 			// Use an in-memory cfg, set up cbgt manager
 			ctx = DatabaseLogCtx(ctx, tc.dbName, nil)
-			cfg, err := NewCbgtCfgMem()
+			cfg, err := NewCbgtCfgMem(ctx)
 			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName, nil)
 			require.NoError(t, err)
@@ -308,7 +308,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName, nil)
 	require.NoError(t, err)
@@ -389,7 +389,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		"01234567890123456789012345678901234567890123456789"
 
 	// Use an in-memory cfg, set up cbgt manager
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName, nil)
 	require.NoError(t, err)
@@ -927,7 +927,7 @@ func TestCBGTKvPoolSize(t *testing.T) {
 	spec := bucket.BucketSpec
 	spec.Server += "?kv_pool_size=8"
 
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb", nil)
 	assert.NoError(t, err)
