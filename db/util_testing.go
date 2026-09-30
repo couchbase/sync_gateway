@@ -753,14 +753,14 @@ func RawDocWithInlineSyncData(_ testing.TB) string {
 //
 // The rest of the metadata is made to look like a document that really was written len(revs) times: one
 // sequence is allocated per revision, doc.Sequence is the last of them, and recent_sequences holds them
-// all. Only the tree itself is fabricated.
-func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, body Body, revs map[string]string, currentRev string) {
+// all. Only the tree itself is fabricated. Returns the DocVersion of the planted document.
+func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, body Body, revs map[string]string, currentRev string) DocVersion {
 	t.Helper()
 	require.Contains(t, slices.Collect(maps.Keys(revs)), currentRev, "currentRev is not in the tree being planted")
 	require.LessOrEqual(t, len(revs), kMaxRecentSequences, "a tree this large would have had its recent_sequences pruned, which this helper does not model")
 
 	// the write allocates the first sequence, so this stands in for the first revision
-	_, _, err := collection.Put(ctx, docID, body)
+	_, doc, err := collection.Put(ctx, docID, body)
 	require.NoError(t, err)
 
 	// one sequence per remaining revision, so the document's sequence history is as long as its tree
@@ -774,6 +774,7 @@ func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *Database
 		syncData.History = planted
 		syncData.SetRevTreeID(currentRev)
 	})
+	return DocVersion{RevTreeID: currentRev, CV: *doc.HLV.ExtractCurrentVersionFromHLV()}
 }
 
 // rewriteSyncDataForTest rewrites a document's _sync xattr, allocating sequenceCount new sequences first
