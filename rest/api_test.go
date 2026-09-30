@@ -4446,3 +4446,56 @@ func TestInvalidRevTreeRestGetRepairsAndRenames(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "a repaired document should not be reported again")
 }
+
+// TestLocalEndpointForPublicAPI makes sure that api.enable_local_endpoint_for_public_api controls GET, PUT and DELETE
+// on _local docs for an authenticated public API user, and that a disabled endpoint returns 403.
+func TestLocalEndpointForPublicAPI(t *testing.T) {
+	tests := []struct {
+		enabled                   bool
+		expectedStatus            int
+		expectedPutStatus         int
+		expectedBulkStatus        int
+		expectedStoredStatus      int
+		expectedLocalStoredStatus int
+	}{
+		{
+			enabled:                   true,
+			expectedStatus:            http.StatusNotFound,
+			expectedPutStatus:         http.StatusCreated,
+			expectedBulkStatus:        http.StatusCreated,
+			expectedStoredStatus:      http.StatusOK,
+			expectedLocalStoredStatus: http.StatusOK,
+		},
+		{
+			enabled:                   false,
+			expectedStatus:            http.StatusForbidden,
+			expectedPutStatus:         http.StatusForbidden,
+			expectedBulkStatus:        http.StatusForbidden,
+			expectedStoredStatus:      http.StatusNotFound,
+			expectedLocalStoredStatus: http.StatusForbidden,
+		},
+	}
+	for _, test := range tests {
+		rt := NewRestTester(t, &RestTesterConfig{
+			SyncFn: `function(doc) {channel(doc.channels);}`,
+			MutateStartupConfig: func(config *StartupConfig) {
+				config.API.EnableLocalEndpointForPublicAPI = new(test.enabled)
+			},
+		})
+		defer rt.Close()
+
+		rt.CreateUser("alice", []string{"chanA"})
+
+		RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_local/doc1", "", "alice"), test.expectedStatus)
+		RequireStatus(t, rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/_local/doc2", `{"key":"value"}`, "alice"), test.expectedPutStatus)
+		RequireStatus(t, rt.SendUserRequest(http.MethodDelete, "/{{.keyspace}}/_local/doc1", "", "alice"), test.expectedStatus)
+		bulkBody := `{"docs": [{"_id": "doc3", "channels": ["chanA"]}, {"_id": "_local/bulk1", "key": "value"}]}`
+		RequireStatus(t, rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", bulkBody, "alice"), test.expectedBulkStatus)
+
+		// A rejected _bulk_docs request writes none of its docs, including the normal doc.
+		RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc3", "", "alice"), test.expectedStoredStatus)
+		RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_local/bulk1", "", "alice"), test.expectedLocalStoredStatus)
+
+		RequireStatus(t, rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", `{"docs": [{"_id": "doc4", "channels": ["chanA"]}]}`, "alice"), http.StatusCreated)
+	}
+}

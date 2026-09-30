@@ -573,6 +573,11 @@ func (h *handler) handleBulkDocs() error {
 		}
 	}
 
+	if len(localDocs) > 0 && h.localDocsDisabledForPublicAPI() {
+		h.writeJSONStatus(http.StatusForbidden, "")
+		return nil
+	}
+
 	result := make([]db.Body, 0, len(docs))
 	for _, item := range docs {
 		doc := item.(map[string]any)
