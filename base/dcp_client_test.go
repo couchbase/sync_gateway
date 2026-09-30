@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 const oneShotDCPTimeout = 5 * time.Minute
@@ -933,12 +933,26 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		dataStores = append(dataStores, ds)
 	}
 
-	var mutationCount atomic.Uint64
-	foundDocs := make(chan string, len(dataStores))
+	// one document per vBucket, so every vBucket and every worker persists a checkpoint
+	docIDs := sgtest.DocPerVBucket(t, bucket.Bucket)
+	expected := make(map[string]struct{}, len(docIDs))
+	for _, docID := range docIDs {
+		expected[docID] = struct{}{}
+	}
+
+	var seenLock sync.Mutex
+	seen := make(map[string]struct{}, len(expected))
+	foundDocs := make(chan struct{})
+	var foundOnce sync.Once
 	callback := func(event sgbucket.FeedEvent) bool {
-		if strings.HasSuffix(string(event.Key), "_doc") {
-			if mutationCount.Add(1) == uint64(len(dataStores)) {
-				close(foundDocs)
+		key := string(event.Key)
+		if _, ok := expected[key]; ok {
+			seenLock.Lock()
+			seen[key] = struct{}{}
+			complete := len(seen) == len(expected)
+			seenLock.Unlock()
+			if complete {
+				foundOnce.Do(func() { close(foundDocs) })
 			}
 		}
 		return true // request checkpoint persistence
@@ -965,12 +979,9 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		RequireChanClosed(t, doneChan)
 	}()
 
-	// write document to each collection
-	for _, ds := range dataStores {
-		docID := fmt.Sprintf("%s_%s_%s_doc", t.Name(), ds.ScopeName(), ds.CollectionName())
-		body := map[string]any{"foo": "bar"}
-		err = ds.Set(ctx, docID, 0, nil, body)
-		require.NoError(t, err)
+	body := map[string]any{"foo": "bar"}
+	for _, docID := range docIDs {
+		require.NoError(t, dataStores[0].Set(ctx, docID, 0, nil, body))
 	}
 
 	RequireChanClosed(t, foundDocs)
@@ -984,33 +995,29 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 	require.NoError(t, err)
 	RequireChanClosed(t, doneChan)
 
-	// Verify that checkpoint documents were created in the bucket
-	var foundCheckpoints []string
+	// build the keys here rather than with the purge code, so the test checks the purge independently
+	var checkpointKeys []string
+	if UnitTestUrlIsWalrus() {
+		checkpointKeys = []string{checkpointPrefix}
+	} else {
+		for i := range DefaultNumWorkers {
+			checkpointKeys = append(checkpointKeys, fmt.Sprintf("%s%d", checkpointPrefix, i))
+		}
+	}
 
 	metadataStore := bucket.Bucket.DefaultDataStore(ctx)
-	if !UnitTestUrlIsWalrus() {
-		// Try to find at least one worker's checkpoint
-		for i := 0; i < DefaultNumWorkers; i++ {
-			checkpointID := fmt.Sprintf("%s%d", checkpointPrefix, i)
-			_, _, err := metadataStore.GetRaw(ctx, checkpointID)
-			if err == nil {
-				foundCheckpoints = append(foundCheckpoints, checkpointID)
-			}
-		}
-		require.NotEmpty(t, foundCheckpoints, "No checkpoint document found in bucket with prefix: %s", checkpointPrefix)
-	} else {
-		_, _, err := metadataStore.GetRaw(ctx, checkpointPrefix)
-		require.NoError(t, err, "Checkpoint document not found  %q", checkpointPrefix)
-		foundCheckpoints = append(foundCheckpoints, checkpointPrefix)
+	for _, key := range checkpointKeys {
+		_, _, err := metadataStore.GetRaw(ctx, key)
+		require.NoError(t, err, "checkpoint document %q not found", key)
 	}
 
 	// Purge checkpoints and verify they are deleted
 	err = dcpClient.PurgeCheckpoints(ctx)
 	require.NoError(t, err)
 
-	for _, cp := range foundCheckpoints {
-		_, _, err := metadataStore.GetRaw(ctx, cp)
-		require.Error(t, err, "Expected checkpoint document %s to be deleted", cp)
+	for _, key := range checkpointKeys {
+		_, _, err := metadataStore.GetRaw(ctx, key)
+		require.Error(t, err, "Expected checkpoint document %s to be deleted", key)
 		RequireDocNotFoundError(t, err)
 	}
 }
