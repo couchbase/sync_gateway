@@ -124,7 +124,7 @@ type APIConfig struct {
 	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
-	EnableLocalEndpointForPublicAPI           *bool `json:"enable_local_endpoint_for_public_api" help:"Whether to enable the local endpoint for public API"`
+	EnableLocalEndpointForPublicAPI           *bool `json:"enable_local_endpoint_for_public_api,omitempty" help:"Whether to enable the local endpoint for public API"`
 
 	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration before timing out read of the HTTP(S) request"`
 	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"Maximum duration before timing out write of the HTTP(S) response"`

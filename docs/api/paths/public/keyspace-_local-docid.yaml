@@ -24,6 +24,8 @@ get:
       description: Successfully found local document
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/local-docs-forbidden
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
@@ -54,6 +56,8 @@ put:
             $ref: ../../components/schemas.yaml#/New-revision
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/local-docs-forbidden
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
@@ -79,6 +83,8 @@ delete:
       description: Successfully removed the local document.
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/local-docs-forbidden
     '404':
       $ref: ../../components/responses.yaml#/Not-found
     '409':
@@ -92,6 +98,8 @@ head:
       description: Document exists
     '400':
       $ref: ../../components/responses.yaml#/request-problem
+    '403':
+      $ref: ../../components/responses.yaml#/local-docs-forbidden
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:

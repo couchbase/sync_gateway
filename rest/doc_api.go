@@ -843,8 +843,7 @@ func (h *handler) handleDeleteDoc() error {
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
 	if h.localDocsDisabledForPublicAPI() {
-		h.writeJSONStatus(http.StatusForbidden, "")
-		return nil
+		return base.HTTPErrorf(http.StatusForbidden, "_local endpoint is disabled")
 	}
 	docid := h.PathVar("docid")
 	localDocID := db.LocalDocPrefix + docid
@@ -871,10 +870,8 @@ func (h *handler) handleGetLocalDoc() error {
 
 // HTTP handler for a PUT of a _local document
 func (h *handler) handlePutLocalDoc() error {
-
 	if h.localDocsDisabledForPublicAPI() {
-		h.writeJSONStatus(http.StatusForbidden, "")
-		return nil
+		return base.HTTPErrorf(http.StatusForbidden, "_local endpoint is disabled")
 	}
 	docid := h.PathVar("docid")
 	localDocID := db.LocalDocPrefix + docid
@@ -909,8 +906,7 @@ func auditEventForDocumentUpsert(ctx context.Context, docid string, revid string
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
 	if h.localDocsDisabledForPublicAPI() {
-		h.writeJSONStatus(http.StatusForbidden, "")
-		return nil
+		return base.HTTPErrorf(http.StatusForbidden, "_local endpoint is disabled")
 	}
 	docid := h.PathVar("docid")
 	rev := h.getQuery("rev")
