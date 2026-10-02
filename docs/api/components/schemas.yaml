@@ -668,6 +668,7 @@ ISGRReplicationState:
     - error
     - starting
     - reconnecting
+    - unassigned
   x-enumDescriptions:
     running: Currently running replication.
     stopped: Not running replication.
@@ -675,6 +676,7 @@ ISGRReplicationState:
     error: The replication is stopped due to an error.
     starting: The replication is starting up.
     reconnecting: The replication is reconnecting to the remote database.
+    unassigned: The replication has not been assigned to a node.
   title: Replication Status
 Retrieved-replication:
   description: Properties of a replication

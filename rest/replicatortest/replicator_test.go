@@ -1488,6 +1488,55 @@ func TestGetStatusWithReplication(t *testing.T) {
 	require.Len(t, status.Databases["db"].ReplicationStatus, 0)
 }
 
+// TestReplicationStatusActiveOnly asserts that activeOnly=true returns replications that are running or
+// reconnecting, and leaves out one that is stopped.
+func TestReplicationStatusActiveOnly(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	sgrRunner := rest.NewSGRTestRunner(t)
+	sgrRunner.Run(func(t *testing.T) {
+		peers := sgrRunner.SetupSGRPeers(t)
+		activeRT := peers.ActiveRT
+
+		// A closed server refuses connections, which keeps the replicator reconnecting.
+		unreachable := httptest.NewServer(http.NotFoundHandler())
+		unreachable.Close()
+		unreachableURL := unreachable.URL + "/db"
+
+		const (
+			runningID      = "running"
+			reconnectingID = "reconnecting"
+			stoppedID      = "stopped"
+		)
+		activeRT.CreateReplication(runningID, peers.PassiveDBURL, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
+		for id, initialState := range map[string]string{reconnectingID: db.ReplicationStateRunning, stoppedID: db.ReplicationStateStopped} {
+			replicationConfig := db.ReplicationConfig{
+				ID:                 id,
+				Remote:             unreachableURL,
+				Direction:          db.ActiveReplicatorTypePull,
+				Continuous:         true,
+				InitialState:       initialState,
+				CollectionsEnabled: base.TestsUseNamedCollections(),
+			}
+			response := activeRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_replication/"+id, rest.MarshalConfig(t, replicationConfig))
+			rest.RequireStatus(t, response, http.StatusCreated)
+		}
+		activeRT.WaitForReplicationStatus(runningID, db.ReplicationStateRunning)
+		activeRT.WaitForReplicationStatus(reconnectingID, db.ReplicationStateReconnecting)
+		activeRT.WaitForReplicationStatus(stoppedID, db.ReplicationStateStopped)
+
+		statusIDs := func(queryString string) []string {
+			var ids []string
+			for _, status := range activeRT.GetReplicationStatuses(queryString) {
+				ids = append(ids, status.ID)
+			}
+			return ids
+		}
+		require.ElementsMatch(t, []string{runningID, reconnectingID, stoppedID}, statusIDs(""))
+		require.ElementsMatch(t, []string{runningID, reconnectingID}, statusIDs("?activeOnly=true"))
+	})
+}
+
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
