@@ -463,14 +463,15 @@ func TestTestSourceID(t *testing.T) {
 		bucketName string
 		expected   string
 	}{
-		{bucketName: "rosmar1", expected: "rosmar1AAAAAAAAAAAAAAA"},
-		{bucketName: "rosmar12", expected: "rosmar12AAAAAAAAAAAAAA"},
+		{bucketName: "rosmar1", expected: "rosmar1++++++++++++++A"},
+		{bucketName: "rosmar12", expected: "rosmar12+++++++++++++A"},
+		{bucketName: "rosmar1A", expected: "rosmar1A+++++++++++++A"},
 		{bucketName: "abcdefghijklmnopqrstu", expected: "abcdefghijklmnopqrstuA"},
-		// No room left for the 'A' that makes the final character valid.
+		{bucketName: "", expected: "+++++++++++++++++++++A"},
+		// No room left for the final 'A'.
 		{bucketName: "abcdefghijklmnopqrstuv", expected: encoded},
 		{bucketName: "sg_int_0", expected: encoded},
-		{bucketName: "", expected: encoded},
-		{bucketName: "AAA", expected: encoded},
+		{bucketName: "rosmar+1", expected: encoded},
 	}
 	for _, test := range tests {
 		t.Run(test.bucketName, func(t *testing.T) {
