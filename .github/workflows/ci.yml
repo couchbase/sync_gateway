@@ -371,8 +371,9 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   test-cbl:
-    # Exercises testing/cbltestclient against a real Couchbase Lite client, so that the harness
-    # Sync Gateway's replication tests will be built on is known to work on every supported OS.
+    # Exercises testing/cbltestclient, and the tests built on it, against a real Couchbase Lite
+    # client, so that the harness Sync Gateway's replication tests will be built on is known to
+    # work on every supported OS.
     # Windows is absent because nothing consumes the harness there yet - topologytest, its first
     # consumer, is already skipped on Windows in CI.
     runs-on: ${{ matrix.os }}
@@ -431,7 +432,7 @@ jobs:
           SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
       - name: Run Tests
         shell: bash
-        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/...
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/... ./rest/cbltest/...
         env:
           SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
       - name: Test Summary
