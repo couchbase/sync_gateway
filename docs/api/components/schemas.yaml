@@ -2261,6 +2261,13 @@ Startup-config:
 
             Defaults to `true` if using Enterprise Edition or `false` if using Community Edition.
           type: boolean
+        enable_local_endpoint_for_public_api:
+          description: |-
+            Whether the public API allows requests for `_local` documents.
+
+            If `false`, the public `/{keyspace}/_local/{docid}` endpoints return `403`, and `_bulk_docs` does not write `_local` documents. The admin API is not affected.
+          type: boolean
+          default: true
         hide_product_version:
           description: Whether product versions removed from Server headers and REST API responses
           type: boolean
