@@ -174,7 +174,8 @@ Real Couchbase Lite client
 Tests that replicate with a real Couchbase Lite client use the
 [CBL-C test server](https://github.com/couchbaselabs/couchbase-lite-tests), a real Couchbase Lite
 C application that exposes its database and replicator over HTTP - so nothing links libcblite into
-the Sync Gateway build.
+the Sync Gateway build. `testing/cbltestclient` drives it from Go tests, so replication behaviour
+can be checked against the actual implementation rather than against our own emulation of it.
 
 No prebuilt test server is published publicly, so one has to be built (Linux and macOS):
 
@@ -186,10 +187,24 @@ That fetches the `couchbase-lite-tests` branch the script names, downloads the p
 Edition Couchbase Lite package, and builds the server with CMake. The first run takes a few
 minutes. Later runs rebuild only when the branch tip has moved.
 
+Tests connect to the test server named by `SG_TEST_CBL_TEST_SERVER_URL`, and are skipped when it is
+unset. To run the one the script installed (under `~/Library/Caches` rather than `~/.cache` on
+macOS):
+
+```sh
+cd ~/.cache/sync_gateway/cbl-test-server/4.1.2/linux-amd64/bin
+./testserver --port 8080 --files-dir "$(mktemp -d)"
+```
+
 | Variable | Purpose | Default |
 |---|---|---|
 | `SG_TEST_CBL_TEST_SERVER_DIR` | Where built test servers are installed | OS cache directory |
+| `SG_TEST_CBL_TEST_SERVER_URL` | Running test server to use, e.g. `http://127.0.0.1:8080` | unset |
+| `SG_TEST_REQUIRE_CBL_TEST_SERVER` | Fail rather than skip when no test server is available. CI sets this | `false` |
 | `SG_TEST_CBL_TESTS_REF` | Branch, tag or commit of `couchbase-lite-tests` to build | the branch named in the script |
+
+The test server cannot read back a deleted document: `GetDocument` reports a tombstone exactly as
+it reports a document that never existed.
 
 Enterprise Edition
 ------------------
