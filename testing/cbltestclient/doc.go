@@ -14,5 +14,5 @@
 // the Sync Gateway build.
 //
 // Client is a plain HTTP client for the control API and knows nothing about testing.  GetServer
-// connects to a running test server once per test binary, and hands out a ready Client.
+// finds a test server build, runs it once per test binary, and hands out a ready Client.
 package cbltestclient

@@ -9,6 +9,8 @@
 package cbltestclient
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +19,12 @@ import (
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	StopServer(context.Background())
+	os.Exit(code)
+}
 
 // testCollection is the collection the smoke tests create.  The default collection is enough here:
 // this is exercising the control API, not Sync Gateway's collection handling.

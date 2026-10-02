@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,7 +24,8 @@ import (
 )
 
 const (
-	// EnvTestServerURL points at a test server that is already running.
+	// EnvTestServerURL points at a test server that is already running, used instead of starting
+	// one.
 	EnvTestServerURL = "SG_TEST_CBL_TEST_SERVER_URL"
 	// EnvRequireTestServer makes a missing test server fail the test instead of skipping it.  CI
 	// sets this, so a test server that stops being built can't quietly stop being tested.
@@ -39,7 +41,7 @@ const (
 	readyPollInterval = 50 * time.Millisecond
 )
 
-// ErrNoTestServer is returned when EnvTestServerURL is unset.  GetServer turns it into a
+// ErrNoTestServer is returned when no test server could be found.  GetServer turns it into a
 // skip, or into a failure when EnvRequireTestServer is set.
 var ErrNoTestServer = errors.New("cbltestclient: no Couchbase Lite test server available")
 
@@ -50,7 +52,7 @@ var shared struct {
 	server *Server
 }
 
-// Server is a running Couchbase Lite test server.
+// Server is a Couchbase Lite test server, either started by this package or already running.
 type Server struct {
 	// Version is the Couchbase Lite version the server reported.
 	Version string
@@ -58,15 +60,24 @@ type Server struct {
 	URL string
 	// Client talks to it.  Its session has already been created.
 	Client *Client
+
+	// external is true for a server named by EnvTestServerURL, which this package must not stop.
+	external bool
+	cmd      *exec.Cmd
+	filesDir string
+	logTail  *logTail
+	// exited is closed once the process has been reaped, and waitErr holds why it ended.
+	exited  chan struct{}
+	waitErr error
 }
 
-// GetServer returns the shared test server, connecting to it on first use.
+// GetServer returns the shared test server, connecting to or starting it on first use.
 //
 // If no test server can be found the test is skipped, unless EnvRequireTestServer is set, in which
 // case it fails.
 //
 // The server is shared with every other test in this binary, so tests using it must not run in
-// parallel.
+// parallel.  Call StopServer from TestMain to stop it.
 func GetServer(t testing.TB) *Server {
 	t.Helper()
 	ctx := base.TestCtx(t)
@@ -94,17 +105,21 @@ func requireTestServer() bool {
 	return required
 }
 
-// launch connects to the test server named by EnvTestServerURL.
+// launch connects to the test server named by EnvTestServerURL, or starts the installed one.
 func launch(ctx context.Context) (*Server, error) {
-	url := os.Getenv(EnvTestServerURL)
-	if url == "" {
-		return nil, fmt.Errorf("%w: set %s to the URL of a running test server", ErrNoTestServer, EnvTestServerURL)
+	if url := os.Getenv(EnvTestServerURL); url != "" {
+		server := &Server{URL: url, external: true}
+		if err := server.connect(ctx); err != nil {
+			return nil, err
+		}
+		return server, nil
 	}
-	server := &Server{URL: url}
-	if err := server.connect(ctx); err != nil {
+
+	binary, err := ResolveBinary()
+	if err != nil {
 		return nil, err
 	}
-	return server, nil
+	return startServer(ctx, binary)
 }
 
 // connect waits for the server to answer, checks it is the Couchbase Lite version this package
@@ -134,6 +149,10 @@ func (s *Server) waitUntilReady(ctx context.Context) (*Client, ServerInfo, error
 	deadline := time.Now().Add(readyTimeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
+		// A server that failed to start never answers, so stop waiting as soon as it exits.
+		if s.hasExited() {
+			return nil, ServerInfo{}, fmt.Errorf("cbltestclient: test server exited before it was ready: %v\n%s", s.waitErr, s.LogTail())
+		}
 		client, info, err := NewClient(ctx, s.URL)
 		if err == nil {
 			return client, info, nil
@@ -141,5 +160,5 @@ func (s *Server) waitUntilReady(ctx context.Context) (*Client, ServerInfo, error
 		lastErr = err
 		time.Sleep(readyPollInterval)
 	}
-	return nil, ServerInfo{}, fmt.Errorf("cbltestclient: test server at %s was not ready within %s: %w", s.URL, readyTimeout, lastErr)
+	return nil, ServerInfo{}, fmt.Errorf("cbltestclient: test server at %s was not ready within %s: %w\n%s", s.URL, readyTimeout, lastErr, s.LogTail())
 }

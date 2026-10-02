@@ -428,17 +428,11 @@ jobs:
         run: uv run integration-test/cbl_test_server.py --cbl-version "${CBL_VERSION}"
         env:
           SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
-      # The server finds its assets relative to the executable, so it is run from where it was
-      # installed.
-      - name: Start Couchbase Lite test server
-        shell: bash
-        run: |
-          cd "cbl-test-server/${CBL_VERSION}/$(go env GOOS)-$(go env GOARCH)/bin"
-          nohup ./testserver --port 8080 --files-dir "$(mktemp -d)" > "${RUNNER_TEMP}/testserver.log" 2>&1 &
-          echo "SG_TEST_CBL_TEST_SERVER_URL=http://127.0.0.1:8080" >> "$GITHUB_ENV"
       - name: Run Tests
         shell: bash
         run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/...
+        env:
+          SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
       - name: Test Summary
         if: always()
         shell: bash
@@ -457,9 +451,7 @@ jobs:
         uses: *actions_upload_artifact_version
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name }}
-          path: |
-            test.log
-            ${{ runner.temp }}/testserver.log
+          path: test.log
           retention-days: 7
           if-no-files-found: warn
 
