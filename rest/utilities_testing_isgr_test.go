@@ -134,13 +134,13 @@ func TestHLVEqualAllowingEncodedRevs(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.equal, hlvEqualAllowingEncodedRevs(t, tc.expected, tc.actual, revChain))
+			assert.Equal(t, tc.equal, hlvEqualAllowingEncodedRevs(tc.expected, tc.actual, revChain))
 		})
 	}
 }
 
 // TestExpectedISGRDocFromPeerLegacyDoc checks that a snapshot of a document with no HLV describes it as it is, so
-// RequireDoc can assert a peer holding a legacy document was left unchanged, while RequireDocReplicated still expects
+// RequireDoc can assert a peer holding a legacy document was left unchanged, while WaitForDocReplicated still expects
 // the receiving peer to have the revTreeID-encoded CV.
 func TestExpectedISGRDocFromPeerLegacyDoc(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
@@ -170,7 +170,7 @@ func TestExpectedISGRDocFromPeerLegacyDoc(t *testing.T) {
 		require.NoError(t, ar.Start(peers.ActiveRT.Context()))
 		defer func() { require.NoError(t, ar.Stop()) }()
 
-		doc := runner.RequireDocReplicated(docID, peers.PassiveRT, peers.ActiveRT, snapshot.Version)
+		doc := runner.WaitForDocReplicated(docID, peers.PassiveRT, peers.ActiveRT, snapshot.Version)
 		require.NotNil(t, doc.HLV)
 		if runner.IsV4Protocol() {
 			encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(legacyDoc.GetRevTreeID())

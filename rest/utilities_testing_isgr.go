@@ -257,7 +257,7 @@ func (runner *SGRTestRunner) IsV4Protocol() bool {
 }
 
 // ExpectedISGRDoc describes the state a document must be in on a peer after replication. Version is always checked;
-// the remaining fields are checked when set, except in RequireDocReplicated where every field comes from the source.
+// the remaining fields are checked when set, except in WaitForDocReplicated where every field comes from the source.
 type ExpectedISGRDoc struct {
 	// Version is waited for before anything else is asserted - revTreeID only in v3, revTreeID and CV in v4.
 	Version DocVersion
@@ -279,11 +279,11 @@ type ExpectedISGRDoc struct {
 	Attachments map[string]string
 }
 
-// RequireDocReplicated waits for version to arrive on dest, then requires dest to hold the same document as source:
+// WaitForDocReplicated waits for version to arrive on dest, then requires dest to hold the same document as source:
 // HLV (v4), rev tree ancestry, channels, body and attachments. Both peers are waited on to reach version, so it can't
 // be used where the peers legitimately end up different - use RequireDoc with an explicit expectation there. Only the
 // parts of version that are set are waited on, so a revTreeID alone is enough.
-func (runner *SGRTestRunner) RequireDocReplicated(docID string, source, dest *RestTester, version DocVersion) *db.Document {
+func (runner *SGRTestRunner) WaitForDocReplicated(docID string, source, dest *RestTester, version DocVersion) *db.Document {
 	t := dest.TB()
 	t.Helper()
 	// Wait on both peers: source's state can itself be the product of the replication (a conflict resolution, say),
@@ -322,7 +322,7 @@ func (runner *SGRTestRunner) RequireDoc(docID string, rt *RestTester, exp Expect
 		require.FailNow(t, "doc has no HLV", "doc %q on %s", docID, peer)
 	case runner.IsV4Protocol():
 		if exp.HLV != nil {
-			assert.True(t, hlvEqualAllowingEncodedRevs(t, exp.HLV, doc.HLV, exp.RevChain),
+			assert.True(t, hlvEqualAllowingEncodedRevs(exp.HLV, doc.HLV, exp.RevChain),
 				"HLV mismatch for doc %q on %s. Expected: %s, Actual: %s", docID, peer, exp.HLV.HLVDebugString(), doc.HLV.HLVDebugString())
 		}
 	default:
@@ -353,6 +353,22 @@ func (runner *SGRTestRunner) RequireDoc(docID string, rt *RestTester, exp Expect
 	return doc
 }
 
+// RequireDocUnchanged requires dest to still match exp once source has pushed everything it held when called. dest
+// already matches exp before the push does anything, so RequireDoc alone would pass before a wrong push could land: a
+// barrier document is written on source and waited for on dest first, so any earlier change to docID on source has
+// been pushed by then. Source must already be in the state the push is expected to leave alone - wait on it first.
+func (runner *SGRTestRunner) RequireDocUnchanged(docID string, source, dest *RestTester, exp ExpectedISGRDoc) *db.Document {
+	t := dest.TB()
+	t.Helper()
+	barrierID := docID + "_barrier"
+	// Put the barrier in the same channels as docID so that a replication or user scoped to them still carries it.
+	barrierBody, err := base.JSONMarshal(db.Body{"channels": exp.Channels})
+	require.NoError(t, err)
+	barrierVersion := source.PutDoc(barrierID, string(barrierBody))
+	runner.WaitForDocReplicated(barrierID, source, dest, barrierVersion)
+	return runner.RequireDoc(docID, dest, exp)
+}
+
 // waitForDocVersion waits for docID on rt to be at version - revTreeID only in v3, where the receiving peer mints its own
 // CV. It reads the document directly rather than over REST so that waiting doesn't populate the revision cache, and so
 // that tombstones and live documents are waited for the same way.
@@ -381,8 +397,7 @@ func (runner *SGRTestRunner) waitForDocVersion(rt *RestTester, docID string, ver
 // revTreeID as an encoded CV, and keeps that in pv once the document is updated - but the peer that wrote the update
 // never stored the encoded version, since it only ever knew the revision through its rev tree. Both peers know the
 // same versions, so the HLVs are equivalent.
-func hlvEqualAllowingEncodedRevs(t testing.TB, expected, actual *db.HybridLogicalVector, revChain []string) bool {
-	t.Helper()
+func hlvEqualAllowingEncodedRevs(expected, actual *db.HybridLogicalVector, revChain []string) bool {
 	if expected.SourceID != actual.SourceID || expected.Version != actual.Version ||
 		!maps.Equal(expected.MergeVersions, actual.MergeVersions) {
 		return false
