@@ -100,9 +100,6 @@ func readCbgtImportIndexUUID(t *testing.T, rt *RestTester, dbName string) string
 // PIndex instance (same PIndex.UUID) rather than being spuriously restarted, and every PIndex must
 // be accounted for on exactly one node at all times (never dropped, never duplicated).
 func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("import partitions / sharded DCP require EE")
-	}
 	base.TestRequiresCbgt(t)
 
 	ctx := base.TestCtx(t)
@@ -191,9 +188,6 @@ func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
 // with more nodes in play, which is where a bug that treats every join as "replan everything from
 // scratch" would first show up.
 func TestCbgtRebalanceOnThirdNodeJoinOnlyMovesMinimalShare(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("import partitions / sharded DCP require EE")
-	}
 	base.TestRequiresCbgt(t)
 
 	ctx := base.TestCtx(t)
