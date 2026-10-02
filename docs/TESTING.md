@@ -190,8 +190,12 @@ branch tip and does nothing if the installed server was built from it, so a move
 an unmoved one does not. Tests that need a test server and cannot find one are skipped.
 
 The script tracks a branch rather than a fixed commit because the harness needs test server changes
-that have not merged yet: `--port` and `--files-dir`, so several servers can run on one host, and a
-routed `/stopReplicator`. Point it at `main` once they have landed.
+that have not merged yet: the `HTTPStatus.h` header `main` is missing, without which no test server
+builds ([couchbase-lite-tests#620](https://github.com/couchbaselabs/couchbase-lite-tests/pull/620)),
+a routed `/stopReplicator` ([#622](https://github.com/couchbaselabs/couchbase-lite-tests/pull/622)),
+and `--files-dir` ([#623](https://github.com/couchbaselabs/couchbase-lite-tests/pull/623)), which
+together with `--port` lets several servers run on one host. Point it at `main` once they have
+landed.
 
 | Variable | Purpose | Default |
 |---|---|---|

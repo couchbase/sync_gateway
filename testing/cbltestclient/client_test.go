@@ -151,13 +151,13 @@ func TestClientGetDocumentNotFound(t *testing.T) {
 		notFound bool
 	}{
 		{
-			name:     "400 as the C server reports it",
+			name:     "400 as older C servers report it",
 			status:   http.StatusBadRequest,
 			body:     `{"code":400,"domain":"TESTSERVER","message":"Document '_default._default.doc1' not found"}`,
 			notFound: true,
 		},
 		{
-			name:     "404 as the spec describes it",
+			name:     "404 as the spec and newer C servers report it",
 			status:   http.StatusNotFound,
 			body:     `{"code":404,"domain":"TESTSERVER","message":"Document '_default._default.doc1' not found"}`,
 			notFound: true,

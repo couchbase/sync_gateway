@@ -41,8 +41,9 @@ const (
 )
 
 // notFoundMessage matches the message the test server uses when a document is absent or deleted.
-// The spec says a missing document is a 404, but the C server returns a 400 with this message, so
-// the message is the only reliable signal.
+// The spec says a missing document is a 404, and the C server returns one since
+// couchbase-lite-tests#598.  A server built before that returns a 400 with this message, and the
+// message is the only thing telling it apart from a malformed request.
 var notFoundMessage = regexp.MustCompile(`^Document '.*' not found$`)
 
 // Client is an HTTP client for the Couchbase Lite test server control API.  It is safe for
@@ -323,8 +324,9 @@ func responseError(path string, statusCode int, body []byte) error {
 }
 
 // isNotFoundResponse reports whether an error response means the document was absent or deleted.
-// The spec says 404, but the C test server reports it as a 400 whose message is the only thing
-// distinguishing it from a malformed request.
+// The spec says 404, and the C test server reports one since couchbase-lite-tests#598, but a server
+// built before that reports a 400 whose message is the only thing distinguishing it from a
+// malformed request.
 func isNotFoundResponse(statusCode int, apiErr *APIError) bool {
 	if statusCode == http.StatusNotFound {
 		return true

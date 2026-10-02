@@ -35,10 +35,12 @@ from pathlib import Path
 DEFAULT_CBL_VERSION = "4.1.2"
 
 TESTS_REPO_URL = "https://github.com/couchbaselabs/couchbase-lite-tests.git"
-# The branch carrying the test server changes Sync Gateway's harness needs: --port and --files-dir
-# so several servers can run on one host, and a routed /stopReplicator.  Tracking its tip rather
-# than a fixed commit means picking up fixes as they land; the resolved commit goes in the stamp
-# file, so moving the tip still rebuilds.  Point this at main once the branch has merged.
+# The branch combining the test server changes Sync Gateway's harness needs that are not on main
+# yet: the HTTPStatus.h main is missing, without which nothing builds (couchbase-lite-tests#620), a
+# routed /stopReplicator (#622), and --files-dir so several servers can run on one host (#623).
+# Tracking its tip rather than a fixed commit means picking up fixes as they land; the resolved
+# commit goes in the stamp file, so moving the tip still rebuilds.
+# TODO: CBG-5884 point this at main once #620, #622 and #623 have merged.
 TESTS_REPO_REF = "test_server_fixes"
 
 # Written next to the installed server to record what it was built from, so a rebuild can be
@@ -52,7 +54,8 @@ def log(message: str) -> None:
 
 def run(command: list[str], cwd: Path | None = None) -> None:
     log(" ".join(str(part) for part in command))
-    subprocess.run(command, cwd=cwd, check=True)
+    # Build output goes to stderr with the log, keeping stdout for what --print-path asks for.
+    subprocess.run(command, cwd=cwd, check=True, stdout=sys.stderr)
 
 
 def goos() -> str:
@@ -201,8 +204,9 @@ def build(checkout: Path, version: str) -> Path:
     """Build the C test server and return the directory holding the built executable.
 
     This drives CMake directly rather than through servers/c/scripts/build_*.sh: those take
-    different arguments per platform, and each ends by copying an assets directory from a path
-    that does not exist, failing the whole script after a successful build.
+    different arguments per platform, and on main each still ends by copying an assets directory
+    from a path that does not exist, failing the whole script after a successful build
+    (couchbase-lite-tests#621 fixes that).
     """
     server_dir = checkout / "servers" / "c"
     download_cbl(server_dir, version)
@@ -309,6 +313,12 @@ def main() -> None:
         help="Print the couchbase-lite-tests ref that would be built, and do nothing else",
     )
     args = parser.parse_args()
+
+    # The build runs commands from inside the checkout, so a relative path would be resolved
+    # against the wrong directory there.
+    for name in ("out", "repo", "work_dir"):
+        if getattr(args, name) is not None:
+            setattr(args, name, getattr(args, name).resolve())
 
     # Lets a caller key a cache on what the ref resolves to without this script owning that
     # decision, which is what CI does.
