@@ -2157,9 +2157,17 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 }
 
 func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors error) {
-	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc._databases))
-	for _, dbContext := range sc._databases {
-		if uuid, err := dbContext.Bucket.UUID(ctx); err == nil {
+	var databases []*db.DatabaseContext
+	if snapshot := sc.databasesSnapshot.Load(); snapshot != nil {
+		databases = *snapshot
+	}
+	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(databases))
+	for _, dbContext := range databases {
+		bucket, open := dbContext.BucketIfOpen()
+		if !open {
+			continue
+		}
+		if uuid, err := bucket.UUID(ctx); err == nil {
 			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
 		}
 	}

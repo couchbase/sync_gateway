@@ -16,6 +16,7 @@ import (
 	"log"
 	"maps"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"runtime"
@@ -4343,4 +4344,46 @@ func (p *resyncPauser) release() bool {
 	p.ds.SetWriteUpdateWithXattrsCallback(nil)
 	close(p.blockCh)
 	return true
+}
+
+func TestServerGetStatusRace(t *testing.T) {
+	if !base.IsRaceDetectorEnabled(t) {
+		t.Skip("This test requires RACE detector to be enabled")
+	}
+	ctx := base.TestCtx(t)
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	// SendAdminRequest takes _databasesLock to fill in URL templates, which hides the race.
+	adminHandler := rt.TestAdminHandler()
+	getStatus := func() *rest.TestResponse {
+		request := rest.Request(http.MethodGet, "/_status", "")
+		response := &rest.TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+		adminHandler.ServeHTTP(response, request)
+		return response
+	}
+
+	sc := rt.ServerContext()
+	dbConfig2 := rt.NewDbConfig()
+	dbConfig2.Name = "db2"
+
+	var writerDone atomic.Bool
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		defer writerDone.Store(true)
+		for range 20 {
+			_, err := sc.AddDatabaseFromConfig(ctx, rest.DatabaseConfig{DbConfig: dbConfig2})
+			assert.NoError(t, err)
+			assert.True(t, sc.RemoveDatabase(ctx, "db2", "test"))
+		}
+	})
+	for {
+		assert.Equal(t, http.StatusOK, getStatus().Code)
+		if writerDone.Load() {
+			break
+		}
+	}
+	wg.Wait()
 }
