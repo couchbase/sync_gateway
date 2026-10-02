@@ -541,9 +541,9 @@ func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
 	}
 	gocbBucket, err := AsGocbV2Bucket(bucket)
 	if err != nil {
-		// for rosmar bucket and testing, use the bucket name as the source ID to make it easier to identify the source
+		// for rosmar bucket and testing, base the source ID on the bucket name to make it easier to identify the source
 		if underGoTest() {
-			return bucket.GetName(), nil
+			return testSourceID(bucket.GetName(), bucketUUID)
 		}
 		serverUUID := ""
 		return CreateEncodedSourceID(bucketUUID, serverUUID)
@@ -555,6 +555,39 @@ func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
 		return "", err
 	}
 	return CreateEncodedSourceID(bucketUUID, serverUUID)
+}
+
+// encodedSourceIDLength is the length of a source ID in its encoded form: 16 bytes of unpadded
+// base64.  Couchbase Lite rejects a version whose source ID is any other length, or any string that
+// is not the canonical encoding of 16 bytes.
+const encodedSourceIDLength = 22
+
+// testSourceID returns a source ID for a test bucket that still reads as the bucket's name, padded
+// with 'A's to a valid encoded source ID, so that a real Couchbase Lite in a test accepts the
+// versions Sync Gateway writes.  "rosmar1" becomes "rosmar1AAAAAAAAAAAAAAA".  A name that cannot
+// be padded that way - too long, or containing characters base64 does not use - gets the same
+// encoded ID production would.
+func testSourceID(bucketName, bucketUUID string) (string, error) {
+	// The final character carries only the last 2 of the 128 bits, and its other 4 bits must be zero.
+	// 'A' meets that and an arbitrary character does not, so a name has to leave room for one 'A'.
+	if len(bucketName) < encodedSourceIDLength && isBase64Alphabet(bucketName) {
+		padded := bucketName + strings.Repeat("A", encodedSourceIDLength-len(bucketName))
+		// All 'A's decodes to an all-zero ID, which Couchbase Lite reserves to mean itself.
+		if strings.Trim(padded, "A") != "" {
+			return padded, nil
+		}
+	}
+	return CreateEncodedSourceID(bucketUUID, "")
+}
+
+// isBase64Alphabet reports whether s only uses characters from the standard base64 alphabet.
+func isBase64Alphabet(s string) bool {
+	for _, r := range s {
+		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '+' || r == '/') {
+			return false
+		}
+	}
+	return true
 }
 
 // CreateEncodedSourceID will hash the bucket UUID and cluster UUID using md5 hash function then will base64 encode it
