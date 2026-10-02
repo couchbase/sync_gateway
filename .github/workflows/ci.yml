@@ -42,7 +42,11 @@ env:
   # tag for repo at v1 is not updated
   ACTIONS_GOVULNCHECK_VERSION: &actions_govulncheck_version golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
   ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
+  ACTIONS_CACHE_VERSION: &actions_cache_version actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
   GO_MOD_FILE: &go_mod_file go.mod
+  # Couchbase Lite version the test server is built against - keep in step with
+  # integration-test/cbl_test_server.py.
+  CBL_VERSION: '4.1.2'
 
 jobs:
   build:
@@ -366,6 +370,53 @@ jobs:
           path: test.log
           retention-days: 7
           if-no-files-found: warn
+  test-cbl:
+    # Builds the Couchbase Lite test server that Sync Gateway's real-client tests will run against,
+    # so a change that breaks the build is caught here.  The build script only supports Linux and
+    # macOS.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: ubuntu
+          - os: macos-latest
+            name: macos
+    name: build cbl test server (${{ matrix.name }})
+    steps:
+      - uses: *actions_checkout_version
+      - uses: *actions_setup_uv_version
+      # The script tracks a branch tip rather than a fixed commit, so the cache has to be keyed on
+      # what that tip currently is - otherwise a moved tip would keep serving the server built
+      # from the commit before it.
+      - name: Resolve Couchbase Lite test server commit
+        id: cbl-test-server-commit
+        shell: bash
+        run: |
+          ref=$(uv run integration-test/cbl_test_server.py --print-ref)
+          commit=$(git ls-remote https://github.com/couchbaselabs/couchbase-lite-tests.git "${ref}" | cut -f1)
+          if [ -z "${commit}" ]; then
+            echo "::error::${ref} does not exist in couchbaselabs/couchbase-lite-tests"
+            exit 1
+          fi
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+      # Building the test server downloads the Couchbase Lite package and compiles a C++ project,
+      # so it is cached on the Couchbase Lite version, the test server commit, and the script that
+      # builds it.
+      - name: Cache Couchbase Lite test server
+        id: cbl-test-server-cache
+        uses: *actions_cache_version
+        with:
+          path: cbl-test-server
+          key: cbl-test-server-${{ matrix.os }}-${{ env.CBL_VERSION }}-${{ steps.cbl-test-server-commit.outputs.commit }}-${{ hashFiles('integration-test/cbl_test_server.py') }}
+      - name: Build Couchbase Lite test server
+        if: steps.cbl-test-server-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: uv run integration-test/cbl_test_server.py --cbl-version "${CBL_VERSION}"
+        env:
+          SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
+
   cache_perf_tool_build:
     runs-on: ubuntu-latest
     name: build cache perf tool

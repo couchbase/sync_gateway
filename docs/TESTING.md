@@ -168,6 +168,29 @@ change and `db.WaitForUserWaiterChange(t, userWaiter)` after it.
 | `SG_TEST_GOROUTINE_DUMP` | Capture a goroutine pprof profile at the end of each package and log its location | unset |
 | `SG_TEST_PROFILE_FREQUENCY` | Capture pprof profiles at this interval | unset |
 
+Real Couchbase Lite client
+--------------------------
+
+Tests that replicate with a real Couchbase Lite client use the
+[CBL-C test server](https://github.com/couchbaselabs/couchbase-lite-tests), a real Couchbase Lite
+C application that exposes its database and replicator over HTTP - so nothing links libcblite into
+the Sync Gateway build.
+
+No prebuilt test server is published publicly, so one has to be built (Linux and macOS):
+
+```sh
+uv run integration-test/cbl_test_server.py --cbl-version 4.1.2
+```
+
+That fetches the `couchbase-lite-tests` branch the script names, downloads the public Enterprise
+Edition Couchbase Lite package, and builds the server with CMake. The first run takes a few
+minutes. Later runs rebuild only when the branch tip has moved.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `SG_TEST_CBL_TEST_SERVER_DIR` | Where built test servers are installed | OS cache directory |
+| `SG_TEST_CBL_TESTS_REF` | Branch, tag or commit of `couchbase-lite-tests` to build | the branch named in the script |
+
 Enterprise Edition
 ------------------
 
