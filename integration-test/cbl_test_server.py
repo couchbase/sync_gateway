@@ -183,8 +183,17 @@ def download_cbl(server_dir: Path, version: str) -> None:
             cwd=server_dir,
         )
     else:
+        # download_cbl.sh names macOS "macos" rather than Go's "darwin", and silently downloads
+        # nothing for a platform name it does not know.
+        platform_name = "macos" if goos() == "darwin" else goos()
         run(
-            [str(scripts / "download_cbl.sh"), goos(), "enterprise", version, "0"],
+            [
+                str(scripts / "download_cbl.sh"),
+                platform_name,
+                "enterprise",
+                version,
+                "0",
+            ],
             cwd=server_dir,
         )
 
