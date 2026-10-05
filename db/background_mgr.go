@@ -304,6 +304,8 @@ func statusFromClusterDoc(ctx context.Context, raw []byte) BackgroundManagerStat
 //   - errBackgroundManagerStatusAlreadyStopping if in the process of stopping
 //   - an error from Process.Init
 func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClusterStatus []byte, isJoin bool) error {
+	// The process outlives the request that started it.
+	ctx = context.WithoutCancel(ctx)
 	mode := b.mode()
 	if mode != backgroundManagerModeMultiNode && b.updateDatabaseState != nil {
 		return fmt.Errorf("updateDatabaseState should only be set for multi-node background managers")

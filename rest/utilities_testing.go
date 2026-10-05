@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -832,15 +833,21 @@ func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body str
 
 	request.SetBasicAuth(username, password)
 
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestAdminHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestAdminHandler(), request)
 }
 
 func (rt *RestTester) Send(request *http.Request) *TestResponse {
+	return ServeTestRequest(rt.TestPublicHandler(), request)
+}
+
+// ServeTestRequest runs the request against handler, and cancels the request context when the handler returns, as
+// net/http.Server does.
+func ServeTestRequest(handler http.Handler, request *http.Request) *TestResponse {
+	ctx, cancel := context.WithCancelCause(request.Context())
+	defer cancel(errors.New("test request handler returned"))
+	request = request.WithContext(ctx)
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestPublicHandler().ServeHTTP(response, request)
+	handler.ServeHTTP(response, request)
 	return response
 }
 
@@ -857,17 +864,12 @@ func (rt *RestTester) SendMetricsRequestWithHeaders(method, resource string, bod
 }
 
 func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestMetricsHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestMetricsHandler(), request)
 }
 
 // SendDiagnosticRequest runs a request against the diagnostic handler.
 func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *TestResponse {
-	request := Request(method, rt.mustTemplateResource(resource), body)
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestDiagnosticHandler().ServeHTTP(response, Request(method, rt.mustTemplateResource(resource), body))
-	return response
+	return ServeTestRequest(rt.TestDiagnosticHandler(), Request(method, rt.mustTemplateResource(resource), body))
 }
 
 // SendDiagnosticRequestWithHeaders runs a request against the diagnostic handler with headers.
@@ -876,10 +878,7 @@ func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, 
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestDiagnosticHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestDiagnosticHandler(), request)
 }
 
 var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
@@ -918,12 +917,7 @@ func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
-	request := Request(method, rt.mustTemplateResource(resource), body)
-
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestAdminHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestAdminHandler(), Request(method, rt.mustTemplateResource(resource), body))
 }
 
 func (rt *RestTester) SendUserRequest(method, resource, body, username string) *TestResponse {
@@ -1104,10 +1098,7 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestAdminHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestAdminHandler(), request)
 }
 
 // SetAdminChannels creates or updates a user with the specified channels.
