@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"maps"
 	"net/http/httptest"
 	"net/url"
 	"slices"
@@ -255,25 +256,257 @@ func (runner *SGRTestRunner) IsV4Protocol() bool {
 	return slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString())
 }
 
-// WaitForVersion will wait for revtree if v3 protocol or full version otherwise.
-func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, version DocVersion) {
-	rt.TB().Helper()
-	if !runner.IsV4Protocol() {
-		// only assert on rev tree IDs when we're not replicating using v4 protocol
-		rt.WaitForVersionRevIDOnly(docID, version)
-		return
-	}
-	rt.WaitForVersion(docID, version)
+// ExpectedISGRDoc describes the state a document must be in on a peer after replication. Version is always checked;
+// the remaining fields are checked when set, except in WaitForDocReplicated where every field comes from the source.
+type ExpectedISGRDoc struct {
+	// Version is waited for before anything else is asserted - revTreeID only in v3, revTreeID and CV in v4.
+	Version DocVersion
+	// Deleted is true if the current revision must be a tombstone.
+	Deleted bool
+	// HLV is compared in full apart from cvCAS, which each peer sets from its own write. Only checked in v4, since in
+	// v3 the receiving peer mints a new HLV of its own.
+	HLV *db.HybridLogicalVector
+	// NoHLV is true if the document must have no HLV at all - a document written before HLVs existed, that nothing has
+	// written to since. Needed as well as HLV because a nil HLV means the HLV isn't checked.
+	NoHLV bool
+	// RevChain is the ancestry of the current revision, current revision first.
+	RevChain []string
+	// Channels are the channels the document is currently in, ignoring channels it has been removed from.
+	Channels []string
+	// Body is the expected document body as JSON. Not checked for tombstones.
+	Body string
+	// Attachments maps attachment name to digest.
+	Attachments map[string]string
 }
 
-func (runner *SGRTestRunner) WaitForTombstone(docID string, rt *RestTester, version DocVersion) {
-	rt.TB().Helper()
-	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
-		// only assert on rev tree IDs when we're not replicating using v4 protocol
-		rt.WaitForTombstoneRevIDOnly(docID, version)
-		return
+// WaitForDocReplicated waits for version to arrive on dest, then requires dest to hold the same document as source:
+// HLV (v4), rev tree ancestry, channels, body and attachments. Both peers are waited on to reach version, so it can't
+// be used where the peers legitimately end up different - use RequireDoc with an explicit expectation there. Only the
+// parts of version that are set are waited on, so a revTreeID alone is enough.
+func (runner *SGRTestRunner) WaitForDocReplicated(docID string, source, dest *RestTester, version DocVersion) *db.Document {
+	t := dest.TB()
+	t.Helper()
+	// Wait on both peers: source's state can itself be the product of the replication (a conflict resolution, say),
+	// and dest can already be at version before the replication has done anything.
+	runner.waitForDocVersion(source, docID, version)
+	runner.waitForDocVersion(dest, docID, version)
+	expected := ExpectedISGRDocFromPeer(t, source, docID)
+	if expected.NoHLV {
+		// A document written before HLVs existed replicates with a CV encoded from its revTreeID, so that's the HLV
+		// dest must end up with.
+		encodedCV, err := db.LegacyRevToRevTreeEncodedVersion(expected.Version.RevTreeID)
+		require.NoError(t, err)
+		expected.HLV = db.NewHybridLogicalVector()
+		require.NoError(t, expected.HLV.AddVersion(encodedCV))
+		expected.Version.CV = encodedCV
+		expected.NoHLV = false
 	}
-	rt.WaitForTombstone(docID, version)
+	return runner.RequireDoc(docID, dest, expected)
+}
+
+// RequireDoc waits for exp.Version to arrive on rt, then requires the document to match every field set in exp.
+func (runner *SGRTestRunner) RequireDoc(docID string, rt *RestTester, exp ExpectedISGRDoc) *db.Document {
+	t := rt.TB()
+	t.Helper()
+	runner.waitForDocVersion(rt, docID, exp.Version)
+
+	doc := rt.GetDocument(docID)
+	actual := expectedISGRDocFromDoc(t, rt.Context(), doc)
+	peer := rt.GetDatabase().Name
+
+	switch {
+	case exp.NoHLV:
+		// HLVDebugString isn't nil-safe, and message arguments are evaluated even when the assertion passes
+		assert.Nil(t, doc.HLV, "doc %q on %s should have no HLV, HLV: %+v", docID, peer, doc.HLV)
+	case doc.HLV == nil:
+		require.FailNow(t, "doc has no HLV", "doc %q on %s", docID, peer)
+	case runner.IsV4Protocol():
+		if exp.HLV != nil {
+			assert.True(t, hlvEqualAllowingEncodedRevs(exp.HLV, doc.HLV, exp.RevChain),
+				"HLV mismatch for doc %q on %s. Expected: %s, Actual: %s", docID, peer, exp.HLV.HLVDebugString(), doc.HLV.HLVDebugString())
+		}
+	default:
+		assert.Equal(t, rt.GetDatabase().EncodedSourceID, doc.HLV.SourceID,
+			"doc %q on %s should have a CV minted locally in v3, HLV: %s", docID, peer, doc.HLV.HLVDebugString())
+	}
+
+	assert.Equal(t, exp.Deleted, actual.Deleted, "deleted mismatch for doc %q on %s", docID, peer)
+	if exp.RevChain != nil {
+		assert.Equal(t, exp.RevChain, actual.RevChain, "rev tree ancestry mismatch for doc %q on %s", docID, peer)
+	}
+	// Any branch other than the current revision's must have been resolved to a tombstone.
+	for _, leaf := range doc.History.GetLeaves() {
+		if leaf != doc.GetRevTreeID() {
+			assert.True(t, doc.History[leaf].Deleted, "doc %q on %s has live conflicting leaf %q alongside current revision %q",
+				docID, peer, leaf, doc.GetRevTreeID())
+		}
+	}
+	if exp.Channels != nil {
+		assert.ElementsMatch(t, exp.Channels, actual.Channels, "channel mismatch for doc %q on %s", docID, peer)
+	}
+	if exp.Body != "" && !exp.Deleted {
+		assert.JSONEq(t, exp.Body, actual.Body, "body mismatch for doc %q on %s", docID, peer)
+	}
+	if exp.Attachments != nil {
+		assert.Equal(t, exp.Attachments, actual.Attachments, "attachment mismatch for doc %q on %s", docID, peer)
+	}
+	return doc
+}
+
+// RequireDocUnchanged requires dest to still match exp once ar has replicated, in direction, everything source held
+// when called. ar runs on source to push (direction db.ActiveReplicatorTypePush), or on dest to pull
+// (db.ActiveReplicatorTypePull). dest already matches exp before the replication does anything, so RequireDoc alone
+// would pass before a wrong rev could land. Instead a barrier document is written on source, and the checkpoint for
+// direction is waited on to pass the barrier's sequence: the checkpoint only passes a sequence once dest has handled
+// the rev for it and every earlier one, so any earlier change to docID on source has been handled by dest by then.
+// Waiting for the barrier to arrive on dest isn't enough on its own, since dest handles several revs at once and the
+// barrier can overtake docID. Source must already be in the state the replication is expected to leave alone - wait
+// on it first.
+func (runner *SGRTestRunner) RequireDocUnchanged(docID string, source, dest *RestTester, ar *db.ActiveReplicator, direction db.ActiveReplicatorDirection, exp ExpectedISGRDoc) *db.Document {
+	t := dest.TB()
+	t.Helper()
+	require.NotNil(t, ar, "no active replicator to wait on for doc %q", docID)
+	// Both checkpoints are in source's sequences: a push replicates the active peer's own changes feed, and a pull the
+	// remote peer's.
+	var lastSeq func() string
+	switch direction {
+	case db.ActiveReplicatorTypePush:
+		require.NotNil(t, ar.Push, "replication %q doesn't push", ar.ID)
+		lastSeq = func() string { return ar.Push.GetStatus().LastSeqPush }
+	case db.ActiveReplicatorTypePull:
+		require.NotNil(t, ar.Pull, "replication %q doesn't pull", ar.ID)
+		lastSeq = func() string { return ar.Pull.GetStatus().LastSeqPull }
+	default:
+		require.FailNow(t, "direction must be push or pull", "got %q", direction)
+	}
+	barrierID := docID + "_barrier"
+	// Put the barrier in every channel docID has been in on source, including ones it has been removed from, so that a
+	// replication or user scoped to them still carries it - a tombstone is in no channels at all.
+	sourceDoc := source.GetDocument(docID)
+	barrierChannels := slices.Sorted(maps.Keys(sourceDoc.Channels))
+	barrierBody, err := base.JSONMarshal(db.Body{"channels": barrierChannels})
+	require.NoError(t, err)
+	barrierVersion := source.PutDoc(barrierID, string(barrierBody))
+	barrierSeq := source.GetDocument(barrierID).Sequence
+	runner.WaitForDocReplicated(barrierID, source, dest, barrierVersion)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		checkpointSeq := lastSeq()
+		seq, err := db.ParsePlainSequenceID(checkpointSeq)
+		if !assert.NoError(c, err, "replication %q has unparseable %s checkpoint %q", ar.ID, direction, checkpointSeq) {
+			return
+		}
+		assert.GreaterOrEqual(c, seq.Seq, barrierSeq, "replication %q %s checkpoint hasn't reached barrier %q", ar.ID, direction, barrierID)
+	}, 10*time.Second, 50*time.Millisecond)
+	return runner.RequireDoc(docID, dest, exp)
+}
+
+// waitForDocVersion waits for docID on rt to be at version - revTreeID only in v3, where the receiving peer mints its own
+// CV. It reads the document directly rather than over REST so that waiting doesn't populate the revision cache, and so
+// that tombstones and live documents are waited for the same way.
+func (runner *SGRTestRunner) waitForDocVersion(rt *RestTester, docID string, version DocVersion) {
+	t := rt.TB()
+	t.Helper()
+	checkCV := runner.IsV4Protocol() && !version.CV.IsEmpty()
+	require.True(t, version.RevTreeID != "" || checkCV, "nothing to wait for in version %#v", version)
+	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
+		if !assert.NoError(c, err, "doc %q not found on %s", docID, rt.GetDatabase().Name) {
+			return
+		}
+		if version.RevTreeID != "" {
+			assert.Equal(c, version.RevTreeID, doc.GetRevTreeID(), "doc %q on %s", docID, rt.GetDatabase().Name)
+		}
+		if checkCV {
+			assert.Equal(c, version.CV.String(), doc.HLV.GetCurrentVersionString(), "doc %q on %s", docID, rt.GetDatabase().Name)
+		}
+	}, 10*time.Second, 50*time.Millisecond)
+}
+
+// hlvEqualAllowingEncodedRevs is HybridLogicalVector.Equal, except that actual may also carry pv entries for the
+// revTreeID-encoded version of revisions in revChain. A peer that received a document while it had no HLV stores its
+// revTreeID as an encoded CV, and keeps that in pv once the document is updated - but the peer that wrote the update
+// never stored the encoded version, since it only ever knew the revision through its rev tree. Both peers know the
+// same versions, so the HLVs are equivalent.
+func hlvEqualAllowingEncodedRevs(expected, actual *db.HybridLogicalVector, revChain []string) bool {
+	if expected.SourceID != actual.SourceID || expected.Version != actual.Version ||
+		!maps.Equal(expected.MergeVersions, actual.MergeVersions) {
+		return false
+	}
+	// Every encoded version shares one source ID, so collect them as versions rather than keyed by source.
+	encodedRevs := make(map[db.Version]struct{}, len(revChain))
+	for _, revID := range revChain {
+		encoded, err := db.LegacyRevToRevTreeEncodedVersion(revID)
+		if err != nil {
+			// A revTreeID without a hex digest (a fake one written by a test) can't be encoded, so no peer can hold an
+			// encoded version of it.
+			continue
+		}
+		encodedRevs[encoded] = struct{}{}
+	}
+	for source, value := range expected.PreviousVersions {
+		if actualValue, ok := actual.PreviousVersions[source]; !ok || actualValue != value {
+			return false
+		}
+	}
+	for source, value := range actual.PreviousVersions {
+		if _, ok := expected.PreviousVersions[source]; ok {
+			continue
+		}
+		if _, ok := encodedRevs[db.Version{SourceID: source, Value: value}]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// ExpectedISGRDocFromPeer returns the current state of docID on rt as an ExpectedISGRDoc. Taken before a replication
+// starts, it lets RequireDoc assert that a peer the replication shouldn't touch is left unchanged.
+func ExpectedISGRDocFromPeer(t testing.TB, rt *RestTester, docID string) ExpectedISGRDoc {
+	t.Helper()
+	return expectedISGRDocFromDoc(t, rt.Context(), rt.GetDocument(docID))
+}
+
+// expectedISGRDocFromDoc returns the replication-relevant state of doc as it is, with every field populated. A document
+// with no HLV is described as one, with NoHLV set and a revTreeID-only Version.
+func expectedISGRDocFromDoc(t testing.TB, ctx context.Context, doc *db.Document) ExpectedISGRDoc {
+	t.Helper()
+	exp := ExpectedISGRDoc{
+		Version:     DocVersion{RevTreeID: doc.GetRevTreeID()},
+		Deleted:     doc.IsDeleted(),
+		HLV:         doc.HLV.Copy(),
+		NoHLV:       doc.HLV == nil,
+		RevChain:    []string{},
+		Channels:    []string{},
+		Attachments: map[string]string{},
+	}
+	if doc.HLV != nil {
+		exp.Version.CV = *doc.HLV.ExtractCurrentVersionFromHLV()
+	}
+	for revID := doc.GetRevTreeID(); revID != ""; {
+		revInfo, ok := doc.History[revID]
+		require.True(t, ok, "rev %q missing from rev tree of doc %q", revID, doc.ID)
+		exp.RevChain = append(exp.RevChain, revID)
+		revID = revInfo.Parent
+	}
+	for channel, removal := range doc.Channels {
+		if removal == nil {
+			exp.Channels = append(exp.Channels, channel)
+		}
+	}
+	slices.Sort(exp.Channels)
+	for name, meta := range doc.Attachments() {
+		metaMap, ok := meta.(map[string]any)
+		require.True(t, ok, "attachment %q of doc %q has unexpected metadata %T", name, doc.ID, meta)
+		digest, _ := metaMap["digest"].(string)
+		exp.Attachments[name] = digest
+	}
+	if !exp.Deleted {
+		body, err := doc.BodyBytes(ctx)
+		require.NoError(t, err)
+		exp.Body = string(body)
+	}
+	return exp
 }
 
 // Run is equivalent to testing.T.Run() but updates underlying the RestTesters' TB to the new testing.T.
