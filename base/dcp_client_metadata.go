@@ -105,6 +105,12 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 
 // Rollback resets vBucket metadata to the vBucket UUID and sequence number provided
 func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo gocbcore.SeqNo) {
+	meta := m.rollback(vbID, startSeqNo)
+	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, meta)
+}
+
+// rollback applies the rollback under the vbucket lock and returns a copy of the updated metadata.
+func (m *dcpMetadataBase) rollback(vbID uint16, startSeqNo gocbcore.SeqNo) DCPMetadata {
 	m.vbLocks[vbID].Lock()
 	defer m.vbLocks[vbID].Unlock()
 	var rollbackVbuuid gocbcore.VbUUID
@@ -120,7 +126,7 @@ func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo 
 	m._metadata[vbID].StartSeqNo = newStartSeqNo
 	m._metadata[vbID].SnapStartSeqNo = newStartSeqNo
 	m._metadata[vbID].SnapEndSeqNo = newStartSeqNo
-	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, m._metadata[vbID])
+	return m._metadata[vbID]
 }
 
 func (m *dcpMetadataBase) SetMeta(vbID uint16, meta DCPMetadata) {
