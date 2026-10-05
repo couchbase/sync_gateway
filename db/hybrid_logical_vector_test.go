@@ -259,7 +259,7 @@ func createHLVForTest(tb *testing.T, input string) *HybridLogicalVector {
 	if input == "" {
 		return NewHybridLogicalVector()
 	}
-	hlv, _, err := extractHLVFromBlipString(input)
+	hlv, _, err := ExtractHLVFromBlipString(input)
 	require.NoError(tb, err)
 	return hlv
 }
@@ -838,7 +838,7 @@ func TestInvalidHLVInBlipMessageForm(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			require.NotEmpty(t, testCase.errMsg) // make sure err msg is specified
-			hlv, legacyRevs, err := extractHLVFromBlipString(testCase.hlv)
+			hlv, legacyRevs, err := ExtractHLVFromBlipString(testCase.hlv)
 			require.ErrorContains(t, err, testCase.errMsg, "expected err for %s", testCase.hlv)
 			require.Nil(t, hlv)
 			require.Nil(t, legacyRevs)
@@ -1100,12 +1100,12 @@ func getHLVTestCases(t testing.TB) []extractHLVFromBlipMsgBMarkCases {
 }
 
 // TestExtractHLVFromChangesMessage:
-//   - Each test case gets run through extractHLVFromBlipString and assert that the resulting HLV
+//   - Each test case gets run through ExtractHLVFromBlipString and assert that the resulting HLV
 //     is correct to what is expected
 func TestExtractHLVFromChangesMessage(t *testing.T) {
 	for _, test := range getHLVTestCases(t) {
 		t.Run(test.name, func(t *testing.T) {
-			hlv, legacyRevs, err := extractHLVFromBlipString(test.hlvString)
+			hlv, legacyRevs, err := ExtractHLVFromBlipString(test.hlvString)
 			require.NoError(t, err)
 
 			require.Equal(t, test.expectedHLV, *hlv, "HLV not parsed correctly for %s", test.hlvString)
@@ -1176,7 +1176,7 @@ func BenchmarkExtractHLVFromBlipMessage(b *testing.B) {
 	for _, bm := range getHLVTestCases(b) {
 		b.Run(bm.name, func(b *testing.B) {
 			for b.Loop() {
-				_, _, _ = extractHLVFromBlipString(bm.hlvString)
+				_, _, _ = ExtractHLVFromBlipString(bm.hlvString)
 			}
 		})
 	}
@@ -1497,7 +1497,7 @@ func TestHLVAddVersion(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 
-			hlv, _, err := extractHLVFromBlipString(tc.initialHLV)
+			hlv, _, err := ExtractHLVFromBlipString(tc.initialHLV)
 			require.NoError(t, err, "unable to parse initialHLV")
 			newVersion, err := ParseVersion(tc.newVersion)
 			require.NoError(t, err)
@@ -1505,7 +1505,7 @@ func TestHLVAddVersion(t *testing.T) {
 			err = hlv.AddVersion(newVersion)
 			require.NoError(t, err)
 
-			expectedHLV, _, err := extractHLVFromBlipString(tc.expectedHLV)
+			expectedHLV, _, err := ExtractHLVFromBlipString(tc.expectedHLV)
 			require.NoError(t, err)
 			require.True(t, hlv.Equal(expectedHLV), "expected %#v does not match actual %#v", expectedHLV, hlv)
 
@@ -1625,9 +1625,9 @@ func TestHLVIsInConflict(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			localHLV, _, err := extractHLVFromBlipString(tc.localHLV)
+			localHLV, _, err := ExtractHLVFromBlipString(tc.localHLV)
 			require.NoError(t, err)
-			incomingHLV, _, err := extractHLVFromBlipString(tc.incomingHLV)
+			incomingHLV, _, err := ExtractHLVFromBlipString(tc.incomingHLV)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.conflict, IsInConflict(t.Context(), localHLV, incomingHLV))

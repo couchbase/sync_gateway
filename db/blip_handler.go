@@ -1755,5 +1755,5 @@ func GetHLVFromRevMessage(msg *blip.Message) (*HybridLogicalVector, []string, er
 			versionVectorStr += ";" + historyStr
 		}
 	}
-	return extractHLVFromBlipString(versionVectorStr)
+	return ExtractHLVFromBlipString(versionVectorStr)
 }
