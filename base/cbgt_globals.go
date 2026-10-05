@@ -49,6 +49,7 @@ type cbgtGlobalData struct {
 	managers map[*cbgt.Manager]cbgtManagerData
 }
 
+// newCbgtGlobalData returns an empty cbgtGlobalData.
 func newCbgtGlobalData() *cbgtGlobalData {
 	return &cbgtGlobalData{
 		managers: make(map[*cbgt.Manager]cbgtManagerData),
@@ -62,12 +63,14 @@ func (c *cbgtGlobalData) registerManager(mgr *cbgt.Manager, data cbgtManagerData
 	c.managers[mgr] = data
 }
 
+// unregisterManager removes mgr, so cbgt's global lookup callbacks no longer find its state.
 func (c *cbgtGlobalData) unregisterManager(mgr *cbgt.Manager) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	delete(c.managers, mgr)
 }
 
+// getManagerCredentials returns the credentials of mgr, if mgr is registered.
 func (c *cbgtGlobalData) getManagerCredentials(mgr *cbgt.Manager) (cbgtCreds, bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -98,12 +101,12 @@ func (c *cbgtGlobalData) hasDestKey(destKey string) bool {
 	return false
 }
 
-// getDBCredentials returns the credentials of any registered cbgt manager owned by dbName.
-func (c *cbgtGlobalData) getDBCredentials(dbName string) (cbgtCreds, bool) {
+// getDBCredentials returns the credentials of a registered cbgt manager owned by dbName that streams from bucketName.
+func (c *cbgtGlobalData) getDBCredentials(bucketName, dbName string) (cbgtCreds, bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	for _, data := range c.managers {
-		if data.dbName == dbName {
+		if data.bucket.GetName() == bucketName && data.dbName == dbName {
 			return data.creds, true
 		}
 	}

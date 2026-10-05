@@ -40,10 +40,10 @@ func cbgtRootCAsProvider(bucketName, bucketUUID, sourceParams string) func() *x5
 		return nil
 	}
 
-	creds, ok := cbgtGlobals.getDBCredentials(feedParams.DbName)
+	creds, ok := cbgtGlobals.getDBCredentials(bucketName, feedParams.DbName)
 	if !ok {
 		// consider switching to AssertfCtx one CBG-4730 is fixed
-		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db %s from sourceParams during cbgtRootCAsProvider. Continuing without TLS authentication.", MD(feedParams.DbName))
+		InfofCtx(ctx, KeyDCP, "No feed credentials stored for db %s on bucket %s from sourceParams during cbgtRootCAsProvider. Continuing without TLS authentication.", MD(feedParams.DbName), MD(bucketName))
 		return nil
 	}
 	if !creds.useTLS {

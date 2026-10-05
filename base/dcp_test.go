@@ -824,7 +824,7 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
 		require.ErrorContains(t, err, "simulated Cfg write error")
 		require.Nil(t, cbgtContext)
-		_, found := cbgtGlobals.getDBCredentials(dbName)
+		_, found := cbgtGlobals.getDBCredentials(bucket.GetName(), dbName)
 		require.False(t, found)
 	})
 
@@ -836,7 +836,7 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
 		require.ErrorContains(t, err, "Heartbeater must be started before registering listeners")
 		require.Nil(t, cbgtContext)
-		_, found := cbgtGlobals.getDBCredentials(dbName)
+		_, found := cbgtGlobals.getDBCredentials(bucket.GetName(), dbName)
 		require.False(t, found)
 	})
 }

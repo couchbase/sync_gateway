@@ -637,6 +637,9 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 
 // Stop unregisters the listener from the heartbeater, and stops it and associated handlers.
 func (c *CbgtContext) Stop(ctx context.Context) {
+	// Unregister first, since closing pindexes can outlast the database's bucket and callbacks must not find it.
+	cbgtGlobals.unregisterManager(c.Manager)
+
 	if c.eventHandlers != nil {
 		c.eventHandlers.ctxCancel(errors.New("CbgtContext is stopping, cancelling event handlers"))
 	}
@@ -660,7 +663,6 @@ func (c *CbgtContext) Stop(ctx context.Context) {
 	// sourceUUID are bucketName/bucket UUID in our usage.  cbgt has a single global stats connection per bucket,
 	// but does a refcount check before closing, so handles the case of multiple SG databases targeting the same bucket.
 	cbgt.CloseStatsClients(c.sourceName, c.sourceUUID)
-	cbgtGlobals.unregisterManager(c.Manager)
 }
 
 // DestKey returns the key that matches a cbgt index's pindexes to the dest factory of the feed that created the index.

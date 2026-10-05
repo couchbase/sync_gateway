@@ -2812,9 +2812,7 @@ func TestImportSameDbNameOnTwoBuckets(t *testing.T) {
 		require.NoError(t, err)
 	}
 	for _, rt := range rts {
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.Equal(c, int64(1), rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value())
-		}, 20*time.Second, 100*time.Millisecond, "doc not imported from bucket %s", rt.Bucket().GetName())
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
 	}
 }
 
