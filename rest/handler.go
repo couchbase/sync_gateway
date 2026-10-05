@@ -1868,3 +1868,7 @@ func (h *handler) getCORSConfig() *auth.CORSConfig {
 	}
 	return h.server.Config.API.CORS
 }
+
+func (h *handler) localDocsDisabledForPublicAPI() bool {
+	return h.serverType == publicServer && !h.server.Config.LocalEndpointForPublicAPIEnabled()
+}

@@ -1298,6 +1298,27 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	rt.WaitForDBOnline()
 }
 
+// A failed StartOnlineProcesses leaves the database registered and offline, with no replication manager.
+func TestGetStatusAfterDatabaseStartupFailure(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	rt.ServerContext()._dbConfigs["db"].Users = map[string]*auth.PrincipalConfig{
+		"alice": {JWTChannels: base.SetOf("asdf")},
+	}
+	_, err := rt.ServerContext().ReloadDatabase(rt.Context(), "db", false)
+	require.ErrorContains(t, err, "must either specify all OIDC properties or none")
+	require.Equal(t, "Offline", rt.GetDBState())
+
+	var resp *TestResponse
+	require.NotPanics(t, func() { resp = rt.SendAdminRequest(http.MethodGet, "/_status", "") })
+	RequireStatus(t, resp, http.StatusOK)
+
+	var status Status
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
+	require.Equal(t, db.RunStateString[db.DBOffline], status.Databases["db"].State)
+}
+
 func TestDatabaseCollectionDeletedErrorState(t *testing.T) {
 	ctx := base.TestCtx(t)
 	if base.UnitTestUrlIsWalrus() {

@@ -485,6 +485,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			return err
 		}
 
+		// The sharded feed has no client-level purge, so a completed distributed run cleans up its own
+		// checkpoints. This runs after shutdown, so cbgt has stopped writing them.
+		if r.Distributed {
+			if purgeErr := r.purgeCheckpoints(ctx, r.ResyncID); purgeErr != nil {
+				base.WarnfCtx(ctx, "Failed to purge checkpoints after completing resync %q: %v, these will be abandoned and unused", r.ResyncID, purgeErr)
+			}
+		}
+
 		if err := r.invalidatePrincipals(ctx, db, regenerateSequences); err != nil {
 			return err
 		}

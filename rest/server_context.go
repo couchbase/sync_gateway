@@ -108,6 +108,8 @@ type ServerContext struct {
 	RuntimeStatus                 *RuntimeStatus        // Cached runtime environment info (GOMEMLIMIT, GOMAXPROCS, cgroup), computed once at startup
 	ClusterCompat                 *clusterCompatManager // Tracks cluster-wide minimum SG version for compat gating
 	connectToBucketFn             db.OpenBucketFn       // supply a custom function for buckets, used for testing only
+	// leakyBootstrapConnectionConfig wraps the bootstrap connection in a LeakyBootstrapConnection, used for testing only
+	leakyBootstrapConnectionConfig *base.LeakyBootstrapConnectionConfig
 }
 
 type ActiveReplicationsCounter struct {
@@ -2276,7 +2278,11 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 		return err
 	}
 
-	sc.BootstrapContext.Connection = couchbaseCluster
+	if sc.leakyBootstrapConnectionConfig != nil {
+		sc.BootstrapContext.Connection = base.NewLeakyBootstrapConnection(couchbaseCluster, *sc.leakyBootstrapConnectionConfig)
+	} else {
+		sc.BootstrapContext.Connection = couchbaseCluster
+	}
 
 	// Check for v3.0 persisted configs, migrate to registry format if found
 	err = sc.migrateV30Configs(ctx)

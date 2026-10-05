@@ -103,9 +103,7 @@ func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("import partitions / sharded DCP require EE")
 	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("sharded DCP feed is not supported by rosmar")
-	}
+	base.TestRequiresCbgt(t)
 
 	ctx := base.TestCtx(t)
 	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{NumNodes: 1})
@@ -196,9 +194,7 @@ func TestCbgtRebalanceOnThirdNodeJoinOnlyMovesMinimalShare(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("import partitions / sharded DCP require EE")
 	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("sharded DCP feed is not supported by rosmar")
-	}
+	base.TestRequiresCbgt(t)
 
 	ctx := base.TestCtx(t)
 	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{NumNodes: 1})

@@ -623,18 +623,25 @@ func (h *handler) handleBulkDocs() error {
 		offset := len(db.LocalDocPrefix)
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, isNewDoc, docErr := h.collection.PutSpecial(h.ctx(), db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
-		if docErr != nil {
-			code, msg := base.ErrorAsHTTPStatus(docErr)
-			status["status"] = code
-			status["error"] = base.CouchHTTPErrorName(code)
-			status["reason"] = msg
-			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
+		if h.localDocsDisabledForPublicAPI() {
+			status["status"] = http.StatusForbidden
+			status["error"] = base.CouchHTTPErrorName(http.StatusForbidden)
+			status["reason"] = "_local endpoint is disabled"
+			base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: _local endpoint is disabled, did not write Doc %q", base.UD(docid))
 		} else {
-			status["rev"] = revid
-			auditEventForDocumentUpsert(h.ctx(), docid, revid, isNewDoc)
+			revid, isNewDoc, docErr := h.collection.PutSpecial(h.ctx(), db.DocTypeLocal, idslug, doc)
+			if docErr != nil {
+				code, msg := base.ErrorAsHTTPStatus(docErr)
+				status["status"] = code
+				status["error"] = base.CouchHTTPErrorName(code)
+				status["reason"] = msg
+				base.InfofCtx(h.ctx(), base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, docErr)
+			} else {
+				status["rev"] = revid
+				auditEventForDocumentUpsert(h.ctx(), docid, revid, isNewDoc)
+			}
 		}
 		result = append(result, status)
 	}

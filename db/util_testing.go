@@ -753,14 +753,14 @@ func RawDocWithInlineSyncData(_ testing.TB) string {
 //
 // The rest of the metadata is made to look like a document that really was written len(revs) times: one
 // sequence is allocated per revision, doc.Sequence is the last of them, and recent_sequences holds them
-// all. Only the tree itself is fabricated.
-func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, body Body, revs map[string]string, currentRev string) {
+// all. Only the tree itself is fabricated. Returns the DocVersion of the planted document.
+func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string, body Body, revs map[string]string, currentRev string) DocVersion {
 	t.Helper()
 	require.Contains(t, slices.Collect(maps.Keys(revs)), currentRev, "currentRev is not in the tree being planted")
 	require.LessOrEqual(t, len(revs), kMaxRecentSequences, "a tree this large would have had its recent_sequences pruned, which this helper does not model")
 
 	// the write allocates the first sequence, so this stands in for the first revision
-	_, _, err := collection.Put(ctx, docID, body)
+	_, doc, err := collection.Put(ctx, docID, body)
 	require.NoError(t, err)
 
 	// one sequence per remaining revision, so the document's sequence history is as long as its tree
@@ -774,6 +774,7 @@ func PlantRevTreeForTest(t *testing.T, ctx context.Context, collection *Database
 		syncData.History = planted
 		syncData.SetRevTreeID(currentRev)
 	})
+	return DocVersion{RevTreeID: currentRev, CV: *doc.HLV.ExtractCurrentVersionFromHLV()}
 }
 
 // rewriteSyncDataForTest rewrites a document's _sync xattr, allocating sequenceCount new sequences first
@@ -1903,4 +1904,40 @@ func (c *changeCache) GetNextSequenceForTest(_ testing.TB) uint64 {
 // GetOldestSkippedSequenceForTest reports the oldest sequence still pending on the caching feed.
 func (c *changeCache) GetOldestSkippedSequenceForTest(_ testing.TB, ctx context.Context) uint64 {
 	return c.getOldestSkippedSequence(ctx)
+}
+
+// existingDCPCheckpoints returns the checkpoint documents present under checkpointPrefix. It scans the
+// metadata store rather than reading a predicted set of keys, so a document at an unexpected key is
+// still reported.
+func existingDCPCheckpoints(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string) []string {
+	t.Helper()
+	rss, ok := base.AsRangeScanStore(db.MetadataStore)
+	require.True(t, ok, "metadata store does not support range scan")
+
+	iter, err := rss.Scan(ctx, sgbucket.NewRangeScanForPrefix(checkpointPrefix), sgbucket.ScanOptions{IDsOnly: true})
+	require.NoError(t, err)
+	var found []string
+	for item := iter.Next(ctx); item != nil; item = iter.Next(ctx) {
+		found = append(found, item.ID)
+	}
+	require.NoError(t, iter.Close(ctx))
+	slices.Sort(found) // Couchbase Server returns scan results unordered
+	return found
+}
+
+// requireDCPCheckpointsExist waits for checkpoints to appear under checkpointPrefix. A KV range scan
+// reads a per-vBucket snapshot view, so it can miss a document for a short time after the write.
+func requireDCPCheckpointsExist(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, msgAndArgs ...any) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEmpty(c, existingDCPCheckpoints(t, ctx, db, checkpointPrefix), msgAndArgs...)
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// requireDCPCheckpointsPurged waits for every checkpoint under checkpointPrefix to be gone.
+func requireDCPCheckpointsPurged(t testing.TB, ctx context.Context, db *DatabaseContext, checkpointPrefix string, msgAndArgs ...any) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Empty(c, existingDCPCheckpoints(t, ctx, db, checkpointPrefix), msgAndArgs...)
+	}, 30*time.Second, 100*time.Millisecond)
 }

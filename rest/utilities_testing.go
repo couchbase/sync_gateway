@@ -62,6 +62,7 @@ type RestTesterConfig struct {
 	EnableUserQueries                bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                 *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	ConnectToBucketFn                db.OpenBucketFn             // Replaces the function used to connect to buckets when loading databases. Cannot be used with LeakyBucketConfig.
 	adminInterface                   string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
 	ISGRSupportedBLIPSubprotocols    []string                    // Forces the BLIP subprotocols used by this node's ISGR active replicators - see Bucket(). Not supported with PersistentConfig.
@@ -80,6 +81,7 @@ type RestTesterConfig struct {
 	maxConcurrentRevs                *int
 	UseXattrConfig                   bool
 	UseSystemScopeMetadataCollection *bool
+	LeakyBootstrapConnectionConfig   *base.LeakyBootstrapConnectionConfig // Set to wrap the bootstrap connection in a LeakyBootstrapConnection. Requires PersistentConfig.
 }
 
 type collectionConfiguration uint8
@@ -180,6 +182,9 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
+	if rt.RestTesterConfig.LeakyBootstrapConnectionConfig != nil && !rt.RestTesterConfig.PersistentConfig {
+		require.FailNow(tb, "LeakyBootstrapConnectionConfig requires PersistentConfig")
+	}
 	rt.RestTesterConfig.collectionConfig = collectionConfig
 	rt.RestTesterConfig.numCollections = numCollections
 	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(sgtest.UnitTestUrl())
@@ -226,6 +231,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a LeakyBucketConfig")
 	}
 	rt.TestBucket = testBucket
+	if rt.ConnectToBucketFn != nil {
+		require.Nil(rt.TB(), rt.LeakyBucketConfig, "ConnectToBucketFn cannot be used on the RestTester with a LeakyBucketConfig")
+	}
 
 	if rt.PersistentConfig != false {
 		require.Zero(rt.TB(), rt.InitSyncSeq, "RestTesterConfig.InitSyncSeq is not supported with RestTesterConfig.PersistentConfig = true")
@@ -305,8 +313,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
 
-	_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
-	if rt.LeakyBucketConfig != nil || isLeaky {
+	if rt.ConnectToBucketFn != nil {
+		rt.RestTesterServerContext.connectToBucketFn = rt.ConnectToBucketFn
+	} else if _, isLeaky := base.AsLeakyBucket(rt.TestBucket); rt.LeakyBucketConfig != nil || isLeaky {
 		rt.RestTesterServerContext.connectToBucketFn = func(ctx context.Context, spec base.BucketSpec, failfast bool) (base.Bucket, error) {
 			if spec.BucketName == testBucket.GetName() {
 				return testBucket.NoCloseClone(), nil
@@ -315,6 +324,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
+	rt.RestTesterServerContext.leakyBootstrapConnectionConfig = rt.RestTesterConfig.LeakyBootstrapConnectionConfig
 	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
@@ -746,6 +756,10 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 
 // templateResource is a non-fatal version of rt.mustTemplateResource
 func (rt *RestTester) templateResource(resource string) (string, error) {
+	// Skip the database lookup, which can race with a concurrent database delete, when there is nothing to template.
+	if !strings.Contains(resource, "{{") {
+		return resource, nil
+	}
 	tmpl, err := template.New("urltemplate").
 		Option("missingkey=error").
 		Parse(resource)
@@ -1159,16 +1173,6 @@ func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
 	return rawResponse
-}
-
-// ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
-// cluster to pick up the changes
-func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
-	rt.ServerContext().Config.BucketCredentials = config
-	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB()), rt.ServerContext().Config, base.PerUseClusterConnections)
-	require.NoError(rt.TB(), err)
-	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
 // Context returns a context for a rest tester with server and database log context, if available an unambiguous.

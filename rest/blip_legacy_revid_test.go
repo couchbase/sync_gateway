@@ -1304,6 +1304,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			require.Equal(t, sgVersion1, cblVersion1.RevTreeID)
 			sgVersion2, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"_rev": sgVersion1, "action": "update"})
 			btcRunner.StartPull(client.id)
+			defer btcRunner.UnsubPullChanges(client.id)
 			btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: sgVersion2})
 		})
 		t.Run("push CBL legacy rev 2-bcd, both sides have 1-abc", func(t *testing.T) {
@@ -1316,6 +1317,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			cblVersion2 := btcRunner.AddRevTreeRev(client.id, docID, "2-bcd", &cblVersion1, []byte(`{"action": "update"}`))
 
 			btcRunner.StartPush(client.id)
+			defer btcRunner.StopPush(client.id)
 			rt.WaitForVersion(docID, cblVersion2)
 		})
 	})
@@ -1448,7 +1450,7 @@ func TestInvalidRevTreePullRepairsAndRedelivers(t *testing.T) {
 
 		// 3 revisions with a leaf at generation 2: encodeRevisions produces a _revisions list that
 		// splitRevisionList rejects, which is what makes this unreplicatable over BLIP v3
-		db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
+		plantedVersion := db.PlantRevTreeForTest(t, ctx, collection, docID, db.Body{"planted": true},
 			map[string]string{"1-abc": "", "2-abc": "1-abc", "2-def": "2-abc"}, "2-def")
 		rt.GetDatabase().FlushRevisionCacheForTest()
 		rt.WaitForPendingChanges()
@@ -1462,19 +1464,19 @@ func TestInvalidRevTreePullRepairsAndRedelivers(t *testing.T) {
 		btcRunner.StartPull(client.id)
 		defer btcRunner.UnsubPullChanges(client.id)
 
+		// the repair leaves cv untouched, so a 4.0+ client identifies the document by the same version
+		// it always did - only a pre-4.0 client sees the rev ID change
+		repairedVersion := DocVersion{RevTreeID: "3-def"}
+		if client.UseHLV() {
+			repairedVersion = DocVersion{CV: plantedVersion.CV}
+		}
+		btcRunner.WaitForVersion(client.id, docID, repairedVersion)
+
 		// either way the document is repaired on load, exactly once, and 2-def is renumbered to 3-def
 		base.RequireWaitForStat(t, invalidRevTreeCount.Value, 1)
 		repaired, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
 		require.NoError(t, err)
 		require.Equal(t, "3-def", repaired.GetRevTreeID())
-
-		// the repair leaves cv untouched, so a 4.0+ client identifies the document by the same version
-		// it always did - only a pre-4.0 client sees the rev ID change
-		repairedVersion := DocVersion{RevTreeID: "3-def"}
-		if client.UseHLV() {
-			repairedVersion = DocVersion{CV: *repaired.HLV.ExtractCurrentVersionFromHLV()}
-		}
-		btcRunner.WaitForVersion(client.id, docID, repairedVersion)
 
 		if client.UseHLV() {
 			// no rev tree history goes on the wire and cv did not change, so there is nothing to skip
