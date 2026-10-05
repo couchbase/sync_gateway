@@ -175,31 +175,23 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 
 				if tc.newRevOnActivePeer {
 					sgrRunner.WaitForDocReplicated(docID, rt1, rt2, rest.DocVersion{RevTreeID: legacyRevRT1})
+					activeDocBeforePullBack := rest.ExpectedISGRDocFromPeer(t, rt1, docID)
 					rt2Doc := rt2.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{legacyRevRT1, initLegacyRevRT1})
 
-					// add new doc for some replication activity on pull side to allow us to assert that legacy rev 2-abc added
-					// isn't pulled back to rt1 now it has a legacy revID encoded CV
-					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					sgrRunner.WaitForDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt1
-
-					// assert that the document isn't replicated back to rt1 after legacy rev CV is written on rt2
-					rt1Doc := rt1.GetDocument(docID)
+					// assert that legacy rev 2-abc isn't pulled back to rt1 now rt2 holds it with a legacy revID encoded CV
+					rt1Doc := sgrRunner.RequireDocUnchanged(docID, rt2, rt1, ar, db.ActiveReplicatorTypePull, activeDocBeforePullBack)
 					assert.Equal(t, legacyRevRT1, rt1Doc.GetRevTreeID())
 					assert.Nil(t, rt1Doc.HLV)
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1})
 				} else {
 					sgrRunner.WaitForDocReplicated(docID, rt2, rt1, rest.DocVersion{RevTreeID: legacyRevRT2})
+					passiveDocBeforePushBack := rest.ExpectedISGRDocFromPeer(t, rt2, docID)
 					rt1Doc := rt1.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{initLegacyRevRT2, legacyRevRT2})
 
-					// add new doc for some replication activity on push side to allow us to assert that legacy rev 2-abc added
-					// isn't pushed back to rt2 now it has a legacy revID encoded CV
-					newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					sgrRunner.WaitForDocReplicated("newdoc", rt1, rt2, newDocVersion) // wait for it to arrive at rt2
-
-					// assert that the document isn't replicated back to rt2 after legacy rev CV is written on rt1
-					rt2Doc := rt2.GetDocument(docID)
+					// assert that legacy rev 2-abc isn't pushed back to rt2 now rt1 holds it with a legacy revID encoded CV
+					rt2Doc := sgrRunner.RequireDocUnchanged(docID, rt1, rt2, ar, db.ActiveReplicatorTypePush, passiveDocBeforePushBack)
 					assert.Equal(t, legacyRevRT2, rt2Doc.GetRevTreeID())
 					assert.Nil(t, rt2Doc.HLV)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2})
@@ -780,15 +772,13 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 						assert.NotEqual(c, legacyRevRT1, verPostConflictRes.RevTreeID)
 					}, 10*time.Second, 50*time.Millisecond)
 					sgrRunner.WaitForDocReplicated(docID, rt1, rt2, verPostConflictRes)
+					activeDocAfterResolution := rest.ExpectedISGRDocFromPeer(t, rt1, docID)
 					rt2Doc := rt2.GetDocument(docID)
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2, verPostConflictRes.RevTreeID})
 
-					// add doc for some replication activity on pull to assert that local doesn't change after remote is written with legacy CV
-					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					sgrRunner.WaitForDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt1
-
-					// assert active side doc hasn't changed
-					rt1Doc := rt1.GetDocument(docID)
+					// assert active side doc doesn't change by pulling back the resolution it pushed to rt2, which rt2
+					// stored with a legacy CV
+					rt1Doc := sgrRunner.RequireDocUnchanged(docID, rt2, rt1, ar, db.ActiveReplicatorTypePull, activeDocAfterResolution)
 					rest.RequireDocRevTreeEqual(t, rest.DocVersion{RevTreeID: verPostConflictRes.RevTreeID}, rest.DocVersion{RevTreeID: rt1Doc.GetRevTreeID()})
 					tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1, verPostConflictRes.RevTreeID, legacyRevRT2, tombstonedID})
@@ -803,16 +793,14 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 					}, 1)
 
 					sgrRunner.WaitForDocReplicated(docID, rt2, rt1, rest.DocVersion{RevTreeID: legacyRevRT2})
+					passiveDocAfterResolution := rest.ExpectedISGRDocFromPeer(t, rt2, docID)
 					rt1Doc := rt1.GetDocument(docID)
 					tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{initLegacyRevRT1, legacyRevRT1, legacyRevRT2, tombstonedID})
 
-					// add doc for some replication activity on push to assert that local doesn't change after remote is written with legacy CV
-					newDocVersion := rt1.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					sgrRunner.WaitForDocReplicated("newdoc", rt1, rt2, newDocVersion) // wait for it to arrive at rt2
-
-					// assert passive side doc hasn't changed
-					rt2Doc := rt2.GetDocument(docID)
+					// assert passive side doc doesn't change by rt1 pushing back the remote win, which rt1 stored with a
+					// legacy CV
+					rt2Doc := sgrRunner.RequireDocUnchanged(docID, rt1, rt2, ar, db.ActiveReplicatorTypePush, passiveDocAfterResolution)
 					rest.RequireDocRevTreeEqual(t, rest.DocVersion{RevTreeID: legacyRevRT2}, rest.DocVersion{RevTreeID: rt2Doc.GetRevTreeID()})
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, legacyRevRT2})
 					// legacy cv written to rt1 will correspond to local rev tree ID thus no HLV should be written yet
@@ -964,6 +952,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					}, 10*time.Second, 50*time.Millisecond)
 					// wait for this resolution to be pushed back to passive peer
 					sgrRunner.WaitForDocReplicated(docID, rt1, rt2, verPostConflictRes)
+					activeDocAfterResolution := rest.ExpectedISGRDocFromPeer(t, rt1, docID)
 
 					// assert original upgraded version in PV history
 					assert.Equal(t, upgradedDocVersion.CV.Value, replicatedDoc.HLV.PreviousVersions[upgradedDocVersion.CV.SourceID])
@@ -976,12 +965,8 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					rt2BodyBytes, err := rt2Doc.BodyBytes(rt2.Context())
 					require.NoError(t, err)
 
-					// add doc for some replication activity on pull to assert that local doesn't change after remote is written with legacy CV
-					newDocVersion := rt2.PutDoc("newdoc", `{"channels": ["alice"]}`)
-					sgrRunner.WaitForDocReplicated("newdoc", rt2, rt1, newDocVersion) // wait for it to arrive at rt1
-
-					// assert active side doc hasn't changed
-					rt1Doc := rt1.GetDocument(docID)
+					// assert active side doc doesn't change by pulling back the resolution it pushed to rt2
+					rt1Doc := sgrRunner.RequireDocUnchanged(docID, rt2, rt1, ar, db.ActiveReplicatorTypePull, activeDocAfterResolution)
 					rest.RequireDocVersionEqual(t, verPostConflictRes, rt1Doc.ExtractDocVersion())
 					tombstonedID := db.CreateRevIDWithBytes(3, legacyRevRT1, []byte(db.DeletedDocument)) // create what would be the tombstone rev id for local branch
 					rest.RequireHistoryContains(t, rt1Doc.History, []string{legacyRevRT1, initLegacyRevRT1, verPostConflictRes.RevTreeID, legacyRevRT2, tombstonedID})
@@ -1010,7 +995,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 					require.NoError(t, err)
 
 					// assert passive side doc hasn't changed - rt1 adopted its CV, so there was nothing to push back
-					rt2Doc := sgrRunner.RequireDocUnchanged(docID, rt1, rt2, passiveDocBeforeReplication)
+					rt2Doc := sgrRunner.RequireDocUnchanged(docID, rt1, rt2, ar, db.ActiveReplicatorTypePush, passiveDocBeforeReplication)
 					rest.RequireDocVersionEqual(t, upgradedDocVersion, rt2Doc.ExtractDocVersion())
 					rest.RequireHistoryContains(t, rt2Doc.History, []string{initLegacyRevRT2, upgradedDocVersion.RevTreeID})
 

@@ -353,19 +353,50 @@ func (runner *SGRTestRunner) RequireDoc(docID string, rt *RestTester, exp Expect
 	return doc
 }
 
-// RequireDocUnchanged requires dest to still match exp once source has pushed everything it held when called. dest
-// already matches exp before the push does anything, so RequireDoc alone would pass before a wrong push could land: a
-// barrier document is written on source and waited for on dest first, so any earlier change to docID on source has
-// been pushed by then. Source must already be in the state the push is expected to leave alone - wait on it first.
-func (runner *SGRTestRunner) RequireDocUnchanged(docID string, source, dest *RestTester, exp ExpectedISGRDoc) *db.Document {
+// RequireDocUnchanged requires dest to still match exp once ar has replicated, in direction, everything source held
+// when called. ar runs on source to push (direction db.ActiveReplicatorTypePush), or on dest to pull
+// (db.ActiveReplicatorTypePull). dest already matches exp before the replication does anything, so RequireDoc alone
+// would pass before a wrong rev could land. Instead a barrier document is written on source, and the checkpoint for
+// direction is waited on to pass the barrier's sequence: the checkpoint only passes a sequence once dest has handled
+// the rev for it and every earlier one, so any earlier change to docID on source has been handled by dest by then.
+// Waiting for the barrier to arrive on dest isn't enough on its own, since dest handles several revs at once and the
+// barrier can overtake docID. Source must already be in the state the replication is expected to leave alone - wait
+// on it first.
+func (runner *SGRTestRunner) RequireDocUnchanged(docID string, source, dest *RestTester, ar *db.ActiveReplicator, direction db.ActiveReplicatorDirection, exp ExpectedISGRDoc) *db.Document {
 	t := dest.TB()
 	t.Helper()
+	require.NotNil(t, ar, "no active replicator to wait on for doc %q", docID)
+	// Both checkpoints are in source's sequences: a push replicates the active peer's own changes feed, and a pull the
+	// remote peer's.
+	var lastSeq func() string
+	switch direction {
+	case db.ActiveReplicatorTypePush:
+		require.NotNil(t, ar.Push, "replication %q doesn't push", ar.ID)
+		lastSeq = func() string { return ar.Push.GetStatus().LastSeqPush }
+	case db.ActiveReplicatorTypePull:
+		require.NotNil(t, ar.Pull, "replication %q doesn't pull", ar.ID)
+		lastSeq = func() string { return ar.Pull.GetStatus().LastSeqPull }
+	default:
+		require.FailNow(t, "direction must be push or pull", "got %q", direction)
+	}
 	barrierID := docID + "_barrier"
-	// Put the barrier in the same channels as docID so that a replication or user scoped to them still carries it.
-	barrierBody, err := base.JSONMarshal(db.Body{"channels": exp.Channels})
+	// Put the barrier in every channel docID has been in on source, including ones it has been removed from, so that a
+	// replication or user scoped to them still carries it - a tombstone is in no channels at all.
+	sourceDoc := source.GetDocument(docID)
+	barrierChannels := slices.Sorted(maps.Keys(sourceDoc.Channels))
+	barrierBody, err := base.JSONMarshal(db.Body{"channels": barrierChannels})
 	require.NoError(t, err)
 	barrierVersion := source.PutDoc(barrierID, string(barrierBody))
+	barrierSeq := source.GetDocument(barrierID).Sequence
 	runner.WaitForDocReplicated(barrierID, source, dest, barrierVersion)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		checkpointSeq := lastSeq()
+		seq, err := db.ParsePlainSequenceID(checkpointSeq)
+		if !assert.NoError(c, err, "replication %q has unparseable %s checkpoint %q", ar.ID, direction, checkpointSeq) {
+			return
+		}
+		assert.GreaterOrEqual(c, seq.Seq, barrierSeq, "replication %q %s checkpoint hasn't reached barrier %q", ar.ID, direction, barrierID)
+	}, 10*time.Second, 50*time.Millisecond)
 	return runner.RequireDoc(docID, dest, exp)
 }
 

@@ -4243,7 +4243,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				if sgrRunner.IsV4Protocol() && test.winner == remote {
 					// rt1 adopted rt2's CV, so there is nothing new to push back: rt2 must be exactly as it was. rt1's
 					// HLV also carries its losing version in pv, which rt2 never needs to learn about.
-					doc = sgrRunner.RequireDocUnchanged(docID, rt1, rt2, remoteDocBeforeReplication)
+					doc = sgrRunner.RequireDocUnchanged(docID, rt1, rt2, ar, db.ActiveReplicatorTypePush, remoteDocBeforeReplication)
 				} else {
 					// rt1's resolution produced a version rt2 doesn't have, which is pushed back, so rt2 must now
 					// hold rt1's document
@@ -6550,7 +6550,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 				if sgrRunner.IsV4Protocol() && test.conflictResolution == db.ConflictResolverRemoteWins {
 					// activeRT adopted passiveRT's CV, so there is nothing new to push back and passiveRT must be unchanged
 					sgrRunner.RequireDoc(docID, activeRT, rest.ExpectedISGRDoc{Version: *remoteWinsVersion})
-					sgrRunner.RequireDocUnchanged(docID, activeRT, passiveRT, passiveDocBeforeReplication)
+					sgrRunner.RequireDocUnchanged(docID, activeRT, passiveRT, activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator(replicationID), db.ActiveReplicatorTypePush, passiveDocBeforeReplication)
 				} else {
 					expVersion := test.expectedFinalVersion
 					if sgrRunner.IsV4Protocol() {

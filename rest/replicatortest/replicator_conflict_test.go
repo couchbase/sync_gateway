@@ -2229,7 +2229,7 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		conflictResVersion.RevTreeID = newRev
 		sgrRunner.RequireDoc(docID, activeRT, rest.ExpectedISGRDoc{Version: conflictResVersion, Deleted: true})
 		// activeRT adopted passiveRT's CV, so there is nothing new to push back and passiveRT must be unchanged
-		sgrRunner.RequireDocUnchanged(docID, activeRT, passiveRT, passiveDocBeforeReplication)
+		sgrRunner.RequireDocUnchanged(docID, activeRT, passiveRT, activeRT.GetDatabase().SGReplicateMgr.GetActiveReplicator(replicationID), db.ActiveReplicatorTypePush, passiveDocBeforeReplication)
 
 		rt1Doc := activeRT.GetDocument(docID)
 		// assert that remote cv is in pv now
