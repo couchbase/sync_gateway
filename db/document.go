@@ -542,13 +542,10 @@ func unmarshalDocumentWithXattrs(ctx context.Context, docid string, data, syncXa
 	return doc, nil
 }
 
-// Unmarshals just a document's sync metadata from JSON data.
-// (This is somewhat faster, if all you need is the sync data without the doc body.)
-func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error) {
+// UnmarshalDocumentSyncData unmarshals all of a document's inline _sync metadata from a JSON document body, skipping
+// the rest of the body.
+func UnmarshalDocumentSyncData(data []byte) (*SyncData, error) {
 	var root documentRoot
-	if needHistory {
-		root.SyncData = &SyncData{History: make(RevTree)}
-	}
 	if err := base.JSONUnmarshal(data, &root); err != nil {
 		return nil, fmt.Errorf("Could not unmarshal _sync out of document body: %w", err)
 	}
@@ -559,12 +556,14 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 	return root.SyncData, nil
 }
 
-// UnmarshalDocumentSyncDataFromFeed sync metadata for a document arriving via DCP.  Includes handling for xattr content
-// being included in data.  If not present in either xattr or document body, returns nil but no error.
-// Returns the raw body, in case it's needed for import.
+// UnmarshalDocumentSyncDataFromFeed unmarshals all of the sync metadata, including the revision tree, for a document
+// arriving via DCP. The _sync xattr is preferred, falling back to inline _sync in the document body so that documents
+// written before xattrs were mandatory are still migrated on import. If not present in either, returns nil but no
+// error. The full parse is required by callers that validate the revision tree or write the SyncData back to the
+// bucket.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (*sgbucket.BucketDocument, *SyncData, error) {
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string) (*sgbucket.BucketDocument, *SyncData, error) {
 	rawDoc := &sgbucket.BucketDocument{}
 
 	var syncData *SyncData
@@ -585,9 +584,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 		syncXattr, ok := rawDoc.Xattrs[base.SyncXattrName]
 		if ok && len(syncXattr) > 0 {
 			syncData = &SyncData{}
-			if needHistory {
-				syncData.History = make(RevTree)
-			}
 			err = base.JSONUnmarshal(syncXattr, syncData)
 			if err != nil {
 				return nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
@@ -603,13 +599,77 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	if len(rawDoc.Body) != 0 {
 		var err error
-		syncData, err = UnmarshalDocumentSyncData(rawDoc.Body, needHistory)
+		syncData, err = UnmarshalDocumentSyncData(rawDoc.Body)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
 	return rawDoc, syncData, nil
+}
+
+// cacheFeedSyncData is the subset of SyncData that the caching feed reads. Decoding into this rather than SyncData
+// lets the JSON decoder skip the revision tree, access grants and channel set history without allocating them, and
+// those fields dominate the parse cost of the _sync xattr. Field names, types and json tags must match SyncData.
+type cacheFeedSyncData struct {
+	RevAndVersion   channels.RevAndVersion `json:"rev"`
+	Flags           uint8                  `json:"flags,omitempty"`
+	Sequence        uint64                 `json:"sequence,omitempty"`
+	UnusedSequences []uint64               `json:"unused_sequences,omitempty"`
+	RecentSequences []uint64               `json:"recent_sequences,omitempty"`
+	Channels        channels.ChannelMap    `json:"channels,omitempty"`
+	Cas             string                 `json:"cas"`
+	Crc32c          string                 `json:"value_crc32c"`
+	Crc32cUserXattr string                 `json:"user_xattr_value_crc32c,omitempty"`
+	TimeSaved       time.Time              `json:"time_saved"`
+}
+
+// toSyncData returns a SyncData populated with only the fields the caching feed reads.
+func (c *cacheFeedSyncData) toSyncData() *SyncData {
+	return &SyncData{
+		RevAndVersion:   c.RevAndVersion,
+		Flags:           c.Flags,
+		Sequence:        c.Sequence,
+		UnusedSequences: c.UnusedSequences,
+		RecentSequences: c.RecentSequences,
+		Channels:        c.Channels,
+		Cas:             c.Cas,
+		Crc32c:          c.Crc32c,
+		Crc32cUserXattr: c.Crc32cUserXattr,
+		TimeSaved:       c.TimeSaved,
+	}
+}
+
+// unmarshalSyncDataFromFeedForCache extracts the sync metadata the caching feed needs from a DCP value, along with the
+// _vv and user xattrs. The returned SyncData is partial (see cacheFeedSyncData) and must not be written back to the
+// bucket. Returns nil SyncData and no error when there is no _sync xattr.
+//
+// Unlike UnmarshalDocumentSyncDataFromFeed this does not look for inline _sync in the document body. Sync Gateway only
+// writes _sync as an xattr now, and the caching feed starts from the latest sequence so an inline _sync can only belong
+// to a write that predates this node and is never cached.
+func unmarshalSyncDataFromFeedForCache(data []byte, dataType uint8, userXattrKey string) (xattrs map[string][]byte, syncData *SyncData, err error) {
+	if dataType&base.MemcachedDataTypeXattr == 0 {
+		return nil, nil, nil
+	}
+	// Sized to hold the optional user xattr key so it is not reallocated per event.
+	keys := [3]string{base.SyncXattrName, base.VvXattrName, userXattrKey}
+	xattrKeys := keys[:2]
+	if userXattrKey != "" {
+		xattrKeys = keys[:]
+	}
+	_, xattrs, err = sgbucket.DecodeValueWithXattrs(xattrKeys, data)
+	if err != nil {
+		return nil, nil, err
+	}
+	syncXattr := xattrs[base.SyncXattrName]
+	if len(syncXattr) == 0 {
+		return xattrs, nil, nil
+	}
+	var cacheSyncData cacheFeedSyncData
+	if err := base.JSONUnmarshal(syncXattr, &cacheSyncData); err != nil {
+		return nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+	}
+	return xattrs, cacheSyncData.toSyncData(), nil
 }
 
 func (doc *SyncData) HasValidSyncData() bool {

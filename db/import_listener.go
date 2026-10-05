@@ -169,7 +169,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 }
 
 func (il *importListener) ImportFeedEvent(ctx context.Context, collection *DatabaseCollectionWithUser, event sgbucket.FeedEvent) {
-	rawDoc, syncData, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.UserXattrKey(), false)
+	rawDoc, syncData, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.UserXattrKey())
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
