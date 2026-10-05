@@ -183,17 +183,14 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		// Recover to log panic from handlers and repanic for go-blip response handling
 		defer func() {
 			if err := recover(); err != nil {
-
-				// If we recover from a panic and the database bucket has gone - we likely paniced due to a config update causing a db reload.
-				// Until we have a better way of telling a client this has happened and to reconnect, returning a 503 will cause the client to reconnect.
-				if bsc.blipContextDb.DatabaseContext.Bucket == nil {
-					base.InfofCtx(bsc.loggingCtx, base.KeySync, "Database bucket closed underneath request %v - asking client to reconnect", rq)
-					// HTTP 503 asks CBL to disconnect and retry.
+				// A panic while the database is stopping is likely caused by a db reload. HTTP 503 asks CBL to reconnect.
+				if atomic.LoadUint32(&bsc.blipContextDb.DatabaseContext.State) == DBStopping {
+					base.InfofCtx(bsc.loggingCtx, base.KeySync, "Database stopping underneath request %v - asking client to reconnect", rq)
 					rq.Response().SetError("HTTP", ErrDatabaseWentAway.Status, ErrDatabaseWentAway.Message)
 					return
 				}
 
-				// This is a panic we don't know about - so continue to log at warn with a generic 500 response via go-blip
+				// Log at warn and repanic so that go-blip sends a generic 500 response
 				bsc.replicationStats.NumHandlersPanicked.Add(1)
 				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
 				panic(err)

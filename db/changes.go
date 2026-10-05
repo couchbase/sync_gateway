@@ -1563,10 +1563,6 @@ loop:
 			if lastSeq.IsNonZero() { // start after end of last feed
 				options.Since = lastSeq
 			}
-			if database.IsClosed() {
-				forceClose = true
-				break loop
-			}
 			if len(docIDFilter) > 0 {
 				feed, feedErr = database.DocIDChangesFeed(ctx, inChannels, docIDFilter, options)
 			} else {

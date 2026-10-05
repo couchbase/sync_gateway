@@ -7749,11 +7749,8 @@ func TestNoDBInCheckpointHash(t *testing.T) {
 		assert.Equal(c, 0, len(rt1.ServerContext().AllDatabases()))
 	}, time.Second*10, time.Millisecond*10)
 
-	// attempt to start active replicator, this will hit panic in CBG-4070 pre this work due to the bucket being nil
-	// on the active db context
-	replicatorErr := ar.Start(ctx)
-	assert.Error(t, replicatorErr)
-	assert.ErrorContains(t, replicatorErr, "cannot fetch bucket UUID")
+	// starting the replicator needs the bucket UUID of the active database, which is now closed
+	require.Error(t, ar.Start(ctx))
 
 }
 

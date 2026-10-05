@@ -2163,11 +2163,7 @@ func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors e
 	}
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(databases))
 	for _, dbContext := range databases {
-		bucket, open := dbContext.BucketIfOpen()
-		if !open {
-			continue
-		}
-		if uuid, err := bucket.UUID(ctx); err == nil {
+		if uuid, err := dbContext.Bucket.UUID(ctx); err == nil {
 			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
 		}
 	}

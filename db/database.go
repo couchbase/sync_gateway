@@ -836,19 +836,9 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
 	context.Bucket.Close(ctx)
-	context.Bucket = nil
 
 	base.RemovePerDbStats(context.Name)
 
-}
-
-// BucketIfOpen returns the database's bucket, or false if the database has been closed. Callers
-// holding a DatabaseContext they didn't resolve under a lock need this rather than reading Bucket
-// directly, since Close nils it.
-func (context *DatabaseContext) BucketIfOpen() (base.Bucket, bool) {
-	context.BucketLock.RLock()
-	defer context.BucketLock.RUnlock()
-	return context.Bucket, context.Bucket != nil
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.
@@ -2361,7 +2351,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	db.BucketLock.RLock()
 	defer db.BucketLock.RUnlock()
 
-	if db.Bucket == nil {
+	if atomic.LoadUint32(&db.State) == DBStopping {
 		return base.RedactErrorf("cannot start online processes for database %q because it is closed", base.MD(db.Name))
 	}
 

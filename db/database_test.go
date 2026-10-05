@@ -147,9 +147,8 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 		assert.Equal(t, status, httpErr.Status)
 }
 
-// TestBucketIfOpenAfterClose checks that BucketIfOpen reports a closed database rather than handing
-// back the nil Bucket that Close leaves behind.
-func TestBucketIfOpenAfterClose(t *testing.T) {
+// TestBucketAfterClose checks that Close marks the database as stopping and leaves the closed Bucket in place.
+func TestBucketAfterClose(t *testing.T) {
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
 	defer tBucket.Close(ctx)
@@ -159,15 +158,10 @@ func TestBucketIfOpenAfterClose(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	bucket, open := dbCtx.BucketIfOpen()
-	require.True(t, open)
-	require.NotNil(t, bucket)
-
 	dbCtx.Close(ctx)
 
-	bucket, open = dbCtx.BucketIfOpen()
-	require.False(t, open)
-	require.Nil(t, bucket)
+	require.Equal(t, DBStopping, atomic.LoadUint32(&dbCtx.State))
+	require.NotNil(t, dbCtx.Bucket)
 }
 
 func TestDatabaseStartOnlineProcessesWhileClosing(t *testing.T) {

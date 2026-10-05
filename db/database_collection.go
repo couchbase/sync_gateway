@@ -221,11 +221,6 @@ func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
 	return c.importFilterFunction
 }
 
-// IsClosed returns true if the underlying collection has been closed.
-func (c *DatabaseCollection) IsClosed() bool {
-	return c.dataStore == nil
-}
-
 // IsDefaultCollection returns true if collection is _default._default.
 func (c *DatabaseCollection) IsDefaultCollection() bool {
 	return base.IsDefaultCollection(c.ScopeName, c.Name)

@@ -11,100 +11,135 @@
 package rest
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestBlipPusherUpdateDatabase starts a push replication and updates the database underneath the replication.
-// Expect to see the connection closed with an error, instead of continuously panicking.
-// This is the CBL version of TestPushReplicationAPIUpdateDatabase
-//
-// This test causes the race detector to flag the bucket=nil operation and any in-flight requests being made using that bucket, prior to the replication being reset.
-// TODO CBG-1903: Can be fixed by draining in-flight requests before fully closing the database.
+// TestBlipPusherUpdateDatabase pushes revisions while the database config is replaced underneath the replication.
+// The reload must close the BLIP connection, and a new connection must be able to push to the reloaded database.
 func TestBlipPusherUpdateDatabase(t *testing.T) {
-
-	t.Skip("Skipping test - revisit in CBG-1908")
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyHTTPResp, base.KeySync)
 
-	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	defer rt.Close()
 
-	rtConfig := RestTesterConfig{
-		DatabaseConfig:   &DatabaseConfig{},
-		GuestEnabled:     true,
-		CustomTestBucket: tb.NoCloseClone(),
+	bt := NewBlipTesterFromSpecWithRT(rt, nil)
+	defer bt.Close()
+
+	var connectionClosed atomic.Bool
+	bt.blipContext.OnExitCallback = func() {
+		connectionClosed.Store(true)
 	}
 
-	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T) {
-		rt := NewRestTester(t, &rtConfig)
-		defer rt.Close()
-
-		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
-		defer client.Close()
-
-		var lastPushRevErr atomic.Value
-
-		// Wait for the background updates to finish at the end of the test
-		shouldCreateDocs := base.NewAtomicBool(true)
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		defer func() {
-			shouldCreateDocs.Set(false)
-			wg.Wait()
-		}()
-
-		// Start the test client creating and pushing documents in the background
-		go func() {
-			for i := 0; shouldCreateDocs.IsTrue(); i++ {
-				// this will begin to error when the database is reloaded underneath the replication
-				btcRunner.AddRev(client.id, fmt.Sprintf("doc%d", i), EmptyDocVersion(), fmt.Appendf(nil, `{"i":%d}`, i))
+	// Push revisions one at a time until the server closes the connection, so a rev is in flight during the reload.
+	ctx, cancel := context.WithCancelCause(rt.Context())
+	var wg sync.WaitGroup
+	defer func() {
+		cancel(errors.New("test finished"))
+		wg.Wait()
+	}()
+	wg.Go(func() {
+		for i := 0; ctx.Err() == nil && !connectionClosed.Load(); i++ {
+			revRequest := bt.newRevMessage(fmt.Sprintf("doc%d", i), "1-abc", fmt.Appendf(nil, `{"i":%d}`, i), blip.Properties{})
+			if !bt.sender.Send(revRequest) {
+				return
 			}
-			rt.WaitForPendingChanges()
-			wg.Done()
-		}()
-
-		// and wait for a few to be done before we proceed with updating database config underneath replication
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			changes := rt.GetChanges("/{{.keyspace}}/_changes", "")
-			assert.GreaterOrEqual(c, len(changes.Results), 5)
-		}, time.Second*5, time.Millisecond*100)
-
-		// just change the sync function to cause the database to reload
-		dbConfig := *rt.ServerContext().GetDbConfig("db")
-		dbConfig.Sync = new(`function(doc){console.log("update");}`)
-		resp := rt.ReplaceDbConfig("db", dbConfig)
-		RequireStatus(t, resp, http.StatusCreated)
-
-		// Did we tell the client to close the connection (via HTTP/503)?
-		// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
-		WaitAndAssertCondition(t, func() bool {
-			lastErr, ok := lastPushRevErr.Load().(error)
-			if !ok {
-				return false
-			}
-			if lastErr == nil {
-				return false
-			}
-			lastErrMsg := lastErr.Error()
-			if !strings.Contains(lastErrMsg, "HTTP 503") {
-				return false
-			}
-			if !strings.Contains(lastErrMsg, "Sync Gateway database went away - asking client to reconnect") {
-				return false
-			}
-			return true
-		}, "expected HTTP 503 error")
+			revRequest.Response()
+		}
 	})
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		changes := rt.GetChanges("/{{.keyspace}}/_changes", "")
+		assert.GreaterOrEqual(c, len(changes.Results), 5)
+	}, time.Second*5, time.Millisecond*100)
+
+	oldDatabase := rt.GetDatabase()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.RevsLimit = new(uint32(1000))
+	RequireStatus(t, rt.ReplaceDbConfig("db", dbConfig), http.StatusCreated)
+	require.NotSame(t, oldDatabase, rt.GetDatabase())
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, connectionClosed.Load())
+	}, time.Second*10, time.Millisecond*100)
+
+	// CBL reconnects after the server closes the connection.
+	newBT := NewBlipTesterFromSpecWithRT(rt, nil)
+	defer newBT.Close()
+	const docID = "docAfterReload"
+	newBT.SendRev(docID, "1-abc", []byte(`{"reloaded":true}`), blip.Properties{})
+	rt.GetDoc(docID)
+}
+
+// TestBlipRevInFlightDuringDatabaseReload blocks a rev handler partway through its write while the database reloads,
+// then releases it after the old database has closed its bucket. The handler must answer with an error.
+func TestBlipRevInFlightDuringDatabaseReload(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
+
+	const blockedDocID = "blockedDoc"
+	writeBlocked := make(chan struct{})
+	signalWriteBlocked := sync.OnceFunc(func() { close(writeBlocked) })
+	releaseWrite := make(chan struct{})
+	unblockWrite := sync.OnceFunc(func() { close(releaseWrite) })
+	defer unblockWrite()
+
+	// Connect a fresh bucket for each database load so that closing the old database really closes its bucket.
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled: true,
+		ConnectToBucketFn: func(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
+			bucket, err := db.ConnectToBucket(ctx, spec, failFast)
+			if err != nil {
+				return nil, err
+			}
+			return base.NewLeakyBucket(bucket, base.LeakyBucketConfig{
+				WriteUpdateWithXattrsCallback: func(key string) {
+					if key != blockedDocID {
+						return
+					}
+					signalWriteBlocked()
+					<-releaseWrite
+				},
+			}), nil
+		},
+	})
+	defer rt.Close()
+
+	bt := NewBlipTesterFromSpecWithRT(rt, nil)
+	defer bt.Close()
+
+	revRequest := bt.newRevMessage(blockedDocID, "1-abc", []byte(`{"blocked":true}`), blip.Properties{})
+	bt.Send(revRequest)
+	select {
+	case <-writeBlocked:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "rev handler did not reach the document write")
+	}
+
+	oldDatabase := rt.GetDatabase()
+	dbConfig := rt.NewDbConfig()
+	dbConfig.RevsLimit = new(uint32(1000))
+	RequireStatus(t, rt.ReplaceDbConfig("db", dbConfig), http.StatusCreated)
+	require.Equal(t, db.DBStopping, atomic.LoadUint32(&oldDatabase.State))
+
+	// The connection closed with the old database, so the client never sees the response. Check the server side instead.
+	revErrors := oldDatabase.DbStats.CBLReplicationPush().DocPushErrorCount
+	base.AssertLogContains(t, "Type:rev Id:<ud>"+blockedDocID+"</ud>   --> 500 Internal error:", func() {
+		unblockWrite()
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, int64(1), revErrors.Value())
+		}, 10*time.Second, 50*time.Millisecond)
+	})
+	RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+blockedDocID, ""), http.StatusNotFound)
 }

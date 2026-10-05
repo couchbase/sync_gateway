@@ -321,14 +321,7 @@ func (h *handler) handleDbOnline() error {
 		} else {
 			var oldConfig DbConfig
 			// persistent config here
-			// Close doesn't take AccessLock, so it can nil the bucket after the CAS above succeeded.
-			bucketRef, open := h.db.BucketIfOpen()
-			if !open {
-				err = base.RedactErrorf("database %q was closed while being brought online", base.MD(h.db.Name))
-				base.InfofCtx(contextNoCancel.Ctx, base.KeyCRUD, "%v", err)
-				return
-			}
-			bucket := bucketRef.GetName()
+			bucket := h.db.Bucket.GetName()
 			dbName := h.db.Name
 			var cas uint64
 			var updatedDbConfig *DatabaseConfig
@@ -534,14 +527,8 @@ func (h *handler) handlePostIndexInit() error {
 	// Skip metadata index initialization on _default._default if it has been dropped (e.g. after a
 	// completed metadata migration) — building indexes on a missing collection would retry until the
 	// op times out. Default to attempting init on _default if existence can't be determined.
-	// The state check above is a point-in-time read and this handler holds no AccessLock, so the
-	// database can still be closed underneath us before we get here.
-	bucket, open := h.db.BucketIfOpen()
-	if !open {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database is stopping, try again later")
-	}
 	defaultCollectionPresent := true
-	if exists, existsErr := defaultCollectionExists(h.ctx(), bucket); existsErr != nil {
+	if exists, existsErr := defaultCollectionExists(h.ctx(), h.db.Bucket); existsErr != nil {
 		base.WarnfCtx(h.ctx(), "db:%s unable to determine whether _default._default exists while reinitializing indexes: %v — will attempt index init on _default", base.MD(h.db.Name), existsErr)
 	} else {
 		defaultCollectionPresent = exists
@@ -1784,12 +1771,9 @@ func (h *handler) handleGetStatus() error {
 	}
 	for _, database := range databases {
 		err := func() error {
-			// Close takes BucketLock for write, so the database stays open while this read lock is held.
+			// Close takes BucketLock for write when it clears SGReplicateMgr.
 			database.BucketLock.RLock()
 			defer database.BucketLock.RUnlock()
-			if database.Bucket == nil {
-				return nil
-			}
 			lastSeq := uint64(0)
 			runState := db.RunStateString[atomic.LoadUint32(&database.State)]
 

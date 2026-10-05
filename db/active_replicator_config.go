@@ -166,9 +166,6 @@ func (arc ActiveReplicatorConfig) CheckpointHash(ctx context.Context, collection
 	if _, err := hash.Write([]byte(arc.RunAs)); err != nil {
 		return "", err
 	}
-	if arc.ActiveDB == nil || arc.ActiveDB.Bucket == nil {
-		return "", fmt.Errorf("error calculating checkpoint hash, cannot fetch bucket UUID")
-	}
 	bucketUUID, err := arc.ActiveDB.Bucket.UUID(ctx)
 	if err != nil {
 		return "", err

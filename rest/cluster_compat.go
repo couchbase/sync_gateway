@@ -575,7 +575,7 @@ func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, b
 func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
 	databases := make([]*db.DatabaseContext, 0, len(sc._databases))
 	for _, dbCtx := range sc._databases {
-		if dbCtx == nil || dbCtx.Bucket == nil || dbCtx.Bucket.GetName() != bucket {
+		if dbCtx == nil || dbCtx.Bucket.GetName() != bucket {
 			continue
 		}
 		databases = append(databases, dbCtx)
