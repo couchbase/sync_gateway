@@ -2001,10 +2001,13 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 			_, err := rt2.ServerContext().ReloadDatabase(rt2.Context(), rt2.GetDatabase().Name, false)
 			require.NoError(t, err)
 
+			// wait for a write made after the reload, so its delivery proves the replicator reconnected
+			prevWrite := lastWrite.Load()
 			var write *docWrite
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				write = lastWrite.Load()
 				assert.NotNil(c, write)
+				assert.NotSame(c, prevWrite, write)
 			}, 10*time.Second, 10*time.Millisecond)
 			sgrRunner.WaitForDocReplicated(write.docID, rt1, rt2, write.version)
 		}
