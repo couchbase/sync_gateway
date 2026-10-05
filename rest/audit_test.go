@@ -6,8 +6,6 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-//go:build !race
-
 package rest
 
 import (
@@ -1627,8 +1625,15 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 				},
 				Console: &base.ConsoleLoggerConfig{
 					FileLoggerConfig: base.FileLoggerConfig{
-						Enabled: new(true),
+						Enabled:             new(true),
+						CollationBufferSize: new(0), // avoid data race in collation with FlushLogBuffers test code
 					},
+				},
+				Error: &base.FileLoggerConfig{
+					CollationBufferSize: new(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+				Warn: &base.FileLoggerConfig{
+					CollationBufferSize: new(0), // avoid data race in collation with FlushLogBuffers test code
 				},
 				Info: &base.FileLoggerConfig{
 					Enabled:             new(false),
@@ -1640,6 +1645,9 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 				},
 				Trace: &base.FileLoggerConfig{
 					Enabled:             new(false),
+					CollationBufferSize: new(0), // avoid data race in collation with FlushLogBuffers test code
+				},
+				Stats: &base.FileLoggerConfig{
 					CollationBufferSize: new(0), // avoid data race in collation with FlushLogBuffers test code
 				},
 			}

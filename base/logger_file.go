@@ -88,8 +88,9 @@ type logRotationConfig struct {
 	compress             *bool           `json:"-"`                                 // Compress rotated logs, not exposed to users
 }
 
-// NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, buffer *strings.Builder) (*FileLogger, error) {
+// NewFileLogger returns a new FileLogger from a config. If prev is not nil, its buffered log lines are copied into the
+// new logger, which is about to replace it.
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, prev *FileLogger) (*FileLogger, error) {
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
@@ -116,10 +117,6 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 	}
 	logger.Enabled.Set(*config.Enabled)
 
-	if buffer != nil {
-		logger.buffer = *buffer
-	}
-
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
@@ -130,7 +127,26 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
+	if prev != nil {
+		if prev.output == &prev.buffer {
+			// SetOutput waits for in-flight writes to the memory logger, and later writes from goroutines that still hold
+			// prev are sent straight to the new logger.
+			prev.logger.SetOutput(loggerForwarder{logger})
+		}
+		logger.buffer.WriteString(prev.buffer.String())
+	}
+
 	return logger, nil
+}
+
+// loggerForwarder is an io.Writer that writes each log line to a FileLogger.
+type loggerForwarder struct {
+	logger *FileLogger
+}
+
+func (f loggerForwarder) Write(p []byte) (int, error) {
+	f.logger.conditionalPrint(strings.TrimSuffix(string(p), "\n"))
+	return len(p), nil
 }
 
 func (l *FileLogger) FlushBufferToLog() {
