@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-blip"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -1940,4 +1941,9 @@ func requireDCPCheckpointsPurged(t testing.TB, ctx context.Context, db *Database
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Empty(c, existingDCPCheckpoints(t, ctx, db, checkpointPrefix), msgAndArgs...)
 	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// ImportCbgtManager returns the cbgt manager that runs the sharded import feed.
+func (db *DatabaseContext) ImportCbgtManager(_ testing.TB) *cbgt.Manager {
+	return db.ImportListener.cbgtContext.Manager
 }
