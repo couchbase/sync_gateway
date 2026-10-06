@@ -42,9 +42,8 @@ post:
               description: |-
                 Channel history for these channels will be removed from the specified document's metadata.
 
-                Cannot be used together with `seq`.
+                A non-empty array cannot be used together with `seq`.
               type: array
-              minItems: 1
               items:
                 type: string
               example:
@@ -55,13 +54,16 @@ post:
                 - seq
             - required:
                 - channels
+              properties:
+                channels:
+                  minItems: 1
   responses:
     '200':
       description: |-
         Successfully compacted channel history from the specified document.
         Returns a list of channels that were compacted.
 
-        If the response has an empty array, it means either no channels were compacted.
+        If the response has an empty array, it means no channels were compacted.
 
       content:
         application/json:
@@ -75,13 +77,13 @@ post:
               description: |-
                 Array of channel names that were compacted.
             description: |-
-              A array of all the compacted channels
+              An array of all the compacted channels
             example:
               compacted_channels:
                 - channel1
                 - channel2
     '400':
-      description: 'Bad request. This could be due to invalid request parameters such as an invalid seq value, an empty channels array, or both seq and channels in the same request.'
+      description: 'Bad request. This could be due to invalid request parameters such as an invalid seq value, an empty channels array with no seq, or both seq and a non-empty channels array in the same request.'
       content:
         application/json:
           schema:
