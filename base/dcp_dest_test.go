@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,4 +71,38 @@ func TestDCPDestCloseWaitsForActiveCallbacks(t *testing.T) {
 	require.NoError(t, RequireChanRecv(t, closeDone))
 	assert.Equal(t, int64(1), callbackCount.Load())
 	assert.Equal(t, int64(0), dest.activeCallbacks.Load())
+}
+
+// TestDCPDestStop makes sure that cbgt's janitor sees a dest as not feedable once Stop is called.
+func TestDCPDestStop(t *testing.T) {
+	for _, wrapLogging := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wrapLogging=%t", wrapLogging), func(t *testing.T) {
+			sgDest, err := NewDCPDest(TestCtx(t), DCPDestOptions{
+				Callback: func(sgbucket.FeedEvent) bool { return true },
+				MaxVbNo:  1,
+			})
+			require.NoError(t, err)
+			dest, ok := sgDest.(*DCPDest)
+			if !ok {
+				loggingDest, ok := sgDest.(*DCPLoggingDest)
+				require.True(t, ok, "unexpected SGDest type %T", sgDest)
+				dest = loggingDest.dest
+			}
+			sgDest = dest
+			if wrapLogging {
+				sgDest = &DCPLoggingDest{dest: dest}
+			}
+
+			pindex := &cbgt.PIndex{Dest: sgDest}
+			feedable, err := pindex.IsFeedable()
+			require.NoError(t, err)
+			require.True(t, feedable)
+
+			sgDest.Stop()
+			feedable, err = pindex.IsFeedable()
+			require.NoError(t, err)
+			require.False(t, feedable)
+			require.NoError(t, sgDest.Close(false))
+		})
+	}
 }
