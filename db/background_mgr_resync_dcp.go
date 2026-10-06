@@ -396,9 +396,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			return resyncDest, nil
 		}
 
-		base.StoreDestFactory(ctx, resyncDestKey, resyncDestFunc)
-		defer base.RemoveDestFactory(resyncDestKey)
-
 		// Heartbeater creation
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix()
 		resyncHB, err := base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
@@ -437,6 +434,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			Bucket:                 db.Bucket,
 			IndexType:              base.CBGTIndexTypeSyncGatewayResync,
 			DestKey:                resyncDestKey,
+			DestFactory:            resyncDestFunc,
 			IndexName:              indexName,
 			Datastore:              db.MetadataStore,
 			FeedType:               base.ShardedDCPFeedTypeResync,
