@@ -3059,6 +3059,55 @@ func TestDocChangedStartupSequenceFilter(t *testing.T) {
 	assert.Equal(t, "aboveInitial", cached[0].DocID)
 }
 
+// TestDocChangedBeforeStart delivers feed events between Init and Start, as the DCP feed does on database startup.
+// A replay at initialSequence must still be kept out of the cache once Start runs.
+func TestDocChangedBeforeStart(t *testing.T) {
+	const initialSequence = 100
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
+	collectionID := collection.GetCollectionID()
+
+	changeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		nil, nil, database.DatabaseContext.MetadataKeys))
+	defer changeCache.Stop(ctx)
+
+	syncDataFor := func(seq uint64) db.SyncData {
+		return db.SyncData{
+			RevAndVersion: channels.RevAndVersion{RevTreeID: "1-abc"},
+			Sequence:      seq,
+			Channels:      channels.ChannelMap{"ABC": nil},
+			History:       db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
+		}
+	}
+
+	// The channel has to exist before the feed event or nothing lands in it.
+	abcChannel := channels.NewID("ABC", collectionID)
+	_, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+
+	events := []sgbucket.FeedEvent{
+		feedEventForTest(t, "atInitial", collectionID, syncDataFor(initialSequence)),
+		feedEventForTest(t, "aboveInitial", collectionID, syncDataFor(initialSequence+1)),
+	}
+	var wg sync.WaitGroup
+	for _, event := range events {
+		wg.Go(func() {
+			changeCache.DocChanged(event, db.DocTypeDocument)
+		})
+	}
+
+	require.NoError(t, changeCache.Start(initialSequence))
+	wg.Wait()
+
+	assert.Equal(t, uint64(initialSequence+1), changeCache.LastSequence())
+	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
+	require.NoError(t, err)
+	require.Len(t, cached, 1)
+	assert.Equal(t, "aboveInitial", cached[0].DocID)
+}
+
 // TestDocChangedRecentSequences covers how DocChanged backfills sequences that DCP deduplicated
 // away. A document's recent_sequences carry the sequences it consumed but never emitted; the cache
 // has to synthesise entries for them or sequence buffering stalls. A sequence at which the document
