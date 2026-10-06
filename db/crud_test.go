@@ -2331,7 +2331,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 	mismatchCV := rawHLV([]byte(`{"ver":"0xff00000000000000","src":"otherSource"}`))
 	errorCV := rawHLV([]byte(`{invalid json}`))
 
-	baseSyncData := SyncData{
+	baseSyncData := cacheFeedSyncData{
 		Cas:             sgCasHex,
 		Crc32c:          "0xaabbccdd",
 		Crc32cUserXattr: "",
@@ -2343,7 +2343,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 
 	testCases := []struct {
 		name            string
-		syncData        SyncData
+		syncData        cacheFeedSyncData
 		cas             uint64
 		isDelete        bool
 		rawUserXattr    []byte
@@ -2387,7 +2387,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 		},
 		{
 			name: "deletion with SG CRC and all checks pass",
-			syncData: func() SyncData {
+			syncData: func() cacheFeedSyncData {
 				s := baseSyncData
 				s.Crc32c = base.DeleteCrc32c
 				return s
@@ -2416,7 +2416,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 		},
 		{
 			name: "nil CV with no sync rev - ambiguous",
-			syncData: func() SyncData {
+			syncData: func() cacheFeedSyncData {
 				s := baseSyncData
 				s.RevAndVersion.CurrentSource = ""
 				s.RevAndVersion.CurrentVersion = ""
