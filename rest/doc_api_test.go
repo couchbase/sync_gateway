@@ -362,3 +362,42 @@ func TestCVUnescapedRevQueryParam(t *testing.T) {
 		})
 	}
 }
+
+// TestCompactChannelHistoryRequestValidate verifies that a compact request must set exactly one of
+// seq or channels, and that any other combination returns a 400 error.
+func TestCompactChannelHistoryRequestValidate(t *testing.T) {
+	tests := []struct {
+		req CompactDocChannelHistoryRequest
+		err error
+	}{
+		{
+			req: CompactDocChannelHistoryRequest{
+				Seq:      0,
+				Channels: []string{},
+			},
+			err: base.HTTPErrorf(http.StatusBadRequest, "must specify channels or sequence"),
+		},
+		{
+			req: CompactDocChannelHistoryRequest{
+				Seq:      10,
+				Channels: []string{"chanA"},
+			},
+			err: base.HTTPErrorf(http.StatusBadRequest, "channels and seq cannot be used together"),
+		},
+		{
+			req: CompactDocChannelHistoryRequest{
+				Seq: 10,
+			},
+			err: nil,
+		},
+		{
+			req: CompactDocChannelHistoryRequest{
+				Channels: []string{"chanA"},
+			},
+			err: nil,
+		},
+	}
+	for _, test := range tests {
+		assert.Equal(t, test.err, test.req.validate())
+	}
+}
