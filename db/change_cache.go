@@ -67,7 +67,7 @@ type changeCache struct {
 	logCtx             context.Context                     // fix in sg-bucket to ProcessEvent
 	logsDisabled       bool                                // If true, ignore incoming tap changes
 	nextSequence       uint64                              // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence    uint64                              // DB's current sequence at startup time.
+	initialSequence    atomic.Uint64                       // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
 	receivedSeqs       map[uint64]struct{}                 // Set of all sequences received
 	pendingLogs        LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
 	notifyChangeFunc   func(context.Context, channels.Set) // Client callback that notifies of channel changes
@@ -254,11 +254,11 @@ func (c *changeCache) Clear(ctx context.Context) error {
 	// Reset initialSequence so that any new channel caches have their validFrom set to the current last sequence
 	// the point at which the change cache was initialized / re-initialized.
 	// No need to touch c.nextSequence here, because we don't want to touch the sequence buffering state.
-	var err error
-	c.initialSequence, err = c.db.LastSequence(ctx)
+	initialSequence, err := c.db.LastSequence(ctx)
 	if err != nil {
 		return err
 	}
+	c.initialSequence.Store(initialSequence)
 
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
@@ -433,7 +433,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	if syncData.Sequence <= c.initialSequence {
+	if syncData.Sequence <= c.initialSequence.Load() {
 		return // DCP is sending us an old value from before I started up; ignore it
 	}
 
@@ -754,7 +754,7 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	}
 	sequence := princ.Sequence
 
-	if sequence <= c.initialSequence {
+	if sequence <= c.initialSequence.Load() {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -839,7 +839,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 			// Too many pending; add the oldest one:
 			changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
 		}
-	} else if sequence > c.initialSequence {
+	} else if sequence > c.initialSequence.Load() {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
 		if !change.Skipped {
@@ -1012,7 +1012,7 @@ func (c *changeCache) getOldestSkippedSequence(ctx context.Context) uint64 {
 
 // Set the initial sequence.  Presumes that change cache is already locked.
 func (c *changeCache) _setInitialSequence(initialSequence uint64) {
-	c.initialSequence = initialSequence
+	c.initialSequence.Store(initialSequence)
 	c.nextSequence = initialSequence + 1
 }
 
