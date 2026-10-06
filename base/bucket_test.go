@@ -16,6 +16,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"math/big"
 	"os"
@@ -451,6 +452,42 @@ func TestTLSConfig(t *testing.T) {
 	spec = BucketSpec{Certpath: clientCertPath, Keypath: rootKeyPath, CACertPath: rootCertPath}
 	conf = spec.TLSConfig(ctx)
 	assert.Empty(t, conf)
+}
+
+func TestTestSourceID(t *testing.T) {
+	const bucketUUID = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+	encoded, err := CreateEncodedSourceID(bucketUUID, "")
+	require.NoError(t, err)
+
+	tests := []struct {
+		bucketName string
+		expected   string
+	}{
+		{bucketName: "rosmar1", expected: "rosmar1++++++++++++++A"},
+		{bucketName: "rosmar12", expected: "rosmar12+++++++++++++A"},
+		{bucketName: "rosmar1A", expected: "rosmar1A+++++++++++++A"},
+		{bucketName: "abcdefghijklmnopqrstu", expected: "abcdefghijklmnopqrstuA"},
+		{bucketName: "", expected: "+++++++++++++++++++++A"},
+		// No room left for the final 'A'.
+		{bucketName: "abcdefghijklmnopqrstuv", expected: encoded},
+		{bucketName: "sg_int_0", expected: encoded},
+		{bucketName: "rosmar+1", expected: encoded},
+	}
+	for _, test := range tests {
+		t.Run(test.bucketName, func(t *testing.T) {
+			sourceID, err := testSourceID(test.bucketName, bucketUUID)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, sourceID)
+
+			// Couchbase Lite only accepts the canonical, unpadded encoding of 16 bytes, and reserves
+			// the all-zero ID for itself.
+			require.Len(t, sourceID, encodedSourceIDLength)
+			decoded, err := base64.RawStdEncoding.Strict().DecodeString(sourceID)
+			require.NoError(t, err)
+			require.Len(t, decoded, 16)
+			assert.NotEqual(t, make([]byte, 16), decoded)
+		})
+	}
 }
 
 func TestBaseBucket(t *testing.T) {

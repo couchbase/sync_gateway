@@ -970,7 +970,7 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 		if revID, ok := knownRevsArray[0].(string); ok {
 			if bsc.useHLV() && !base.IsRevTreeID(revID) {
 				// extract cv from the known revs array
-				msgHLV, _, deltaSrcErr := extractHLVFromBlipString(revID)
+				msgHLV, _, deltaSrcErr := ExtractHLVFromBlipString(revID)
 				if deltaSrcErr != nil {
 					base.DebugfCtx(ctx, base.KeySync, "Invalid known rev format for hlv on doc: %s falling back to full body replication. Err: %v KnownRev: %s", base.UD(docID), deltaSrcErr, revID)
 					deltaSrcRev = "" // will force falling back to full body replication below
@@ -987,7 +987,7 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 	for _, rev := range knownRevsArray {
 		if revID, ok := rev.(string); ok {
 			// extract cv from the known revs array
-			msgHLV, _, err := extractHLVFromBlipString(revID)
+			msgHLV, _, err := ExtractHLVFromBlipString(revID)
 			if err != nil {
 				// assume we have received legacy rev if the following conditions are met:
 				//  - we cannot parse cv from known revs

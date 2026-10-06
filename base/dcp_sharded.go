@@ -68,7 +68,6 @@ type CbgtContext struct {
 	heartbeater       Heartbeater                  // Heartbeater used for failed node detection
 	heartbeatListener *shardedDCPHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	eventHandlers     *sgMgrEventHandlers          // Event handler callbacks
-	dbName            string                       // Database name
 	sourceName        string                       // cbgt source name. Store on CbgtContext for access during teardown
 	sourceUUID        string                       // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
@@ -79,7 +78,8 @@ type ShardedDCPOptions struct {
 	Cfg                    cbgt.Cfg                   // cbgt cfg used to coordinate cbgt documents
 	Collections            CollectionNames            // collection names to target
 	DBName                 string                     // database name is used to look up credentials
-	DestKey                string                     // key used in indexParams for this feed, used to look up the feed destination in cbgtDestFactories
+	DestKey                string                     // key used in indexParams for this feed, used to match pindexes to DestFactory
+	DestFactory            CbgtDestFactoryFunc        // creates the cbgt.Dest for this feed's pindexes
 	Heartbeater            Heartbeater                // heartbeater to use to find nodes
 	IndexName              string                     // cbgt.Manger.IndexName, used to uniquely identify the index
 	IndexType              string                     // cbgt.Manager.IndexType, matches name used by cbgt.RegisterPIndexImplType
@@ -117,6 +117,9 @@ func (opts ShardedDCPOptions) Validate() error {
 	}
 	if opts.DestKey == "" {
 		return fmt.Errorf("destKey must be provided to start sharded DCP feed")
+	}
+	if opts.DestFactory == nil {
+		return fmt.Errorf("dest factory must be provided to start sharded DCP feed")
 	}
 	if opts.Datastore == nil {
 		return fmt.Errorf("datastore must be provided to start sharded DCP feed")
@@ -170,7 +173,7 @@ func StartShardedDCPFeed(ctx context.Context, opts ShardedDCPOptions) (*CbgtCont
 		return nil, fmt.Errorf("error asserting bucket as gocb v2 bucket: %w", err)
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, opts.Bucket, b.GetSpec(), opts.Cfg, opts.UUID, opts.DBName, opts.UnregisterFeedCallback)
+	cbgtContext, err := initCBGTManager(ctx, opts.Bucket, b.GetSpec(), opts.Cfg, opts.UUID, opts.DBName, opts.DestKey, opts.DestFactory, opts.UnregisterFeedCallback)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +226,7 @@ func GenerateLegacyImportIndexName(dbName string) string {
 
 // createCBGTIndex adds an a CBGT index definition for the specified bucket to to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
-// will receive PIndexImpl callbacks (New) for assigned PIndex to initiate DCP processing.
+// will receive PIndexImpl callbacks (NewEx) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(ctx context.Context, c *CbgtContext, opts ShardedDCPOptions) error {
 	sourceType := SOURCE_DCP_SG
 
@@ -391,7 +394,12 @@ func cbgtManagerOptions(ctx context.Context, serverURL string) (map[string]strin
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string, unregisterCallback CbgtUnregisterFeedCallback) (*CbgtContext, error) {
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string, destKey string, destFactory CbgtDestFactoryFunc, unregisterCallback CbgtUnregisterFeedCallback) (*CbgtContext, error) {
+	gocbBucket, err := AsGocbV2Bucket(bucket)
+	if err != nil {
+		return nil, err
+	}
+
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
@@ -481,7 +489,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		Manager:       mgr,
 		Cfg:           cfgSG,
 		eventHandlers: eventHandlers,
-		dbName:        dbName,
 		sourceName:    bucket.GetName(),
 		sourceUUID:    bucketUUID,
 	}
@@ -504,7 +511,13 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 			return nil, fmt.Errorf("failed to load root CAs: %w", err)
 		}
 	}
-	addCbgtCredentials(dbName, bucket.GetName(), creds)
+	cbgtGlobals.registerManager(mgr, cbgtManagerData{
+		creds:       creds,
+		bucket:      gocbBucket,
+		dbName:      dbName,
+		destKey:     destKey,
+		destFactory: destFactory,
+	})
 
 	return cbgtContext, nil
 }
@@ -624,6 +637,9 @@ func getMinNodeVersion(cfg cbgt.Cfg) (*ComparableBuildVersion, error) {
 
 // Stop unregisters the listener from the heartbeater, and stops it and associated handlers.
 func (c *CbgtContext) Stop(ctx context.Context) {
+	// Unregister first, since closing pindexes can outlast the database's bucket and callbacks must not find it.
+	cbgtGlobals.unregisterManager(c.Manager)
+
 	if c.eventHandlers != nil {
 		c.eventHandlers.ctxCancel(errors.New("CbgtContext is stopping, cancelling event handlers"))
 	}
@@ -635,6 +651,13 @@ func (c *CbgtContext) Stop(ctx context.Context) {
 
 	// Close open PIndexes before stopping the manager.
 	_, pindexes := c.Manager.CurrentMaps()
+	// A feed that fails to start requeues janitor work, which can starve ClosePIndex, so stop the dests first to keep
+	// the janitor from restarting their feeds.
+	for _, pIndex := range pindexes {
+		if dest, ok := pIndex.Dest.(SGDest); ok {
+			dest.Stop()
+		}
+	}
 	for _, pIndex := range pindexes {
 		err := c.Manager.ClosePIndex(pIndex)
 		if err != nil {
@@ -647,15 +670,9 @@ func (c *CbgtContext) Stop(ctx context.Context) {
 	// sourceUUID are bucketName/bucket UUID in our usage.  cbgt has a single global stats connection per bucket,
 	// but does a refcount check before closing, so handles the case of multiple SG databases targeting the same bucket.
 	cbgt.CloseStatsClients(c.sourceName, c.sourceUUID)
-	c.RemoveFeedCredentials(c.dbName)
 }
 
-func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
-	removeCbgtCredentials(dbName)
-	// CBG-4394: removing root certs for the bucket should be done, but it is keyed based on the bucket UUID, and multiple dbs can use the same bucket
-}
-
-// Format of dest key for retrieval of import dest from cbgtDestFactories
+// DestKey returns the key that matches a cbgt index's pindexes to the dest factory of the feed that created the index.
 func DestKey(dbName string, scope string, collections []string, feedType ShardedDCPFeedType) string {
 	sort.Strings(collections)
 	collectionString := ""
@@ -924,43 +941,6 @@ func (l *shardedDCPHeartbeatListener) GetNodes(_ context.Context) ([]string, err
 
 func (l *shardedDCPHeartbeatListener) Stop() {
 	close(l.terminator)
-}
-
-// cbgtDestFactories map DCP feed keys (destKey) to a function that will generate cbgt.Dest.  Need to be stored in a
-// global map to avoid races between db creation and db addition to the server context database set
-
-type CbgtDestFactoryFunc = func(rollback func()) (cbgt.Dest, error)
-
-var cbgtDestFactories = make(map[string]CbgtDestFactoryFunc)
-var cbgtDestFactoriesLock sync.Mutex
-
-// StoreDestFactory stores a factory function to create a cgbt.Dest object.
-func StoreDestFactory(ctx context.Context, destKey string, dest CbgtDestFactoryFunc) {
-	cbgtDestFactoriesLock.Lock()
-	_, ok := cbgtDestFactories[destKey]
-
-	// We don't expect duplicate destKey registration - log a warning if it already exists
-	if ok {
-		WarnfCtx(ctx, "destKey %s already exists in cbgtDestFactories - new value will replace the existing dest", destKey)
-	}
-	cbgtDestFactories[destKey] = dest
-	cbgtDestFactoriesLock.Unlock()
-}
-
-func FetchDestFactory(destKey string) (CbgtDestFactoryFunc, error) {
-	cbgtDestFactoriesLock.Lock()
-	defer cbgtDestFactoriesLock.Unlock()
-	listener, ok := cbgtDestFactories[destKey]
-	if !ok {
-		return nil, ErrNotFound
-	}
-	return listener, nil
-}
-
-func RemoveDestFactory(destKey string) {
-	cbgtDestFactoriesLock.Lock()
-	delete(cbgtDestFactories, destKey)
-	cbgtDestFactoriesLock.Unlock()
 }
 
 type sgMgrEventHandlers struct {
