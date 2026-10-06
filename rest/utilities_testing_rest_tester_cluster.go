@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -98,6 +99,18 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 	defer rtc.restTestersLock.Unlock()
 	rtc._restTesters = append(rtc._restTesters, rt)
 	return rt
+}
+
+// RemoveNode closes the RestTester at index i and removes it from the cluster.
+func (rtc *RestTesterCluster) RemoveNode(i int) {
+	rt := func() *RestTester {
+		rtc.restTestersLock.Lock()
+		defer rtc.restTestersLock.Unlock()
+		rt := rtc._restTesters[i]
+		rtc._restTesters = slices.Delete(rtc._restTesters, i, i+1)
+		return rt
+	}()
+	rt.Close()
 }
 
 // Close closes all of RestTester nodes and the shared TestBucket.

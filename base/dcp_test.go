@@ -228,7 +228,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			ctx = DatabaseLogCtx(ctx, tc.dbName, nil)
 			cfg, err := NewCbgtCfgMem()
 			require.NoError(t, err)
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName, nil)
+			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName, "", nil, nil)
 			require.NoError(t, err)
 			defer context.Stop(ctx)
 
@@ -310,7 +310,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	// Use an in-memory cfg, set up cbgt manager
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName, nil)
+	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName, "", nil, nil)
 	require.NoError(t, err)
 	defer context.Stop(ctx)
 
@@ -391,7 +391,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	// Use an in-memory cfg, set up cbgt manager
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName, nil)
+	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName, "", nil, nil)
 	require.NoError(t, err)
 	defer context.Stop(ctx)
 
@@ -521,7 +521,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 				ctx := TestCtx(t)
 				managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
-				context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName, nil)
+				context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName, "", nil, nil)
 				if !assert.NoError(t, err) {
 					return
 				}
@@ -584,7 +584,7 @@ func TestCreateCBGTIndexIdempotent(t *testing.T) {
 			}
 
 			// First node creates the index.
-			nodeA, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeA-"+t.Name(), testDBName, nil)
+			nodeA, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeA-"+t.Name(), testDBName, "", nil, nil)
 			require.NoError(t, err)
 			defer nodeA.Stop(ctx)
 			require.NoError(t, nodeA.StartManager(ctx, opts))
@@ -596,7 +596,7 @@ func TestCreateCBGTIndexIdempotent(t *testing.T) {
 			require.NotEmpty(t, firstUUID)
 
 			// A second node joins with an identical configuration - must not rotate the index UUID.
-			nodeB, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeB-"+t.Name(), testDBName, nil)
+			nodeB, err := initCBGTManager(ctx, bucket, spec, cfg, "nodeB-"+t.Name(), testDBName, "", nil, nil)
 			require.NoError(t, err)
 			defer nodeB.Stop(ctx)
 			require.NoError(t, nodeB.StartManager(ctx, opts))
@@ -665,7 +665,7 @@ func TestCBGTPersistsParamsVerbatim(t *testing.T) {
 	expectedIndexParams, err := cbgtIndexParams(opts.DestKey)
 	require.NoError(t, err)
 
-	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
+	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, "", nil, nil)
 	require.NoError(t, err)
 	defer node.Stop(ctx)
 	require.NoError(t, node.StartManager(ctx, opts))
@@ -755,7 +755,7 @@ func TestCreateCBGTIndexTransientReadErrorTolerated(t *testing.T) {
 		IndexName:     indexName,
 	}
 
-	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
+	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, "", nil, nil)
 	require.NoError(t, err)
 	defer node.Stop(ctx)
 	require.NoError(t, node.StartManager(ctx, opts))
@@ -797,6 +797,7 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 			Collections: CollectionNames{dataStore.ScopeName(): collections},
 			DBName:      dbName,
 			DestKey:     DestKey(dbName, dataStore.ScopeName(), collections, ShardedDCPFeedTypeImport),
+			DestFactory: func(func()) (cbgt.Dest, error) { return nil, errors.New("no pindexes expected") },
 			Heartbeater: heartbeater,
 			IndexName:   indexName,
 			IndexType:   indexType,
@@ -823,7 +824,7 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
 		require.ErrorContains(t, err, "simulated Cfg write error")
 		require.Nil(t, cbgtContext)
-		_, found := getCbgtCredentials(dbName)
+		_, found := cbgtGlobals.getDBCredentials(bucket.GetName(), dbName)
 		require.False(t, found)
 	})
 
@@ -835,7 +836,7 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
 		require.ErrorContains(t, err, "Heartbeater must be started before registering listeners")
 		require.Nil(t, cbgtContext)
-		_, found := getCbgtCredentials(dbName)
+		_, found := cbgtGlobals.getDBCredentials(bucket.GetName(), dbName)
 		require.False(t, found)
 	})
 }
@@ -880,7 +881,7 @@ func TestCreateCBGTIndexUpdateRaceWithConcurrentDelete(t *testing.T) {
 		IndexName:     indexName,
 	}
 
-	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, nil)
+	node, err := initCBGTManager(ctx, bucket, spec, cfg, "node-"+t.Name(), testDBName, "", nil, nil)
 	require.NoError(t, err)
 	defer node.Stop(ctx)
 	require.NoError(t, node.StartManager(ctx, opts))
@@ -920,6 +921,7 @@ func TestCreateCBGTIndexUpdateRaceWithConcurrentDelete(t *testing.T) {
 }
 
 func TestCBGTKvPoolSize(t *testing.T) {
+	TestRequiresCbgt(t)
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
@@ -929,7 +931,7 @@ func TestCBGTKvPoolSize(t *testing.T) {
 
 	cfg, err := NewCbgtCfgMem()
 	require.NoError(t, err)
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb", nil)
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb", "", nil, nil)
 	assert.NoError(t, err)
 	defer cbgtContext.Stop(ctx)
 	require.Contains(t, cbgtContext.Manager.Server(), "kv_pool_size=1")

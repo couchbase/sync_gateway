@@ -823,8 +823,16 @@ func TestRequiresGocbDCPClient(t testing.TB) {
 	}
 }
 
-// TestRequiresCbgt will skip the current test if using rosmar.
+// CbgtDestKeyRegistered returns true if a running cbgt manager was started for destKey.
+func CbgtDestKeyRegistered(_ testing.TB, destKey string) bool {
+	return cbgtGlobals.hasDestKey(destKey)
+}
+
+// TestRequiresCbgt will skip the current test if not using EE, or if using rosmar.
 func TestRequiresCbgt(t testing.TB) {
+	if !IsEnterpriseEdition() {
+		t.Skip("cbgt requires EE")
+	}
 	if UnitTestUrlIsWalrus() {
 		t.Skip("rosmar doesn't support cbgt")
 	}

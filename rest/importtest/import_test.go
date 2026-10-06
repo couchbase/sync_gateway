@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/clog"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -2145,10 +2146,6 @@ func TestImportFilterTimeout(t *testing.T) {
 
 func TestImportRollback(t *testing.T) {
 
-	if !base.IsEnterpriseEdition() {
-		t.Skip("This test only works against EE")
-	}
-
 	base.TestRequiresCbgt(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP)
@@ -2234,10 +2231,6 @@ func TestImportRollback(t *testing.T) {
 func TestImportRollbackMultiplePartitions(t *testing.T) {
 
 	ctx := base.TestCtx(t)
-	if !base.IsEnterpriseEdition() {
-		t.Skip("This test only works against EE")
-	}
-
 	base.TestRequiresCbgt(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyDCP, base.KeyCluster, base.KeyCRUD)
@@ -2482,10 +2475,6 @@ func TestDoNotWriteBodyBackOnImport(t *testing.T) {
 // - assert number of partitions, as measured by number of cbgt.Dest instances, is correct
 func TestImportRollbackAllPartitions(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.IsEnterpriseEdition() {
-		t.Skip("This test only works against EE")
-	}
-
 	base.TestRequiresCbgt(t)
 
 	clog.SetLevel(clog.LevelDebug)
@@ -2791,4 +2780,53 @@ func getMou(t *testing.T, mouBytes []byte) db.MetadataOnlyUpdate {
 	err := base.JSONUnmarshal(mouBytes, &mou)
 	require.NoError(t, err)
 	return mou
+}
+
+// TestImportSameDbNameOnTwoBuckets starts two databases with the same name on different buckets at the same time.
+// Each import feed must route its bucket's mutations to its own database.
+func TestImportSameDbNameOnTwoBuckets(t *testing.T) {
+	base.TestRequiresCbgt(t)
+	ctx := base.TestCtx(t)
+	bucketA := base.GetTestBucket(t)
+	defer bucketA.Close(ctx)
+	bucketB := base.GetTestBucket(t)
+	defer bucketB.Close(ctx)
+
+	rts := make([]*rest.RestTester, 0, 2)
+	for _, bucket := range []*base.TestBucket{bucketA, bucketB} {
+		rt := rest.NewRestTester(t, &rest.RestTesterConfig{CustomTestBucket: bucket.NoCloseClone()})
+		defer rt.Close()
+		rts = append(rts, rt)
+	}
+
+	var wg sync.WaitGroup
+	for _, rt := range rts {
+		wg.Go(func() { _ = rt.GetDatabase() })
+	}
+	wg.Wait()
+	require.Equal(t, rts[0].GetDatabase().Name, rts[1].GetDatabase().Name)
+
+	docID := rest.SafeDocumentName(t, t.Name())
+	for _, rt := range rts {
+		_, err := rt.GetSingleDataStore().AddRaw(ctx, docID, 0, []byte(`{"foo":"bar"}`))
+		require.NoError(t, err)
+	}
+	for _, rt := range rts {
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, 1)
+	}
+}
+
+// TestCbgtGetPoolsDefaultForBucket makes sure that cbgt's GetPoolsDefaultForBucket callback reaches Couchbase Server
+// through the bucket of the database's import feed.
+func TestCbgtGetPoolsDefaultForBucket(t *testing.T) {
+	base.TestRequiresCbgt(t)
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+	bucketName := rt.GetDatabase().Bucket.GetName()
+
+	for _, scopes := range []bool{false, true} {
+		body, err := cbgt.GetPoolsDefaultForBucket(base.UnitTestUrl(), bucketName, scopes)
+		require.NoError(t, err, "scopes=%t", scopes)
+		require.NotEmpty(t, body, "scopes=%t", scopes)
+	}
 }

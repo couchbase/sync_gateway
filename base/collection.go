@@ -556,7 +556,11 @@ func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType
 		username, password, _ = b.Spec.Auth.GetCredentials()
 	}
 
-	respBytes, statusCode, err := MgmtRequest(ctx, b.HttpClient(ctx), mgmtEp, method, uri, contentType, username, password, body)
+	client := b.HttpClient(ctx)
+	if client == nil {
+		return nil, 0, errors.New("unable to obtain http client for management request")
+	}
+	respBytes, statusCode, err := MgmtRequest(ctx, client, mgmtEp, method, uri, contentType, username, password, body)
 	if err != nil {
 		return nil, statusCode, err
 	}

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -62,6 +63,25 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 
 	// wait for doc to come back over DCP
 	rt.WaitForDoc(t.Name())
+}
+
+// TestX509CbgtGetPoolsDefaultForBucket makes sure that cbgt's GetPoolsDefaultForBucket callback authenticates with
+// the x509 client certificate when no password is configured.
+func TestX509CbgtGetPoolsDefaultForBucket(t *testing.T) {
+	base.TestRequiresCbgt(t)
+	ctx := base.TestCtx(t)
+	tb, _, _, _ := setupX509Tests(t, true)
+	defer tb.Close(ctx)
+
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
+	defer rt.Close()
+	_ = rt.GetDatabase()
+
+	for _, scopes := range []bool{false, true} {
+		body, err := cbgt.GetPoolsDefaultForBucket(base.UnitTestUrl(), tb.GetName(), scopes)
+		require.NoError(t, err, "scopes=%t", scopes)
+		require.NotEmpty(t, body, "scopes=%t", scopes)
+	}
 }
 
 func TestX509UnknownAuthorityWrap(t *testing.T) {
