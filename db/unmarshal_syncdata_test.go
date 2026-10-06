@@ -129,7 +129,7 @@ func BenchmarkUnmarshalSyncDataFromFeed(b *testing.B) {
 			return syncData.Sequence, nil
 		}},
 		{name: "cache", parse: func(value []byte) (uint64, error) {
-			feedData, err := unmarshalCachingFeedData(value, base.MemcachedDataTypeXattr, "")
+			feedData, err := unmarshalCachingFeedData(value, "")
 			if err != nil {
 				return 0, err
 			}
@@ -175,7 +175,7 @@ func TestUnmarshalCachingFeedDataMatchesFullParse(t *testing.T) {
 	const userXattrKey = "myXattr"
 	expiry := time.Now().Add(time.Hour).Truncate(time.Second)
 
-	// Populates every field the cache reads, alongside the fields it skips, so a field missed by toSyncData is caught.
+	// Populates every field the cache reads, alongside the fields it skips, so a field cacheFeedSyncData drops is caught.
 	rich := buildFeedSyncData(feedSyncShape{channels: 10, history: 20, removedChannels: 3, accessGrants: 5})
 	rich.Flags = channels.Deleted | channels.UnchangedCV
 	rich.UnusedSequences = []uint64{12343, 12344}
@@ -213,7 +213,7 @@ func TestUnmarshalCachingFeedDataMatchesFullParse(t *testing.T) {
 			fullDoc, fullSyncData, err := UnmarshalDocumentSyncDataFromFeed(value, dataType, userXattrKey)
 			require.NoError(t, err)
 			require.NotNil(t, fullSyncData)
-			feedData, err := unmarshalCachingFeedData(value, dataType, userXattrKey)
+			feedData, err := unmarshalCachingFeedData(value, userXattrKey)
 			require.NoError(t, err)
 			require.NotNil(t, feedData)
 
@@ -227,50 +227,29 @@ func TestUnmarshalCachingFeedDataMatchesFullParse(t *testing.T) {
 				assert.Equalf(t, fullValue.FieldByName(name).Interface(), cacheValue.FieldByName(name).Interface(), "field %s", name)
 			}
 
-			require.NotNil(t, feedData.rawVV)
-			assert.Equal(t, fullDoc.Xattrs[base.VvXattrName], []byte(*feedData.rawVV))
+			assert.Equal(t, fullDoc.Xattrs[base.VvXattrName], []byte(feedData.rawVV))
 			assert.Equal(t, fullDoc.Xattrs[userXattrKey], feedData.rawUserXattr)
 		})
 	}
 }
 
-// TestUnmarshalCachingFeedDataNoSyncXattr checks that the cache parse never reads the document body, so a
-// document whose only _sync is inline is not cached.
+// TestUnmarshalCachingFeedDataNoSyncXattr checks that a document with xattrs but no _sync xattr is not cached.
 func TestUnmarshalCachingFeedDataNoSyncXattr(t *testing.T) {
 	const userXattrKey = "myXattr"
+	value := sgbucket.EncodeValueWithXattrs([]byte(`{"some":"body"}`),
+		sgbucket.Xattr{Name: base.VvXattrName, Value: []byte(testFeedVV)},
+		sgbucket.Xattr{Name: userXattrKey, Value: []byte(`{"a":"b"}`)},
+	)
+	feedData, err := unmarshalCachingFeedData(value, userXattrKey)
+	require.NoError(t, err)
+	require.Nil(t, feedData)
+}
+
+// TestUnmarshalDocumentSyncDataFromFeedInlineSync checks that the full parse finds inline _sync, which import relies on
+// to migrate pre-xattr documents.
+func TestUnmarshalDocumentSyncDataFromFeedInlineSync(t *testing.T) {
+	const userXattrKey = "myXattr"
 	inlineSyncBody := []byte(`{"_sync":{"rev":"1-abc","sequence":100,"channels":{"ABC":null}},"some":"body"}`)
-
-	testCases := []struct {
-		name     string
-		value    []byte
-		dataType uint8
-	}{
-		{
-			name:     "no xattrs",
-			value:    inlineSyncBody,
-			dataType: base.MemcachedDataTypeJSON,
-		},
-		{
-			name:     "inline _sync with user xattr",
-			value:    sgbucket.EncodeValueWithXattrs(inlineSyncBody, sgbucket.Xattr{Name: userXattrKey, Value: []byte(`{"a":"b"}`)}),
-			dataType: base.MemcachedDataTypeXattr | base.MemcachedDataTypeJSON,
-		},
-		{
-			// The full parse fails on this body, so a nil error shows the cache parse did not read it.
-			name:     "malformed body with _vv xattr",
-			value:    sgbucket.EncodeValueWithXattrs([]byte(`{"_sync":`), sgbucket.Xattr{Name: base.VvXattrName, Value: []byte(testFeedVV)}),
-			dataType: base.MemcachedDataTypeXattr | base.MemcachedDataTypeJSON,
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			feedData, err := unmarshalCachingFeedData(tc.value, tc.dataType, userXattrKey)
-			require.NoError(t, err)
-			require.Nil(t, feedData)
-		})
-	}
-
-	// The full parse still finds inline _sync, which import relies on to migrate pre-xattr documents.
 	value := sgbucket.EncodeValueWithXattrs(inlineSyncBody, sgbucket.Xattr{Name: userXattrKey, Value: []byte(`{"a":"b"}`)})
 	_, syncData, err := UnmarshalDocumentSyncDataFromFeed(value, base.MemcachedDataTypeXattr|base.MemcachedDataTypeJSON, userXattrKey)
 	require.NoError(t, err)
@@ -280,12 +259,12 @@ func TestUnmarshalCachingFeedDataNoSyncXattr(t *testing.T) {
 
 func TestUnmarshalCachingFeedDataErrors(t *testing.T) {
 	t.Run("truncated xattrs", func(t *testing.T) {
-		_, err := unmarshalCachingFeedData([]byte{0, 0}, base.MemcachedDataTypeXattr, "")
+		_, err := unmarshalCachingFeedData([]byte{0, 0}, "")
 		require.ErrorIs(t, err, sgbucket.ErrEmptyMetadata)
 	})
 	t.Run("malformed _sync xattr", func(t *testing.T) {
 		value := sgbucket.EncodeValueWithXattrs([]byte(`{}`), sgbucket.Xattr{Name: base.SyncXattrName, Value: []byte(`{"sequence":"not a number"}`)})
-		feedData, err := unmarshalCachingFeedData(value, base.MemcachedDataTypeXattr, "")
+		feedData, err := unmarshalCachingFeedData(value, "")
 		require.Error(t, err)
 		require.Nil(t, feedData)
 	})

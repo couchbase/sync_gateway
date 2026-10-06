@@ -556,12 +556,8 @@ func UnmarshalDocumentSyncData(data []byte) (*SyncData, error) {
 	return root.SyncData, nil
 }
 
-// UnmarshalDocumentSyncDataFromFeed unmarshals all of the sync metadata, including the revision tree, for a document
-// arriving via DCP. The _sync xattr is preferred, falling back to inline _sync in the document body so that documents
-// written before xattrs were mandatory are still migrated on import. If not present in either, returns nil but no
-// error. The full parse is required by callers that validate the revision tree or write the SyncData back to the
-// bucket.
-
+// UnmarshalDocumentSyncDataFromFeed fully unmarshals sync metadata for a DCP event, from the _sync xattr or else from
+// inline _sync in the body (pre-xattr documents). Returns nil SyncData and no error if neither is present.
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
 func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string) (*sgbucket.BucketDocument, *SyncData, error) {
 	rawDoc := &sgbucket.BucketDocument{}
@@ -608,9 +604,8 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 	return rawDoc, syncData, nil
 }
 
-// cacheFeedSyncData is the subset of SyncData that the caching feed reads. Decoding into this rather than SyncData
-// lets the JSON decoder skip the revision tree, access grants and channel set history without allocating them, and
-// those fields dominate the parse cost of the _sync xattr. Field names, types and json tags must match SyncData.
+// cacheFeedSyncData is the subset of SyncData that the caching feed reads, so the costly fields are skipped when decoding.
+// Field names, types and json tags must match SyncData.
 type cacheFeedSyncData struct {
 	RevAndVersion   channels.RevAndVersion `json:"rev"`
 	Flags           uint8                  `json:"flags,omitempty"`
@@ -626,9 +621,6 @@ type cacheFeedSyncData struct {
 
 // GetRevTreeID returns the RevTreeID if available, otherwise returns an empty string.
 func (s *cacheFeedSyncData) GetRevTreeID() string {
-	if s == nil {
-		return ""
-	}
 	return s.RevAndVersion.RevTreeID
 }
 
@@ -651,20 +643,21 @@ func (s *cacheFeedSyncData) CVEqual(cv Version) bool {
 // cachingFeedData is the part of a DCP event that the caching feed reads.
 type cachingFeedData struct {
 	syncData     cacheFeedSyncData
-	rawVV        *rawHLV // nil when there is no _vv xattr
+	rawVV        rawHLV
 	rawUserXattr []byte
 }
 
-// unmarshalCachingFeedData extracts the sync metadata, _vv and user xattr that the caching feed needs from a DCP value.
-// Returns nil and no error when there is no _sync xattr.
-//
-// Unlike UnmarshalDocumentSyncDataFromFeed this does not look for inline _sync in the document body. Sync Gateway only
-// writes _sync as an xattr now, and the caching feed starts from the latest sequence so an inline _sync can only belong
-// to a write that predates this node and is never cached.
-func unmarshalCachingFeedData(data []byte, dataType uint8, userXattrKey string) (*cachingFeedData, error) {
-	if dataType&base.MemcachedDataTypeXattr == 0 {
-		return nil, nil
+// vv returns the _vv xattr, or nil when there is none. It points into feedData, so no allocation is needed.
+func (f *cachingFeedData) vv() *rawHLV {
+	if len(f.rawVV) == 0 {
+		return nil
 	}
+	return &f.rawVV
+}
+
+// unmarshalCachingFeedData extracts what the caching feed needs from a DCP value that carries xattrs. Returns nil and
+// no error when there is no _sync xattr. Inline _sync is not checked, because the caching feed is FeedContentXattrOnly.
+func unmarshalCachingFeedData(data []byte, userXattrKey string) (*cachingFeedData, error) {
 	// Sized to hold the optional user xattr key so it is not reallocated per event.
 	keys := [3]string{base.SyncXattrName, base.VvXattrName, userXattrKey}
 	xattrKeys := keys[:2]
@@ -679,12 +672,9 @@ func unmarshalCachingFeedData(data []byte, dataType uint8, userXattrKey string) 
 	if len(syncXattr) == 0 {
 		return nil, nil
 	}
-	feedData := &cachingFeedData{rawUserXattr: xattrs[userXattrKey]}
+	feedData := &cachingFeedData{rawVV: xattrs[base.VvXattrName], rawUserXattr: xattrs[userXattrKey]}
 	if err := base.JSONUnmarshal(syncXattr, &feedData.syncData); err != nil {
-		return nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
-	}
-	if vv := xattrs[base.VvXattrName]; len(vv) > 0 {
-		feedData.rawVV = new(rawHLV(vv))
+		return nil, base.RedactErrorf("Found _sync xattr (%s), but could not unmarshal: %w", base.UD(string(syncXattr)), err)
 	}
 	return feedData, nil
 }

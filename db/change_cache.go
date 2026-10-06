@@ -384,13 +384,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	// If this is a binary document, we can ignore.
-	if event.DataType == base.MemcachedDataTypeRaw {
-		return
-	}
-
 	// Only the sync metadata the cache needs is parsed. The body and the rest of _sync are skipped.
-	feedData, err := unmarshalCachingFeedData(dcpValue, event.DataType, collection.UserXattrKey())
+	feedData, err := unmarshalCachingFeedData(dcpValue, collection.UserXattrKey())
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -407,7 +402,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	syncData := &feedData.syncData
 	isDelete := event.Opcode == sgbucket.FeedOpDeletion
 
-	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, feedData.rawUserXattr, feedData.rawVV); isSGWriteAmbiguous {
+	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, feedData.rawUserXattr, feedData.vv()); isSGWriteAmbiguous {
 		// CRC is the only remaining check, but we need to fetch the doc body now
 		c.db.DbStats.Cache().IsSGWriteKVFetchCount.Add(1)
 		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(ctx, docID)
@@ -540,7 +535,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
 	}
-	if feedData.rawVV != nil {
+	if len(feedData.rawVV) > 0 {
 		change.SourceID = syncData.RevAndVersion.CurrentSource
 		change.Version = base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion)
 	}
