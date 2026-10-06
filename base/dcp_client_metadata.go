@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/couchbase/gocbcore/v10"
 )
@@ -68,7 +69,24 @@ type DCPMetadataStore interface {
 }
 
 type dcpMetadataBase struct {
-	metadata []DCPMetadata
+	_metadata []DCPMetadata
+	// vbLocks guards _metadata per vbucket, which is written by the owning DCP worker, the OpenStream callback and
+	// rollback, and read by GetMetadata.
+	vbLocks []sync.Mutex
+}
+
+func newDCPMetadataBase(numVbuckets uint16) dcpMetadataBase {
+	m := dcpMetadataBase{
+		_metadata: make([]DCPMetadata, numVbuckets),
+		vbLocks:   make([]sync.Mutex, numVbuckets),
+	}
+	for vbNo := range numVbuckets {
+		m._metadata[vbNo] = DCPMetadata{
+			FailoverEntries: make([]gocbcore.FailoverEntry, 0),
+			EndSeqNo:        math.MaxUint64,
+		}
+	}
+	return m
 }
 
 type DCPMetadataMem struct {
@@ -82,67 +100,79 @@ var (
 )
 
 func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
-	m := &DCPMetadataMem{
-		dcpMetadataBase: dcpMetadataBase{
-			metadata: make([]DCPMetadata, numVbuckets),
-		},
-	}
-	for vbNo := range numVbuckets {
-		m.metadata[vbNo] = DCPMetadata{
-			FailoverEntries: make([]gocbcore.FailoverEntry, 0),
-			EndSeqNo:        math.MaxUint64,
-		}
-	}
-	return m
+	return &DCPMetadataMem{dcpMetadataBase: newDCPMetadataBase(numVbuckets)}
 }
 
 // Rollback resets vBucket metadata to the vBucket UUID and sequence number provided
 func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo gocbcore.SeqNo) {
+	meta := m.rollback(vbID, startSeqNo)
+	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, meta)
+}
+
+// rollback applies the rollback under the vbucket lock and returns a copy of the updated metadata.
+func (m *dcpMetadataBase) rollback(vbID uint16, startSeqNo gocbcore.SeqNo) DCPMetadata {
+	m.vbLocks[vbID].Lock()
+	defer m.vbLocks[vbID].Unlock()
 	var rollbackVbuuid gocbcore.VbUUID
-	for _, failoverLog := range m.metadata[vbID].FailoverEntries {
+	for _, failoverLog := range m._metadata[vbID].FailoverEntries {
 		if failoverLog.SeqNo <= startSeqNo {
 			rollbackVbuuid = failoverLog.VbUUID
 			break
 		}
 	}
 	// use the lower value of the start sequence number that we last saved, or the value that was provided from KV as the rollback point
-	newStartSeqNo := min(startSeqNo, m.metadata[vbID].StartSeqNo)
-	m.metadata[vbID].VbUUID = rollbackVbuuid
-	m.metadata[vbID].StartSeqNo = newStartSeqNo
-	m.metadata[vbID].SnapStartSeqNo = newStartSeqNo
-	m.metadata[vbID].SnapEndSeqNo = newStartSeqNo
-	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, m.metadata[vbID])
+	newStartSeqNo := min(startSeqNo, m._metadata[vbID].StartSeqNo)
+	m._metadata[vbID].VbUUID = rollbackVbuuid
+	m._metadata[vbID].StartSeqNo = newStartSeqNo
+	m._metadata[vbID].SnapStartSeqNo = newStartSeqNo
+	m._metadata[vbID].SnapEndSeqNo = newStartSeqNo
+	return m._metadata[vbID]
 }
 
 func (m *dcpMetadataBase) SetMeta(vbID uint16, meta DCPMetadata) {
-	m.metadata[vbID] = meta
+	m.vbLocks[vbID].Lock()
+	defer m.vbLocks[vbID].Unlock()
+	m._metadata[vbID] = meta
 }
 
 func (m *dcpMetadataBase) GetMeta(vbID uint16) DCPMetadata {
-	return m.metadata[vbID]
+	m.vbLocks[vbID].Lock()
+	defer m.vbLocks[vbID].Unlock()
+	return m._metadata[vbID]
 }
 
 func (m *dcpMetadataBase) SetSnapshot(e snapshotEvent) {
-	m.metadata[e.vbID].SnapStartSeqNo = gocbcore.SeqNo(e.startSeq)
-	m.metadata[e.vbID].SnapEndSeqNo = gocbcore.SeqNo(e.endSeq)
+	m.vbLocks[e.vbID].Lock()
+	defer m.vbLocks[e.vbID].Unlock()
+	m._metadata[e.vbID].SnapStartSeqNo = gocbcore.SeqNo(e.startSeq)
+	m._metadata[e.vbID].SnapEndSeqNo = gocbcore.SeqNo(e.endSeq)
 }
 
 func (m *dcpMetadataBase) UpdateSeq(vbID uint16, seq uint64) {
-	m.metadata[vbID].StartSeqNo = gocbcore.SeqNo(seq)
+	m.vbLocks[vbID].Lock()
+	defer m.vbLocks[vbID].Unlock()
+	m._metadata[vbID].StartSeqNo = gocbcore.SeqNo(seq)
 }
 
 func (m *dcpMetadataBase) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
-	m.metadata[vbID].FailoverEntries = fe
-	m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
+	m.vbLocks[vbID].Lock()
+	defer m.vbLocks[vbID].Unlock()
+	m._metadata[vbID].FailoverEntries = fe
+	m._metadata[vbID].VbUUID = getVbUUID(fe, m._metadata[vbID].StartSeqNo)
 }
 
 // SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
 // present in the endSeqNos map will have their EndSeqNo set to zero.
 func (m *dcpMetadataBase) SetEndSeqNos(endSeqNos map[uint16]uint64) {
-	for i := 0; i < len(m.metadata); i++ {
-		endSeqNo, _ := endSeqNos[uint16(i)]
-		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
+	for i := range len(m._metadata) {
+		m.setEndSeqNo(uint16(i), gocbcore.SeqNo(endSeqNos[uint16(i)]))
 	}
+}
+
+func (m *dcpMetadataBase) setEndSeqNo(vbID uint16, endSeqNo gocbcore.SeqNo) {
+	m.vbLocks[vbID].Lock()
+	defer m.vbLocks[vbID].Unlock()
+	m._metadata[vbID].EndSeqNo = endSeqNo
 }
 
 // Persist is no-op for in-memory metadata store
@@ -195,17 +225,9 @@ type DCPMetadataCS struct {
 func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
 
 	m := &DCPMetadataCS{
-		dataStore: store,
-		keyPrefix: keyPrefix,
-		dcpMetadataBase: dcpMetadataBase{
-			metadata: make([]DCPMetadata, numVbuckets),
-		},
-	}
-	for vbNo := range numVbuckets {
-		m.metadata[vbNo] = DCPMetadata{
-			FailoverEntries: make([]gocbcore.FailoverEntry, 0),
-			EndSeqNo:        math.MaxUint64,
-		}
+		dataStore:       store,
+		keyPrefix:       keyPrefix,
+		dcpMetadataBase: newDCPMetadataBase(numVbuckets),
 	}
 
 	// Initialize any persisted metadata
@@ -217,15 +239,13 @@ func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, 
 }
 
 // Persist is called by worker.  Triggers persistence of metadata for all listed vbuckets.  This set must be the same
-// set that has been assigned to the worker.  There's no synchronization on m.metadata - relies on DCP worker to
-// avoid read/write races on vbucket data.  Calls to persist must be blocking on the worker goroutine, and vbuckets are
-// only assigned to a single worker
+// set that has been assigned to the worker.  Each vbucket is copied under its lock, and the write happens outside it.
 func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint16) {
 
 	meta := WorkerMetadata{}
-	meta.DCPMeta = make(map[uint16]DCPMetadata)
+	meta.DCPMeta = make(map[uint16]DCPMetadata, len(vbIDs))
 	for _, vbID := range vbIDs {
-		meta.DCPMeta[vbID] = m.metadata[vbID]
+		meta.DCPMeta[vbID] = m.GetMeta(vbID)
 	}
 	err := m.dataStore.Set(ctx, m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
@@ -247,7 +267,7 @@ func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
 
 	TracefCtx(ctx, KeyDCP, "Loaded metadata for worker %d: %v", workerID, meta)
 	for vbID, metadata := range meta.DCPMeta {
-		m.metadata[vbID] = metadata
+		m.SetMeta(vbID, metadata)
 	}
 }
 
