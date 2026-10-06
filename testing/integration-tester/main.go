@@ -432,6 +432,7 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 	runErr := cmd.Wait()
 	_ = pw.Close()
 	<-done
+	removeEmptyCoverProfile(args.coverProfile)
 
 	if runErr != nil {
 		if ctx.Err() != nil {
@@ -440,6 +441,33 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 		return failedTests, runErr
 	}
 	return nil, nil
+}
+
+// removeEmptyCoverProfile deletes a coverage profile that has no coverage blocks, which go test
+// leaves behind (empty or header-only) when the test binary fails to build or is killed.
+func removeEmptyCoverProfile(path string) {
+	f, err := os.Open(path) //nolint:gosec
+	if err != nil {
+		return
+	}
+	scanner := bufio.NewScanner(f)
+	hasData := false
+	for !hasData && scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		hasData = line != "" && !strings.HasPrefix(line, "mode:")
+	}
+	_ = f.Close()
+	if err := scanner.Err(); err != nil {
+		nonFatal.add(fmt.Errorf("read coverage profile %q: %w", path, err))
+		return
+	}
+	if hasData {
+		return
+	}
+	logger.Debugf("removing empty coverage profile %s", path)
+	if err := os.Remove(path); err != nil {
+		nonFatal.add(fmt.Errorf("remove empty coverage profile %q: %w", path, err))
+	}
 }
 
 // runRosmarTests runs EE and CE rosmar (in-memory) tests, ignoring failures (set +e equivalent).
