@@ -1948,7 +1948,7 @@ func TestMetadataOnlyUpdateWritePaths(t *testing.T) {
 				return rev2ID
 			},
 			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, _ string) {
-				compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100)
+				compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100, []string{""})
 				require.NoError(t, err)
 				require.NotEmpty(t, compacted, "compaction should have pruned channel history, or no write happens")
 			},
