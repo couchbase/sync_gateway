@@ -781,11 +781,30 @@ func writeSharedDCPCheckpoints(ctx context.Context, feed cbgt.Feed) {
 	base.AssertfCtx(ctx, "Expected to find a SGDest on cbgt.EventHandler.OnUnregisterFeed. Feed: %#+v Dests: %#+v, resync will complete but  some checkpoints may not be written", feed, slices.Collect(maps.Values(feed.Dests())))
 }
 
+// stopInitiatedFeedClosure returns true if the feed closed by cbgt.Manager.Stop
+func stopInitiatedFeedClosure(ctx context.Context, feed cbgt.Feed) bool {
+	for _, d := range feed.Dests() {
+		sgDest, ok := d.(base.SGDest)
+		if !ok {
+			base.AssertfCtx(ctx, "Expected SGDest on cbgt.EventHandler.OnUnregisterFeed but found %T. Feed: %#+v, completed vBuckets will be recorded even if the dest was stopped", d, feed)
+			continue
+		}
+		if feedable, _ := sgDest.IsFeedable(); !feedable {
+			return true
+		}
+	}
+	return false
+}
+
 // getUnregisterFeedFunc returns a callback function to be called when a cbgt feed exits. This function will close
 // doneChan when all vBuckets have completed, which will allow the resync process to finish.
 func (r *ResyncManagerDCP) getUnregisterFeedFunc(ctx context.Context, totalVBuckets uint16) base.CbgtUnregisterFeedCallback {
 	return func(feed cbgt.Feed) {
 		writeSharedDCPCheckpoints(ctx, feed)
+		// If the feed was stopped, we should assume that it isn't done - cbgt can still stream data but we will not update the data.
+		if stopInitiatedFeedClosure(ctx, feed) {
+			return
+		}
 		f, ok := feed.(cbgt.FeedPartitionCompletion)
 		if !ok {
 			base.AssertfCtx(ctx, "Expected feed on cbgt.EventHandler.OnUnregisterFeed to pass feed of type FeedPartitionCompletion but is of %T, resync will not complete in this state", feed)
