@@ -818,7 +818,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.ReplicationStatsMap = allReplicationsStatsMap
 
 	// disable recovered panic reporting (test only)
-	rc.reportHandlerPanicsOnStop = base.Ptr(false)
+	rc.reportHandlerPanicsOnStop = new(false)
 
 	return NewActiveReplicator(m.loggingCtx, rc)
 }
@@ -1628,6 +1628,12 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 					ID:     replicationID,
 					Status: ReplicationStateUnassigned,
 				}
+			} else if remoteCfg.TargetState == "" || remoteCfg.TargetState == ReplicationStateRunning {
+				// Nothing is replicating until a replicator says so.
+				status = &ReplicationStatus{
+					ID:     replicationID,
+					Status: ReplicationStateStarting,
+				}
 			} else {
 				status = &ReplicationStatus{
 					ID:     replicationID,
@@ -1652,11 +1658,16 @@ func (m *sgReplicateManager) GetReplicationStatus(ctx context.Context, replicati
 	if !options.IncludeError && status.Status == ReplicationStateError {
 		return nil, nil
 	}
-	if options.ActiveOnly && status.Status != ReplicationStateRunning {
+	if options.ActiveOnly && !isActiveReplicationState(status.Status) {
 		return nil, nil
 	}
 
 	return status, nil
+}
+
+// isActiveReplicationState returns true for a replication that is running or on its way to running.
+func isActiveReplicationState(state string) bool {
+	return state == ReplicationStateRunning || state == ReplicationStateStarting || state == ReplicationStateReconnecting
 }
 
 // PutReplicationStatus updates the state of a replication.

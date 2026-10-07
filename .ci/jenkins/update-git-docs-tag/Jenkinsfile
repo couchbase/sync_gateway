@@ -10,6 +10,7 @@ pipeline {
         skipDefaultCheckout()
         // Two runs racing to delete and recreate the same tag would be a bad time.
         disableConcurrentBuilds()
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
 

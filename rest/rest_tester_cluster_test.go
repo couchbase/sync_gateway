@@ -59,7 +59,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	rtNode := rtc.RoundRobin()
 
 	// upsert with an invalid config option
-	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Ptr(uint32(0))})
+	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: new(uint32(0))})
 	RequireStatus(t, resp, http.StatusBadRequest)
 
 	// On the same node, make sure the database is still running.
@@ -95,7 +95,7 @@ func TestPersistentDbConfigAsyncOnlineWithInvalidConfig(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.StartOffline = base.Ptr(true)
+	dbConfig.StartOffline = new(true)
 	resp := rt.CreateDatabase("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 

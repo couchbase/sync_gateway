@@ -108,6 +108,8 @@ type ServerContext struct {
 	RuntimeStatus                 *RuntimeStatus        // Cached runtime environment info (GOMEMLIMIT, GOMAXPROCS, cgroup), computed once at startup
 	ClusterCompat                 *clusterCompatManager // Tracks cluster-wide minimum SG version for compat gating
 	connectToBucketFn             db.OpenBucketFn       // supply a custom function for buckets, used for testing only
+	// leakyBootstrapConnectionConfig wraps the bootstrap connection in a LeakyBootstrapConnection, used for testing only
+	leakyBootstrapConnectionConfig *base.LeakyBootstrapConnectionConfig
 }
 
 type ActiveReplicationsCounter struct {
@@ -197,8 +199,8 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		// Disable Admin API authentication when running as walrus on the default admin interface to support dev
 		// environments.
 		if sc.Config.API.AdminInterface == DefaultAdminInterface {
-			sc.Config.API.AdminInterfaceAuthentication = base.Ptr(false)
-			sc.Config.API.MetricsInterfaceAuthentication = base.Ptr(false)
+			sc.Config.API.AdminInterfaceAuthentication = new(false)
+			sc.Config.API.MetricsInterfaceAuthentication = new(false)
 		}
 	}
 	if config.Replicator.MaxConcurrentReplications != 0 {
@@ -595,10 +597,11 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, false)
+	return sc._reloadDatabaseWithConfig(nonContextStruct, config, true, false)
 }
 
-func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool, loadFromBucket bool) error {
+func (sc *ServerContext) _reloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig, failFast bool, loadFromBucket bool) error {
+	ctx := nonContextStruct.Ctx
 	sc._removeDatabase(ctx, config.Name)
 	// use async initialization whenever using persistent config
 	asyncOnline := sc.persistentConfig
@@ -1557,7 +1560,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Unsupported.WarningThresholds.XattrSize = base.Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+		config.Unsupported.WarningThresholds.XattrSize = new(uint32(base.DefaultWarnThresholdXattrSize))
 	} else {
 		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
 		upperLimit := 1 * 1024 * 1024   // 1 MB
@@ -1604,7 +1607,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
 	if base.ValDefault(config.DisablePasswordAuth, false) {
-		sendWWWAuthenticate = base.Ptr(false)
+		sendWWWAuthenticate = new(false)
 	}
 
 	disablePublicAllDocs := base.ValDefault(config.DisablePublicAllDocs, false)
@@ -1649,7 +1652,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
 		NumIndexReplicas:            config.numIndexReplicas(),
 		DisablePublicAllDocs:        disablePublicAllDocs,
-		StoreLegacyRevTreeData:      base.Ptr(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
+		StoreLegacyRevTreeData:      new(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
 		UseSystemMetadataCollection: useMobileCollection,
 	}
 
@@ -1975,7 +1978,7 @@ func (sc *ServerContext) _clearDatabases() {
 // _updateDatabasesSnapshot refreshes databasesSnapshot to match _databases. The caller must hold
 // sc._databasesLock for write.
 func (sc *ServerContext) _updateDatabasesSnapshot() {
-	sc.databasesSnapshot.Store(base.Ptr(slices.Collect(maps.Values(sc._databases))))
+	sc.databasesSnapshot.Store(new(slices.Collect(maps.Values(sc._databases))))
 }
 
 // Updates stats that are more efficient to calculate at stats collection time. Reads
@@ -2275,7 +2278,11 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 		return err
 	}
 
-	sc.BootstrapContext.Connection = couchbaseCluster
+	if sc.leakyBootstrapConnectionConfig != nil {
+		sc.BootstrapContext.Connection = base.NewLeakyBootstrapConnection(couchbaseCluster, *sc.leakyBootstrapConnectionConfig)
+	} else {
+		sc.BootstrapContext.Connection = couchbaseCluster
+	}
 
 	// Check for v3.0 persisted configs, migrate to registry format if found
 	err = sc.migrateV30Configs(ctx)
@@ -2706,7 +2713,7 @@ func (sc *ServerContext) CheckSupportedCouchbaseVersion(ctx context.Context) err
 		TLSSkipVerify: base.ValDefault(sc.Config.Bootstrap.ServerTLSSkipVerify, false),
 	}
 
-	securityConfig, err := base.GoCBv2SecurityConfig(ctx, base.Ptr(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
+	securityConfig, err := base.GoCBv2SecurityConfig(ctx, new(clusterSpec.TLSSkipVerify), clusterSpec.CACertpath)
 	if err != nil {
 		return fmt.Errorf("failed to create security config: %v", err)
 	}

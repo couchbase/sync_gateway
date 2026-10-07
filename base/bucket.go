@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -151,7 +152,7 @@ func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 
 // //GetGoCBConnStringforDCP builds a gocb connection string from BucketSpec.Server for DCP connections.
 func (spec *BucketSpec) GetGoCBConnStringForDCP() (string, error) {
-	return spec.getGoCBConnString(Ptr(GoCBPoolSizeDCP))
+	return spec.getGoCBConnString(new(GoCBPoolSizeDCP))
 }
 
 // getGoCBConnString builds a gocb connection string based on BucketSpec.server values. This is used for bucket connections. KvPoolSize can be forced despite the values of the connection values.
@@ -541,9 +542,9 @@ func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
 	}
 	gocbBucket, err := AsGocbV2Bucket(bucket)
 	if err != nil {
-		// for rosmar bucket and testing, use the bucket name as the source ID to make it easier to identify the source
+		// for rosmar bucket and testing, base the source ID on the bucket name to make it easier to identify the source
 		if underGoTest() {
-			return bucket.GetName(), nil
+			return testSourceID(bucket.GetName(), bucketUUID)
 		}
 		serverUUID := ""
 		return CreateEncodedSourceID(bucketUUID, serverUUID)
@@ -555,6 +556,30 @@ func GetSourceID(ctx context.Context, bucket Bucket) (string, error) {
 		return "", err
 	}
 	return CreateEncodedSourceID(bucketUUID, serverUUID)
+}
+
+// encodedSourceIDLength is the length of a source ID in its encoded form: 16 bytes of unpadded
+// base64.  Couchbase Lite rejects a version whose source ID is any other length, or any string that
+// is not the canonical encoding of 16 bytes.
+const encodedSourceIDLength = 22
+
+// testSourceIDName matches a bucket name testSourceID can embed: letters and digits only, so it never
+// contains the '+' padding, and short enough to leave room for the final 'A'.
+var testSourceIDName = regexp.MustCompile(`^[A-Za-z0-9]{0,21}$`)
+
+// testSourceID returns a source ID for a test bucket that still reads as the bucket's name, so that
+// a real Couchbase Lite in a test accepts the versions Sync Gateway writes.  The name is padded with
+// '+', which is visually quiet and never part of a name, so distinct names always give distinct IDs:
+// "rosmar1" becomes "rosmar1++++++++++++++A".  A name that cannot be embedded that way gets the same
+// encoded ID production would.
+func testSourceID(bucketName, bucketUUID string) (string, error) {
+	if !testSourceIDName.MatchString(bucketName) {
+		return CreateEncodedSourceID(bucketUUID, "")
+	}
+	// The final character carries only the last 2 of the 128 bits, and its other 4 bits must be zero,
+	// so it cannot be another '+'.  'A' is the zero digit: it is valid there and sets no bits of its own,
+	// so it reads as an end marker rather than as part of the ID.
+	return bucketName + strings.Repeat("+", encodedSourceIDLength-1-len(bucketName)) + "A", nil
 }
 
 // CreateEncodedSourceID will hash the bucket UUID and cluster UUID using md5 hash function then will base64 encode it

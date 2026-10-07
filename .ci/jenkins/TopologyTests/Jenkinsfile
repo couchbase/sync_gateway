@@ -64,7 +64,7 @@ pipeline {
         skipDefaultCheckout()
         // A wedged run would otherwise hold one of the two integration-test agents indefinitely.
         timeout(time: 3, unit: 'HOURS')
-        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '30'))
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
 

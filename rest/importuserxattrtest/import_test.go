@@ -300,7 +300,7 @@ func TestAutoImportUserXattrNoSyncData(t *testing.T) {
 }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport:   true,
-			UserXattrKey: base.Ptr("channels"),
+			UserXattrKey: new("channels"),
 		}},
 	}
 

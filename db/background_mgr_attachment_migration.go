@@ -82,6 +82,12 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options Attachmen
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
 		// process from scratch with a new migration ID. Otherwise, we should resume with the migration ID, stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || options.Reset {
+			// The previous run's ID is only available here, before newRunInit replaces it.
+			if statusDoc.MigrationID != "" {
+				if purgeErr := a.purgeCheckpoints(ctx, a.databaseCtx, statusDoc.MigrationID); purgeErr != nil {
+					base.WarnfCtx(ctx, "Failed to delete checkpoints for previous migration ID %q: %v, these will be abandoned and unused", statusDoc.MigrationID, purgeErr)
+				}
+			}
 			return backgroundManagerInitReset, newRunInit()
 		}
 		a.MigrationID = statusDoc.MigrationID

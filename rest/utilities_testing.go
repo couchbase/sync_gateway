@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -62,6 +63,7 @@ type RestTesterConfig struct {
 	EnableUserQueries                bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                 *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	ConnectToBucketFn                db.OpenBucketFn             // Replaces the function used to connect to buckets when loading databases. Cannot be used with LeakyBucketConfig.
 	adminInterface                   string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
 	ISGRSupportedBLIPSubprotocols    []string                    // Forces the BLIP subprotocols used by this node's ISGR active replicators - see Bucket(). Not supported with PersistentConfig.
@@ -80,6 +82,7 @@ type RestTesterConfig struct {
 	maxConcurrentRevs                *int
 	UseXattrConfig                   bool
 	UseSystemScopeMetadataCollection *bool
+	LeakyBootstrapConnectionConfig   *base.LeakyBootstrapConnectionConfig // Set to wrap the bootstrap connection in a LeakyBootstrapConnection. Requires PersistentConfig.
 }
 
 type collectionConfiguration uint8
@@ -180,6 +183,9 @@ func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
+	if rt.RestTesterConfig.LeakyBootstrapConnectionConfig != nil && !rt.RestTesterConfig.PersistentConfig {
+		require.FailNow(tb, "LeakyBootstrapConnectionConfig requires PersistentConfig")
+	}
 	rt.RestTesterConfig.collectionConfig = collectionConfig
 	rt.RestTesterConfig.numCollections = numCollections
 	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(sgtest.UnitTestUrl())
@@ -226,6 +232,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a LeakyBucketConfig")
 	}
 	rt.TestBucket = testBucket
+	if rt.ConnectToBucketFn != nil {
+		require.Nil(rt.TB(), rt.LeakyBucketConfig, "ConnectToBucketFn cannot be used on the RestTester with a LeakyBucketConfig")
+	}
 
 	if rt.PersistentConfig != false {
 		require.Zero(rt.TB(), rt.InitSyncSeq, "RestTesterConfig.InitSyncSeq is not supported with RestTesterConfig.PersistentConfig = true")
@@ -252,13 +261,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = base.Ptr(rt.RestTesterConfig.HideProductInfo)
+	sc.API.HideProductVersion = new(rt.RestTesterConfig.HideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.AdminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
-	sc.Bootstrap.ServerTLSSkipVerify = base.Ptr(base.TestTLSSkipVerify())
+	sc.Bootstrap.ServerTLSSkipVerify = new(base.TestTLSSkipVerify())
 	sc.Unsupported.AllowDbConfigEnvVars = rt.RestTesterConfig.allowDbConfigEnvVars
 	sc.Unsupported.UseXattrConfig = &rt.UseXattrConfig
 	sc.Replicator.MaxConcurrentRevs = rt.RestTesterConfig.maxConcurrentRevs
@@ -266,7 +275,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.UseSystemScopeMetadataCollection != nil {
 		sc.Bootstrap.UseSystemMetadataCollection = rt.RestTesterConfig.UseSystemScopeMetadataCollection
 	} else {
-		sc.Bootstrap.UseSystemMetadataCollection = base.Ptr(base.TestUseSystemMetadataCollection())
+		sc.Bootstrap.UseSystemMetadataCollection = new(base.TestUseSystemMetadataCollection())
 	}
 
 	if rt.RestTesterConfig.GroupID != nil {
@@ -282,7 +291,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		sc.Bootstrap.ConfigGroupID = uniqueUUID.String()
 	}
 
-	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = new(rt.EnableUserQueries)
 
 	// Allow EE-only config even in CE for testing using group IDs.
 	require.NoError(rt.TB(), sc.Validate(base.TestCtx(rt.TB()), true))
@@ -301,12 +310,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.MutateStartupConfig(&sc)
 	}
 
-	sc.Unsupported.UserQueries = base.Ptr(rt.EnableUserQueries)
+	sc.Unsupported.UserQueries = new(rt.EnableUserQueries)
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
 
-	_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
-	if rt.LeakyBucketConfig != nil || isLeaky {
+	if rt.ConnectToBucketFn != nil {
+		rt.RestTesterServerContext.connectToBucketFn = rt.ConnectToBucketFn
+	} else if _, isLeaky := base.AsLeakyBucket(rt.TestBucket); rt.LeakyBucketConfig != nil || isLeaky {
 		rt.RestTesterServerContext.connectToBucketFn = func(ctx context.Context, spec base.BucketSpec, failfast bool) (base.Bucket, error) {
 			if spec.BucketName == testBucket.GetName() {
 				return testBucket.NoCloseClone(), nil
@@ -315,6 +325,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
+	rt.RestTesterServerContext.leakyBootstrapConnectionConfig = rt.RestTesterConfig.LeakyBootstrapConnectionConfig
 	if rt.RestTesterConfig.nodeClusterCompatVersion != nil {
 		rt.RestTesterServerContext.BootstrapContext.clusterCompatVersion = *rt.RestTesterConfig.nodeClusterCompatVersion
 	}
@@ -347,7 +358,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
 		if rt.DatabaseConfig.UseViews == nil {
-			rt.DatabaseConfig.UseViews = base.Ptr(base.TestsDisableGSI())
+			rt.DatabaseConfig.UseViews = new(base.TestsDisableGSI())
 		}
 		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (rt.DatabaseConfig.useGSI() || sgtest.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
@@ -369,7 +380,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.Index == nil {
 			rt.DatabaseConfig.Index = &IndexConfig{}
 		}
-		rt.DatabaseConfig.Index.NumReplicas = base.Ptr(uint(0))
+		rt.DatabaseConfig.Index.NumReplicas = new(uint(0))
 
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
 		rt.DatabaseConfig.Username = username
@@ -381,13 +392,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.Name = "db"
 		}
 		if rt.AllowConflicts {
-			rt.DatabaseConfig.AllowConflicts = base.Ptr(true)
+			rt.DatabaseConfig.AllowConflicts = new(true)
 		}
 		if rt.DatabaseConfig.StoreLegacyRevTreeData == nil {
-			rt.DatabaseConfig.StoreLegacyRevTreeData = base.Ptr(db.DefaultStoreLegacyRevTreeData)
+			rt.DatabaseConfig.StoreLegacyRevTreeData = new(db.DefaultStoreLegacyRevTreeData)
 		}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.Ptr(rt.RestTesterConfig.SgReplicateEnabled)
+		rt.DatabaseConfig.SGReplicateEnabled = new(rt.RestTesterConfig.SgReplicateEnabled)
 
 		if base.TestDisableRevCache() {
 			if rt.DatabaseConfig.CacheConfig == nil {
@@ -396,7 +407,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			if rt.DatabaseConfig.CacheConfig.RevCacheConfig == nil {
 				rt.DatabaseConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{}
 			}
-			rt.DatabaseConfig.CacheConfig.RevCacheConfig.MaxItemCount = base.Ptr[uint32](0)
+			rt.DatabaseConfig.CacheConfig.RevCacheConfig.MaxItemCount = new(uint32(0))
 		}
 
 		// Check for override of AutoImport in the rt config
@@ -406,7 +417,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		autoImport, _ := rt.DatabaseConfig.AutoImportEnabled(ctx)
 		if rt.DatabaseConfig.ImportPartitions == nil && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
-			rt.DatabaseConfig.ImportPartitions = base.Ptr(uint16(1))
+			rt.DatabaseConfig.ImportPartitions = new(uint16(1))
 		}
 		if rt.InitSyncSeq > 0 {
 			metadataKeys := base.DefaultMetadataKeys
@@ -746,6 +757,10 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 
 // templateResource is a non-fatal version of rt.mustTemplateResource
 func (rt *RestTester) templateResource(resource string) (string, error) {
+	// Skip the database lookup, which can race with a concurrent database delete, when there is nothing to template.
+	if !strings.Contains(resource, "{{") {
+		return resource, nil
+	}
 	tmpl, err := template.New("urltemplate").
 		Option("missingkey=error").
 		Parse(resource)
@@ -818,15 +833,21 @@ func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body str
 
 	request.SetBasicAuth(username, password)
 
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestAdminHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestAdminHandler(), request)
 }
 
 func (rt *RestTester) Send(request *http.Request) *TestResponse {
+	return ServeTestRequest(rt.TestPublicHandler(), request)
+}
+
+// ServeTestRequest runs the request against handler, and cancels the request context when the handler returns, as
+// net/http.Server does.
+func ServeTestRequest(handler http.Handler, request *http.Request) *TestResponse {
+	ctx, cancel := context.WithCancelCause(request.Context())
+	defer cancel(errors.New("test request handler returned"))
+	request = request.WithContext(ctx)
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestPublicHandler().ServeHTTP(response, request)
+	handler.ServeHTTP(response, request)
 	return response
 }
 
@@ -843,17 +864,12 @@ func (rt *RestTester) SendMetricsRequestWithHeaders(method, resource string, bod
 }
 
 func (rt *RestTester) sendMetrics(request *http.Request) *TestResponse {
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestMetricsHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestMetricsHandler(), request)
 }
 
 // SendDiagnosticRequest runs a request against the diagnostic handler.
 func (rt *RestTester) SendDiagnosticRequest(method, resource, body string) *TestResponse {
-	request := Request(method, rt.mustTemplateResource(resource), body)
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-	rt.TestDiagnosticHandler().ServeHTTP(response, Request(method, rt.mustTemplateResource(resource), body))
-	return response
+	return ServeTestRequest(rt.TestDiagnosticHandler(), Request(method, rt.mustTemplateResource(resource), body))
 }
 
 // SendDiagnosticRequestWithHeaders runs a request against the diagnostic handler with headers.
@@ -862,10 +878,7 @@ func (rt *RestTester) SendDiagnosticRequestWithHeaders(method, resource string, 
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestDiagnosticHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestDiagnosticHandler(), request)
 }
 
 var fakeRestTesterIP = net.IPv4(127, 0, 0, 99)
@@ -904,12 +917,7 @@ func (rt *RestTester) TestDiagnosticHandler() http.Handler {
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource, body string) *TestResponse {
-	request := Request(method, rt.mustTemplateResource(resource), body)
-
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestAdminHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestAdminHandler(), Request(method, rt.mustTemplateResource(resource), body))
 }
 
 func (rt *RestTester) SendUserRequest(method, resource, body, username string) *TestResponse {
@@ -1090,10 +1098,7 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
-	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-
-	rt.TestAdminHandler().ServeHTTP(response, request)
-	return response
+	return ServeTestRequest(rt.TestAdminHandler(), request)
 }
 
 // SetAdminChannels creates or updates a user with the specified channels.
@@ -1159,16 +1164,6 @@ func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	var rawResponse RawDocResponse
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &rawResponse))
 	return rawResponse
-}
-
-// ReplacePerBucketCredentials replaces buckets defined on StartupConfig.BucketCredentials then recreates the couchbase
-// cluster to pick up the changes
-func (rt *RestTester) ReplacePerBucketCredentials(config base.PerBucketCredentialsConfig) {
-	rt.ServerContext().Config.BucketCredentials = config
-	// Update the CouchbaseCluster to include the new bucket credentials
-	couchbaseCluster, err := CreateBootstrapConnectionFromStartupConfig(base.TestCtx(rt.TB()), rt.ServerContext().Config, base.PerUseClusterConnections)
-	require.NoError(rt.TB(), err)
-	rt.ServerContext().BootstrapContext.Connection = couchbaseCluster
 }
 
 // Context returns a context for a rest tester with server and database log context, if available an unambiguous.
@@ -2574,24 +2569,24 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
 	config := DbConfig{
 		BucketConfig: BucketConfig{
-			Bucket: base.Ptr(rt.Bucket().GetName()),
+			Bucket: new(rt.Bucket().GetName()),
 		},
 	}
 	if base.TestsDisableGSI() {
 		// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
 		if !sgtest.UnitTestUrlIsWalrus() {
-			config.UseViews = base.Ptr(true)
+			config.UseViews = new(true)
 		}
 	} else {
 		config.Index = &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+			NumReplicas: new(uint(0)),
 		}
 	}
 
 	if base.TestDisableRevCache() {
 		config.CacheConfig = &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
-				MaxItemCount: base.Ptr[uint32](0),
+				MaxItemCount: new(uint32(0)),
 			},
 		}
 	}
@@ -2607,7 +2602,7 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	if rt.GuestEnabled {
 		config.Guest = &auth.PrincipalConfig{
 			Name:     stringPtrOrNil(base.GuestUsername),
-			Disabled: base.Ptr(false),
+			Disabled: new(false),
 		}
 		setChannelsAllCollections(config, config.Guest, "*")
 	}
@@ -2641,7 +2636,7 @@ func stringPtrOrNil(s string) *string {
 	if s == "" {
 		return nil
 	}
-	return base.Ptr(s)
+	return new(s)
 }
 
 func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expectedDbNames []string) {
@@ -2751,7 +2746,7 @@ func JsonToMap(t *testing.T, jsonStr string) map[string]any {
 func (sc *ServerContext) reloadDatabaseWithConfigLoadFromBucket(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc._databasesLock.Lock()
 	defer sc._databasesLock.Unlock()
-	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct, config, true, true)
 }
 
 // TestBucketPoolRestWithIndexes is the main function that should be used for TestMain in subpackages of rest.

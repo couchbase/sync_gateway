@@ -35,24 +35,24 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			ConfigGroupID:               PersistentConfigDefaultGroupID,
 			ConfigUpdateFrequency:       base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 			NodeHeartbeatExpiry:         base.NewConfigDuration(defaultNodeHeartbeatExpiry),
-			ServerTLSSkipVerify:         base.Ptr(false),
-			UseTLSServer:                base.Ptr(DefaultUseTLSServer),
-			UseSystemMetadataCollection: base.Ptr(DefaultUseSystemMetadataCollection),
+			ServerTLSSkipVerify:         new(false),
+			UseTLSServer:                new(DefaultUseTLSServer),
+			UseSystemMetadataCollection: new(DefaultUseSystemMetadataCollection),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
 			AdminInterface:     DefaultAdminInterface,
 			MetricsInterface:   DefaultMetricsInterface,
 			MaximumConnections: DefaultMaxIncomingConnections,
-			CompressResponses:  base.Ptr(true),
+			CompressResponses:  new(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
 			ReadHeaderTimeout:                         base.NewConfigDuration(base.DefaultReadHeaderTimeout),
 			IdleTimeout:                               base.NewConfigDuration(base.DefaultIdleTimeout),
-			AdminInterfaceAuthentication:              base.Ptr(true),
-			MetricsInterfaceAuthentication:            base.Ptr(true),
-			EnableAdminAuthenticationPermissionsCheck: base.Ptr(base.IsEnterpriseEdition()),
+			AdminInterfaceAuthentication:              new(true),
+			MetricsInterfaceAuthentication:            new(true),
+			EnableAdminAuthenticationPermissionsCheck: new(base.IsEnterpriseEdition()),
 		},
 		Logging: base.LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
@@ -62,12 +62,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Replicator: ReplicatorConfig{
-			MaxConcurrentChangesBatches: base.Ptr(db.DefaultMaxConcurrentChangesBatches),
-			MaxConcurrentRevs:           base.Ptr(db.DefaultMaxConcurrentRevs),
+			MaxConcurrentChangesBatches: new(db.DefaultMaxConcurrentChangesBatches),
+			MaxConcurrentRevs:           new(db.DefaultMaxConcurrentRevs),
 		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency:    base.NewConfigDuration(time.Minute),
-			AllowDbConfigEnvVars: base.Ptr(true),
+			AllowDbConfigEnvVars: new(true),
 			DiagnosticInterface:  DefaultDiagnosticInterface, // Disabled by default
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
@@ -124,6 +124,7 @@ type APIConfig struct {
 	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
+	EnableLocalEndpointForPublicAPI           *bool `json:"enable_local_endpoint_for_public_api,omitempty" help:"Whether to enable the local endpoint for public API"`
 
 	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration before timing out read of the HTTP(S) request"`
 	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"Maximum duration before timing out write of the HTTP(S) response"`
@@ -308,4 +309,11 @@ func logRuntimeEnvironment(ctx context.Context, rs *RuntimeStatus) {
 // Merge applies non-empty fields from new onto non-empty fields on sc
 func (sc *StartupConfig) Merge(new *StartupConfig) error {
 	return base.ConfigMerge(sc, new)
+}
+
+func (sc *StartupConfig) LocalEndpointForPublicAPIEnabled() bool {
+	if sc.API.EnableLocalEndpointForPublicAPI == nil {
+		return true
+	}
+	return *sc.API.EnableLocalEndpointForPublicAPI
 }

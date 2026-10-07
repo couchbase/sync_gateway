@@ -59,7 +59,7 @@ func GetGoCBv2Bucket(ctx context.Context, spec BucketSpec) (*GocbV2Bucket, error
 		InfofCtx(ctx, KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 	}
 
-	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, Ptr(spec.GetViewQueryTimeout()))
+	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, new(spec.GetViewQueryTimeout()))
 	InfofCtx(ctx, KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
@@ -556,7 +556,11 @@ func (b *GocbV2Bucket) MgmtRequest(ctx context.Context, method, uri, contentType
 		username, password, _ = b.Spec.Auth.GetCredentials()
 	}
 
-	respBytes, statusCode, err := MgmtRequest(ctx, b.HttpClient(ctx), mgmtEp, method, uri, contentType, username, password, body)
+	client := b.HttpClient(ctx)
+	if client == nil {
+		return nil, 0, errors.New("unable to obtain http client for management request")
+	}
+	respBytes, statusCode, err := MgmtRequest(ctx, client, mgmtEp, method, uri, contentType, username, password, body)
 	if err != nil {
 		return nil, statusCode, err
 	}

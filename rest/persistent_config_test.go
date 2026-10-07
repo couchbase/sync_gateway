@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -492,7 +493,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 
 			const dbName = "c1_db1"
 			collection1db1Config := getTestDatabaseConfig(bucketName, dbName, collection1ScopesConfig, "2-a")
-			collection1db1Config.RevsLimit = base.Ptr(uint32(1000))
+			collection1db1Config.RevsLimit = new(uint32(1000))
 			cas, err := bc.InsertConfig(ctx, bucketName, groupID, collection1db1Config)
 			require.NoError(t, err)
 			configs, err := bc.GetDatabaseConfigs(ctx, bucketName, groupID)
@@ -507,7 +508,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			docID := PersistentConfigKey(ctx, groupID, dbName)
 			updatedConfig := *collection1db1Config
 			updatedConfig.Version = "1-a"
-			updatedConfig.RevsLimit = base.Ptr(uint32(500))
+			updatedConfig.RevsLimit = new(uint32(500))
 			_, err = bc.Connection.WriteMetadataDocument(ctx, bucketName, docID, cas, &updatedConfig)
 			require.NoError(t, err)
 
@@ -526,7 +527,7 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 			// at this point the config and registry are re-aligned, but let's just write another config update to make sure it's in an updatable state
 			_, err = bc.UpdateConfig(ctx, bucketName, groupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 				bucketDbConfig.Version = "3-c"
-				bucketDbConfig.RevsLimit = base.Ptr(uint32(1234))
+				bucketDbConfig.RevsLimit = new(uint32(1234))
 				return bucketDbConfig, nil
 			})
 			require.NoError(t, err)
@@ -1187,7 +1188,7 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 
 	// Set up test for persistent config
 	config := BootstrapStartupConfigForTest(t)
-	config.Unsupported.UseXattrConfig = base.Ptr(true)
+	config.Unsupported.UseXattrConfig = new(true)
 	// "disable" config polling for this test, to avoid non-deterministic test output based on polling times.
 	// Clear NodeHeartbeatExpiry so validation does not enforce the 2x ConfigUpdateFrequency floor — this test
 	// does not exercise cluster-compat heartbeats and the long poll interval never fires.
@@ -1360,7 +1361,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig ScopesConfig) D
 			Bucket: &bucketName,
 		},
 		Index: &IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+			NumReplicas: new(uint(0)),
 		},
 		Scopes: scopesConfig,
 	}
@@ -1483,7 +1484,7 @@ func startBootstrapServerWithoutConfigPolling(t *testing.T, useXattrConfig bool)
 	// tests do not exercise cluster-compat heartbeats and the long poll interval never fires.
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour * 24)
 	config.Bootstrap.NodeHeartbeatExpiry = nil
-	config.Unsupported.UseXattrConfig = base.Ptr(useXattrConfig)
+	config.Unsupported.UseXattrConfig = new(useXattrConfig)
 	return StartServerWithConfig(t, &config)
 }
 
@@ -1513,4 +1514,244 @@ func persistentConfigTestCases() []persistentConfigTestCase {
 			},
 		}
 	}
+}
+
+// createDbOnCluster creates a database on the first node and waits for every node to load it.
+func createDbOnCluster(t *testing.T, rtc *RestTesterCluster, dbName string) {
+	RequireStatus(t, rtc.Node(0).CreateDatabase(dbName, dbConfigForTestBucket(rtc.testBucket)), http.StatusCreated)
+	count, err := rtc.RefreshClusterDbConfigs()
+	require.NoError(t, err)
+	require.Equal(t, rtc.NumNodes()-1, count)
+}
+
+// TestDeleteDbConfigAlreadyDeletedByPeer deletes a database on a node after a peer deleted it, but before this node's
+// config poller unloaded it.
+func TestDeleteDbConfigAlreadyDeletedByPeer(t *testing.T) {
+	ctx := base.TestCtx(t)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{NumNodes: 2})
+	defer rtc.Close(ctx)
+
+	const dbName = "db"
+	createDbOnCluster(t, rtc, dbName)
+	node, peer := rtc.Node(0), rtc.Node(1)
+
+	RequireStatus(t, peer.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", ""), http.StatusOK)
+	require.NotNil(t, node.ServerContext().GetDatabaseConfig(dbName), "node unloaded the database before the test deleted it")
+
+	RequireStatus(t, node.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", ""), http.StatusOK)
+	assert.Nil(t, node.ServerContext().GetDatabaseConfig(dbName))
+}
+
+// TestDeleteDbConfigDocDeletedByPeerDuringDelete deletes a database on a node while a peer deletes the same database.
+// The peer finds the node's delete in progress in the registry, times out waiting for it, and completes the delete
+// itself before the node removes the config doc.
+func TestDeleteDbConfigDocDeletedByPeerDuringDelete(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("TODO: CBG-4796 unskip once Rosmar returns not found instead of a CAS mismatch when removing a deleted doc")
+	}
+	const dbName = "db"
+	var peer *RestTester
+	var peerDeleteResp *TestResponse
+	ctx := base.TestCtx(t)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+		LeakyBootstrapConnectionConfigs: map[int]*base.LeakyBootstrapConnectionConfig{
+			0: {
+				BeforeDeleteMetadataDocument: func(_, _ string) {
+					if peer != nil && peerDeleteResp == nil {
+						peerDeleteResp = peer.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", "")
+					}
+				},
+			},
+		},
+	})
+	defer rtc.Close(ctx)
+
+	createDbOnCluster(t, rtc, dbName)
+	node := rtc.Node(0)
+	peer = rtc.Node(1)
+	peer.ServerContext().BootstrapContext.configRetryTimeout = time.Millisecond
+
+	RequireStatus(t, node.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", ""), http.StatusOK)
+	require.NotNil(t, peerDeleteResp, "peer did not delete the database during the node's delete")
+	RequireStatus(t, peerDeleteResp, http.StatusOK)
+
+	rtc.ForEachNode(func(rt *RestTester) {
+		assert.Nil(t, rt.ServerContext().GetDatabaseConfig(dbName))
+	})
+	RequireStatus(t, node.CreateDatabase(dbName, dbConfigForTestBucket(rtc.testBucket)), http.StatusCreated)
+}
+
+// TestDeleteDbConfigFinalizesRegistryAfterPeerDeletesConfigDoc deletes a database on a node while a peer removes the
+// config doc but stops before it removes the database from the registry, as happens when the peer crashes.
+func TestDeleteDbConfigFinalizesRegistryAfterPeerDeletesConfigDoc(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("TODO: CBG-4796 unskip once Rosmar returns not found instead of a CAS mismatch when removing a deleted doc")
+	}
+	const dbName = "db"
+	var peer *RestTester
+	peerDeleted := false
+	ctx := base.TestCtx(t)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+		LeakyBootstrapConnectionConfigs: map[int]*base.LeakyBootstrapConnectionConfig{
+			0: {
+				BeforeDeleteMetadataDocument: func(bucket, key string) {
+					if peer == nil || peerDeleted {
+						return
+					}
+					peerDeleted = true
+					peerConn := peer.ServerContext().BootstrapContext.Connection
+					var config DatabaseConfig
+					cas, err := peerConn.GetMetadataDocument(ctx, bucket, key, &config)
+					require.NoError(t, err)
+					require.NoError(t, peerConn.DeleteMetadataDocument(ctx, bucket, key, cas))
+				},
+			},
+		},
+	})
+	defer rtc.Close(ctx)
+
+	createDbOnCluster(t, rtc, dbName)
+	node := rtc.Node(0)
+	peer = rtc.Node(1)
+
+	RequireStatus(t, node.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", ""), http.StatusOK)
+	require.True(t, peerDeleted, "peer did not delete the config doc during the node's delete")
+
+	sc := node.ServerContext()
+	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, rtc.testBucket.GetName())
+	require.NoError(t, err)
+	registryDb, found := registry.getRegistryDatabase(sc.Config.Bootstrap.ConfigGroupID, dbName)
+	assert.False(t, found, "database remains in registry: %+v", registryDb)
+}
+
+// TestDeleteDbConfigAfterInterruptedDelete deletes a database whose registry entry is marked deleted by a node that
+// stopped before it removed the config doc.
+func TestDeleteDbConfigAfterInterruptedDelete(t *testing.T) {
+	rt := NewRestTesterPersistentConfig(t)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	sc := rt.ServerContext()
+	bucketName := rt.Bucket().GetName()
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	sc.BootstrapContext.configRetryTimeout = time.Millisecond
+
+	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	require.NoError(t, registry.deleteDatabase(groupID, "db"))
+	require.NoError(t, sc.BootstrapContext.setGatewayRegistry(ctx, bucketName, registry))
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+	assert.Nil(t, sc.GetDatabaseConfig("db"))
+
+	var config DatabaseConfig
+	_, err = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey(ctx, groupID, "db"), &config)
+	require.True(t, base.IsDocNotFoundError(err), "expected config doc to be deleted, got %v", err)
+	registry, err = sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
+	registryDb, found := registry.getRegistryDatabase(groupID, "db")
+	assert.False(t, found, "database remains in registry: %+v", registryDb)
+}
+
+// startRecreateOnPeer writes the registry entry that the peer's InsertConfig writes before it writes the config doc,
+// and returns the new version.
+func startRecreateOnPeer(t *testing.T, ctx context.Context, peer *RestTester, bucket string, config DatabaseConfig) string {
+	peerCtx := peer.ServerContext().BootstrapContext
+	groupID := peer.ServerContext().Config.Bootstrap.ConfigGroupID
+	registry, existingConfig, err := peerCtx.getRegistryAndDatabase(ctx, bucket, groupID, config.Name)
+	require.NoError(t, err)
+	require.Nil(t, existingConfig)
+	config.Version, err = GenerateDatabaseConfigVersionID(ctx, config.Version, &config.DbConfig)
+	require.NoError(t, err)
+	_, err = registry.upsertDatabaseConfig(ctx, groupID, &config)
+	require.NoError(t, err)
+	require.NoError(t, peerCtx.setGatewayRegistry(ctx, bucket, registry))
+	return config.Version
+}
+
+// requireRegistryVersion requires the registry entry for dbName to have the given version.
+func requireRegistryVersion(t *testing.T, ctx context.Context, rt *RestTester, bucket, dbName, version string) {
+	sc := rt.ServerContext()
+	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
+	require.NoError(t, err)
+	registryDb, found := registry.getRegistryDatabase(sc.Config.Bootstrap.ConfigGroupID, dbName)
+	require.True(t, found, "database %s is not in the registry", dbName)
+	assert.Equal(t, version, registryDb.Version)
+}
+
+// TestDeleteDbConfigKeepsDbRecreatedByPeer deletes a database on a node while a peer removes the config doc and starts
+// to recreate the database, having written the new registry entry but not yet the new config doc.
+func TestDeleteDbConfigKeepsDbRecreatedByPeer(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("TODO: CBG-4796 unskip once Rosmar returns not found instead of a CAS mismatch when removing a deleted doc")
+	}
+	const dbName = "db"
+	var peer *RestTester
+	var recreatedVersion string
+	ctx := base.TestCtx(t)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+		LeakyBootstrapConnectionConfigs: map[int]*base.LeakyBootstrapConnectionConfig{
+			0: {
+				BeforeDeleteMetadataDocument: func(bucket, key string) {
+					if peer == nil || recreatedVersion != "" {
+						return
+					}
+					peerConn := peer.ServerContext().BootstrapContext.Connection
+					var config DatabaseConfig
+					cas, err := peerConn.GetMetadataDocument(ctx, bucket, key, &config)
+					require.NoError(t, err)
+					require.NoError(t, peerConn.DeleteMetadataDocument(ctx, bucket, key, cas))
+					recreatedVersion = startRecreateOnPeer(t, ctx, peer, bucket, config)
+				},
+			},
+		},
+	})
+	defer rtc.Close(ctx)
+
+	createDbOnCluster(t, rtc, dbName)
+	node := rtc.Node(0)
+	peer = rtc.Node(1)
+
+	RequireStatus(t, node.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", ""), http.StatusOK)
+	require.NotEmpty(t, recreatedVersion, "peer did not recreate the database during the node's delete")
+	requireRegistryVersion(t, ctx, node, rtc.testBucket.GetName(), dbName, recreatedVersion)
+}
+
+// TestDeleteDbConfigKeepsDbRecreatedByPeerAfterConfigDelete deletes a database on a node while a peer starts to
+// recreate the database after the node removed the config doc, but before the node finalized the registry.
+func TestDeleteDbConfigKeepsDbRecreatedByPeerAfterConfigDelete(t *testing.T) {
+	const dbName = "db"
+	var peer *RestTester
+	var deletedConfig *DatabaseConfig
+	var recreatedVersion string
+	ctx := base.TestCtx(t)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{
+		NumNodes: 2,
+		LeakyBootstrapConnectionConfigs: map[int]*base.LeakyBootstrapConnectionConfig{
+			0: {
+				AfterDeleteMetadataDocument: func(bucket, _ string) {
+					if deletedConfig == nil || recreatedVersion != "" {
+						return
+					}
+					recreatedVersion = startRecreateOnPeer(t, ctx, peer, bucket, *deletedConfig)
+				},
+			},
+		},
+	})
+	defer rtc.Close(ctx)
+
+	createDbOnCluster(t, rtc, dbName)
+	node := rtc.Node(0)
+	peer = rtc.Node(1)
+	bucket := rtc.testBucket.GetName()
+	deletedConfig = &DatabaseConfig{}
+	_, err := node.ServerContext().BootstrapContext.Connection.GetMetadataDocument(ctx, bucket, PersistentConfigKey(ctx, node.ServerContext().Config.Bootstrap.ConfigGroupID, dbName), deletedConfig)
+	require.NoError(t, err)
+
+	RequireStatus(t, node.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", ""), http.StatusOK)
+	require.NotEmpty(t, recreatedVersion, "peer did not recreate the database during the node's delete")
+	requireRegistryVersion(t, ctx, node, bucket, dbName, recreatedVersion)
 }

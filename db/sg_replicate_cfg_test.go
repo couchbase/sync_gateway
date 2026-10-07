@@ -495,7 +495,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				Direction: "pull",
 			},
 			updatedConfig: &ReplicationUpsertConfig{
-				Direction: base.Ptr("push"),
+				Direction: new("push"),
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:        "foo",
@@ -512,7 +512,7 @@ func TestUpsertReplicationConfig(t *testing.T) {
 				ConflictResolutionFn: "func(){}",
 			},
 			updatedConfig: &ReplicationUpsertConfig{
-				ConflictResolutionFn: base.Ptr(""),
+				ConflictResolutionFn: new(""),
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:                   "foo",
@@ -557,16 +557,16 @@ func TestUpsertReplicationConfig(t *testing.T) {
 			},
 			updatedConfig: &ReplicationUpsertConfig{
 				ID:                     "foo",
-				Remote:                 base.Ptr("b"),
-				Direction:              base.Ptr("b"),
-				ConflictResolutionType: base.Ptr("b"),
-				ConflictResolutionFn:   base.Ptr("b"),
-				PurgeOnRemoval:         base.Ptr(false),
-				DeltaSyncEnabled:       base.Ptr(false),
-				MaxBackoff:             base.Ptr(10),
-				InitialState:           base.Ptr("b"),
-				Continuous:             base.Ptr(false),
-				Filter:                 base.Ptr("b"),
+				Remote:                 new("b"),
+				Direction:              new("b"),
+				ConflictResolutionType: new("b"),
+				ConflictResolutionFn:   new("b"),
+				PurgeOnRemoval:         new(false),
+				DeltaSyncEnabled:       new(false),
+				MaxBackoff:             new(10),
+				InitialState:           new("b"),
+				Continuous:             new(false),
+				Filter:                 new("b"),
 				QueryParams:            []any{"DEF"},
 			},
 			expectedConfig: &ReplicationConfig{
@@ -629,42 +629,42 @@ func TestIsCfgChanged(t *testing.T) {
 		{
 			name: "remoteChanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				Remote: base.Ptr("b"),
+				Remote: new("b"),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "directionChanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				Direction: base.Ptr(string(ActiveReplicatorTypePushAndPull)),
+				Direction: new(string(ActiveReplicatorTypePushAndPull)),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "conflictResolverChanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				ConflictResolutionType: base.Ptr(string(ConflictResolverDefault)),
+				ConflictResolutionType: new(string(ConflictResolverDefault)),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "conflictResolverFnChange",
 			updatedConfig: &ReplicationUpsertConfig{
-				ConflictResolutionFn: base.Ptr("b"),
+				ConflictResolutionFn: new("b"),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "passwordChanged", // Verify fix CBG-1858
 			updatedConfig: &ReplicationUpsertConfig{
-				Password: base.Ptr("changed"),
+				Password: new("changed"),
 			},
 			expectedChanged: true,
 		},
 		{
 			name: "collections enabled",
 			updatedConfig: &ReplicationUpsertConfig{
-				CollectionsEnabled: base.Ptr(true),
+				CollectionsEnabled: new(true),
 			},
 			expectedChanged: true,
 		},
@@ -685,8 +685,8 @@ func TestIsCfgChanged(t *testing.T) {
 		{
 			name: "unchanged",
 			updatedConfig: &ReplicationUpsertConfig{
-				Remote:               base.Ptr("a"),
-				ConflictResolutionFn: base.Ptr("a"),
+				Remote:               new("a"),
+				ConflictResolutionFn: new("a"),
 				CollectionsLocal:     []string{"foo.bar"},
 			},
 			expectedChanged: false,
@@ -1372,4 +1372,133 @@ func TestSGReplicateManagerStopDrainsClusterUpdates(t *testing.T) {
 		return true, nil
 	}))
 	require.False(t, ran, "cluster update ran after Stop returned")
+}
+
+// TestReplicationStatusBeforeReplicatorStarts asserts that a replication assigned to a node that has not
+// initialized its replicator yet is reported as starting rather than running.  Nothing has connected to the
+// remote at this point, and callers waiting for running would otherwise proceed while a start is still to come.
+func TestReplicationStatusBeforeReplicatorStarts(t *testing.T) {
+	const (
+		localNodeUUID = "localNode"
+		otherNodeUUID = "otherNode"
+	)
+
+	testCases := []struct {
+		name           string
+		otherNodeOwns  bool
+		initialState   string
+		expectedStatus string
+		active         bool
+	}{
+		{name: "running", initialState: ReplicationStateRunning, expectedStatus: ReplicationStateStarting, active: true},
+		{name: "stopped", initialState: ReplicationStateStopped, expectedStatus: ReplicationStateStopped, active: false},
+		{name: "other node running", otherNodeOwns: true, initialState: ReplicationStateRunning, expectedStatus: ReplicationStateStarting, active: true},
+		{name: "other node stopped", otherNodeOwns: true, initialState: ReplicationStateStopped, expectedStatus: ReplicationStateStopped, active: false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			testDB, ctx := SetupTestDB(t)
+			defer testDB.Close(ctx)
+
+			mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testDB.CfgSG)
+			require.NoError(t, err)
+
+			// The first node to join owns the replication, and a second node joining does not move it.
+			expectedNode := localNodeUUID
+			if tc.otherNodeOwns {
+				expectedNode = otherNodeUUID
+				require.NoError(t, mgr.RegisterNode(otherNodeUUID))
+			} else {
+				require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+			}
+
+			const replicationID = "rep"
+			created, err := mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{
+				ID:                 replicationID,
+				Remote:             new("http://localhost:4984/remotedb"),
+				Direction:          new(string(ActiveReplicatorTypePush)),
+				CollectionsEnabled: new(!testDB.OnlyDefaultCollection()),
+				InitialState:       new(tc.initialState),
+			})
+			require.NoError(t, err)
+			require.True(t, created)
+
+			if tc.otherNodeOwns {
+				require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+			} else {
+				require.NoError(t, mgr.RegisterNode(otherNodeUUID))
+			}
+			cluster, err := mgr.GetSGRCluster()
+			require.NoError(t, err)
+			require.Equal(t, expectedNode, cluster.Replications[replicationID].AssignedNode)
+
+			// No RefreshReplicationCfg, so no replicator exists and no status has been published.
+			require.Nil(t, mgr.GetActiveReplicator(replicationID))
+
+			status, err := mgr.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, status.Status)
+
+			// activeOnly covers a replication that is starting, so a caller does not lose sight of it
+			// between the config write and the first connection.
+			options := DefaultReplicationStatusOptions()
+			options.ActiveOnly = true
+			activeStatuses, err := mgr.GetReplicationStatusAll(ctx, options)
+			require.NoError(t, err)
+			activeIDs := make([]string, 0, len(activeStatuses))
+			for _, activeStatus := range activeStatuses {
+				activeIDs = append(activeIDs, activeStatus.ID)
+			}
+			if tc.active {
+				require.Contains(t, activeIDs, replicationID)
+			} else {
+				require.NotContains(t, activeIDs, replicationID)
+			}
+
+			// An upsert needs a stopped replication, and a replication that is starting is not stopped.
+			created, err = mgr.UpsertReplication(ctx, &ReplicationUpsertConfig{ID: replicationID, Remote: new("http://localhost:4984/otherdb")})
+			if tc.active {
+				require.Error(t, err)
+				status, _ := base.ErrorAsHTTPStatus(err)
+				require.Equal(t, http.StatusBadRequest, status)
+			} else {
+				require.NoError(t, err)
+				require.False(t, created)
+			}
+		})
+	}
+}
+
+// TestReplicationStatusUnsetTargetState asserts that a cfg without a target state reports like a running one,
+// since startup treats it as running. No API writes this, so the cfg is written directly.
+func TestReplicationStatusUnsetTargetState(t *testing.T) {
+	testDB, ctx := SetupTestDB(t)
+	defer testDB.Close(ctx)
+
+	const (
+		localNodeUUID = "localNode"
+		replicationID = "rep"
+	)
+
+	mgr, err := NewSGReplicateManager(ctx, testDB.DatabaseContext, testDB.CfgSG)
+	require.NoError(t, err)
+	require.NoError(t, mgr.StartLocalNode(localNodeUUID, nil))
+	require.NoError(t, mgr.AddReplication(&ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{
+			ID:        replicationID,
+			Direction: ActiveReplicatorTypePush,
+			Remote:    "http://localhost:4984/remotedb",
+		},
+		AssignedNode: localNodeUUID,
+	}))
+
+	status, err := mgr.GetReplicationStatus(ctx, replicationID, DefaultReplicationStatusOptions())
+	require.NoError(t, err)
+	require.Equal(t, ReplicationStateStarting, status.Status)
+
+	options := DefaultReplicationStatusOptions()
+	options.ActiveOnly = true
+	status, err = mgr.GetReplicationStatus(ctx, replicationID, options)
+	require.NoError(t, err)
+	require.NotNil(t, status)
 }

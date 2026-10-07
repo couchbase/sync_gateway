@@ -131,11 +131,11 @@ func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 			JWTConfigCommon: auth.JWTConfigCommon{
 				Register: true,
 				Issuer:   "${baseURL}/db/_oidc_testing",
-				ClientID: base.Ptr("sync_gateway"),
+				ClientID: new("sync_gateway"),
 			},
 			Name:          "test",
-			ValidationKey: base.Ptr("qux"),
-			CallbackURL:   base.Ptr("${baseURL}/db/_oidc_callback"),
+			ValidationKey: new("qux"),
+			CallbackURL:   new("${baseURL}/db/_oidc_callback"),
 		},
 	}
 	defaultProvider := "test"
@@ -166,7 +166,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 	mockSyncGatewayURL := mockSyncGateway.URL
 	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-	provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
+	provider.CallbackURL = new(mockSyncGateway.URL + "/db/_oidc_callback")
 
 	// Send OpenID Connect request
 	authURL := "/db/_oidc?provider=test&offline=true"
@@ -221,7 +221,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 	mockSyncGatewayURL := mockSyncGateway.URL
 	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-	provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
+	provider.CallbackURL = new(mockSyncGateway.URL + "/db/_oidc_callback")
 
 	// Send OpenID Connect request
 	authURL := "/db/_oidc?provider=test&offline=true"
@@ -287,12 +287,12 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 					JWTConfigCommon: auth.JWTConfigCommon{
 						Register:   true,
 						Issuer:     "${baseURL}/db/_oidc_testing",
-						ClientID:   base.Ptr("sync_gateway"),
+						ClientID:   new("sync_gateway"),
 						UserPrefix: "foo",
 					},
 					Name:          "test",
-					ValidationKey: base.Ptr("qux"),
-					CallbackURL:   base.Ptr("${baseURL}/db/_oidc_callback"),
+					ValidationKey: new("qux"),
+					CallbackURL:   new("${baseURL}/db/_oidc_callback"),
 				},
 			}
 			defaultProvider := "test"
@@ -315,7 +315,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			mockSyncGatewayURL := mockSyncGateway.URL
 			provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 			provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-			provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
+			provider.CallbackURL = new(mockSyncGateway.URL + "/db/_oidc_callback")
 			createUser(t, restTester, "foo_noah")
 
 			// Send OpenID Connect request
@@ -387,12 +387,12 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 			JWTConfigCommon: auth.JWTConfigCommon{
 				Register:   true,
 				Issuer:     "${baseURL}/db/_oidc_testing",
-				ClientID:   base.Ptr("sync_gateway"),
+				ClientID:   new("sync_gateway"),
 				UserPrefix: "foo",
 			},
 			Name:          "test",
-			ValidationKey: base.Ptr("qux"),
-			CallbackURL:   base.Ptr("${baseURL}/db/_oidc_callback"),
+			ValidationKey: new("qux"),
+			CallbackURL:   new("${baseURL}/db/_oidc_callback"),
 		},
 	}
 	defaultProvider := "test"
@@ -406,7 +406,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 					Enabled: true,
 				},
 			},
-			DisablePasswordAuth: base.Ptr(true),
+			DisablePasswordAuth: new(true),
 		}}}
 	restTester := NewRestTester(t,
 		&restTesterConfig)
@@ -417,7 +417,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	mockSyncGatewayURL := mockSyncGateway.URL
 	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
 	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
-	provider.CallbackURL = base.Ptr(mockSyncGateway.URL + "/db/_oidc_callback")
+	provider.CallbackURL = new(mockSyncGateway.URL + "/db/_oidc_callback")
 	createUser(t, restTester, "foo_noah")
 
 	// Send OpenID Connect request

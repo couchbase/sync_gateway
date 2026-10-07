@@ -39,7 +39,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 
 	rt.SyncFn = `function(doc, oldDoc) {channel("A")}`
 	config := rt.NewDbConfig()
-	config.StartOffline = base.Ptr(true)
+	config.StartOffline = new(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, config), http.StatusCreated)
 	rt.WaitForDBInitializationCompleted(dbName)
 

@@ -891,12 +891,6 @@ func sanitizeRequestURLQueryParams(urlStr string, values url.Values) string {
 	return urlStr
 }
 
-// Ptr returns a pointer to the given literal.
-// This is useful for wrapping around function calls that return a value, where you can't just use `&`.
-func Ptr[T any](v T) *T {
-	return &v
-}
-
 // ValDefault returns ifNil if val is nil, otherwise returns dereferenced value of val
 func ValDefault[T any](val *T, ifNil T) T {
 	if val != nil {

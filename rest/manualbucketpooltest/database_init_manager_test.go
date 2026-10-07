@@ -98,12 +98,12 @@ func TestDatabaseInitConcurrentDatabasesSameBucket(t *testing.T) {
 
 	db1Name := "db1Name"
 	db1Config := makeDbConfig(tb.GetName(), db1Name, collection1and2ScopesConfig)
-	db1Config.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db1Config.UseSystemMobileMetadataCollection = new(true)
 	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db1Config, db1Name, sc.Config.Bootstrap))
 
 	db2Name := "db2Name"
 	db2Config := makeDbConfig(tb.GetName(), db2Name, collection3ScopesConfig)
-	db2Config.UseSystemMobileMetadataCollection = base.Ptr(true)
+	db2Config.UseSystemMobileMetadataCollection = new(true)
 	require.NoError(t, rest.SetupDbConfigForTest(ctx, &db2Config, db2Name, sc.Config.Bootstrap))
 
 	// Start first async index creation, should block after first collection
@@ -214,7 +214,7 @@ func makeDbConfig(bucketName string, dbName string, scopesConfig rest.ScopesConf
 			Bucket: &bucketName,
 		},
 		Index: &rest.IndexConfig{
-			NumReplicas: base.Ptr(uint(0)),
+			NumReplicas: new(uint(0)),
 		},
 		Scopes: scopesConfig,
 	}

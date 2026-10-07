@@ -99,7 +99,7 @@ func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec
 
 	// use longer timeout than DefaultBucketOpTimeout to avoid timeouts in test harness from using buckets after flush, which takes some time to reinitialize
 	bucketOpTimeout := 30 * time.Second
-	timeoutsConfig := GoCBv2TimeoutsConfig(&bucketOpTimeout, Ptr(DefaultViewTimeout))
+	timeoutsConfig := GoCBv2TimeoutsConfig(&bucketOpTimeout, new(DefaultViewTimeout))
 
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticatorConfig,

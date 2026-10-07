@@ -2187,7 +2187,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	defer rt.Close()
 
 	dbConfig := rt.NewDbConfig()
-	dbConfig.AutoImport = base.Ptr(true)
+	dbConfig.AutoImport = new(true)
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	dataStore := rt.GetSingleDataStore()
@@ -2242,7 +2242,7 @@ func TestUpdateViaBlipMigrateAttachment(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync)
 	rtConfig := &RestTesterConfig{
 		GuestEnabled: true,
-		AutoImport:   base.Ptr(false),
+		AutoImport:   new(false),
 	}
 
 	btcRunner := NewBlipTesterClientRunner(t)
@@ -2762,7 +2762,7 @@ func (rt *RestTester) storeAttachmentWithIfMatch(docID string, version DocVersio
 //   - Add new doc with legacy attachment but do not attempt to migrate after write
 //   - Trigger on demand import for write and assert that the attachment is moved ot global xattr
 func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{AutoImport: base.Ptr(false)})
+	rt := NewRestTester(t, &RestTesterConfig{AutoImport: new(false)})
 	defer rt.Close()
 
 	docID := "foo16"
@@ -2816,7 +2816,7 @@ func TestLegacyAttachmentMigrationToGlobalXattrOnImport(t *testing.T) {
 // to retry. The maps.Clone reset in the relevant Put/PutExisting* codepaths must preserve revpos=2 on that retry.
 func TestAttachmentMigrationToGlobalXattrOnUpdate(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		AutoImport:        base.Ptr(false),
+		AutoImport:        new(false),
 		LeakyBucketConfig: &base.LeakyBucketConfig{},
 	})
 	defer rt.Close()
@@ -2967,7 +2967,7 @@ func TestGetNonWinningRevisionAttachmentLeak(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.Ptr(true),
+				Enabled: new(true),
 			},
 		}},
 		SyncFn: channels.DocChannelsSyncFunction,

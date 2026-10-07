@@ -28,6 +28,7 @@ pipeline {
     agent any
     options {
         skipDefaultCheckout()
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
     parameters {

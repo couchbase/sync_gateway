@@ -172,6 +172,15 @@ changes-feed:
         $ref: ./schemas.yaml#/Changes-feed
 ddoc-forbidden:
   description: Forbidden access possibly due to not using the Admin API or the design document is a built-in Sync Gateway one.
+local-docs-forbidden:
+  description: The `_local` endpoints are disabled on the public API, because `api.enable_local_endpoint_for_public_api` is `false`.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/HTTP-Error
+      example:
+        error: Forbidden
+        reason: _local endpoint is disabled
 Replicator-created:
   description: Created new replication successfully
 Replicator-updated:

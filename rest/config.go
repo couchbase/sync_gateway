@@ -1252,7 +1252,7 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
 		return dbConfig.AllowConflicts
 	}
-	return base.Ptr(base.DefaultAllowConflicts)
+	return new(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) Redacted(ctx context.Context) (*DbConfig, error) {
@@ -1276,7 +1276,7 @@ func (config *DbConfig) redactInPlace(ctx context.Context) error {
 
 	for i := range config.Users {
 		if config.Users[i].Password != nil && *config.Users[i].Password != "" {
-			config.Users[i].Password = base.Ptr(base.RedactedStr)
+			config.Users[i].Password = new(base.RedactedStr)
 		}
 	}
 
@@ -1305,7 +1305,7 @@ func redactConfigAsStr(ctx context.Context, dbConfig string) (string, error) {
 			}
 			for i := range users {
 				if users[i].Password != nil && *users[i].Password != "" {
-					users[i].Password = base.Ptr(base.RedactedStr)
+					users[i].Password = new(base.RedactedStr)
 				}
 			}
 			redactedConfig["users"] = users
@@ -1338,7 +1338,7 @@ func DecodeAndSanitiseStartupConfig(ctx context.Context, r io.Reader, config any
 	}
 
 	// Expand environment variables.
-	b, err = sanitiseConfig(ctx, b, base.Ptr(true))
+	b, err = sanitiseConfig(ctx, b, new(true))
 	if err != nil {
 		return err
 	}
@@ -2079,7 +2079,7 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast, loadFromBucket); err != nil {
+	if err := sc._reloadDatabaseWithConfig(nonContextStruct, cnf, failFast, loadFromBucket); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
@@ -2157,9 +2157,17 @@ func StartServer(ctx context.Context, config *StartupConfig, sc *ServerContext) 
 }
 
 func sharedBucketDatabaseCheck(ctx context.Context, sc *ServerContext) (errors error) {
-	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc._databases))
-	for _, dbContext := range sc._databases {
-		if uuid, err := dbContext.Bucket.UUID(ctx); err == nil {
+	var databases []*db.DatabaseContext
+	if snapshot := sc.databasesSnapshot.Load(); snapshot != nil {
+		databases = *snapshot
+	}
+	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(databases))
+	for _, dbContext := range databases {
+		bucket, open := dbContext.BucketIfOpen()
+		if !open {
+			continue
+		}
+		if uuid, err := bucket.UUID(ctx); err == nil {
 			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
 		}
 	}
