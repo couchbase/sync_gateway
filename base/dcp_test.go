@@ -815,8 +815,9 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 	}
 
 	t.Run("StartManager error", func(t *testing.T) {
+		ctx := TestCtx(t)
 		dbName := "startManagerErrorDB"
-		baseCfg, err := NewCbgtCfgMem()
+		baseCfg, err := NewCbgtCfgMem(ctx)
 		require.NoError(t, err)
 		cfg := &leakyCfg{Cfg: baseCfg}
 		cfg.failSets(cbgt.INDEX_DEFS_KEY)
@@ -829,8 +830,9 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 	})
 
 	t.Run("registerHeartbeatListener error", func(t *testing.T) {
+		ctx := TestCtx(t)
 		dbName := "heartbeatListenerErrorDB"
-		cfg, err := NewCbgtCfgMem()
+		cfg, err := NewCbgtCfgMem(ctx)
 		require.NoError(t, err)
 
 		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
