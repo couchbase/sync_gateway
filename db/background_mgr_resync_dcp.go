@@ -778,15 +778,16 @@ func writeSharedDCPCheckpoints(ctx context.Context, feed cbgt.Feed) {
 			return
 		}
 	}
-	base.AssertfCtx(ctx, "Expected to find a SGDest on cbgt.EventHandler.OnUnregisterFeed. Feed: %#+v Dests: %#+v, resync will complete but  some checkpoints may not be written", feed, slices.Collect(maps.Values(feed.Dests())))
+	base.AssertfCtx(ctx, "Expected to find a SGDest on cbgt.EventHandler.OnUnregisterFeed for feed %s (%T). Dests: %s, resync will complete but some checkpoints may not be written", base.MD(feed.Name()), feed, base.MD(fmt.Sprintf("%#+v", slices.Collect(maps.Values(feed.Dests())))))
 }
 
-// stopInitiatedFeedClosure returns true if the feed closed by cbgt.Manager.Stop
+// stopInitiatedFeedClosure returns true if any dest of the feed was stopped, as CbgtContext.Stop does before closing
+// pindexes.
 func stopInitiatedFeedClosure(ctx context.Context, feed cbgt.Feed) bool {
 	for _, d := range feed.Dests() {
 		sgDest, ok := d.(base.SGDest)
 		if !ok {
-			base.AssertfCtx(ctx, "Expected SGDest on cbgt.EventHandler.OnUnregisterFeed but found %T. Feed: %#+v, completed vBuckets will be recorded even if the dest was stopped", d, feed)
+			base.AssertfCtx(ctx, "Expected SGDest on cbgt.EventHandler.OnUnregisterFeed for feed %s (%T) but found %T, completed vBuckets will be recorded even if the dest was stopped", base.MD(feed.Name()), feed, d)
 			continue
 		}
 		if feedable, _ := sgDest.IsFeedable(); !feedable {
