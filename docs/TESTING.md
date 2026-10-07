@@ -177,6 +177,14 @@ C application that exposes its database and replicator over HTTP - so nothing li
 the Sync Gateway build. `testing/cbltestclient` drives it from Go tests, so replication behaviour
 can be checked against the actual implementation rather than against our own emulation of it.
 
+The tests in [rest/cbltest](../rest/cbltest/replication_test.go) show it end to end, and are a
+template for new tests: `newCBLTest` puts a `RestTester` behind a real HTTP listener and gives it an
+empty Couchbase Lite database to replicate with.
+
+Under `go test`, a Rosmar bucket's HLV source ID is its name padded with `+` and ending in `A`, for
+example `rosmar1++++++++++++++A`. Couchbase Lite only accepts a source ID that is exactly 22 base64
+characters, so the bare bucket name would get every Sync Gateway-written version rejected.
+
 No prebuilt test server is published publicly, so one has to be built for each Couchbase Lite
 version you want to test against (Linux and macOS):
 
