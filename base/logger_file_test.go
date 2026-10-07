@@ -307,7 +307,7 @@ func TestSwapFileLoggerReplacesMemoryLogger(t *testing.T) {
 			logger, err := NewFileLogger(TestCtx(t), config, LevelInfo, "test", "", 0, nil)
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, logger.Close()) }()
-			swapFileLogger(&ptr, logger)
+			swapLogger(&ptr, logger)
 			require.Same(t, logger, ptr.Load())
 
 			// a goroutine that loaded the global logger before it was replaced still writes to prev

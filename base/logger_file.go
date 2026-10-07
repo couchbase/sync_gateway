@@ -130,9 +130,13 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 	return logger, nil
 }
 
-// swapFileLogger stores next in ptr, and moves buffered and later writes from the old memory logger to next.
-func swapFileLogger(ptr *atomic.Pointer[FileLogger], next *FileLogger) {
-	if prev := ptr.Load(); prev != nil {
+// swapLogger stores next in ptr, and moves buffered and later writes from the old memory logger to next.
+func swapLogger[T any, P interface {
+	*T
+	fileLogger() *FileLogger
+}](ptr *atomic.Pointer[T], next P) {
+	if prev := P(ptr.Load()); prev != nil {
+		prev, next := prev.fileLogger(), next.fileLogger()
 		if prev.output == &prev.buffer {
 			// SetOutput waits for in-flight writes to prev, so the buffer is stable once it returns.
 			prev.logger.SetOutput(loggerForwarder{next})
@@ -140,6 +144,11 @@ func swapFileLogger(ptr *atomic.Pointer[FileLogger], next *FileLogger) {
 		next.buffer.WriteString(prev.buffer.String())
 	}
 	ptr.Store(next)
+}
+
+// fileLogger returns l. Loggers that embed FileLogger use it to give swapLogger their FileLogger.
+func (l *FileLogger) fileLogger() *FileLogger {
+	return l
 }
 
 // loggerForwarder is an io.Writer that writes each log line to a FileLogger.

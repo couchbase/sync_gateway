@@ -95,44 +95,44 @@ func InitLogging(ctx context.Context, logFilePath string,
 	if err != nil {
 		return err
 	}
-	swapFileLogger(&errorLogger, rawErrorlogger)
+	swapLogger(&errorLogger, rawErrorlogger)
 
 	rawWarnLogger, err := NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, nil)
 	if err != nil {
 		return err
 	}
-	swapFileLogger(&warnLogger, rawWarnLogger)
+	swapLogger(&warnLogger, rawWarnLogger)
 
 	rawInfoLogger, err := NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, nil)
 	if err != nil {
 		return err
 	}
-	swapFileLogger(&infoLogger, rawInfoLogger)
+	swapLogger(&infoLogger, rawInfoLogger)
 
 	rawDebugLogger, err := NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, nil)
 	if err != nil {
 		return err
 	}
-	swapFileLogger(&debugLogger, rawDebugLogger)
+	swapLogger(&debugLogger, rawDebugLogger)
 
 	rawTraceLogger, err := NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, nil)
 	if err != nil {
 		return err
 	}
-	swapFileLogger(&traceLogger, rawTraceLogger)
+	swapLogger(&traceLogger, rawTraceLogger)
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
 	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, new(statsDefaultMaxAgeOverride))
 	if err != nil {
 		return err
 	}
-	swapFileLogger(&statsLogger, rawStatsLogger)
+	swapLogger(&statsLogger, rawStatsLogger)
 
 	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinAge, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}
-	auditLogger.Store(rawAuditLogger)
+	swapLogger(&auditLogger, rawAuditLogger)
 
 	// Pick up any console log level/key changes for the external loggers too
 	updateExternalLoggers()
