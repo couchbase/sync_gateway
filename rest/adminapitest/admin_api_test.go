@@ -16,7 +16,6 @@ import (
 	"log"
 	"maps"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"runtime"
@@ -4357,10 +4356,7 @@ func TestServerGetStatusRace(t *testing.T) {
 	// SendAdminRequest takes _databasesLock to fill in URL templates, which hides the race.
 	adminHandler := rt.TestAdminHandler()
 	getStatus := func() *rest.TestResponse {
-		request := rest.Request(http.MethodGet, "/_status", "")
-		response := &rest.TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
-		adminHandler.ServeHTTP(response, request)
-		return response
+		return rest.ServeTestRequest(adminHandler, rest.Request(http.MethodGet, "/_status", ""))
 	}
 
 	sc := rt.ServerContext()

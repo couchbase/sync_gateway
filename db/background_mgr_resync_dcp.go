@@ -258,7 +258,6 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
 	db := r.db
 	regenerateSequences := options.RegenerateSequences
-	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
 	ctx = db.AddDatabaseLogContext(ctx)
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
