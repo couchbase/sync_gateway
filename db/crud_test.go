@@ -2961,7 +2961,7 @@ func TestWritePathRepairMouChain(t *testing.T) {
 	sdkWriteRevSeqNo, sdkWriteCas := docRevSeqNoAndCas(t, collection, docID)
 	dbCtx.FlushRevisionCacheForTest()
 
-	// a write on top: the callback imports, then repairs the imported document in the same callback
+	// a write on top: the callback imports, bails to a CAS retry, then repairs on the retry
 	_, _, err := collection.Put(ctx, docID, Body{"fromSG": true})
 	require.Error(t, err, "a Put with no matching rev against an existing document is a conflict")
 

@@ -51,6 +51,16 @@ func realDocID(docid string) string {
 	return docid
 }
 
+// getRevSeqNo fetches the revSeqNo for a document, using the virtual xattr if available. Returns the cas from this fetch.
+func (c *DatabaseCollection) getRevSeqNo(ctx context.Context, docID string) (revSeqNo, cas uint64, err error) {
+	xattrs, cas, err := c.dataStore.GetXattrs(ctx, docID, []string{base.VirtualXattrRevSeqNo})
+	if err != nil {
+		return 0, 0, err
+	}
+	revSeqNo, err = unmarshalRevSeqNo(xattrs[base.VirtualXattrRevSeqNo])
+	return revSeqNo, cas, err
+}
+
 // getMetadataOnlyUpdateInputs fetches everything computeMetadataOnlyUpdate needs to stamp _mou for a
 // metadata-only write - the document's revSeqNo, its existing _mou, and the cas all three were read at.
 //
@@ -427,6 +437,7 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 	importOpts := importDocOptions{
 		isDelete: isDelete,
 		mode:     ImportOnDemand,
+		revSeqNo: doc.RevSeqNo,
 		expiry:   nil,
 	}
 
@@ -1131,9 +1142,16 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 
 // ////// UPDATING DOCUMENTS:
 
-// OnDemandImportForWrite imports doc ahead of a write on top of it and updates doc in place with the result, which
-// is newer than doc if the import re-targets. It is expected to be called within a WriteUpdateWithXattrs callback.
+// OnDemandImportForWrite imports a document before a subsequent document is written to Sync Gateway on top of the import document. Returns base.ErrCasFailureShouldRetry in the case that this import nees to be retried. This function is expected to be called within a callback to WriteUpdateWithXattrs.
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
+	revSeqNo, cas, err := db.getRevSeqNo(ctx, docid)
+	if err != nil {
+		return err
+	}
+	if cas != doc.Cas {
+		return base.ErrCasFailureShouldRetry
+	}
+
 	if syncDataErr := doc.validateSyncDataForImport(ctx, db.dbCtx, docid); syncDataErr != nil {
 		return syncDataErr
 	}
@@ -1151,21 +1169,17 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		expiry:   nil,
 		mode:     ImportOnDemand,
 		isDelete: isDelete,
+		revSeqNo: revSeqNo,
 	}
-	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts)
+	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
 		doc.SyncData = SyncData{History: make(RevTree)}
-		return nil
-	}
-	if importErr != nil {
+	} else if importErr != nil {
 		return importErr
-	}
-	// nil without an error means the import was cancelled - the document was purged out from under it -
-	// and the write carries on against what it was handed.
-	if importedDoc != nil {
-		*doc = *importedDoc
+	} else {
+		doc = importedDoc // nolint:staticcheck
 	}
 	return nil
 }
@@ -3447,9 +3461,10 @@ func (c *DatabaseCollection) repairInvalidRevTreeForGet(ctx context.Context, doc
 	return doc
 }
 
-// repairInvalidRevTreeForWrite repairs an invalid rev tree from inside a write callback. It carries a
-// staleness guard of its own, because the repair is a CAS-guarded write and the document in hand may
-// already have been superseded.
+// repairInvalidRevTreeForWrite repairs an invalid rev tree from inside a write callback, mirroring
+// OnDemandImportForWrite - including its staleness guard, because the repair is a CAS-guarded write and
+// the document in hand may already have been superseded (most obviously by an on-demand import earlier in
+// the same callback).
 //
 // Like the import, the caller's document is left to the retry rather than being made current here: the
 // repair bumps the CAS, so the write this callback is building is guaranteed to fail with a CAS mismatch
@@ -3460,6 +3475,9 @@ func (db *DatabaseCollectionWithUser) repairInvalidRevTreeForWrite(ctx context.C
 	if !doc.History.hasNonIncreasingGenerations(ctx, doc.GetRevTreeID()) {
 		return nil
 	}
+	// Same fetch as the read path. The write path's own load does include _mou, but not the revSeqNo
+	// virtual xattr, and it already paid for a fetch here to get the CAS - so reading all three together
+	// costs nothing extra and keeps both paths stamping _mou from identical inputs.
 	revSeqNo, mou, cas, err := db.getMetadataOnlyUpdateInputs(ctx, docid)
 	if err != nil {
 		// Unlike an import, a repair is best-effort: the write is valid without it, so don't fail the

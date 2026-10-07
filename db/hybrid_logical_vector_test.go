@@ -479,6 +479,7 @@ func TestHLVImport(t *testing.T) {
 				isDelete: false,
 				expiry:   nil,
 				mode:     ImportFromFeed,
+				revSeqNo: revSeqNo,
 			}
 			_, err = collection.ImportDocRaw(ctx, docID, standardBody, existingXattrs, importOpts, preImportCas)
 			require.NoError(t, err, "import error")

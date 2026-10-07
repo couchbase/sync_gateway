@@ -1541,12 +1541,6 @@ func (d *Document) Attachments() AttachmentsMeta {
 	return d._globalSync.Attachments
 }
 
-// marshalRevSeqNo renders a revision sequence number the way the server's revSeqNo virtual xattr does,
-// for a caller assembling a document snapshot from a source that carries it as a plain number instead.
-func marshalRevSeqNo(revSeqNo uint64) []byte {
-	return []byte(strconv.Quote(strconv.FormatUint(revSeqNo, 10)))
-}
-
 // unmarshalRevSeqNo unmarshals the rev seq number from the provided bytes, expects a string representation of the uint64.
 func unmarshalRevSeqNo(revSeqNoBytes []byte) (uint64, error) {
 	if len(revSeqNoBytes) == 0 {

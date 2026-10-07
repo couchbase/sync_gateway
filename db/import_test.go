@@ -535,7 +535,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, existingBucketDoc, ImportOnDemand)
+			_, errImportDoc := collection.importDoc(ctx, key, body, &expiry, false, 0, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
@@ -680,7 +680,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 			runOnce = true
 			// Trigger import
-			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, existingBucketDoc, ImportOnDemand)
+			_, err = collection.importDoc(ctx, testcase.docname, bodyD, nil, false, 0, existingBucketDoc, ImportOnDemand)
 			assert.NoError(t, err)
 
 			// Check document has the rev and new body
@@ -748,7 +748,7 @@ func TestImportNullDoc(t *testing.T) {
 	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key+"1", body, nil, false, 1, existingDoc, ImportOnDemand)
 	assert.Equal[error](t, base.ErrEmptyDocument, err)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
@@ -769,6 +769,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	importOpts := importDocOptions{
 		isDelete: false,
 		expiry:   &exp,
+		revSeqNo: 1,
 		mode:     ImportFromFeed,
 	}
 	importedDoc, err := collection.ImportDocRaw(ctx, "TestImportNullDoc", []byte("null"), xattrs, importOpts, 1)
@@ -866,7 +867,7 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	existingDoc := getBucketDocument(t, collection.DatabaseCollection, key)
 
-	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, docRevSeqNo(t, collection, key), existingDoc, ImportOnDemand)
 	require.NoError(t, err)
 	if assert.NotNil(t, importedDoc) {
 		require.Len(t, importedDoc.ClusterUUID, 32)
@@ -1734,6 +1735,7 @@ func TestImportTombstoneAttachmentMetadata(t *testing.T) {
 			importedDoc, err := collection.ImportDoc(ctx, docID, existingDoc, importDocOptions{
 				isDelete: true,
 				mode:     ImportOnDemand,
+				revSeqNo: existingDoc.RevSeqNo,
 			})
 			require.NoError(t, err)
 			if tc.resurrect {
@@ -2052,7 +2054,8 @@ func TestOnDemandImportMouRetargetedByConcurrentWrite(t *testing.T) {
 	bodyRevSeqNo := docRevSeqNo(t, collection, docID)
 
 	importOpts := importDocOptions{
-		mode: ImportOnDemand,
+		mode:     ImportOnDemand,
+		revSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo]),
 	}
 	_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importOpts, snapshotCas)
 	require.NoError(t, err)
@@ -2234,7 +2237,7 @@ func TestDuplicateImportLeavesMouAlone(t *testing.T) {
 			value, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
 			require.NoError(t, err)
 
-			_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: testCase.mode}, cas)
+			_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: testCase.mode, revSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])}, cas)
 			require.NoError(t, err)
 			_, firstMou, firstCas := getSyncAndMou(t, collection, docID)
 			require.NotNil(t, firstMou, "precondition: the first import has to record a metadata-only update")
@@ -2244,7 +2247,7 @@ func TestDuplicateImportLeavesMouAlone(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: testCase.mode}, cas)
+			_, err = collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: testCase.mode, revSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])}, cas)
 			if testCase.expectedErr != nil {
 				require.ErrorIs(t, err, testCase.expectedErr)
 			} else {

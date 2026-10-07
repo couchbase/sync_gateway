@@ -216,13 +216,8 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 			isDelete: isDelete,
 			mode:     ImportFromFeed,
 			expiry:   &event.Expiry,
+			revSeqNo: event.RevNo,
 		}
-		// the feed carries the revSeqNo as its own field rather than as the virtual xattr a bucket read
-		// returns, so put it where the import expects to find it
-		if rawDoc.Xattrs == nil {
-			rawDoc.Xattrs = make(map[string][]byte)
-		}
-		rawDoc.Xattrs[base.VirtualXattrRevSeqNo] = marshalRevSeqNo(event.RevNo)
 
 		_, err := collection.ImportDocRaw(ctx, docID, rawDoc.Body, rawDoc.Xattrs, importOpts, event.Cas)
 		if err != nil {
