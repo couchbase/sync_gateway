@@ -91,44 +91,44 @@ func InitLogging(ctx context.Context, logFilePath string,
 		ConsolefCtx(ctx, LevelInfo, KeyNone, "Logging: Audit to %v", auditLogFilePath)
 	}
 
-	rawErrorlogger, err := NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, nil, errorLogger.Load())
+	rawErrorlogger, err := NewFileLogger(ctx, error, LevelError, LevelError.String(), logFilePath, errorMinAge, nil)
 	if err != nil {
 		return err
 	}
-	errorLogger.Store(rawErrorlogger)
+	swapFileLogger(&errorLogger, rawErrorlogger)
 
-	rawWarnLogger, err := NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, nil, warnLogger.Load())
+	rawWarnLogger, err := NewFileLogger(ctx, warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, nil)
 	if err != nil {
 		return err
 	}
-	warnLogger.Store(rawWarnLogger)
+	swapFileLogger(&warnLogger, rawWarnLogger)
 
-	rawInfoLogger, err := NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, nil, infoLogger.Load())
+	rawInfoLogger, err := NewFileLogger(ctx, info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, nil)
 	if err != nil {
 		return err
 	}
-	infoLogger.Store(rawInfoLogger)
+	swapFileLogger(&infoLogger, rawInfoLogger)
 
-	rawDebugLogger, err := NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, nil, debugLogger.Load())
+	rawDebugLogger, err := NewFileLogger(ctx, debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, nil)
 	if err != nil {
 		return err
 	}
-	debugLogger.Store(rawDebugLogger)
+	swapFileLogger(&debugLogger, rawDebugLogger)
 
-	rawTraceLogger, err := NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, nil, traceLogger.Load())
+	rawTraceLogger, err := NewFileLogger(ctx, trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, nil)
 	if err != nil {
 		return err
 	}
-	traceLogger.Store(rawTraceLogger)
+	swapFileLogger(&traceLogger, rawTraceLogger)
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, new(statsDefaultMaxAgeOverride), statsLogger.Load())
+	rawStatsLogger, err := NewFileLogger(ctx, stats, LevelNone, "stats", logFilePath, statsMinAge, new(statsDefaultMaxAgeOverride))
 	if err != nil {
 		return err
 	}
-	statsLogger.Store(rawStatsLogger)
+	swapFileLogger(&statsLogger, rawStatsLogger)
 
-	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinAge, auditLogger.Load(), auditLogGlobalFields)
+	rawAuditLogger, err := NewAuditLogger(ctx, audit, auditLogFilePath, auditMinAge, auditLogGlobalFields)
 	if err != nil {
 		return err
 	}

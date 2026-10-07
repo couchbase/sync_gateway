@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -279,7 +280,7 @@ func getDirFiles(t *testing.T, dir string) []string {
 	return fileNames
 }
 
-func TestNewFileLoggerReplacesMemoryLogger(t *testing.T) {
+func TestSwapFileLoggerReplacesMemoryLogger(t *testing.T) {
 	testCases := []struct {
 		name          string
 		enabled       bool
@@ -294,6 +295,8 @@ func TestNewFileLoggerReplacesMemoryLogger(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			prev := NewMemoryLogger(LevelInfo)
 			prev.log("buffered")
+			var ptr atomic.Pointer[FileLogger]
+			ptr.Store(prev)
 
 			var output bytes.Buffer
 			config := &FileLoggerConfig{
@@ -301,9 +304,11 @@ func TestNewFileLoggerReplacesMemoryLogger(t *testing.T) {
 				CollationBufferSize: new(tc.collationSize),
 				Output:              &output,
 			}
-			logger, err := NewFileLogger(TestCtx(t), config, LevelInfo, "test", "", 0, nil, prev)
+			logger, err := NewFileLogger(TestCtx(t), config, LevelInfo, "test", "", 0, nil)
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, logger.Close()) }()
+			swapFileLogger(&ptr, logger)
+			require.Same(t, logger, ptr.Load())
 
 			// a goroutine that loaded the global logger before it was replaced still writes to prev
 			prev.log("forwarded")

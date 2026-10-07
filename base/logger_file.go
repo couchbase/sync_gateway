@@ -21,6 +21,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -88,9 +89,8 @@ type logRotationConfig struct {
 	compress             *bool           `json:"-"`                                 // Compress rotated logs, not exposed to users
 }
 
-// NewFileLogger returns a new FileLogger from a config. If prev is not nil, its buffered log lines are copied into the
-// new logger, which is about to replace it.
-func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, prev *FileLogger) (*FileLogger, error) {
+// NewFileLogger returns a new FileLogger from a config.
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int) (*FileLogger, error) {
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
@@ -127,16 +127,19 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 		go logCollationWorker(logger.closed, logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
-	if prev != nil {
-		if prev.output == &prev.buffer {
-			// SetOutput waits for in-flight writes to the memory logger, and later writes from goroutines that still hold
-			// prev are sent straight to the new logger.
-			prev.logger.SetOutput(loggerForwarder{logger})
-		}
-		logger.buffer.WriteString(prev.buffer.String())
-	}
-
 	return logger, nil
+}
+
+// swapFileLogger stores next in ptr, and moves buffered and later writes from the old memory logger to next.
+func swapFileLogger(ptr *atomic.Pointer[FileLogger], next *FileLogger) {
+	if prev := ptr.Load(); prev != nil {
+		if prev.output == &prev.buffer {
+			// SetOutput waits for in-flight writes to prev, so the buffer is stable once it returns.
+			prev.logger.SetOutput(loggerForwarder{next})
+		}
+		next.buffer.WriteString(prev.buffer.String())
+	}
+	ptr.Store(next)
 }
 
 // loggerForwarder is an io.Writer that writes each log line to a FileLogger.
