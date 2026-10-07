@@ -13,5 +13,7 @@
 // gives Sync Gateway tests a genuine client to replicate against without linking libcblite into
 // the Sync Gateway build.
 //
-// Client is a plain HTTP client for the control API and knows nothing about testing.
+// Client is a plain HTTP client for the control API and knows nothing about testing.  NewServer
+// starts a test server for one test, of whichever Couchbase Lite version it asks for, and stops it
+// and deletes everything it made when the test ends.
 package cbltestclient

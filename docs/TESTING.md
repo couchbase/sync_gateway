@@ -174,7 +174,8 @@ Real Couchbase Lite client
 Tests that replicate with a real Couchbase Lite client use the
 [CBL-C test server](https://github.com/couchbaselabs/couchbase-lite-tests), a real Couchbase Lite
 C application that exposes its database and replicator over HTTP - so nothing links libcblite into
-the Sync Gateway build.
+the Sync Gateway build. `testing/cbltestclient` drives it from Go tests, so replication behaviour
+can be checked against the actual implementation rather than against our own emulation of it.
 
 No prebuilt test server is published publicly, so one has to be built for each Couchbase Lite
 version you want to test against (Linux and macOS):
@@ -187,10 +188,20 @@ That fetches `couchbase-lite-tests` `main`, downloads the public Enterprise Edit
 package, and builds the server with CMake. It takes under a minute, and later runs rebuild only when
 the tip of `main` has moved. Each version is installed separately, so several can sit side by side.
 
+`cbltestclient.NewServer(t, cbltestclient.Options{Version: ...})` starts a test server for one test,
+on its own port and with its own data directory. When the test ends the server is stopped and its
+data deleted. A test can start as many as it needs, of any built versions, and tests that use them
+can run in parallel. A test whose version hasn't been built is skipped.
+
 | Variable | Purpose | Default |
 |---|---|---|
-| `SG_TEST_CBL_TEST_SERVER_DIR` | Where built test servers are installed | OS cache directory |
+| `SG_TEST_CBL_VERSION` | Couchbase Lite version for tests that don't name one | `4.1.2` |
+| `SG_TEST_CBL_TEST_SERVER_DIR` | Where built test servers are installed and looked for | OS cache directory |
+| `SG_TEST_REQUIRE_CBL_TEST_SERVER` | Fail rather than skip when no test server is available. CI sets this | `false` |
 | `SG_TEST_CBL_TESTS_REF` | Branch, tag or commit of `couchbase-lite-tests` to build | `main` |
+
+The test server cannot read back a deleted document: `GetDocument` reports a tombstone exactly as
+it reports a document that never existed.
 
 Enterprise Edition
 ------------------

@@ -368,22 +368,33 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   test-cbl:
-    # Builds the Couchbase Lite test server that Sync Gateway's real-client tests will run against,
-    # so a change that breaks the build is caught here.  The build script only supports Linux and
-    # macOS.
+    # Exercises testing/cbltestclient against a real Couchbase Lite client.  The test server build
+    # script only supports Linux and macOS.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # Couchbase Lite versions to build - adding one here is all it takes.
+        # Couchbase Lite versions the whole suite runs against - adding one here is all it takes.
         cbl-version: ['4.1.2']
-    name: build cbl test server (${{ matrix.os }}, CBL ${{ matrix.cbl-version }})
+    name: test cbltestclient (${{ matrix.os }}, CBL ${{ matrix.cbl-version }})
     env:
       CBL_VERSION: ${{ matrix.cbl-version }}
+      SG_TEST_CBL_VERSION: ${{ matrix.cbl-version }}
+      GOPRIVATE: github.com/couchbaselabs
+      # Turns "no test server available" from a skip into a failure, so a broken build step can't
+      # quietly cost us our only real Couchbase Lite coverage.
+      SG_TEST_REQUIRE_CBL_TEST_SERVER: 'true'
     steps:
       - uses: *actions_checkout_version
+      - uses: *actions_setup_go_version
+        with:
+          go-version-file: *go_mod_file
       - uses: *actions_setup_uv_version
+      # go mod download would try to fetch the private EE module, which public runners can't reach
+      - name: Download Go modules
+        shell: bash
+        run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       # The script tracks a branch tip rather than a fixed commit, so the cache has to be keyed on
       # what that tip currently is - otherwise a moved tip would keep serving the server built
       # from the commit before it.
@@ -413,6 +424,32 @@ jobs:
         run: uv run integration-test/cbl_test_server.py --cbl-version "${CBL_VERSION}"
         env:
           SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
+      - name: Run Tests
+        shell: bash
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/...
+        env:
+          SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
+      - name: Test Summary
+        if: always()
+        shell: bash
+        run: .github/scripts/test-summary.sh
+      - name: Annotate Failures
+        if: always()
+        uses: *actions_go_test_annotations_version
+        with:
+          test-results: test.json
+      - name: Render test log
+        if: failure()
+        shell: bash
+        run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
+      - name: Upload test logs artifact
+        if: failure()
+        uses: *actions_upload_artifact_version
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.os }}-${{ matrix.cbl-version }}
+          path: test.log
+          retention-days: 7
+          if-no-files-found: warn
 
   cache_perf_tool_build:
     runs-on: ubuntu-latest
