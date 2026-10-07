@@ -9,54 +9,15 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
-const (
-	ansiReset  = "\x1b[0m"
-	ansiGray   = "\x1b[90m"
-	ansiYellow = "\x1b[33m"
-	ansiRed    = "\x1b[31m"
-	ansiCyan   = "\x1b[36m"
-)
-
-// shortLevelEncoder encodes log levels as fixed 5-character uppercase abbreviations.
-func shortLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
-	switch l {
-	case zapcore.DebugLevel:
-		enc.AppendString("DEBUG")
-	case zapcore.InfoLevel:
-		enc.AppendString("INFO ")
-	case zapcore.WarnLevel:
-		enc.AppendString("WRN  ")
-	case zapcore.ErrorLevel:
-		enc.AppendString("ERROR")
-	default:
-		enc.AppendString(fmt.Sprintf("%-5s", strings.ToUpper(l.String())))
-	}
-}
-
-// shortColorLevelEncoder is shortLevelEncoder with ANSI colour codes for terminal output.
-func shortColorLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
-	switch l {
-	case zapcore.DebugLevel:
-		enc.AppendString(ansiGray + "DEBUG" + ansiReset)
-	case zapcore.InfoLevel:
-		enc.AppendString(ansiCyan + "INFO " + ansiReset)
-	case zapcore.WarnLevel:
-		enc.AppendString(ansiYellow + "WRN  " + ansiReset)
-	case zapcore.ErrorLevel:
-		enc.AppendString(ansiRed + "ERROR" + ansiReset)
-	default:
-		enc.AppendString(fmt.Sprintf("%-5s", strings.ToUpper(l.String())))
-	}
-}
 
 func initLogger(verbose bool) {
 	level := zapcore.InfoLevel
@@ -65,13 +26,7 @@ func initLogger(verbose bool) {
 	}
 	encCfg := zap.NewDevelopmentEncoderConfig()
 	encCfg.EncodeTime = nil
-	// Use colour encoding only when stderr is a real terminal; piped output
-	// would otherwise contain raw ANSI escape sequences.
-	if isTerminal(os.Stderr) {
-		encCfg.EncodeLevel = shortColorLevelEncoder
-	} else {
-		encCfg.EncodeLevel = shortLevelEncoder
-	}
+	encCfg.EncodeLevel = nil
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encCfg),
 		zapcore.AddSync(os.Stderr),
@@ -80,20 +35,53 @@ func initLogger(verbose bool) {
 	logger = zap.New(core, zap.WithCaller(false)).Sugar()
 }
 
-// isTerminal reports whether f is connected to a real terminal (not a pipe or file).
-func isTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
-
 // printCommand logs a command in shell-trace style (like set -x), followed by
 // any active extraEnv overrides and per-invocation env extras.
-func printCommand(cmd *exec.Cmd, envExtras ...string) {
-	logger.Debugf("+ %s", strings.Join(cmd.Args, " "))
+func printCommand(prefix string, cmd *exec.Cmd, envExtras ...string) {
+	logger.Debugf("%s+ %s", prefix, strings.Join(cmd.Args, " "))
 	for k, v := range extraEnv {
-		logger.Debugf("  env %s=%s", k, v)
+		logger.Debugf("%s  env %s=%s", prefix, k, v)
 	}
 	for _, e := range envExtras {
-		logger.Debugf("  env %s", e)
+		logger.Debugf("%s  env %s", prefix, e)
 	}
+}
+
+// labelPrefix returns the "[label] " prefix for log lines that belong to one package, or "" for no label.
+func labelPrefix(label string) string {
+	if label == "" {
+		return ""
+	}
+	return "[" + label + "] "
+}
+
+// labelWriter logs each complete line written to it at info level with a prefix.
+// Call flush after the writer's last write to log any trailing partial line.
+type labelWriter struct {
+	prefix string
+	buf    []byte
+}
+
+func (w *labelWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	for i := bytes.IndexByte(w.buf, '\n'); i >= 0; i = bytes.IndexByte(w.buf, '\n') {
+		logger.Info(w.prefix + strings.TrimRight(string(w.buf[:i]), "\r"))
+		w.buf = w.buf[i+1:]
+	}
+	return len(p), nil
+}
+
+func (w *labelWriter) flush() {
+	if len(w.buf) > 0 {
+		logger.Info(w.prefix + string(w.buf))
+		w.buf = nil
+	}
+}
+
+// sgTimestampPattern matches the date and zone of an ISO 8601 Sync Gateway log timestamp, keeping the time of day.
+var sgTimestampPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2}\.\d{3})(?:Z|[+-]\d{2}:\d{2})`)
+
+// shortenTimestamps rewrites Sync Gateway log timestamps to HH:MM:SS.mmm for console output.
+func shortenTimestamps(line string) string {
+	return sgTimestampPattern.ReplaceAllString(line, "$1")
 }

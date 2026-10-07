@@ -388,18 +388,14 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 	cmd.Env = mergeEnv(envExtras...)
-	printCommand(cmd, envExtras...)
-	logger.Debugf("  out  %s", logFile)
-	logger.Debugf("  xml  %s", args.junitFile)
-	logger.Debugf("  cov  %s", args.coverProfile)
+	prefix := labelPrefix(args.label)
+	printCommand(prefix, cmd, envExtras...)
+	logger.Debugf("%s  out  %s", prefix, logFile)
+	logger.Debugf("%s  xml  %s", prefix, args.junitFile)
+	logger.Debugf("%s  cov  %s", prefix, args.coverProfile)
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start gotestsum: %w", err)
-	}
-
-	prefix := ""
-	if args.label != "" {
-		prefix = "[" + args.label + "] "
 	}
 
 	var failedTests []string
@@ -411,14 +407,15 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 		for scanner.Scan() {
 			line := scanner.Text()
 			_, _ = fmt.Fprintln(outFile, line)
+			consoleLine := prefix + shortenTimestamps(line)
 			m := failPattern.FindStringSubmatch(line)
 			switch {
 			case m != nil || strings.Contains(line, "panic: "):
-				logger.Warn(prefix + line)
+				logger.Warn(consoleLine)
 			case outputPattern.MatchString(line):
-				logger.Info(prefix + line)
+				logger.Info(consoleLine)
 			default:
-				logger.Debug(prefix + line)
+				logger.Debug(consoleLine)
 			}
 			if m != nil {
 				failedTests = append(failedTests, m[1])
@@ -512,7 +509,9 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 	results := make([]result, len(pkgs))
 
 	// Initialize cbdinocluster once; each package invocation allocates its own cluster.
-	mustRun("go", "run", cbdinocluster, "init", "--auto")
+	if err := initCbdinocluster(); err != nil {
+		logger.Fatal(err)
+	}
 
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
@@ -537,16 +536,16 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 			default:
 			}
 
-			clusterID, connStr, err := allocateCluster(serverVersion, protocol, multiNode)
+			clusterID, connStr, err := allocateCluster(p.shortName(), serverVersion, protocol, multiNode)
 			if err != nil {
 				nonFatal.add(fmt.Errorf("allocate cluster for %s: %w", p, err))
 				results[i] = result{path: p, failed: true}
 				cancel(fmt.Errorf("package %s: cluster allocation failed", p))
 				return
 			}
-			defer deallocateCluster(clusterID)
+			defer deallocateCluster(p.shortName(), clusterID)
 
-			dockerName, err := kvDockerName(clusterID)
+			dockerName, err := kvDockerName(p.shortName(), clusterID)
 			if err != nil {
 				nonFatal.add(fmt.Errorf("get docker name for %s: %w", p, err))
 				// dockerName is ""; cbcollect will be skipped but tests proceed
@@ -562,7 +561,7 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 			// Collect server diagnostics before the cluster is deallocated.
 			if dockerName != "" && (cbcollectAlways || filesContainsAny([]string{results[i].logFile}, "server logs for details", "Timed out after 1m0s waiting for a bucket to become available")) {
 				zipName := fmt.Sprintf("/workspace/cbcollect_%s.zip", p.fileName())
-				if err := runCommand("docker", "exec", "-t", dockerName, "/opt/couchbase/bin/cbcollect_info", zipName); err != nil {
+				if err := runLabeledCommand(labelPrefix(p.shortName())+"cbcollect: ", "docker", "exec", "-t", dockerName, "/opt/couchbase/bin/cbcollect_info", zipName); err != nil {
 					nonFatal.add(fmt.Errorf("cbcollect for %s: %w", p, err))
 				}
 			}
@@ -645,7 +644,7 @@ func runPackageIntegrationTests(ctx context.Context, edition Edition, flags []st
 		if ctx.Err() != nil {
 			return result{path: p, logFile: logFile, xmlFile: xmlFile, duration: duration}
 		}
-		logger.Errorf("Go test failed for %s: %v", p, err)
+		logger.Errorf("[%s] go test failed: %v", p.shortName(), err)
 		return result{path: p, logFile: logFile, xmlFile: xmlFile, failedTests: failedTests, duration: duration, failed: true}
 	}
 	return result{path: p, logFile: logFile, xmlFile: xmlFile, duration: duration}
@@ -690,11 +689,24 @@ func mustRun(name string, args ...string) {
 
 // runCommand runs a command, forwarding output to stdout/stderr.
 func runCommand(name string, args ...string) error {
+	return runLabeledCommand("", name, args...)
+}
+
+// runLabeledCommand runs a command. With a non-empty prefix, output is logged line by line
+// with that prefix so concurrent package runs can be told apart.
+func runLabeledCommand(prefix, name string, args ...string) error {
 	cmd := exec.Command(name, args...) //nolint:gosec
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	cmd.Env = mergeEnv()
-	printCommand(cmd)
+	printCommand(prefix, cmd)
+	if prefix == "" {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	w := &labelWriter{prefix: prefix}
+	defer w.flush()
+	cmd.Stdout = w
+	cmd.Stderr = w
 	return cmd.Run()
 }
 
@@ -709,10 +721,21 @@ func mustOutput(name string, args ...string) string {
 
 // tryOutput runs a command and returns its combined stdout, or an error.
 func tryOutput(name string, args ...string) (string, error) {
+	return tryLabeledOutput("", name, args...)
+}
+
+// tryLabeledOutput is tryOutput with stderr logged under prefix when prefix is non-empty.
+func tryLabeledOutput(prefix, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...) //nolint:gosec
-	cmd.Stderr = os.Stderr
 	cmd.Env = mergeEnv()
-	printCommand(cmd)
+	printCommand(prefix, cmd)
+	if prefix == "" {
+		cmd.Stderr = os.Stderr
+	} else {
+		w := &labelWriter{prefix: prefix}
+		defer w.flush()
+		cmd.Stderr = w
+	}
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("command %q: %w", name, err)
