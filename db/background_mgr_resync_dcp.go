@@ -258,7 +258,6 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
 	db := r.db
 	regenerateSequences := options.RegenerateSequences
-	ctx = context.WithoutCancel(ctx) // drop cancellation from parent context
 	ctx = db.AddDatabaseLogContext(ctx)
 	ctx = base.CorrelationIDLogCtx(ctx, r.ResyncID)
 	ctx, cancelResync := context.WithCancelCause(ctx)
@@ -396,9 +395,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			return resyncDest, nil
 		}
 
-		base.StoreDestFactory(ctx, resyncDestKey, resyncDestFunc)
-		defer base.RemoveDestFactory(resyncDestKey)
-
 		// Heartbeater creation
 		resyncHBPrefix := db.MetadataKeys.ResyncHeartbeaterPrefix()
 		resyncHB, err := base.NewCouchbaseHeartbeater(db.MetadataStore, resyncHBPrefix, db.UUID)
@@ -437,6 +433,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			Bucket:                 db.Bucket,
 			IndexType:              base.CBGTIndexTypeSyncGatewayResync,
 			DestKey:                resyncDestKey,
+			DestFactory:            resyncDestFunc,
 			IndexName:              indexName,
 			Datastore:              db.MetadataStore,
 			FeedType:               base.ShardedDCPFeedTypeResync,
@@ -483,6 +480,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to close resync DCP client! %v", err)
 			return err
+		}
+
+		// The sharded feed has no client-level purge, so a completed distributed run cleans up its own
+		// checkpoints. This runs after shutdown, so cbgt has stopped writing them.
+		if r.Distributed {
+			if purgeErr := r.purgeCheckpoints(ctx, r.ResyncID); purgeErr != nil {
+				base.WarnfCtx(ctx, "Failed to purge checkpoints after completing resync %q: %v, these will be abandoned and unused", r.ResyncID, purgeErr)
+			}
 		}
 
 		if err := r.invalidatePrincipals(ctx, db, regenerateSequences); err != nil {

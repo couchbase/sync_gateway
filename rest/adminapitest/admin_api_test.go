@@ -3555,11 +3555,9 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 
 	scopeName := ""
 	collectionNames := []string{}
-	// Validate that deleted database is no longer in dest factory set
-	_, fetchDb1DestErr := base.FetchDestFactory(base.DestKey("db1", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
-	assert.Equal[error](t, base.ErrNotFound, fetchDb1DestErr)
-	_, fetchDb2DestErr := base.FetchDestFactory(base.DestKey("db2", scopeName, collectionNames, base.ShardedDCPFeedTypeImport))
-	assert.NoError(t, fetchDb2DestErr)
+	// Validate that the deleted database no longer has a registered import dest
+	assert.False(t, base.CbgtDestKeyRegistered(t, base.DestKey("db1", scopeName, collectionNames, base.ShardedDCPFeedTypeImport)))
+	assert.True(t, base.CbgtDestKeyRegistered(t, base.DestKey("db2", scopeName, collectionNames, base.ShardedDCPFeedTypeImport)))
 }
 
 func BootstrapWaitForDatabaseState(t *testing.T, sc *rest.ServerContext, dbName string, state uint32) {
@@ -4343,4 +4341,43 @@ func (p *resyncPauser) release() bool {
 	p.ds.SetWriteUpdateWithXattrsCallback(nil)
 	close(p.blockCh)
 	return true
+}
+
+func TestServerGetStatusRace(t *testing.T) {
+	if !base.IsRaceDetectorEnabled(t) {
+		t.Skip("This test requires RACE detector to be enabled")
+	}
+	ctx := base.TestCtx(t)
+	rt := rest.NewRestTesterPersistentConfigNoDB(t)
+	defer rt.Close()
+
+	rest.RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+
+	// SendAdminRequest takes _databasesLock to fill in URL templates, which hides the race.
+	adminHandler := rt.TestAdminHandler()
+	getStatus := func() *rest.TestResponse {
+		return rest.ServeTestRequest(adminHandler, rest.Request(http.MethodGet, "/_status", ""))
+	}
+
+	sc := rt.ServerContext()
+	dbConfig2 := rt.NewDbConfig()
+	dbConfig2.Name = "db2"
+
+	var writerDone atomic.Bool
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		defer writerDone.Store(true)
+		for range 20 {
+			_, err := sc.AddDatabaseFromConfig(ctx, rest.DatabaseConfig{DbConfig: dbConfig2})
+			assert.NoError(t, err)
+			assert.True(t, sc.RemoveDatabase(ctx, "db2", "test"))
+		}
+	})
+	for {
+		assert.Equal(t, http.StatusOK, getStatus().Code)
+		if writerDone.Load() {
+			break
+		}
+	}
+	wg.Wait()
 }

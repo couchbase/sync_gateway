@@ -18,13 +18,8 @@ import (
 )
 
 func TestImportPartitionsOnConcurrentStart(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	base.TestRequiresCbgt(t)
 
-	if !base.IsEnterpriseEdition() {
-		t.Skip("This test only works against EE")
-	}
 	// Start multiple rest testers concurrently
 	numNodes := 4
 	numImportPartitions := uint16(16)

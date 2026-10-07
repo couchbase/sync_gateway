@@ -286,9 +286,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 // one second, so retry polling is required.
 func TestCBGTManagerHeartbeater(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test requires cbgt and CBS")
-	}
+	TestRequiresCbgt(t)
 
 	if testing.Short() {
 		t.Skip("Skipping heartbeattest in short mode")
@@ -355,21 +353,24 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer listener1.Stop()
 	assert.NoError(t, node1.RegisterListener(listener1))
 
 	listener2, err := NewShardedDCPHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer listener2.Stop()
 	assert.NoError(t, node2.RegisterListener(listener2))
 
 	listener3, err := NewShardedDCPHeartbeatListener(ctx, &CbgtContext{
 		Cfg:     cfgCB,
 		Manager: testManager,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	defer listener3.Stop()
 	assert.NoError(t, node3.RegisterListener(listener3))
 
 	// Wait for node1 to start running (and persist initial heartbeat docs) before stopping

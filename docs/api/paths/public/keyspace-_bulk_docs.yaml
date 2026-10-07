@@ -50,6 +50,8 @@ post:
         Executed all operations.
 
         Each object in the returned array represents a document. Each document should be checked to make sure it was successfully added to the database.
+
+        If `api.enable_local_endpoint_for_public_api` is `false`, Sync Gateway does not write `_local` documents in the request. Each one gets a `403` status. Other documents in the request are still written.
       content:
         application/json:
           schema:

@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // findPIndexOwningVbucket returns the name of the PIndex in snapshot whose SourcePartitions
@@ -100,12 +101,7 @@ func readCbgtImportIndexUUID(t *testing.T, rt *RestTester, dbName string) string
 // PIndex instance (same PIndex.UUID) rather than being spuriously restarted, and every PIndex must
 // be accounted for on exactly one node at all times (never dropped, never duplicated).
 func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("import partitions / sharded DCP require EE")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("sharded DCP feed is not supported by rosmar")
-	}
+	base.TestRequiresCbgt(t)
 
 	ctx := base.TestCtx(t)
 	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{NumNodes: 1})
@@ -118,7 +114,6 @@ func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
 	const vbucket0 = "0"
 
 	dbConfig := dbConfigForTestBucket(rtc.testBucket)
-	dbConfig.AutoImport = true
 	dbConfig.ImportPartitions = new(uint16(numPartitions))
 
 	node0 := rtc.Node(0)
@@ -193,12 +188,7 @@ func TestCbgtRebalanceOnNodeJoinPreservesUnmovedPIndexes(t *testing.T) {
 // with more nodes in play, which is where a bug that treats every join as "replan everything from
 // scratch" would first show up.
 func TestCbgtRebalanceOnThirdNodeJoinOnlyMovesMinimalShare(t *testing.T) {
-	if !base.IsEnterpriseEdition() {
-		t.Skip("import partitions / sharded DCP require EE")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("sharded DCP feed is not supported by rosmar")
-	}
+	base.TestRequiresCbgt(t)
 
 	ctx := base.TestCtx(t)
 	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{NumNodes: 1})
@@ -212,7 +202,6 @@ func TestCbgtRebalanceOnThirdNodeJoinOnlyMovesMinimalShare(t *testing.T) {
 	const numPartitions = 8
 
 	dbConfig := dbConfigForTestBucket(rtc.testBucket)
-	dbConfig.AutoImport = true
 	dbConfig.ImportPartitions = new(uint16(numPartitions))
 
 	node0 := rtc.Node(0)
@@ -269,4 +258,47 @@ func TestCbgtRebalanceOnThirdNodeJoinOnlyMovesMinimalShare(t *testing.T) {
 	// they keep - i.e. this wasn't treated as a from-scratch replan of the whole cluster.
 	assertUnmovedPIndexesUnchanged(t, "node0", afterNode1JoinsNode0, afterNode2JoinsNode0)
 	assertUnmovedPIndexesUnchanged(t, "node1", afterNode1JoinsNode1, afterNode2JoinsNode1)
+}
+
+// TestCbgtRebalanceOnNodeLeave makes sure that when one of two Sync Gateway nodes for the same database and bucket
+// stops, the remaining node takes over the partitions of the stopped node and imports from all of them.
+func TestCbgtRebalanceOnNodeLeave(t *testing.T) {
+	base.TestRequiresCbgt(t)
+
+	ctx := base.TestCtx(t)
+	rtc := NewRestTesterCluster(t, &RestTesterClusterConfig{NumNodes: 2})
+	defer rtc.Close(ctx)
+
+	const dbName = "db"
+	// Must evenly divide the bucket's vbuckets, see comment in TestResyncImportPartitionsPassthrough.
+	const numPartitions = 4
+	numVBuckets, err := rtc.testBucket.GetMaxVbno(ctx)
+	require.NoError(t, err)
+	require.Zero(t, numVBuckets%numPartitions, "%d vbuckets do not divide evenly into %d partitions", numVBuckets, numPartitions)
+
+	dbConfig := dbConfigForTestBucket(rtc.testBucket)
+	dbConfig.ImportPartitions = new(uint16(numPartitions))
+	RequireStatus(t, rtc.Node(0).CreateDatabase(dbName, dbConfig), http.StatusCreated)
+	_, err = rtc.RefreshClusterDbConfigs()
+	require.NoError(t, err)
+
+	rtc.ForEachNode(func(rt *RestTester) {
+		base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportPartitions.Value, numPartitions/2)
+	})
+
+	rtc.RemoveNode(0)
+	node := rtc.Node(0)
+	base.RequireWaitForStat(t, node.GetDatabase().DbStats.SharedBucketImport().ImportPartitions.Value, numPartitions)
+	for name, pindex := range node.GetDatabase().ImportPartitionSnapshot(t) {
+		require.Len(t, strings.Split(pindex.SourcePartitions, ","), int(numVBuckets/numPartitions), "pindex %s", name)
+	}
+
+	// Write a doc to every vbucket, so that each partition of the stopped node has a doc to import.
+	docPerVBucket := sgtest.DocPerVBucket(t, rtc.testBucket)
+	dataStore := node.GetSingleDataStore()
+	for _, docID := range docPerVBucket {
+		_, err := dataStore.AddRaw(ctx, docID, 0, []byte(`{"foo":"bar"}`))
+		require.NoError(t, err)
+	}
+	base.RequireWaitForStat(t, node.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value, int64(len(docPerVBucket)))
 }

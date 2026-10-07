@@ -4446,3 +4446,65 @@ func TestInvalidRevTreeRestGetRepairsAndRenames(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, int64(1), invalidRevTreeCount.Value(), "a repaired document should not be reported again")
 }
+
+// TestLocalEndpointForPublicAPI makes sure that api.enable_local_endpoint_for_public_api controls GET, PUT, DELETE and
+// _bulk_docs on _local docs for an authenticated public API user, and that a disabled endpoint returns 403.
+func TestLocalEndpointForPublicAPI(t *testing.T) {
+	tests := []struct {
+		enabled                 bool
+		expectedStatus          int
+		expectedPutStatus       int
+		expectedLocalStored     int
+		expectedBulkLocalStatus any
+	}{
+		{
+			enabled:                 true,
+			expectedStatus:          http.StatusNotFound,
+			expectedPutStatus:       http.StatusCreated,
+			expectedLocalStored:     http.StatusOK,
+			expectedBulkLocalStatus: nil,
+		},
+		{
+			enabled:                 false,
+			expectedStatus:          http.StatusForbidden,
+			expectedPutStatus:       http.StatusForbidden,
+			expectedLocalStored:     http.StatusNotFound,
+			expectedBulkLocalStatus: float64(http.StatusForbidden),
+		},
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("enabled=%t", test.enabled), func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				SyncFn: `function(doc) {channel(doc.channels);}`,
+				MutateStartupConfig: func(config *StartupConfig) {
+					config.API.EnableLocalEndpointForPublicAPI = new(test.enabled)
+				},
+			})
+			defer rt.Close()
+
+			rt.CreateUser("alice", []string{"chanA"})
+
+			RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_local/doc1", "", "alice"), test.expectedStatus)
+			RequireStatus(t, rt.SendUserRequest(http.MethodHead, "/{{.keyspace}}/_local/doc1", "", "alice"), test.expectedStatus)
+			RequireStatus(t, rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_local/doc1", "", map[string]string{"Accept": "text/html"}, "alice", RestTesterDefaultUserPassword), test.expectedStatus)
+			RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_local/doc1", ""), http.StatusNotFound)
+			RequireStatus(t, rt.SendUserRequest(http.MethodPut, "/{{.keyspace}}/_local/doc2", `{"key":"value"}`, "alice"), test.expectedPutStatus)
+			RequireStatus(t, rt.SendUserRequest(http.MethodDelete, "/{{.keyspace}}/_local/doc1", "", "alice"), test.expectedStatus)
+
+			bulkBody := `{"docs": [{"_id": "doc3", "channels": ["chanA"]}, {"_id": "_local/bulk1", "key": "value"}]}`
+			resp := rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", bulkBody, "alice")
+			RequireStatus(t, resp, http.StatusCreated)
+
+			var results []map[string]any
+			require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &results))
+			require.Len(t, results, 2)
+			assert.Equal(t, "doc3", results[0]["id"])
+			assert.Nil(t, results[0]["status"])
+			assert.Equal(t, "_local/bulk1", results[1]["id"])
+			assert.Equal(t, test.expectedBulkLocalStatus, results[1]["status"])
+
+			RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc3", ""), http.StatusOK)
+			RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_local/bulk1", ""), test.expectedLocalStored)
+		})
+	}
+}

@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -154,11 +156,39 @@ func BenchmarkLogRotation(b *testing.B) {
 
 }
 
-func TestLogColor(t *testing.T) {
-	origColor := consoleLogger.Load().ColorEnabled
-	defer func() { consoleLogger.Load().ColorEnabled = origColor }()
+// swapColorConsoleLogger replaces the global console logger with one that has the given color setting. The logger is
+// swapped rather than mutated in place because other goroutines may be logging concurrently.
+func swapColorConsoleLogger(t testing.TB, colorEnabled bool) {
+	logger, err := NewConsoleLogger(TestCtx(t), false, &ConsoleLoggerConfig{
+		ColorEnabled:     &colorEnabled,
+		FileLoggerConfig: FileLoggerConfig{Enabled: new(true), CollationBufferSize: new(0)},
+	})
+	require.NoError(t, err)
+	origLogger := consoleLogger.Swap(logger)
+	t.Cleanup(func() { consoleLogger.Store(origLogger) })
+}
 
-	consoleLogger.Load().ColorEnabled = true
+func TestLogColor(t *testing.T) {
+	ctx := TestCtx(t)
+	// log concurrently with the logger swaps, so that -race catches any in-place mutation of the global logger
+	var stopLogging atomic.Bool
+	var loggingWg sync.WaitGroup
+	loggingStarted := make(chan struct{})
+	loggingWg.Go(func() {
+		for i := 0; !stopLogging.Load(); i++ {
+			ConsolefCtx(ctx, LevelInfo, KeyAll, "TestLogColor concurrent log %d", i)
+			if i == 0 {
+				close(loggingStarted)
+			}
+		}
+	})
+	defer func() {
+		stopLogging.Store(true)
+		loggingWg.Wait()
+	}()
+	<-loggingStarted
+
+	swapColorConsoleLogger(t, true)
 	if colorEnabled() {
 		assert.Equal(t, "\x1b[0;36mFormat\x1b[0m", color("Format", LevelDebug))
 		assert.Equal(t, "\x1b[1;34mFormat\x1b[0m", color("Format", LevelInfo))
@@ -168,7 +198,7 @@ func TestLogColor(t *testing.T) {
 		assert.Equal(t, "\x1b[0mFormat\x1b[0m", color("Format", LevelNone))
 	}
 
-	consoleLogger.Load().ColorEnabled = false
+	swapColorConsoleLogger(t, false)
 	assert.Equal(t, "Format", color("Format", LevelDebug))
 	assert.Equal(t, "Format", color("Format", LevelInfo))
 	assert.Equal(t, "Format", color("Format", LevelWarn))
@@ -183,7 +213,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	}
 
 	b.Run("enabled", func(b *testing.B) {
-		consoleLogger.Load().ColorEnabled = true
+		swapColorConsoleLogger(b, true)
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
@@ -193,7 +223,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	})
 
 	b.Run("disabled console color", func(b *testing.B) {
-		consoleLogger.Load().ColorEnabled = false
+		swapColorConsoleLogger(b, false)
 		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
 
 		b.ResetTimer()
@@ -203,7 +233,7 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 	})
 
 	b.Run("disabled term color", func(b *testing.B) {
-		consoleLogger.Load().ColorEnabled = true
+		swapColorConsoleLogger(b, true)
 		require.NoError(b, os.Setenv("TERM", "dumb"))
 
 		b.ResetTimer()

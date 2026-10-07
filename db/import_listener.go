@@ -66,14 +66,6 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
-	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(ctx, il.importDestKey, getImportDestFactory(
-		ctx,
-		il.ProcessFeedEvent,
-		dbContext,
-		il.checkpointPrefix),
-	)
-
 	// Start DCP mutation feed
 	base.InfofCtx(il.loggingCtx, base.KeyImport, "Starting DCP import feed for bucket: %q ", base.UD(dbContext.Bucket.GetName()))
 
@@ -107,6 +99,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		Bucket:            dbContext.Bucket,
 		IndexType:         base.CBGTIndexTypeSyncGatewayImport + dbContext.Options.GroupID,
 		DestKey:           il.importDestKey,
+		DestFactory:       getImportDestFactory(ctx, il.ProcessFeedEvent, dbContext, il.checkpointPrefix),
 		IndexName:         indexName,
 		PreviousIndexName: base.GenerateLegacyImportIndexName(dbContext.Name),
 		Datastore:         dbContext.MetadataStore,
@@ -256,9 +249,6 @@ func (il *importListener) Stop(ctx context.Context) {
 	if il != nil {
 		if il.cbgtContext != nil {
 			il.cbgtContext.Stop(ctx)
-
-			// Remove entry from global listener directory
-			base.RemoveDestFactory(il.importDestKey)
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}
