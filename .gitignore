@@ -19,7 +19,7 @@ integration.xml
 integration_*.xml
 rosmar-ee.xml
 rosmar-ce.xml
-cbcollect.zip
+cbcollect*.zip
 sync_gateway
 *.pb.gz
 __pycache__
@@ -47,3 +47,4 @@ integration-test/e2e/.gitconfig.e2e
 cbs.env
 
 /integration-tester
+/testing/integration-tester/integration-tester
