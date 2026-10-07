@@ -10,12 +10,18 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 )
 
-const cbdinocluster = "github.com/couchbaselabs/cbdinocluster@latest"
+const (
+	cbdinocluster = "github.com/couchbaselabs/cbdinocluster@latest"
+	dinoNetwork   = "dinonet"
+)
 
 // cbdinoClusterInfo and cbdinoNode are minimal structs for parsing cbdinocluster list --json output.
 type cbdinoClusterInfo struct {
@@ -28,11 +34,37 @@ type cbdinoNode struct {
 	ID string `json:"id"`
 }
 
+// initCbdinocluster configures cbdinocluster for docker deployments. On colima, init creates the
+// dinonet network itself, but only when colima has a host-routable address.
+func initCbdinocluster() error {
+	err := runCommand("go", "run", cbdinocluster, "init", "--auto",
+		"--disable-k8s", "--disable-capella", "--disable-aws", "--disable-azure", "--disable-gcp", "--disable-dns")
+	if err != nil {
+		return fmt.Errorf("cbdinocluster init: %w", err)
+	}
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	if err := exec.Command("docker", "network", "inspect", dinoNetwork).Run(); err != nil {
+		return errors.New("docker network " + dinoNetwork + " does not exist and cbdinocluster could not create it. " +
+			"Restart colima with a network address (colima stop && colima start --network-address) and run again")
+	}
+	return nil
+}
+
+// cbdinoPrefix returns the log prefix for cbdinocluster commands run on behalf of a package.
+func cbdinoPrefix(label string) string {
+	return labelPrefix(label) + "cbdinocluster: "
+}
+
 // allocateCluster provisions a new Couchbase cluster via cbdinocluster and returns
 // its cluster ID and connection string. cbdinocluster must already be initialized.
-func allocateCluster(serverVersion string, protocol Protocol, multiNode bool) (clusterID, connStr string, err error) {
+func allocateCluster(label, serverVersion string, protocol Protocol, multiNode bool) (clusterID, connStr string, err error) {
+	prefix := cbdinoPrefix(label)
 	def := clusterDefYAML(serverVersion, multiNode)
-	logger.Debugf("Cluster definition:\n%s", def)
+	for line := range strings.Lines(def) {
+		logger.Debugf("%sdefinition: %s", prefix, strings.TrimRight(line, "\n"))
+	}
 
 	f, err := os.CreateTemp("", "cbdino-cluster-*.yaml")
 	if err != nil {
@@ -46,31 +78,32 @@ func allocateCluster(serverVersion string, protocol Protocol, multiNode bool) (c
 		return "", "", fmt.Errorf("close cluster def file: %w", err)
 	}
 
-	raw, err := tryOutput("go", "run", cbdinocluster, "allocate", "--def-file", f.Name())
+	raw, err := tryLabeledOutput(prefix, "go", "run", cbdinocluster, "allocate", "--def-file", f.Name())
 	if err != nil {
 		return "", "", fmt.Errorf("allocate cluster: %w", err)
 	}
 	clusterID = strings.TrimSpace(raw)
-	logger.Debugf("Cluster ID: %s", clusterID)
+	logger.Debugf("%sCluster ID: %s", prefix, clusterID)
 
 	tlsFlag := "--no-tls"
 	if protocol == ProtocolCouchbases {
 		tlsFlag = "--tls"
 	}
-	raw, err = tryOutput("go", "run", cbdinocluster, "connstr", tlsFlag, clusterID)
+	raw, err = tryLabeledOutput(prefix, "go", "run", cbdinocluster, "connstr", tlsFlag, clusterID)
 	if err != nil {
 		return "", "", fmt.Errorf("get cluster connstr: %w", err)
 	}
 	connStr = strings.TrimSpace(raw)
-	logger.Debugf("Connection string: %s", connStr)
+	logger.Debugf("%sConnection string: %s", prefix, connStr)
 	return clusterID, connStr, nil
 }
 
 // deallocateCluster removes a cbdinocluster cluster. Errors are logged but not fatal
 // so that cleanup failures don't mask test results.
-func deallocateCluster(clusterID string) {
-	logger.Debugf("Deallocating cluster %s", clusterID)
-	if err := runCommand("go", "run", cbdinocluster, "rm", clusterID); err != nil {
+func deallocateCluster(label, clusterID string) {
+	prefix := cbdinoPrefix(label)
+	logger.Debugf("%sDeallocating cluster %s", prefix, clusterID)
+	if err := runLabeledCommand(prefix, "go", "run", cbdinocluster, "rm", clusterID); err != nil {
 		nonFatal.add(fmt.Errorf("deallocate cluster %q: %w", clusterID, err))
 	}
 }
@@ -78,8 +111,8 @@ func deallocateCluster(clusterID string) {
 // kvDockerName returns the Docker container name for the first KV node in clusterID.
 // Container names follow the cbdinocluster convention: "cbdynnode-<node-id>".
 // Returns an empty string for non-docker deployers or if no nodes are found.
-func kvDockerName(clusterID string) (string, error) {
-	out, err := tryOutput("go", "run", cbdinocluster, "list", "--json")
+func kvDockerName(label, clusterID string) (string, error) {
+	out, err := tryLabeledOutput(cbdinoPrefix(label), "go", "run", cbdinocluster, "list", "--json")
 	if err != nil {
 		return "", fmt.Errorf("cbdinocluster list: %w", err)
 	}
