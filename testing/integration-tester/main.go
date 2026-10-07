@@ -55,6 +55,8 @@ var (
 	// Package-level compiled regexps for gotestsum output parsing.
 	outputPattern = regexp.MustCompile(`--- (FAIL|PASS|SKIP):|github\.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: |Assertion failed: `)
 	failPattern   = regexp.MustCompile(`--- FAIL: (\S+)`)
+	// packagePattern matches go test's per-package result lines, e.g. "ok  \tgithub.com/couchbase/sync_gateway/db".
+	packagePattern = regexp.MustCompile(`github\.com/couchbase/sync_gateway(/.+)?\t`)
 )
 
 // errCollector accumulates non-fatal errors from across the run and reports them
@@ -156,6 +158,7 @@ type goTestArgs struct {
 	junitProjectName string   // project name embedded in the JUnit report (--junitfile-project-name)
 	coverProfile     string   // path for the go test -coverprofile output file
 	label            string   // prefix for log lines, e.g. "[rest]"; empty = no prefix
+	summaryOnly      bool     // with -filter, print only failures, panics and package results to the console
 	edition          Edition  // CE or EE; controls which build tags are passed to go test
 	packages         []pkg    // packages to test; cmdArgs converts each to a relative path via goTestPath
 	goTestFlags      []string // additional flags forwarded verbatim to go test (e.g. -v, -run, -timeout)
@@ -437,6 +440,10 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 			switch {
 			case m != nil || strings.Contains(line, "panic: "):
 				logger.Warn(consoleLine)
+			case filterOutput && args.summaryOnly:
+				if packagePattern.MatchString(line) {
+					logger.Info(consoleLine)
+				}
 			case outputPattern.MatchString(line):
 				logger.Info(consoleLine)
 			case !filterOutput:
@@ -502,6 +509,7 @@ func runRosmarTests(baseFlags []string, pkgs []pkg) {
 			junitProjectName: "rosmar-" + string(ed),
 			coverProfile:     "coverage_rosmar_" + suffix + ".out",
 			label:            "rosmar-" + suffix,
+			summaryOnly:      true,
 			edition:          ed,
 			packages:         pkgs,
 			goTestFlags:      baseFlags,
