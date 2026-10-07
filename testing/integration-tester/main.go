@@ -49,9 +49,11 @@ var (
 	logger   *zap.SugaredLogger
 	extraEnv = map[string]string{}
 	nonFatal errCollector
+	// filterOutput drops test output lines that don't match outputPattern from the console, even with -v.
+	filterOutput bool
 
 	// Package-level compiled regexps for gotestsum output parsing.
-	outputPattern = regexp.MustCompile(`--- (FAIL|PASS|SKIP):|github\.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: `)
+	outputPattern = regexp.MustCompile(`--- (FAIL|PASS|SKIP):|github\.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: |Assertion failed: `)
 	failPattern   = regexp.MustCompile(`--- FAIL: (\S+)`)
 )
 
@@ -132,7 +134,7 @@ type config struct {
 	PackageTimeout string `env:"PACKAGE_TIMEOUT"`
 	// Optional ints
 	RunCount            int `env:"RUN_COUNT" envDefault:"1"`
-	MaxParallelPackages int `env:"MAX_PARALLEL_PACKAGES" envDefault:"10"`
+	MaxParallelPackages int `env:"MAX_PARALLEL_PACKAGES"`
 	// Required bools
 	GSI           bool `env:"GSI,required"`
 	TLSSkipVerify bool `env:"TLS_SKIP_VERIFY,required"`
@@ -248,6 +250,7 @@ Environment variables:
 func run() int {
 	masterMode := flag.Bool("m", false, "Run in automated master integration mode")
 	verbose := flag.Bool("v", false, "Enable verbose/debug logging")
+	flag.BoolVar(&filterOutput, "filter", false, "Only print test output lines matching the summary pattern, even with -v")
 	flag.Usage = printUsage
 	flag.Parse()
 
@@ -276,10 +279,10 @@ func run() int {
 		if err := env.Parse(&cfg); err != nil {
 			logger.Fatalf("parse environment: %v", err)
 		}
+		if cfg.MaxParallelPackages <= 0 {
+			cfg.MaxParallelPackages = defaultMaxParallelPackages
+		}
 	}
-
-	mustRun("git", "config", "--global", "--replace-all", "url.git@github.com:.insteadOf", "https://github.com/")
-	extraEnv["GOPRIVATE"] = "github.com/couchbaselabs/go-fleecedelta"
 
 	hash := mustOutput("git", "rev-parse", "HEAD")
 	logger.Infof("Sync Gateway git commit hash: %s", strings.TrimSpace(hash))
@@ -288,24 +291,37 @@ func run() int {
 	goVersion := "go" + goVersionShort
 	logger.Infof("Sync Gateway go.mod version is %s", goVersion)
 
-	mustRun("go", "install", "golang.org/dl/"+goVersion+"@latest")
+	mustRunRetry("go", "install", "golang.org/dl/"+goVersion+"@latest")
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		logger.Fatalf("get home dir: %v", err)
 	}
 	goVersionBin := filepath.Join(homeDir, "go", "bin", goVersion)
-	mustRun(goVersionBin, "download")
+	mustRunRetry(goVersionBin, "download")
 
 	goRoot := strings.TrimSpace(mustOutput(goVersionBin, "env", "GOROOT"))
 	extraEnv["PATH"] = filepath.Join(goRoot, "bin") + ":" + os.Getenv("PATH")
 
-	logger.Info("Downloading tool dependencies...")
-	mustRun("go", "install", "gotest.tools/gotestsum@latest")
+	// Sync the current process PATH so exec.Command finds the go toolchain installed above.
+	// extraEnv only affects child process environments, not exec.LookPath.
+	if err := os.Setenv("PATH", extraEnv["PATH"]); err != nil {
+		logger.Fatalf("update PATH: %v", err)
+	}
 
-	extraEnv["PATH"] += ":" + filepath.Join(homeDir, "go", "bin")
-	// Sync the current process PATH so exec.Command can find binaries (e.g. gotestsum, go)
-	// installed above. extraEnv only affects child process environments, not exec.LookPath.
+	// Download modules up front, where a flaky module proxy is retried, rather than part-way through a test run.
+	logger.Info("Downloading module dependencies...")
+	mustRunRetry("go", "mod", "download")
+	mustRunRetry("go", "-C", cbdinoToolsDir, "mod", "download")
+
+	// gotestsum is pinned by a tool directive in go.mod. Build it once so test runs exec it directly.
+	toolBinDir, err := os.MkdirTemp("", "integration-tester-bin-")
+	if err != nil {
+		logger.Fatalf("create tool bin dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(toolBinDir) }()
+	mustRunRetry("go", "build", "-o", filepath.Join(toolBinDir, "gotestsum"), "gotest.tools/gotestsum")
+	extraEnv["PATH"] = toolBinDir + ":" + extraEnv["PATH"]
 	if err := os.Setenv("PATH", extraEnv["PATH"]); err != nil {
 		logger.Fatalf("update PATH: %v", err)
 	}
@@ -361,6 +377,15 @@ func run() int {
 
 	testFailed, logFiles := runIntegrationTestsParallel(cfg.SGEdition, goTestFlags, sgPkgs, cfg.CouchbaseServerVersion, cfg.CouchbaseServerProtocol, cfg.MultiNode, cfg.MaxParallelPackages, intLogFileName, cfg.SGCBCollectAlways, cfg.FailFast)
 
+	// Classnames only need telling apart from the rosmar results when both are reported.
+	classnamePrefix := ""
+	if cfg.RunWalrus {
+		classnamePrefix = "integration-" + string(cfg.SGEdition) + "-"
+	}
+	if err := prefixTestcaseClassnames("integration.xml", intLogFileName+".xml", classnamePrefix); err != nil {
+		logger.Fatalf("prefix integration XML classnames: %v", err)
+	}
+
 	nonFatal.report()
 
 	if testFailed {
@@ -414,7 +439,7 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 				logger.Warn(consoleLine)
 			case outputPattern.MatchString(line):
 				logger.Info(consoleLine)
-			default:
+			case !filterOutput:
 				logger.Debug(consoleLine)
 			}
 			if m != nil {
@@ -548,7 +573,7 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 			dockerName, err := kvDockerName(p.shortName(), clusterID)
 			if err != nil {
 				nonFatal.add(fmt.Errorf("get docker name for %s: %w", p, err))
-				// dockerName is ""; cbcollect will be skipped but tests proceed
+				// dockerName is ""; tests proceed without SG_TEST_COUCHBASE_SERVER_DOCKER_NAME
 			}
 
 			logger.Infof("[%s] starting integration tests", p.shortName())
@@ -559,9 +584,8 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 			}
 
 			// Collect server diagnostics before the cluster is deallocated.
-			if dockerName != "" && (cbcollectAlways || filesContainsAny([]string{results[i].logFile}, "server logs for details", "Timed out after 1m0s waiting for a bucket to become available")) {
-				zipName := fmt.Sprintf("/workspace/cbcollect_%s.zip", p.fileName())
-				if err := runLabeledCommand(labelPrefix(p.shortName())+"cbcollect: ", "docker", "exec", "-t", dockerName, "/opt/couchbase/bin/cbcollect_info", zipName); err != nil {
+			if cbcollectAlways || filesContainsAny([]string{results[i].logFile}, "server logs for details", "Timed out after 1m0s waiting for a bucket to become available") {
+				if err := collectLogs(p.shortName(), clusterID, "cbcollect_"+p.fileName()+".zip"); err != nil {
 					nonFatal.add(fmt.Errorf("cbcollect for %s: %w", p, err))
 				}
 			}
@@ -571,11 +595,6 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 	wg.Wait()
 
 	mergeJUnitXML(results, "integration.xml")
-
-	xmlOut := logFileName + ".xml"
-	if err := prefixTestcaseClassnames("integration.xml", xmlOut, "integration-"+string(edition)+"-"); err != nil {
-		logger.Fatalf("prefix integration XML classnames: %v", err)
-	}
 
 	logFiles := make([]string, 0, len(results))
 	for _, r := range results {
@@ -680,11 +699,23 @@ func (p pkg) fileName() string {
 	return short
 }
 
-// mustRun runs a command, writing output to stdout/stderr, and fatals on error.
-func mustRun(name string, args ...string) {
-	if err := runCommand(name, args...); err != nil {
-		logger.Fatalf("command failed: %v", err)
+// mustRunRetry runs a command with retries and exponential backoff, and fatals if every attempt fails.
+// It is for commands that hit the network.
+func mustRunRetry(name string, args ...string) {
+	const attempts = 4
+	delay := 5 * time.Second
+	var err error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err = runCommand(name, args...); err == nil {
+			return
+		}
+		if attempt < attempts {
+			logger.Warnf("attempt %d/%d failed: %v, retrying in %s", attempt, attempts, err, delay)
+			time.Sleep(delay)
+			delay *= 2
+		}
 	}
+	logger.Fatalf("command failed after %d attempts: %v", attempts, err)
 }
 
 // runCommand runs a command, forwarding output to stdout/stderr.

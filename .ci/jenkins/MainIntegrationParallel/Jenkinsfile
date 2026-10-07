@@ -1,0 +1,77 @@
+// Trial counterpart of MainIntegration that runs testing/integration-tester, which gives each package its own
+// Couchbase Server cluster and runs packages in parallel. It is started by hand only, and posts no Slack
+// messages or GitHub commit statuses, so that trial runs do not report against main commits.
+
+pipeline {
+    agent { label 'integration-test' }
+
+    options {
+        skipDefaultCheckout()
+        timeout(time: 3, unit: 'HOURS')
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
+        githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
+    }
+
+    parameters {
+        string(name: 'SG_COMMIT', defaultValue: 'integration-tester', description: 'Branch or tag of Sync Gateway to build. It must contain testing/integration-tester.')
+        string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness, per package.')
+        string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '5', description: 'Maximum number of packages, and so Couchbase Server clusters, run at the same time.')
+    }
+
+    // The same settings as MainIntegration's -m mode. They are set here rather than with -m so that
+    // MAX_PARALLEL_PACKAGES is honoured.
+    environment {
+        TARGET_PACKAGE = '...'
+        TARGET_TEST = 'ALL'
+        RUN_WALRUS = 'true'
+        DETECT_RACES = 'false'
+        SG_EDITION = 'EE'
+        RUN_COUNT = '1'
+        COUCHBASE_SERVER_PROTOCOL = 'couchbase'
+        COUCHBASE_SERVER_VERSION = 'enterprise-7.6.6'
+        SG_TEST_BUCKET_POOL_DEBUG = 'true'
+        GSI = 'true'
+        TLS_SKIP_VERIFY = 'false'
+        SG_CBCOLLECT_ALWAYS = 'false'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs(disableDeferredWipeout: false)
+                git(
+                    url: 'git@github.com:couchbase/sync_gateway.git',
+                    branch: "${params.SG_COMMIT}",
+                    credentialsId: 'CB_SG_Robot_Github_SSH_Key'
+                )
+                script {
+                    currentBuild.description = "${params.SG_COMMIT} x${params.MAX_PARALLEL_PACKAGES}"
+                }
+            }
+        }
+        stage('Integration Tests') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    script {
+                        // Runs SG_COMMIT's own copy of the script, unlike MainIntegration, which fetches main's.
+                        // Exit 50 is a test failure (UNSTABLE), any other non-zero exit a setup failure (FAILURE).
+                        def exitCode = sh(script: './.ci/jenkins/integration-build.sh', returnStatus: true)
+                        if (exitCode == 50) {
+                            unstable('At least one integration test failed')
+                        } else if (exitCode != 0) {
+                            error(".ci/jenkins/integration-build.sh exited ${exitCode}")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'verbose*', allowEmptyArchive: true, fingerprint: false
+            junit testResults: 'verbose*.xml', allowEmptyResults: true
+            recordCoverage(tools: [[parser: 'GO_COV', pattern: 'coverage_*.out']])
+        }
+    }
+}

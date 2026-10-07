@@ -14,14 +14,23 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
 
 const (
-	cbdinocluster = "github.com/couchbaselabs/cbdinocluster@latest"
-	dinoNetwork   = "dinonet"
+	// cbdinoToolsDir is the module that pins cbdinocluster with a tool directive.
+	cbdinoToolsDir = "integration-test/tools"
+	dinoNetwork    = "dinonet"
+	clusterPurpose = "sync_gateway_integration"
 )
+
+// cbdinoArgs returns the go arguments that run cbdinocluster with args. cbdinocluster runs in cbdinoToolsDir,
+// so any path in args must be absolute.
+func cbdinoArgs(args ...string) []string {
+	return append([]string{"-C", cbdinoToolsDir, "tool", "cbdinocluster"}, args...)
+}
 
 // cbdinoClusterInfo and cbdinoNode are minimal structs for parsing cbdinocluster list --json output.
 type cbdinoClusterInfo struct {
@@ -37,8 +46,8 @@ type cbdinoNode struct {
 // initCbdinocluster configures cbdinocluster for docker deployments. On colima, init creates the
 // dinonet network itself, but only when colima has a host-routable address.
 func initCbdinocluster() error {
-	err := runCommand("go", "run", cbdinocluster, "init", "--auto",
-		"--disable-k8s", "--disable-capella", "--disable-aws", "--disable-azure", "--disable-gcp", "--disable-dns")
+	err := runCommand("go", cbdinoArgs("init", "--auto",
+		"--disable-k8s", "--disable-capella", "--disable-aws", "--disable-azure", "--disable-gcp", "--disable-dns")...)
 	if err != nil {
 		return fmt.Errorf("cbdinocluster init: %w", err)
 	}
@@ -78,7 +87,7 @@ func allocateCluster(label, serverVersion string, protocol Protocol, multiNode b
 		return "", "", fmt.Errorf("close cluster def file: %w", err)
 	}
 
-	raw, err := tryLabeledOutput(prefix, "go", "run", cbdinocluster, "allocate", "--def-file", f.Name())
+	raw, err := tryLabeledOutput(prefix, "go", cbdinoArgs("allocate", "--def-file", f.Name(), "--purpose", clusterPurpose)...)
 	if err != nil {
 		return "", "", fmt.Errorf("allocate cluster: %w", err)
 	}
@@ -89,7 +98,7 @@ func allocateCluster(label, serverVersion string, protocol Protocol, multiNode b
 	if protocol == ProtocolCouchbases {
 		tlsFlag = "--tls"
 	}
-	raw, err = tryLabeledOutput(prefix, "go", "run", cbdinocluster, "connstr", tlsFlag, clusterID)
+	raw, err = tryLabeledOutput(prefix, "go", cbdinoArgs("connstr", tlsFlag, clusterID)...)
 	if err != nil {
 		return "", "", fmt.Errorf("get cluster connstr: %w", err)
 	}
@@ -103,16 +112,25 @@ func allocateCluster(label, serverVersion string, protocol Protocol, multiNode b
 func deallocateCluster(label, clusterID string) {
 	prefix := cbdinoPrefix(label)
 	logger.Debugf("%sDeallocating cluster %s", prefix, clusterID)
-	if err := runLabeledCommand(prefix, "go", "run", cbdinocluster, "rm", clusterID); err != nil {
+	if err := runLabeledCommand(prefix, "go", cbdinoArgs("rm", clusterID)...); err != nil {
 		nonFatal.add(fmt.Errorf("deallocate cluster %q: %w", clusterID, err))
 	}
+}
+
+// collectLogs writes a cbcollect_info zip for every node in clusterID to zipFile on the host.
+func collectLogs(label, clusterID, zipFile string) error {
+	absZip, err := filepath.Abs(zipFile)
+	if err != nil {
+		return fmt.Errorf("resolve %q: %w", zipFile, err)
+	}
+	return runLabeledCommand(labelPrefix(label)+"cbcollect: ", "go", cbdinoArgs("collect-logs", clusterID, absZip)...)
 }
 
 // kvDockerName returns the Docker container name for the first KV node in clusterID.
 // Container names follow the cbdinocluster convention: "cbdynnode-<node-id>".
 // Returns an empty string for non-docker deployers or if no nodes are found.
 func kvDockerName(label, clusterID string) (string, error) {
-	out, err := tryLabeledOutput(cbdinoPrefix(label), "go", "run", cbdinocluster, "list", "--json")
+	out, err := tryLabeledOutput(cbdinoPrefix(label), "go", cbdinoArgs("list", "--json")...)
 	if err != nil {
 		return "", fmt.Errorf("cbdinocluster list: %w", err)
 	}
@@ -132,11 +150,16 @@ func kvDockerName(label, clusterID string) (string, error) {
 	return "", fmt.Errorf("cluster %q not found in cbdinocluster list output", clusterID)
 }
 
-// clusterDefYAML returns a cbdinocluster cluster definition.
+// clusterDefYAML returns a cbdinocluster cluster definition. A serverVersion containing "/" is a full docker
+// image reference (e.g. ghcr.io/cb-vanilla/server:8.5.0), which cbdinocluster can't resolve as a version.
 func clusterDefYAML(serverVersion string, multiNode bool) string {
 	count := 1
 	if multiNode {
 		count = 3
+	}
+	image := ""
+	if strings.Contains(serverVersion, "/") {
+		image = "    docker:\n      image: " + serverVersion + "\n"
 	}
 	return fmt.Sprintf(`---
 nodes:
@@ -146,8 +169,8 @@ nodes:
       - kv
       - n1ql
       - index
-docker:
+%sdocker:
   kv-memory: 1200
   index-memory: 1200
-`, count, serverVersion)
+`, count, serverVersion, image)
 }
