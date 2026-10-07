@@ -11,11 +11,14 @@ licenses/APL2.txt.
 package base
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -275,4 +278,52 @@ func getDirFiles(t *testing.T, dir string) []string {
 		fileNames = append(fileNames, file.Name())
 	}
 	return fileNames
+}
+
+func TestSwapFileLoggerReplacesMemoryLogger(t *testing.T) {
+	testCases := []struct {
+		name          string
+		enabled       bool
+		collationSize int
+		expected      []string
+	}{
+		{name: "uncollated", enabled: true, collationSize: 0, expected: []string{"buffered", "forwarded"}},
+		{name: "collated", enabled: true, collationSize: 10, expected: []string{"buffered", "forwarded"}},
+		{name: "disabled", enabled: false, collationSize: 0, expected: nil},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			prev := NewMemoryLogger(LevelInfo)
+			prev.log("buffered")
+			var ptr atomic.Pointer[FileLogger]
+			ptr.Store(prev)
+
+			var output bytes.Buffer
+			config := &FileLoggerConfig{
+				Enabled:             new(tc.enabled),
+				CollationBufferSize: new(tc.collationSize),
+				Output:              &output,
+			}
+			logger, err := NewFileLogger(TestCtx(t), config, LevelInfo, "test", "", 0, nil)
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, logger.Close()) }()
+			swapLogger(&ptr, logger)
+			require.Same(t, logger, ptr.Load())
+
+			// a goroutine that loaded the global logger before it was replaced still writes to prev
+			prev.log("forwarded")
+			logger.FlushBufferToLog()
+
+			if logger.collateBuffer != nil {
+				flushLogMutex.Lock()
+				defer flushLogMutex.Unlock()
+				logger.collateBufferWg.Wait()
+				flushLogBuffersWaitGroup.Add(1)
+				logger.flushChan <- struct{}{}
+				flushLogBuffersWaitGroup.Wait()
+			}
+			// forwarded lines go straight to output, so they can precede the buffered lines
+			assert.ElementsMatch(t, tc.expected, strings.Fields(output.String()))
+		})
+	}
 }

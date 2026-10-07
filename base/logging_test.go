@@ -78,7 +78,7 @@ func TestLogRotationInterval(t *testing.T) {
 	t.Logf("countBefore: %d", countBefore)
 
 	ctx := TestCtx(t)
-	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil, nil)
+	fl, err := NewFileLogger(ctx, config, LevelTrace, "test", logPath, 0, nil)
 	require.NoError(t, err)
 	defer func() {
 		assert.NoError(t, fl.Close())
