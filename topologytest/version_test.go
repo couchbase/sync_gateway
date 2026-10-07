@@ -27,6 +27,8 @@ type DocMetadata struct {
 	Mou         *db.MetadataOnlyUpdate  // Mou is the metadata only update of the document, may not be present
 	Cas         uint64                  // Cas is the cas value of the document
 	ImplicitHLV *db.HybridLogicalVector // ImplicitHLV is the version of the document, if there was no HLV
+	// VersionUnknown is set for a tombstone written by a CouchbaseLitePeer, whose version can't be read back.
+	VersionUnknown bool
 }
 
 // HasHLV returns true if the version has an HLV. This will always return true on Couchbase Server or Sync Gateway

@@ -180,6 +180,7 @@ func (p Peers) ActivePeers() iter.Seq2[string, Peer] {
 }
 
 var _ PeerReplication = &CouchbaseLiteMockReplication{}
+var _ PeerReplication = &CouchbaseLiteReplication{}
 var _ PeerReplication = &CouchbaseServerReplication{}
 var _ PeerReplication = &CouchbaseServerReplication{}
 
@@ -313,6 +314,7 @@ type PeerReplicationDefinition struct {
 
 var _ Peer = &CouchbaseServerPeer{}
 var _ Peer = &CouchbaseLiteMockPeer{}
+var _ Peer = &CouchbaseLitePeer{}
 var _ Peer = &SyncGatewayPeer{}
 
 // PeerType represents the type of a peer. These will be:
@@ -325,13 +327,14 @@ var _ Peer = &SyncGatewayPeer{}
 //
 // - Couchbase Lite
 //   - CouchbaseLiteMockPeer is in memory backed by BlipTesterClient
-//   - CouchbaseLitePeer (backed by Test Server) Not Yet Implemented
+//   - CouchbaseLitePeer is a real client run by the Couchbase Lite test server, used when
+//     SG_TEST_TOPOLOGY_REAL_CBL is set
 type PeerType int
 
 const (
 	// PeerTypeCouchbaseServer represents a Couchbase Server peer. This can be backed by rosmar or couchbase server (controlled by SG_TEST_BACKING_STORE).
 	PeerTypeCouchbaseServer PeerType = iota
-	// PeerTypeCouchbaseLite represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.
+	// PeerTypeCouchbaseLite represents a Couchbase Lite 4.x peer. This is CouchbaseLiteMockPeer, or a real client when SG_TEST_TOPOLOGY_REAL_CBL is set.
 	PeerTypeCouchbaseLite
 	// PeerTypeCouchbaseLiteV3 represents a Couchbase Lite peer. This is currently backed in memory but will be backed by in memory structure that will send and receive blip messages. Future expansion to real Couchbase Lite peer in CBG-4260.
 	PeerTypeCouchbaseLiteV3
@@ -395,6 +398,10 @@ func NewPeer(t *testing.T, name string, buckets map[PeerBucketID]*base.TestBucke
 		require.Equal(t, PeerBucketNoBackingBucket, opts.BucketID, "bucket should not be specified for Couchbase Lite peer %+v", opts)
 		_, ok := buckets[opts.BucketID]
 		require.False(t, ok, "bucket should not be specified for Couchbase Lite peer")
+		// The real client is 4.x only, so a 3.x peer is always the mock.
+		if opts.Type == PeerTypeCouchbaseLite && useRealCouchbaseLite() {
+			return newCouchbaseLitePeer(t, name, opts.Symmetric)
+		}
 		p := &CouchbaseLiteMockPeer{
 			name:               name,
 			blipClients:        make(map[string]*PeerBlipTesterClient),
@@ -567,9 +574,12 @@ func TestPeerImplementation(t *testing.T) {
 
 			// Delete
 			deleteVersion := peer.DeleteDocument(collectionName, docID)
-			require.NotEmpty(t, deleteVersion.CV(t))
-			require.NotEqual(t, deleteVersion.CV(t), updateVersion.docMeta.CV(t))
-			require.NotEqual(t, deleteVersion.CV(t), createVersion.docMeta.CV(t))
+			// A real Couchbase Lite can't report the version of its tombstone.
+			if !deleteVersion.VersionUnknown {
+				require.NotEmpty(t, deleteVersion.CV(t))
+				require.NotEqual(t, deleteVersion.CV(t), updateVersion.docMeta.CV(t))
+				require.NotEqual(t, deleteVersion.CV(t), createVersion.docMeta.CV(t))
+			}
 			if tc.peerOption.Type == PeerTypeSyncGateway {
 				require.NotEmpty(t, deleteVersion.RevTreeID)
 				require.NotEqual(t, deleteVersion.RevTreeID, createVersion.docMeta.RevTreeID)
@@ -584,7 +594,9 @@ func TestPeerImplementation(t *testing.T) {
 			resurrectionVersion := peer.WriteDocument(collectionName, docID, resurrectionBody)
 			require.NotEmpty(t, resurrectionVersion.docMeta.CV(t))
 
-			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
+			if !deleteVersion.VersionUnknown {
+				require.NotEqual(t, resurrectionVersion.docMeta.CV(t), deleteVersion.CV(t))
+			}
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), updateVersion.docMeta.CV(t))
 			require.NotEqual(t, resurrectionVersion.docMeta.CV(t), createVersion.docMeta.CV(t))
 

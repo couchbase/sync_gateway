@@ -48,6 +48,23 @@ func controllableClockPeerCount(topologySpec TopologySpecification) (count int) 
 	return count
 }
 
+// skipIfClockTieNotForceable skips a ClockTie subtest whose topology can't have its clocks tied: one with fewer
+// than two controllable peers, or one with a real Couchbase Lite, whose clock can't be set from here.  A single
+// free-running clock decides the winner on its own, so the test's expectation of a tie wouldn't hold.
+func skipIfClockTieNotForceable(t *testing.T, topologySpec TopologySpecification) {
+	t.Helper()
+	if count := controllableClockPeerCount(topologySpec); count < 2 {
+		t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", count)
+	}
+	if useRealCouchbaseLite() {
+		for _, opts := range topologySpec.peers {
+			if opts.Type == PeerTypeCouchbaseLite {
+				t.Skipf("a real Couchbase Lite's clock can't be set, so an HLC clock tie can't be forced (%s is set)", envRealCouchbaseLite)
+			}
+		}
+	}
+}
+
 // forceHLCClockTieForTest pins the HLC clocks of every controllable peer in the topology to the same fixed
 // timestamp, forcing each of their next brand-new-document writes to generate an identical HLV current-version
 // Value. Returns the number of peers whose clock was overridden.

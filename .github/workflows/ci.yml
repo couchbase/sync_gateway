@@ -369,7 +369,8 @@ jobs:
           if-no-files-found: warn
   test-cbl:
     # Exercises testing/cbltestclient, and the tests built on it, against a real Couchbase Lite
-    # client.  The test server build script only supports Linux and macOS.
+    # client - including the topology tests, with their Couchbase Lite peers swapped from the mock
+    # to the real client.  The test server build script only supports Linux and macOS.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -426,9 +427,10 @@ jobs:
           SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
       - name: Run Tests
         shell: bash
-        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/... ./rest/cbltest/...
+        run: go tool gotestsum --format pkgname-and-test-fails --hide-summary=output --jsonfile test.json -- -tags cb_sg_devmode -shuffle=on -timeout=20m -count=1 ./testing/cbltestclient/... ./rest/cbltest/... ./topologytest/...
         env:
           SG_TEST_CBL_TEST_SERVER_DIR: ${{ github.workspace }}/cbl-test-server
+          SG_TEST_TOPOLOGY_REAL_CBL: 'true'
       - name: Test Summary
         if: always()
         shell: bash

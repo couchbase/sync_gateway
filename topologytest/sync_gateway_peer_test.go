@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -27,6 +29,11 @@ type SyncGatewayPeer struct {
 	rt                 *rest.RestTester
 	name               string
 	symmetricRedundant bool
+	// publicListener serves the public API over real HTTP, for a CouchbaseLitePeer to replicate with.
+	// It is only started when one asks for it.
+	publicListener *httptest.Server
+	// cblUserCreated is set once the user CouchbaseLitePeers replicate as exists.
+	cblUserCreated bool
 }
 
 func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket, symmetricRedundant bool) Peer {
@@ -207,7 +214,29 @@ func (p *SyncGatewayPeer) WaitForTombstoneVersion(dsName sgbucket.DataStoreName,
 
 // Close will shut down the peer and close any active replications on the peer.
 func (p *SyncGatewayPeer) Close() {
+	if p.publicListener != nil {
+		p.publicListener.Close()
+	}
 	p.rt.Close()
+}
+
+// createCouchbaseLiteUser creates the user every CouchbaseLitePeer replicates as, the first time
+// one asks for it.
+func (p *SyncGatewayPeer) createCouchbaseLiteUser() {
+	if !p.cblUserCreated {
+		p.rt.CreateUser(cblUsername, []string{"*"})
+		p.cblUserCreated = true
+	}
+}
+
+// blipEndpoint returns the websocket URL of this peer's database.  A real Couchbase Lite runs in
+// another process, so it needs the public API on a real listener rather than the in-process
+// handler BlipTesterClient uses.
+func (p *SyncGatewayPeer) blipEndpoint() string {
+	if p.publicListener == nil {
+		p.publicListener = httptest.NewServer(p.rt.TestPublicHandler())
+	}
+	return "ws" + strings.TrimPrefix(p.publicListener.URL, "http") + "/" + p.rt.GetDatabase().Name
 }
 
 // Type returns PeerTypeSyncGateway.

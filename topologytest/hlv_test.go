@@ -58,6 +58,10 @@ func waitForVersionAndBody(t *testing.T, dsName base.ScopeAndCollectionName, doc
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
 		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, expectedVersion.updatePeer, expectedVersion)
+		if p, isRealCBL := peer.(*CouchbaseLitePeer); isRealCBL {
+			p.waitForVersionAndBody(dsName, docID, expectedVersion.docMeta, expectedVersion.body, false, topology)
+			continue
+		}
 		body := peer.WaitForDocVersion(dsName, docID, expectedVersion.docMeta, topology)
 		requireBodyEqual(t, expectedVersion.body, body)
 	}
@@ -112,6 +116,10 @@ func waitForCVAndBody(t *testing.T, dsName base.ScopeAndCollectionName, docID st
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for doc version on all peers, written from %s: %#v", winner.updatePeer, winner.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {
 		base.TracefCtx(ctx, base.KeySGTest, "waiting for doc version on peer %s, written from %s: %#v", peer, winner.updatePeer, winner)
+		if p, isRealCBL := peer.(*CouchbaseLitePeer); isRealCBL {
+			p.waitForVersionAndBody(dsName, docID, winner.docMeta, winner.body, true, topology)
+			continue
+		}
 		var body db.Body
 		if peer.Type() == PeerTypeCouchbaseLite {
 			body = peer.WaitForCV(dsName, docID, winner.docMeta, topology)
@@ -206,6 +214,11 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 		nonCBLVersions := make(map[string]DocMetadata)
 		for peerName, peer := range topology.SortedPeers() {
 			meta, body, exists := peer.GetDocumentIfExists(dsName, docID)
+			// A real Couchbase Lite reports a tombstone as a document that doesn't exist.
+			if _, isRealCBL := peer.(*CouchbaseLitePeer); isRealCBL {
+				assert.False(c, exists, "expected doc %s to be deleted on peer %s", docID, peer)
+				continue
+			}
 			if !assert.True(c, exists, "doc %s does not exist on peer %s", docID, peer) {
 				return
 			}
@@ -235,6 +248,12 @@ func waitForConvergingTombstones(t *testing.T, dsName base.ScopeAndCollectionNam
 // waitForTombstoneVersion waits for a tombstone document with a particular HLV to be present on all peers.
 func waitForTombstoneVersion(t *testing.T, dsName base.ScopeAndCollectionName, docID string, expectedVersion BodyAndVersion, topology Topology) {
 	t.Helper()
+	// A tombstone written by a real Couchbase Lite has a version nobody can read back, so the best that
+	// can be checked is that every peer converges on some tombstone.
+	if expectedVersion.docMeta.VersionUnknown {
+		waitForConvergingTombstones(t, dsName, docID, topology)
+		return
+	}
 	ctx := base.TestCtx(t)
 	base.InfofCtx(ctx, base.KeySGTest, "waiting for tombstone version on all peers, written from %s: %#v", expectedVersion.updatePeer, expectedVersion.docMeta.HLVString())
 	for _, peer := range topology.SortedPeers() {

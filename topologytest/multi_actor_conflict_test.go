@@ -38,8 +38,8 @@ func TestMultiActorConflictCreate(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			for _, forceClockTie := range []bool{false, true} {
 				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
-					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
-						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					if forceClockTie {
+						skipIfClockTieNotForceable(t, topologySpec)
 					}
 
 					collectionName, topology := setupTests(t, topologySpec)
@@ -78,8 +78,8 @@ func TestMultiActorConflictUpdate(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			for _, forceClockTie := range []bool{false, true} {
 				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
-					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
-						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					if forceClockTie {
+						skipIfClockTieNotForceable(t, topologySpec)
 					}
 
 					collectionName, topology := setupTests(t, topologySpec)
@@ -123,8 +123,8 @@ func TestMultiActorConflictDelete(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			for _, forceClockTie := range []bool{false, true} {
 				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
-					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
-						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					if forceClockTie {
+						skipIfClockTieNotForceable(t, topologySpec)
 					}
 
 					collectionName, topology := setupTests(t, topologySpec)
@@ -175,8 +175,8 @@ func TestMultiActorConflictResurrect(t *testing.T) {
 		t.Run(topologySpec.description, func(t *testing.T) {
 			for _, forceClockTie := range []bool{false, true} {
 				t.Run(clockTieSubtestName(forceClockTie), func(t *testing.T) {
-					if forceClockTie && controllableClockPeerCount(topologySpec) < 2 {
-						t.Skipf("only %d controllable (Sync Gateway/Couchbase Lite) peer(s) in this topology, need at least 2 to force an HLC clock tie", controllableClockPeerCount(topologySpec))
+					if forceClockTie {
+						skipIfClockTieNotForceable(t, topologySpec)
 					}
 
 					collectionName, topology := setupTests(t, topologySpec)
