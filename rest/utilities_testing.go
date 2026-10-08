@@ -939,7 +939,8 @@ func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPa
 func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult) {
 	rt.TB().Helper()
 
-	worker := func() (shouldRetry bool, err error, value sgbucket.ViewResult) {
+	var result sgbucket.ViewResult
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		var response *TestResponse
 		if user != nil {
 			request := Request("GET", viewUrlPath, "")
@@ -948,64 +949,26 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		} else {
 			response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 		}
-
-		// If the view is undefined, it might be a race condition where the view is still being created
-		// See https://github.com/couchbase/sync_gateway/issues/3570#issuecomment-390487982
-		if strings.Contains(response.Body.String(), "view_undefined") {
-			base.InfofCtx(rt.Context(), base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
-			return true, nil, sgbucket.ViewResult{}
+		// retry on view_undefined, the view might still be getting created
+		if !assert.Equal(c, http.StatusOK, response.Code, "view call failed: %s", response.Body.String()) {
+			return
 		}
-
-		if response.Code != 200 {
-			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200", response.Code), sgbucket.ViewResult{}
+		result = sgbucket.ViewResult{}
+		if !assert.NoError(c, base.JSONUnmarshal(response.Body.Bytes(), &result)) {
+			return
 		}
-		var result sgbucket.ViewResult
-		require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &result))
-
-		if len(result.Rows) >= numResultsExpected {
-			// Got enough results, break out of retry loop
-			return false, nil, result
-		}
-
-		// Not enough results, retry
-		return true, nil, sgbucket.ViewResult{}
-
-	}
-
-	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
-	sleeper := base.CreateSleeperFunc(200, 100)
-	err, returnVal := base.RetryLoop(rt.Context(), description, worker, sleeper)
-	require.NoError(rt.TB(), err, "Error waiting for view results: %v", err)
-	return returnVal
+		assert.GreaterOrEqual(c, len(result.Rows), numResultsExpected)
+	}, 20*time.Second, 100*time.Millisecond, "Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
+	return result
 }
 
-// Waits for view to be defined on the server.  Used to avoid view_undefined errors.
-func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
-
-	worker := func() (shouldRetry bool, err error, value any) {
+// WaitForViewAvailable waits for view to be defined on the server. Used to avoid view_undefined errors.
+func (rt *RestTester) WaitForViewAvailable(viewURLPath string) {
+	rt.TB().Helper()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		response := rt.SendAdminRequest("GET", viewURLPath, ``)
-
-		if response.Code == 200 {
-			return false, nil, nil
-		}
-
-		// Views unavailable, retry
-		if response.Code == 500 {
-			log.Printf("Error waiting for view to be available....will retry: %s", response.Body.Bytes())
-			return true, fmt.Errorf("500 error"), nil
-		}
-
-		// Unexpected error, return
-		return false, fmt.Errorf("Unexpected error response code while waiting for view available: %v", response.Code), nil
-
-	}
-
-	description := "Wait for view readiness"
-	sleeper := base.CreateSleeperFunc(200, 100)
-	err, _ = base.RetryLoop(rt.Context(), description, worker, sleeper)
-
-	return err
-
+		assert.Equal(c, http.StatusOK, response.Code, "view not available: %s", response.Body.String())
+	}, 20*time.Second, 100*time.Millisecond, "Wait for view readiness")
 }
 
 func (rt *RestTester) GetDBState() string {
@@ -1909,26 +1872,11 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (r
 func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]any) {
 	bt.TB().Helper()
 
-	retryWorker := func() (shouldRetry bool, err error, value [][]any) {
-		currentChanges := bt.GetChanges()
-		if len(currentChanges) >= numChangesExpected {
-			return false, nil, currentChanges
-		}
-
-		// haven't seen numDocsExpected yet, so wait and retry
-		return true, nil, nil
-
-	}
-
-	err, changes := base.RetryLoop(
-		bt.restTester.Context(),
-		"WaitForNumChanges",
-		retryWorker,
-		base.CreateDoublingSleeperFunc(10, 10),
-	)
-	require.NoError(bt.restTester.TB(), err, "WaitForNumChanges failed")
+	require.EventuallyWithT(bt.TB(), func(c *assert.CollectT) {
+		changes = bt.GetChanges()
+		assert.GreaterOrEqual(c, len(changes), numChangesExpected)
+	}, 10*time.Second, 50*time.Millisecond, "WaitForNumChanges")
 	return changes
-
 }
 
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
