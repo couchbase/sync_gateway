@@ -29,44 +29,9 @@ func TestUserXattrRevCache(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	docKey := t.Name()
-	xattrKey := "channels"
 	channelName := []string{"ABC", "DEF"}
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-	syncFn := `function (doc, oldDoc, meta){
-				if (meta.xattrs.channels !== undefined){
-					channel(meta.xattrs.channels);
-					console.log(JSON.stringify(meta));
-				}
-			}`
-
-	// Sync function to set channel access to a channels UserXattrKey.
-	// Each rest tester needs a distinct database name - the cbgt dest factory registry is
-	// process-global and keyed on database name, so same-named databases in one process would
-	// clobber each other's import listener registration.
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Name:             "rt1",
-			AutoImport:       true,
-			UserXattrKey:     &xattrKey,
-			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
-		}},
-		SyncFn: syncFn,
-	})
-	defer rt.Close()
-
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Name:             "rt2",
-			AutoImport:       true,
-			UserXattrKey:     &xattrKey,
-			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
-		}},
-		SyncFn: syncFn,
-	})
-	defer rt2.Close()
+	rtc, rt, rt2 := newUserXattrCluster(t)
+	defer rtc.Close(ctx)
 
 	dataStore := rt2.GetSingleDataStore()
 
@@ -87,7 +52,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	cas, err := rt.GetSingleDataStore().Get(ctx, docKey, nil)
 	require.NoError(t, err)
 
-	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{revCacheXattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
 	require.NoError(t, err)
 
 	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
@@ -100,7 +65,7 @@ func TestUserXattrRevCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add channel ABC to the userXattr
-	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, channelName)}, nil)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{revCacheXattrKey: base.MustJSONMarshal(t, channelName)}, nil)
 	require.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
@@ -118,43 +83,9 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	ctx := base.TestCtx(t)
-	// Sync function to set channel access to a channels UserXattrKey
-	syncFn := `
-			function (doc, oldDoc, meta){
-				if (meta.xattrs.channels !== undefined){
-					channel(meta.xattrs.channels);
-					console.log(JSON.stringify(meta));
-				}
-			}`
-
 	docKey := t.Name()
-	xattrKey := "channels"
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
-
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Name:             "rt1",
-			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
-			AutoImport:       true,
-			UserXattrKey:     &xattrKey,
-		}},
-		SyncFn: syncFn,
-	})
-	defer rt.Close()
-
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Name:             "rt2",
-			ImportPartitions: new(uint16(2)), // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
-			AutoImport:       true,
-			UserXattrKey:     &xattrKey,
-		}},
-		SyncFn: syncFn,
-	})
-	defer rt2.Close()
+	rtc, rt, rt2 := newUserXattrCluster(t)
+	defer rtc.Close(ctx)
 
 	dataStore := rt2.GetSingleDataStore()
 
@@ -173,7 +104,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write DEF to the userXattrStore to give userDEF access
-	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{xattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
+	_, err = dataStore.UpdateXattrs(ctx, docKey, 0, cas, map[string][]byte{revCacheXattrKey: base.MustJSONMarshal(t, "DEF")}, nil)
 	assert.NoError(t, err)
 
 	rt.WaitForChanges(1, "/{{.keyspace}}/_changes", "userDEF", false)
@@ -185,7 +116,7 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Delete DEF from the userXattr, removing the doc from channel DEF
-	err = dataStore.RemoveXattrs(ctx, docKey, []string{xattrKey}, cas)
+	err = dataStore.RemoveXattrs(ctx, docKey, []string{revCacheXattrKey}, cas)
 	require.NoError(t, err)
 
 	// wait for import of the xattr change on both nodes
@@ -197,4 +128,36 @@ func TestUserXattrDeleteWithRevCache(t *testing.T) {
 	assert.Equal(t, resp.Code, http.StatusForbidden)
 	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/"+docKey, ``, "userDEF")
 	assert.Equal(t, resp.Code, http.StatusForbidden)
+}
+
+// revCacheXattrKey is the user xattr that the sync function of newUserXattrCluster reads channels from.
+const revCacheXattrKey = "channels"
+
+// newUserXattrCluster starts a two node cluster running one database whose sync function assigns channels from the
+// user xattr revCacheXattrKey.
+func newUserXattrCluster(t *testing.T) (rtc *rest.RestTesterCluster, rt1, rt2 *rest.RestTester) {
+	rtc = rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{
+		NumNodes: 2,
+		SyncFn: `function (doc, oldDoc, meta){
+				if (meta.xattrs.channels !== undefined){
+					channel(meta.xattrs.channels);
+				}
+			}`,
+	})
+	rt1 = rtc.Node(0)
+	rt2 = rtc.Node(1)
+	dbConfig := rt1.NewDbConfig()
+	dbConfig.AutoImport = true
+	dbConfig.UserXattrKey = new(revCacheXattrKey)
+	dbConfig.ImportPartitions = new(uint16(2)) // temporarily config to 2 import partitions (default 1 for rest tester) pending CBG-3438 + CBG-3439
+	rest.RequireStatus(t, rt1.CreateDatabase("db", dbConfig), http.StatusCreated)
+	_, err := rtc.RefreshClusterDbConfigs()
+	require.NoError(t, err)
+	// Node 1 joining moves a cbgt partition off node 0, so wait for the split to settle before the test writes docs.
+	if base.IsEnterpriseEdition() && !base.UnitTestUrlIsWalrus() {
+		rtc.ForEachNode(func(rt *rest.RestTester) {
+			base.RequireWaitForStat(t, rt.GetDatabase().DbStats.SharedBucketImport().ImportPartitions.Value, 1)
+		})
+	}
+	return rtc, rt1, rt2
 }
