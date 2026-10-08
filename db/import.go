@@ -273,7 +273,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			}
 		}
 
-		shouldGenerateNewRev := bodyChanged || len(existingDoc.Xattrs[db.UserXattrKey()]) == 0
+		shouldGenerateNewRev := bodyChanged || len(doc.rawUserXattr) == 0
 
 		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.
