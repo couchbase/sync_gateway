@@ -14,6 +14,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1945,82 +1946,85 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 	})
 }
 
-// TestPushReplicationAPIUpdateDatabase starts a push replication and updates the passive database underneath the replication.
-// Expect to see the connection closed with an error, instead of continuously panicking.
-// This is the ISGR version of TestBlipPusherUpdateDatabase
-//
-// This test causes the race detector to flag the bucket=nil operation and any in-flight requests being made using that bucket, prior to the replication being reset.
-// TODO CBG-1903: Can be fixed by draining in-flight requests before fully closing the database.
+// TestPushReplicationAPIUpdateDatabase reloads the passive database several times underneath a push replication
+// while documents are still being written, and expects the replicator to reconnect and deliver every document.
+// This is the ISGR version of TestBlipPusherUpdateDatabase.
 func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
-
-	t.Skip("Skipping test - revisit in CBG-1908")
-
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	sgrRunner := rest.NewSGRTestRunner(t)
 	sgrRunner.Run(func(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
-		// Create initial doc on rt1
 		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
-		_ = rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
-		// Create push replication, verify running
-		replicationID := t.Name()
+		replicationID := rest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+		sgrRunner.WaitForDocReplicated(docID, rt1, rt2, version)
 
-		// wait for document originally written to rt1 to arrive at rt2
-		changesResults := rt2.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
-		require.Equal(t, docID, changesResults.Results[0].ID)
-
-		var lastDocID atomic.Value
+		type docWrite struct {
+			docID   string
+			version rest.DocVersion
+		}
+		var numDocs atomic.Int64
+		var lastWrite atomic.Pointer[docWrite]
 
 		// Wait for the background updates to finish at the end of the test
 		shouldCreateDocs := base.NewAtomicBool(true)
-		wg := sync.WaitGroup{}
-		wg.Add(1)
+		var wg sync.WaitGroup
 		defer func() {
 			shouldCreateDocs.Set(false)
 			wg.Wait()
 		}()
 
 		// Start creating documents in the background on rt1 for the replicator to push to rt2
-		go func() {
+		docPrefix := rest.SafeDocumentName(t, t.Name())
+		wg.Go(func() {
 			for i := 0; shouldCreateDocs.IsTrue(); i++ {
-				docID := fmt.Sprintf("%s-doc%d", t.Name(), i)
-				_ = rt1.PutDoc(docID, fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
-				lastDocID.Store(docID)
+				docID := fmt.Sprintf("%s-doc%d", docPrefix, i)
+				version := rt1.PutDoc(docID, fmt.Sprintf(`{"i":%d,"channels":["alice"]}`, i))
+				numDocs.Add(1)
+				lastWrite.Store(&docWrite{docID: docID, version: version})
+				// jittered throttle below the push rate, so the replicator can catch up between reloads while
+				// writes still land at varied points in each reload
+				time.Sleep(rand.N(50 * time.Millisecond))
 			}
-			rt1.WaitForPendingChanges()
-			wg.Done()
-		}()
+		})
 
-		// and wait for a few to be done before we proceed with updating database config underneath replication
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			changes := rt2.GetChanges("/{{.keyspace}}/_changes", "")
-			assert.GreaterOrEqual(c, len(changes.Results), 5)
-		}, time.Second*5, time.Millisecond*100)
+		// Reload the passive database several times while documents are still being written and pushed. Each
+		// iteration waits for the latest write to arrive, so the replicator has reconnected before the next reload.
+		const numReloads = 5
+		for range numReloads {
+			_, err := rt2.ServerContext().ReloadDatabase(rt2.Context(), rt2.GetDatabase().Name, false)
+			require.NoError(t, err)
 
-		// just change the sync function to cause the database to reload
-		dbConfig := *rt2.ServerContext().GetDbConfig("db")
-		dbConfig.Sync = new(`function(doc){channel(doc.channels);}`)
-		resp := rt2.ReplaceDbConfig("db", dbConfig)
-		rest.RequireStatus(t, resp, http.StatusCreated)
+			// wait for a write made after the reload, so its delivery proves the replicator reconnected
+			prevWrite := lastWrite.Load()
+			var write *docWrite
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				write = lastWrite.Load()
+				assert.NotNil(c, write)
+				assert.NotSame(c, prevWrite, write)
+			}, 10*time.Second, 10*time.Millisecond)
+			sgrRunner.WaitForDocReplicated(write.docID, rt1, rt2, write.version)
+		}
 
 		shouldCreateDocs.Set(false)
+		wg.Wait()
+		rt1.WaitForPendingChanges()
 
-		lastDocIDString, ok := lastDocID.Load().(string)
-		require.True(t, ok)
-
-		// wait for the last document written to rt1 to arrive at rt2
-		rest.WaitAndAssertCondition(t, func() bool {
-			collection, ctx := rt2.GetSingleTestDatabaseCollection()
-			_, err := collection.GetDocument(ctx, lastDocIDString, db.DocUnmarshalSync)
-			return err == nil
-		})
+		// every doc written on rt1 arrives on rt2, and the replicator reports no failures
+		total := numDocs.Load()
+		t.Logf("wrote %d docs across %d reloads", total, numReloads)
+		rt2.WaitForChanges(int(total)+1, "/{{.keyspace}}/_changes", "", true)
+		status := rt1.GetReplicationStatus(replicationID)
+		assert.Equal(t, db.ReplicationStateRunning, status.Status)
+		assert.Empty(t, status.ErrorMessage)
+		assert.Zero(t, status.DocWriteFailures)
+		assert.Zero(t, status.DocWriteConflict)
 	})
 }
 
