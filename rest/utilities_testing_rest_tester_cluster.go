@@ -85,6 +85,7 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 		PersistentConfig:               true,
 		CustomTestBucket:               rtc.testBucket.NoCloseClone(),
 		MutateStartupConfig:            rtc.config.MutateStartupConfig,
+		SyncFn:                         rtc.config.SyncFn,
 		ConnectToBucketFn:              rtc.config.ConnectToBucketFn,
 		LeakyBootstrapConnectionConfig: rtc.config.LeakyBootstrapConnectionConfigs[len(nodes)],
 	}
@@ -124,6 +125,7 @@ func (rtc *RestTesterCluster) Close(ctx context.Context) {
 // RestTesterClusterConfig are options to create multiple RestTester objects backed by the same bucket.
 type RestTesterClusterConfig struct {
 	NumNodes            uint8                // Number of RestTester objects to create
+	SyncFn              string               // Passes this option to the RestTesterConfig for each RestTester
 	MutateStartupConfig func(*StartupConfig) // Passes this option to the RestTesterConfig for each RestTester
 	ConnectToBucketFn   db.OpenBucketFn      // Passes this option to the RestTesterConfig for each RestTester
 	// LeakyBootstrapConnectionConfigs maps a node index to the LeakyBootstrapConnectionConfig for that node, including nodes started by AddNode
@@ -158,6 +160,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 				PersistentConfig:               true,
 				CustomTestBucket:               tb.NoCloseClone(),
 				MutateStartupConfig:            config.MutateStartupConfig,
+				SyncFn:                         config.SyncFn,
 				ConnectToBucketFn:              config.ConnectToBucketFn,
 				LeakyBootstrapConnectionConfig: config.LeakyBootstrapConnectionConfigs[int(i)],
 			}
