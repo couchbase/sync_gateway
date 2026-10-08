@@ -2265,35 +2265,6 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func WaitAndAssertCondition(t testing.TB, fn func() bool, failureMsgAndArgs ...any) {
-	t.Helper()
-	t.Log("starting WaitAndAssertCondition")
-	for i := 0; i <= 20; i++ {
-		if i == 20 {
-			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * 250)
-	}
-}
-
-func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...any) {
-	t.Helper()
-	start := time.Now()
-	tick := time.NewTicker(timeout / 20)
-	defer tick.Stop()
-	for range tick.C {
-		if time.Since(start) > timeout {
-			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			return
-		}
-	}
-}
-
 type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.

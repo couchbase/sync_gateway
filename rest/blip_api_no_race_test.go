@@ -13,7 +13,6 @@ package rest
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -89,22 +88,13 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 
 		// Did we tell the client to close the connection (via HTTP/503)?
 		// The BlipTesterClient doesn't implement reconnect - but CBL resets the replication connection.
-		WaitAndAssertCondition(t, func() bool {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			lastErr, ok := lastPushRevErr.Load().(error)
-			if !ok {
-				return false
+			if !assert.True(c, ok) || !assert.Error(c, lastErr) {
+				return
 			}
-			if lastErr == nil {
-				return false
-			}
-			lastErrMsg := lastErr.Error()
-			if !strings.Contains(lastErrMsg, "HTTP 503") {
-				return false
-			}
-			if !strings.Contains(lastErrMsg, "Sync Gateway database went away - asking client to reconnect") {
-				return false
-			}
-			return true
-		}, "expected HTTP 503 error")
+			assert.ErrorContains(c, lastErr, "HTTP 503")
+			assert.ErrorContains(c, lastErr, "Sync Gateway database went away - asking client to reconnect")
+		}, time.Second*5, time.Millisecond*250)
 	})
 }
