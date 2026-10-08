@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/cbgt"
 
@@ -138,28 +139,21 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	}
 
 	// Wait for node0 to start running (and persist initial heartbeat docs) before stopping
-	retryUntilFunc := func() bool {
-		return nodes[0].checkCount > 0 && nodes[0].sendCount > 0
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
-	assert.True(t, nodes[0].checkCount > 0)
-	assert.True(t, nodes[0].sendCount > 0)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Positive(c, nodes[0].checkCount)
+		assert.Positive(c, nodes[0].sendCount)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Stop node 0
 	nodes[0].Stop(ctx)
 
 	// Wait for another node to detect node0 has stopped sending heartbeats
-	retryUntilFunc = func() bool {
-		return listeners[1].StaleNotificationCount() >= 1 ||
-			listeners[2].StaleNotificationCount() >= 1
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
-
-	// Validate that at least one node detected the stopped node 0
-	h2staleDetectCount := listeners[1].StaleNotificationCount()
-	h3staleDetectCount := listeners[2].StaleNotificationCount()
-	assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
-		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		h2staleDetectCount := listeners[1].StaleNotificationCount()
+		h3staleDetectCount := listeners[2].StaleNotificationCount()
+		assert.True(c, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
+			"Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Validate current node list
 	activeNodes, err := listeners[0].GetNodes(ctx)
@@ -229,34 +223,22 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	}
 
 	// Wait for node1 to start running (and persist initial heartbeat docs) before stopping
-	retryUntilFunc := func() bool {
-		return nodes[0].checkCount > 0 && nodes[0].sendCount > 0
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
-	assert.True(t, nodes[0].checkCount > 0)
-	assert.True(t, nodes[0].sendCount > 0)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Positive(c, nodes[0].checkCount)
+		assert.Positive(c, nodes[0].sendCount)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Stop node 1
 	nodes[0].Stop(ctx)
 
 	// Wait for both listener types node to detect node1 has stopped sending heartbeats
-	retryUntilFunc = func() bool {
-		return importListeners[1].StaleNotificationCount() >= 1 ||
-			importListeners[2].StaleNotificationCount() >= 1
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
-
-	retryUntilFunc = func() bool {
-		return sgrListeners[1].StaleNotificationCount() >= 1
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
-
-	log.Printf("checking for dropped node detection")
-	// Validate that at least one node detected the stopped node 1
-	h2staleDetectCount := importListeners[1].StaleNotificationCount()
-	h3staleDetectCount := importListeners[2].StaleNotificationCount()
-	assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
-		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		h2staleDetectCount := importListeners[1].StaleNotificationCount()
+		h3staleDetectCount := importListeners[2].StaleNotificationCount()
+		assert.True(c, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
+			"Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount)
+		assert.GreaterOrEqual(c, sgrListeners[1].StaleNotificationCount(), uint64(1))
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Validate current node list for import with one of the import listeners
 	activeImportNodes, err := importListeners[1].GetNodes(ctx)
@@ -374,23 +356,20 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	assert.NoError(t, node3.RegisterListener(listener3))
 
 	// Wait for node1 to start running (and persist initial heartbeat docs) before stopping
-	retryUntilFunc := func() bool {
-		return node1.checkCount > 0 && node1.sendCount > 0
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
-	assert.Greater(t, node1.checkCount, 0)
-	assert.Greater(t, node1.sendCount, 0)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Positive(c, node1.checkCount)
+		assert.Positive(c, node1.sendCount)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Stop node 1
 	node1.Stop(ctx)
 
 	// Wait for another node to detect node1 has stopped sending heartbeats
-	retryUntilFunc = func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodeSet, err := listener2.GetNodes(ctx)
-		require.NoError(t, err)
-		return len(nodeSet) < 3
-	}
-	testRetryUntilTrue(t, retryUntilFunc)
+		assert.NoError(c, err)
+		assert.Less(c, len(nodeSet), 3)
+	}, 10*time.Second, 100*time.Millisecond)
 
 	// Validate current node list
 	activeNodes, err := listener2.GetNodes(ctx)

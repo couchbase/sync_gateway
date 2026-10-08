@@ -9,12 +9,14 @@
 package importtest
 
 import (
-	"log"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 func TestImportPartitionsOnConcurrentStart(t *testing.T) {
@@ -54,24 +56,13 @@ func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 		}
 	}()
 
-	rest.WaitAndAssertCondition(t, func() bool {
-		totalPartitions := uint16(0)
-		balancedPartitions := true
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		currentPartitions := make([]int, len(restTesters))
 		for i, rt := range restTesters {
-			rtPartitions := rt.GetDatabase().ImportPartitionCount()
-			currentPartitions[i] = rtPartitions
-			totalPartitions = totalPartitions + uint16(rtPartitions)
-			if rtPartitions != expectedPartitions {
-				balancedPartitions = false
-			}
+			currentPartitions[i] = rt.GetDatabase().ImportPartitionCount()
 		}
-		if totalPartitions == numImportPartitions && balancedPartitions == true {
-			log.Printf("Partitions are balanced.  Current total: %d, distribution: %v", totalPartitions, currentPartitions)
-			return true
-		} else {
-			log.Printf("Waiting for balanced partitions.  Current total: %d, distribution: %v", totalPartitions, currentPartitions)
-			return false
+		for _, rtPartitions := range currentPartitions {
+			assert.Equal(c, expectedPartitions, rtPartitions, "unbalanced partitions, distribution: %v", currentPartitions)
 		}
-	})
+	}, time.Second*5, time.Millisecond*250)
 }
