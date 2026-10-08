@@ -132,16 +132,8 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	// Stop the allocator
 	a.Stop(ctx)
 
-	releasedCount := 0
 	// Ensure unused sequence is released on Stop
-	for range 20 {
-		releasedCount = int(testStats.SequenceReleasedCount.Value())
-		if releasedCount == 1 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	assert.Equal(t, 1, releasedCount, "Expected 1 released sequence")
+	base.RequireWaitForStat(t, testStats.SequenceReleasedCount.Value, 1, "Expected 1 released sequence")
 	assertNewAllocatorStats(t, testStats, 2, 3, 2, 1, nextSequence, 3)
 
 }

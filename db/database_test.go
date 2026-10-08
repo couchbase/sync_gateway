@@ -3752,9 +3752,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, added)
 
-	waitAndAssertCondition(t, func() bool {
-		return db.DbStats.SharedBucketImport().ImportCount.Value() == 1
-	})
+	base.RequireWaitForStat(t, db.DbStats.SharedBucketImport().ImportCount.Value, 1)
 
 	// Ensure deleted doc with double operation isn't treated as import
 	_, _, err = collection.Put(ctx, "doc", map[string]any{"_deleted": true})
@@ -3823,9 +3821,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	assert.NoError(t, db.TombstoneCompactionManager.Start(ctx, TombstoneCompactionOptions{Database: db}))
 
-	waitAndAssertConditionWithOptions(t, func() bool {
-		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
-	}, 60, 1000)
+	RequireBackgroundManagerState(t, db.TombstoneCompactionManager, BackgroundProcessStateStopped)
 
 	var tombstoneCompactionStatus TombstoneManagerResponse
 	status, err := db.TombstoneCompactionManager.GetStatus(ctx)
@@ -4310,22 +4306,6 @@ func TestServerUUID(t *testing.T) {
 	} else {
 		require.Len(t, db.ServerUUID, 0) // no dashes in UUID
 	}
-}
-
-func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...any) {
-	for i := 0; i <= retryCount; i++ {
-		if i == retryCount {
-			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
-		}
-		if fn() {
-			break
-		}
-		time.Sleep(time.Millisecond * time.Duration(msSleepTime))
-	}
-}
-
-func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...any) {
-	waitAndAssertConditionWithOptions(t, fn, 20, 100, failureMsgAndArgs...)
 }
 
 func Test_stopBackgroundManagers(t *testing.T) {
