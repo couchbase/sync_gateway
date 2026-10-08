@@ -2040,6 +2040,12 @@ func TestDeleteWithXattrs(t *testing.T) {
 			expectedXattrs: []string{"_globalSync"}, // user xattrs get removed along with regular delete...
 		},
 		{
+			name:           "delete non-existing system xattr on doc with no xattrs",
+			xattrsValues:   nil,
+			xattrsToDelete: []string{"_systemXattr"},
+			expectedXattrs: nil,
+		},
+		{
 			name:           "create xattr and delete non-existing system xattr",
 			xattrsValues:   map[string][]byte{"xattr1": []byte(`{"a":"b"}`)},
 			xattrsToDelete: []string{"_sync"},

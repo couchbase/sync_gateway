@@ -1212,3 +1212,14 @@ func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
 		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
 	}
 }
+
+// SafeDocumentName returns a document name free of any special characters for use in tests.
+func SafeDocumentName(t *testing.T, name string) string {
+	t.Helper()
+	docName := strings.ToLower(name)
+	for _, c := range []string{" ", "<", ">", "/", "="} {
+		docName = strings.ReplaceAll(docName, c, "_")
+	}
+	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
+	return docName
+}

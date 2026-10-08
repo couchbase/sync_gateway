@@ -3719,6 +3719,24 @@ func TestDataStoreOperationErrors(t *testing.T) {
 			},
 		},
 		{
+			name: "RemoveXattrs",
+			op:   func(key string, cas uint64) error { return dataStore.RemoveXattrs(ctx, key, []string{xattrName}, cas) },
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: success, currentCas: success, staleCas: casMismatch},
+				live:      {zeroCas: success, currentCas: success, staleCas: casMismatch},
+			},
+		},
+		{
+			name: "DeleteSubDocPaths",
+			op:   func(key string, _ uint64) error { return dataStore.DeleteSubDocPaths(ctx, key, xattrName) },
+			expected: map[docState]map[casArg]string{
+				missing:   {zeroCas: notFound},
+				tombstone: {zeroCas: notFound},
+				live:      {zeroCas: success},
+			},
+		},
+		{
 			name: "WriteCas",
 			op: func(key string, cas uint64) error {
 				_, err := dataStore.WriteCas(ctx, key, 0, cas, map[string]any{"foo": "baz"}, 0)
@@ -3866,6 +3884,12 @@ func TestDeleteAfterTombstoneResurrection(t *testing.T) {
 		},
 		"WriteCas": func(key string) error {
 			_, err := dataStore.WriteCas(ctx, key, 0, 0, body, 0)
+			return err
+		},
+		"Update": func(key string) error {
+			_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
+				return rawBody, nil, false, nil
+			})
 			return err
 		},
 	}
@@ -4038,5 +4062,708 @@ func TestXattrOnlyWriteKeepsTombstone(t *testing.T) {
 			err = dataStore.Delete(ctx, key)
 			require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
 		})
+	}
+}
+
+// requireRevSeqNo returns the revision sequence number of a document or tombstone.
+func requireRevSeqNo(t *testing.T, dataStore sgbucket.DataStore, key string) uint64 {
+	xattrs, _, err := dataStore.GetXattrs(TestCtx(t), key, []string{VirtualXattrRevSeqNo})
+	require.NoError(t, err)
+	var revSeqNo string
+	require.NoError(t, JSONUnmarshal(xattrs[VirtualXattrRevSeqNo], &revSeqNo))
+	n, err := strconv.ParseUint(revSeqNo, 10, 64)
+	require.NoError(t, err)
+	return n
+}
+
+// testTombstoneRemovesUserXattrs checks that each way of deleting a doc keeps system xattrs and removes user xattrs.
+func testTombstoneRemovesUserXattrs(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+
+	deletes := map[string]func(t *testing.T, key string, cas uint64){
+		"Delete": func(t *testing.T, key string, _ uint64) { require.NoError(t, dataStore.Delete(ctx, key)) },
+		"Remove": func(t *testing.T, key string, cas uint64) {
+			_, err := dataStore.Remove(ctx, key, cas)
+			require.NoError(t, err)
+		},
+		"UpdateDelete": func(t *testing.T, key string, _ uint64) {
+			_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) { return nil, nil, true, nil })
+			require.NoError(t, err)
+		},
+	}
+	for name, deleteFn := range deletes {
+		t.Run(name, func(t *testing.T) {
+			key := SafeDocumentName(t, t.Name())
+			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`),
+				map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`), "user": []byte(`{"a":1}`)}, nil, nil)
+			require.NoError(t, err)
+
+			deleteFn(t, key, cas)
+
+			xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{SyncXattrName})
+			require.NoError(t, err)
+			require.JSONEq(t, `{"rev":"1-a"}`, string(xattrs[SyncXattrName]))
+			_, _, err = dataStore.GetXattrs(ctx, key, []string{"user"})
+			require.True(t, IsXattrNotFoundError(err), "expected xattr not found error, got %v", err)
+		})
+	}
+}
+
+// testWriteCasNil checks that a nil WriteCas value never creates a tombstone: an untyped nil writes a null JSON body
+// and a nil []byte writes an empty body.
+func testWriteCasNil(t *testing.T, dataStore sgbucket.DataStore) {
+	type docState string
+	const (
+		missing   docState = "missing"
+		tombstone docState = "tombstone"
+		live      docState = "live"
+	)
+	ctx := TestCtx(t)
+
+	testCases := []struct {
+		name         string
+		state        docState
+		value        any
+		opt          sgbucket.WriteOptions
+		expectedBody string
+	}{
+		{name: "untypedNil", state: missing, expectedBody: "null"},
+		{name: "untypedNil", state: tombstone, expectedBody: "null"},
+		{name: "untypedNil", state: live, expectedBody: "null"},
+		{name: "nilBytes", state: missing, value: []byte(nil)},
+		{name: "nilBytes", state: live, value: []byte(nil)},
+		{name: "nilBytesRaw", state: missing, value: []byte(nil), opt: sgbucket.Raw},
+		{name: "nilBytesRaw", state: live, value: []byte(nil), opt: sgbucket.Raw},
+	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s/%s", tc.name, tc.state), func(t *testing.T) {
+			key := SafeDocumentName(t, t.Name())
+			var cas, revSeqNo uint64
+			if tc.state != missing {
+				var err error
+				cas, err = dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`)}, nil, nil)
+				require.NoError(t, err)
+				if tc.state == tombstone {
+					require.NoError(t, dataStore.Delete(ctx, key))
+					cas = 0
+				}
+				revSeqNo = requireRevSeqNo(t, dataStore, key)
+			}
+			_, err := dataStore.WriteCas(ctx, key, 0, cas, tc.value, tc.opt)
+			require.NoError(t, err)
+
+			body, _, err := dataStore.GetRaw(ctx, key)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedBody, string(body))
+			require.Equal(t, revSeqNo+1, requireRevSeqNo(t, dataStore, key))
+			xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{SyncXattrName})
+			if tc.state == live {
+				require.NoError(t, err)
+				require.JSONEq(t, `{"rev":"1-a"}`, string(xattrs[SyncXattrName]))
+			} else {
+				require.True(t, IsXattrNotFoundError(err), "expected xattr not found error, got %v", err)
+			}
+		})
+	}
+}
+
+// testTombstoneFlagMatchesBody checks that after each write over a tombstone, the document is live if it has a body
+// and a tombstone if it does not, and that the write increases the revision sequence number.
+func testTombstoneFlagMatchesBody(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+
+	syncXattr := map[string][]byte{SyncXattrName: []byte(`{"rev":"2-a"}`)}
+	testCases := []struct {
+		name         string
+		expectedLive bool
+		writeFn      func(t *testing.T, key string, cas uint64)
+	}{
+		{
+			name:         "Add",
+			expectedLive: true,
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				added, err := dataStore.Add(ctx, key, 0, map[string]any{"new": true})
+				require.NoError(t, err)
+				require.True(t, added)
+			},
+		},
+		{
+			name:         "Set",
+			expectedLive: true,
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				require.NoError(t, dataStore.Set(ctx, key, 0, nil, map[string]any{"new": true}))
+			},
+		},
+		{
+			name:         "AddRaw",
+			expectedLive: true,
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				added, err := dataStore.AddRaw(ctx, key, 0, []byte(`{"new":true}`))
+				require.NoError(t, err)
+				require.True(t, added)
+			},
+		},
+		{
+			name:         "SetRaw",
+			expectedLive: true,
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				require.NoError(t, dataStore.SetRaw(ctx, key, 0, nil, []byte(`{"new":true}`)))
+			},
+		},
+		{
+			name:         "Incr",
+			expectedLive: true,
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				_, err := dataStore.Incr(ctx, key, 1, 1, 0)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:         "WriteCas",
+			expectedLive: true,
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				_, err := dataStore.WriteCas(ctx, key, 0, 0, map[string]any{"new": true}, 0)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "SetXattrs",
+			writeFn: func(t *testing.T, key string, _ uint64) {
+				_, err := dataStore.SetXattrs(ctx, key, syncXattr)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "UpdateXattrs",
+			writeFn: func(t *testing.T, key string, cas uint64) {
+				_, err := dataStore.UpdateXattrs(ctx, key, 0, cas, syncXattr, nil)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name: "WriteWithXattrsNilBody",
+			writeFn: func(t *testing.T, key string, cas uint64) {
+				_, err := dataStore.WriteWithXattrs(ctx, key, 0, cas, nil, syncXattr, nil, nil)
+				require.NoError(t, err)
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			key := SafeDocumentName(t, t.Name())
+			_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`)}, nil, nil)
+			require.NoError(t, err)
+			require.NoError(t, dataStore.Delete(ctx, key))
+			_, cas, err := dataStore.GetXattrs(ctx, key, []string{SyncXattrName})
+			require.NoError(t, err)
+			revSeqNo := requireRevSeqNo(t, dataStore, key)
+
+			tc.writeFn(t, key, cas)
+
+			require.Greater(t, requireRevSeqNo(t, dataStore, key), revSeqNo)
+			_, _, err = dataStore.GetRaw(ctx, key)
+			if tc.expectedLive {
+				require.NoError(t, err)
+				require.NoError(t, dataStore.Delete(ctx, key))
+			} else {
+				require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+				err = dataStore.Delete(ctx, key)
+				require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+			}
+		})
+	}
+}
+
+// testUpdateByDocState checks the document after an Update over a missing, tombstone or live document, when the
+// callback returns a value or nil, with and without a delete.
+func testUpdateByDocState(t *testing.T, dataStore sgbucket.DataStore) {
+	type docState string
+	const (
+		missing   docState = "missing"
+		tombstone docState = "tombstone"
+		live      docState = "live"
+	)
+	ctx := TestCtx(t)
+
+	testCases := []struct {
+		state             docState
+		value             []byte
+		delete            bool
+		expectedTombstone bool   // otherwise a live document with expectedBody
+		expectedBody      string // empty for an empty body
+		expectedExpiry    bool
+		expectedSync      bool
+	}{
+		{state: missing, expectedExpiry: true},
+		{state: tombstone, expectedExpiry: true},
+		{state: live, expectedExpiry: true, expectedSync: true},
+		{state: missing, delete: true, expectedExpiry: true},
+		{state: tombstone, delete: true, expectedExpiry: true},
+		{state: live, delete: true, expectedTombstone: true, expectedSync: true},
+		{state: tombstone, value: []byte(`{"new":true}`), expectedBody: `{"new":true}`, expectedExpiry: true},
+	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s/value=%t/delete=%t", tc.state, tc.value != nil, tc.delete), func(t *testing.T) {
+			key := SafeDocumentName(t, t.Name())
+			if tc.state != missing {
+				cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
+				require.NoError(t, err)
+				if tc.state == tombstone {
+					_, err = dataStore.Remove(ctx, key, cas)
+					require.NoError(t, err)
+					_, cas, err = dataStore.GetRaw(ctx, key)
+					require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+					require.Zero(t, cas, "the read of a tombstone returned a CAS")
+				}
+			}
+
+			exp := uint32(3600)
+			_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
+				return tc.value, &exp, tc.delete, nil
+			})
+			require.NoError(t, err)
+
+			body, _, err := dataStore.GetRaw(ctx, key)
+			switch {
+			case tc.expectedTombstone:
+				require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+			case tc.expectedBody == "":
+				require.NoError(t, err)
+				require.Empty(t, body)
+			default:
+				require.NoError(t, err)
+				require.JSONEq(t, tc.expectedBody, string(body))
+			}
+			docExp, err := dataStore.GetExpiry(ctx, key)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedExpiry, docExp != 0, "unexpected expiry %d", docExp)
+			xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{SyncXattrName})
+			if tc.expectedSync {
+				require.NoError(t, err)
+				require.JSONEq(t, `{"seq":1}`, string(xattrs[SyncXattrName]))
+			} else {
+				require.True(t, IsXattrNotFoundError(err), "expected xattr not found error, got %v", err)
+			}
+		})
+	}
+}
+
+// testTombstoneExpiry checks the expiry of the tombstone that each operation creates, when the document and the
+// operation have expiries far in the future, and that a write which resurrects it with PreserveExpiry has no expiry.
+func testTombstoneExpiry(t *testing.T, dataStore sgbucket.DataStore) {
+	type docState string
+	const (
+		missing   docState = "missing"
+		tombstone docState = "tombstone"
+		live      docState = "live"
+	)
+	ctx := TestCtx(t)
+
+	docExpiry := uint32(time.Now().Add(5 * 365 * 24 * time.Hour).Unix())
+	opExpiry := uint32(time.Now().Add(10 * 365 * 24 * time.Hour).Unix())
+	syncXattr := func(seq int) map[string][]byte {
+		return map[string][]byte{SyncXattrName: fmt.Appendf(nil, `{"seq":%d}`, seq)}
+	}
+	writeUpdateTombstone := func(t *testing.T, key string, exp uint32, callbackExp *uint32, opts *sgbucket.MutateInOptions) {
+		_, err := dataStore.WriteUpdateWithXattrs(ctx, key, []string{SyncXattrName}, exp, nil, opts, func([]byte, map[string][]byte, uint64) (sgbucket.UpdatedDoc, error) {
+			return sgbucket.UpdatedDoc{Xattrs: syncXattr(2), IsTombstone: true, Expiry: callbackExp}, nil
+		})
+		require.NoError(t, err)
+	}
+
+	testCases := []struct {
+		name       string
+		state      docState
+		takesExp   bool // the operation takes an expiry
+		takesOpts  bool // the operation takes MutateInOptions
+		keepsOpExp bool // the tombstone has the expiry passed to the operation
+		op         func(t *testing.T, key string, cas uint64, exp uint32, opts *sgbucket.MutateInOptions)
+	}{
+		{
+			name:  "Delete",
+			state: live,
+			op: func(t *testing.T, key string, _ uint64, _ uint32, _ *sgbucket.MutateInOptions) {
+				require.NoError(t, dataStore.Delete(ctx, key))
+			},
+		},
+		{
+			name:  "Remove",
+			state: live,
+			op: func(t *testing.T, key string, cas uint64, _ uint32, _ *sgbucket.MutateInOptions) {
+				_, err := dataStore.Remove(ctx, key, cas)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:  "DeleteWithXattrs",
+			state: live,
+			op: func(t *testing.T, key string, _ uint64, _ uint32, _ *sgbucket.MutateInOptions) {
+				require.NoError(t, dataStore.DeleteWithXattrs(ctx, key, nil))
+			},
+		},
+		{
+			name:     "UpdateDelete",
+			state:    live,
+			takesExp: true,
+			op: func(t *testing.T, key string, _ uint64, exp uint32, _ *sgbucket.MutateInOptions) {
+				_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) { return nil, &exp, true, nil })
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:       "WriteTombstoneWithXattrsDeleteBody",
+			state:      live,
+			takesExp:   true,
+			takesOpts:  true,
+			keepsOpExp: true,
+			op: func(t *testing.T, key string, cas uint64, exp uint32, opts *sgbucket.MutateInOptions) {
+				_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, exp, cas, syncXattr(2), nil, true, opts)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:       "WriteTombstoneWithXattrsMissing",
+			state:      missing,
+			takesExp:   true,
+			takesOpts:  true,
+			keepsOpExp: true,
+			op: func(t *testing.T, key string, _ uint64, exp uint32, opts *sgbucket.MutateInOptions) {
+				_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, exp, 0, syncXattr(2), nil, false, opts)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:       "WriteTombstoneWithXattrsTombstone",
+			state:      tombstone,
+			takesExp:   true,
+			takesOpts:  true,
+			keepsOpExp: true,
+			op: func(t *testing.T, key string, cas uint64, exp uint32, opts *sgbucket.MutateInOptions) {
+				_, err := dataStore.WriteTombstoneWithXattrs(ctx, key, exp, cas, syncXattr(2), nil, false, opts)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:       "WriteUpdateWithXattrs",
+			state:      live,
+			takesExp:   true,
+			takesOpts:  true,
+			keepsOpExp: true,
+			op: func(t *testing.T, key string, _ uint64, exp uint32, opts *sgbucket.MutateInOptions) {
+				writeUpdateTombstone(t, key, exp, nil, opts)
+			},
+		},
+		{
+			name:       "WriteUpdateWithXattrsMissing",
+			state:      missing,
+			takesExp:   true,
+			takesOpts:  true,
+			keepsOpExp: true,
+			op: func(t *testing.T, key string, _ uint64, exp uint32, opts *sgbucket.MutateInOptions) {
+				writeUpdateTombstone(t, key, exp, nil, opts)
+			},
+		},
+		{
+			name:       "WriteUpdateWithXattrsCallbackExpiry",
+			state:      live,
+			takesExp:   true,
+			takesOpts:  true,
+			keepsOpExp: true,
+			op: func(t *testing.T, key string, _ uint64, exp uint32, opts *sgbucket.MutateInOptions) {
+				writeUpdateTombstone(t, key, 0, &exp, opts)
+			},
+		},
+	}
+	resurrections := map[string]func(t *testing.T, key string){
+		"Set": func(t *testing.T, key string) {
+			require.NoError(t, dataStore.Set(ctx, key, 0, &sgbucket.UpsertOptions{PreserveExpiry: true}, map[string]any{"foo": "baz"}))
+		},
+		"WriteWithXattrs": func(t *testing.T, key string) {
+			_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"baz"}`), syncXattr(3), nil, &sgbucket.MutateInOptions{PreserveExpiry: true})
+			require.NoError(t, err)
+		},
+		"WriteResurrectionWithXattrs": func(t *testing.T, key string) {
+			_, err := dataStore.WriteResurrectionWithXattrs(ctx, key, 0, []byte(`{"foo":"baz"}`), syncXattr(3), &sgbucket.MutateInOptions{PreserveExpiry: true})
+			require.NoError(t, err)
+		},
+	}
+	type documentXattr struct {
+		Exptime uint32 `json:"exptime"`
+		Deleted bool   `json:"deleted"`
+	}
+	getDocumentXattr := func(t *testing.T, key string) documentXattr {
+		xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{VirtualDocumentXattr})
+		require.NoError(t, err)
+		var document documentXattr
+		require.NoError(t, JSONUnmarshal(xattrs[VirtualDocumentXattr], &document))
+		return document
+	}
+	requireExpiry := func(t *testing.T, expected, actual uint32, msg string) {
+		if expected == 0 {
+			require.Zero(t, actual, msg)
+		} else {
+			// Couchbase Server gets an absolute expiry as a duration, which can round it down.
+			require.InDelta(t, expected, actual, 2, msg)
+		}
+	}
+	for _, tc := range testCases {
+		docExpiries := []uint32{0, docExpiry}
+		if tc.state == missing {
+			docExpiries = []uint32{0}
+		}
+		opExpiries := []uint32{0}
+		if tc.takesExp {
+			opExpiries = append(opExpiries, opExpiry)
+		}
+		preserves := []bool{false}
+		if tc.takesOpts {
+			preserves = append(preserves, true)
+		}
+		for _, docExp := range docExpiries {
+			for _, opExp := range opExpiries {
+				for _, preserve := range preserves {
+					for resurrectionName, resurrect := range resurrections {
+						t.Run(fmt.Sprintf("%s/docExp=%t/opExp=%t/preserve=%t/%s", tc.name, docExp != 0, opExp != 0, preserve, resurrectionName), func(t *testing.T) {
+							key := SafeDocumentName(t, t.Name())
+							var cas uint64
+							if tc.state != missing {
+								var err error
+								cas, err = dataStore.WriteWithXattrs(ctx, key, docExp, 0, []byte(`{"foo":"bar"}`), syncXattr(1), nil, nil)
+								require.NoError(t, err)
+								exp, err := dataStore.GetExpiry(ctx, key)
+								require.NoError(t, err)
+								requireExpiry(t, docExp, exp, "live document expiry")
+								require.Equal(t, documentXattr{Exptime: exp}, getDocumentXattr(t, key))
+								if tc.state == tombstone {
+									cas, err = dataStore.Remove(ctx, key, cas)
+									require.NoError(t, err)
+								}
+							}
+							var opts *sgbucket.MutateInOptions
+							if preserve {
+								opts = &sgbucket.MutateInOptions{PreserveExpiry: true}
+							}
+							tc.op(t, key, cas, opExp, opts)
+
+							var expected uint32
+							if tc.keepsOpExp {
+								expected = opExp
+							}
+							_, _, err := dataStore.GetRaw(ctx, key)
+							require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+							exp, err := dataStore.GetExpiry(ctx, key)
+							require.NoError(t, err)
+							requireExpiry(t, expected, exp, "tombstone expiry")
+							document := getDocumentXattr(t, key)
+							require.True(t, document.Deleted)
+							requireExpiry(t, expected, document.Exptime, "$document.exptime")
+
+							resurrect(t, key)
+							exp, err = dataStore.GetExpiry(ctx, key)
+							require.NoError(t, err)
+							require.Zero(t, exp, "document written over the tombstone has an expiry")
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+// testNilWritesStoreBody checks that Set, SetRaw, Add, AddRaw and WriteWithXattrs with a nil value write a live
+// document: an untyped nil writes a null JSON body and a nil []byte writes an empty body.
+func testNilWritesStoreBody(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+
+	testCases := []struct {
+		name         string
+		live         bool // write over a live doc with a system and a user xattr
+		write        func(t *testing.T, key string)
+		expectedBody string
+	}{
+		{
+			name:         "Set",
+			write:        func(t *testing.T, key string) { require.NoError(t, dataStore.Set(ctx, key, 0, nil, nil)) },
+			expectedBody: "null",
+		},
+		{
+			name:         "SetOverLive",
+			live:         true,
+			write:        func(t *testing.T, key string) { require.NoError(t, dataStore.Set(ctx, key, 0, nil, nil)) },
+			expectedBody: "null",
+		},
+		{
+			name:  "SetRaw",
+			write: func(t *testing.T, key string) { require.NoError(t, dataStore.SetRaw(ctx, key, 0, nil, nil)) },
+		},
+		{
+			name: "Add",
+			write: func(t *testing.T, key string) {
+				added, err := dataStore.Add(ctx, key, 0, nil)
+				require.NoError(t, err)
+				require.True(t, added)
+			},
+			expectedBody: "null",
+		},
+		{
+			name: "AddRaw",
+			write: func(t *testing.T, key string) {
+				added, err := dataStore.AddRaw(ctx, key, 0, nil)
+				require.NoError(t, err)
+				require.True(t, added)
+			},
+		},
+		{
+			name: "WriteWithXattrsNilBody",
+			write: func(t *testing.T, key string) {
+				_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, nil, map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`)}, nil, nil)
+				require.NoError(t, err)
+			},
+			expectedBody: "null",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			key := SafeDocumentName(t, t.Name())
+			if tc.live {
+				_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`),
+					map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`), "user": []byte(`{"u":1}`)}, nil, nil)
+				require.NoError(t, err)
+			}
+			tc.write(t, key)
+
+			body, _, err := dataStore.GetRaw(ctx, key)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedBody, string(body))
+			if tc.live {
+				xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{SyncXattrName, "user"})
+				require.NoError(t, err)
+				require.JSONEq(t, `{"rev":"1-a"}`, string(xattrs[SyncXattrName]))
+				require.JSONEq(t, `{"u":1}`, string(xattrs["user"]))
+			}
+		})
+	}
+}
+
+func testUpdateDelete(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+	key := SafeDocumentName(t, t.Name())
+	require.NoError(t, dataStore.Set(ctx, key, 0, nil, []byte(`{"foo":"bar"}`)))
+
+	_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
+		return nil, nil, true, nil
+	})
+	require.NoError(t, err)
+
+	_, _, err = dataStore.GetRaw(ctx, key)
+	require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+}
+
+// testUpdateNilValueWithExpiry checks that a nil value with a new expiry replaces the body with an empty body.
+func testUpdateNilValueWithExpiry(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+	key := SafeDocumentName(t, t.Name())
+	require.NoError(t, dataStore.Set(ctx, key, 0, nil, []byte(`{"foo":"bar"}`)))
+
+	exp := uint32(time.Now().Add(time.Hour).Unix())
+	_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
+		return nil, &exp, false, nil
+	})
+	require.NoError(t, err)
+
+	body, _, err := dataStore.GetRaw(ctx, key)
+	require.NoError(t, err)
+	require.Empty(t, body)
+	gotExp, err := dataStore.GetExpiry(ctx, key)
+	require.NoError(t, err)
+	// Couchbase Server gets an absolute expiry as a duration, which can round it down.
+	require.InDelta(t, exp, gotExp, 2)
+}
+
+// testWriteWithXattrsResurrectTombstoneZeroCas checks that a CAS of 0 writes a new body and xattr over a tombstone
+// that kept its system xattr.
+func testWriteWithXattrsResurrectTombstoneZeroCas(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+	key := SafeDocumentName(t, t.Name())
+
+	_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, dataStore.Delete(ctx, key))
+
+	_, err = dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":2}`), map[string][]byte{SyncXattrName: []byte(`{"seq":2}`)}, nil, nil)
+	require.NoError(t, err)
+
+	body, xattrs, _, err := dataStore.GetWithXattrs(ctx, key, []string{SyncXattrName})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"body":2}`, string(body))
+	require.JSONEq(t, `{"seq":2}`, string(xattrs[SyncXattrName]))
+}
+
+// testWriteTombstoneWithXattrsKeepBody checks that deleteBody=false with the current CAS of a live document only
+// updates its xattrs and keeps the body.
+func testWriteTombstoneWithXattrsKeepBody(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+	key := SafeDocumentName(t, t.Name())
+
+	cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
+	require.NoError(t, err)
+
+	_, err = dataStore.WriteTombstoneWithXattrs(ctx, key, 0, cas, map[string][]byte{SyncXattrName: []byte(`{"seq":2}`)}, nil, false, nil)
+	require.NoError(t, err)
+
+	body, xattrs, _, err := dataStore.GetWithXattrs(ctx, key, []string{SyncXattrName})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"body":1}`, string(body))
+	require.JSONEq(t, `{"seq":2}`, string(xattrs[SyncXattrName]))
+}
+
+// testWriteUpdateWithXattrsDocDeletedDuringUpdate checks that WriteUpdateWithXattrs retries when the document is
+// deleted between the read and the write.
+func testWriteUpdateWithXattrsDocDeletedDuringUpdate(t *testing.T, dataStore sgbucket.DataStore) {
+	ctx := TestCtx(t)
+	key := SafeDocumentName(t, t.Name())
+
+	firstCas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"a":"body"}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
+	require.NoError(t, err)
+
+	calls := 0
+	_, err = dataStore.WriteUpdateWithXattrs(ctx, key, []string{SyncXattrName}, 0, nil, nil, func(_ []byte, _ map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
+		calls++
+		if cas == firstCas {
+			_, err := dataStore.Remove(ctx, key, firstCas)
+			require.NoError(t, err)
+		}
+		return sgbucket.UpdatedDoc{Doc: []byte(`{"a":"updated body"}`), Xattrs: map[string][]byte{SyncXattrName: []byte(`{"seq":2}`)}}, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
+
+	body, xattrs, _, err := dataStore.GetWithXattrs(ctx, key, []string{SyncXattrName})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"a":"updated body"}`, string(body))
+	require.JSONEq(t, `{"seq":2}`, string(xattrs[SyncXattrName]))
+}
+
+// TestTombstonesAndNilWrites shares one bucket between its subtests to limit bucket creation on Couchbase Server.
+func TestTombstonesAndNilWrites(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	for name, test := range map[string]func(t *testing.T, dataStore sgbucket.DataStore){
+		"TombstoneRemovesUserXattrs":                  testTombstoneRemovesUserXattrs,
+		"WriteCasNil":                                 testWriteCasNil,
+		"TombstoneFlagMatchesBody":                    testTombstoneFlagMatchesBody,
+		"UpdateByDocState":                            testUpdateByDocState,
+		"TombstoneExpiry":                             testTombstoneExpiry,
+		"NilWritesStoreBody":                          testNilWritesStoreBody,
+		"UpdateDelete":                                testUpdateDelete,
+		"UpdateNilValueWithExpiry":                    testUpdateNilValueWithExpiry,
+		"WriteWithXattrsResurrectTombstoneZeroCas":    testWriteWithXattrsResurrectTombstoneZeroCas,
+		"WriteTombstoneWithXattrsKeepBody":            testWriteTombstoneWithXattrsKeepBody,
+		"WriteUpdateWithXattrsDocDeletedDuringUpdate": testWriteUpdateWithXattrsDocDeletedDuringUpdate,
+	} {
+		t.Run(name, func(t *testing.T) { test(t, dataStore) })
 	}
 }
