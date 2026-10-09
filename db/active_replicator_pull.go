@@ -184,7 +184,7 @@ func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicatorCollection) error {
 	blipSyncContextCollection, err := apr.blipSyncContext.collections.get(c.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(apr.ctx, "Unable to get blipSyncContextCollection for collection %d: %v", c.collectionIdx, err)
+		base.WarnfCtx(apr.ctx, "Unable to get blipSyncContextCollection: %v", err)
 		return err
 	}
 
