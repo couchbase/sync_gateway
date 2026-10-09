@@ -110,7 +110,7 @@ type resyncCollectionInfo struct {
 // ResyncOptions are used to initialize a resync process.
 type ResyncOptions struct {
 	Collections         base.CollectionNames `json:"collections,omitempty"`
-	Reset               bool                 `json:"reset,omitempty"`
+	Reset               bool                 `json:"-"` // applies only to the node that starts the run, so Join must not replay it
 	RegenerateSequences bool                 `json:"regenerateSequences,omitempty"`
 }
 
@@ -170,10 +170,10 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options ResyncOptions, clus
 	var statusDoc ResyncManagerStatusDocDCP
 	if clusterStatus == nil {
 		resetMsg = "no previous run found"
-	} else if options.Reset {
-		resetMsg = "reset option requested"
 	} else if err := base.JSONUnmarshal(clusterStatus, &statusDoc); err != nil {
 		resetMsg = "failed to unmarshal cluster status"
+	} else if options.Reset {
+		resetMsg = "reset option requested"
 	} else if statusDoc.State == BackgroundProcessStateCompleted {
 		resetMsg = "previous run completed"
 	} else if !base.SlicesEqualIgnoreOrder(r.collectionIDs, statusDoc.CollectionIDs) {

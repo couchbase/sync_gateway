@@ -1995,3 +1995,76 @@ func requireDCPCheckpointsPurged(t testing.TB, ctx context.Context, db *Database
 func (db *DatabaseContext) ImportCbgtManager(_ testing.TB) *cbgt.Manager {
 	return db.ImportListener.cbgtContext.Manager
 }
+
+// ResyncPauser blocks the resync DCP stream at the user documents it encounters, until Release is
+// called. Can be Paused and Released multiple times across a test.
+// Resync runs one goroutine per DCP worker, so several documents can be processed concurrently and
+// every blocked call is released together.
+type ResyncPauser struct {
+	t           testing.TB
+	blocked     chan struct{}
+	blockCh     chan struct{}
+	ds          *base.LeakyDataStore
+	callbackSet atomic.Bool
+}
+
+// NewResyncPauser returns a ResyncPauser for the collection backed by ds, which must be a LeakyDataStore.
+func NewResyncPauser(t testing.TB, ds base.DataStore) *ResyncPauser {
+	leakyDS, ok := base.AsLeakyDataStore(ds)
+	require.True(t, ok, "datastore must be a LeakyDataStore")
+	return &ResyncPauser{
+		t:  t,
+		ds: leakyDS,
+	}
+}
+
+// Pause arms the pauser to block resync at every user document it encounters. Call Release
+// before pausing again.
+func (p *ResyncPauser) Pause() {
+	if !p.callbackSet.CompareAndSwap(false, true) {
+		require.FailNow(p.t, "ResyncPauser.Pause called while already paused; call Release first")
+	}
+	blocked := make(chan struct{})
+	blockCh := make(chan struct{})
+	p.blocked, p.blockCh = blocked, blockCh
+	// Callbacks read the channels they were created with, so a later Pause can't race with a
+	// resync goroutine still inside the previous callback.
+	var blockedOnce sync.Once
+	p.ds.SetWriteUpdateWithXattrsCallback(func(key string) {
+		if strings.HasPrefix(key, "_sync:") {
+			return
+		}
+		blockedOnce.Do(func() { close(blocked) })
+		// Runs on the resync DCP goroutine, so use the goroutine-safe wait.
+		sgtest.RequireChanClosedFromCallback(p.t, blockCh)
+	})
+}
+
+// WaitUntilBlocked blocks until resync is paused at a user document.
+func (p *ResyncPauser) WaitUntilBlocked() {
+	p.t.Helper()
+	base.RequireChanClosed(p.t, p.blocked)
+}
+
+// Release clears the callback and unblocks the paused docs. Fails the test if not currently paused.
+func (p *ResyncPauser) Release() {
+	if !p.release() {
+		require.FailNow(p.t, "ResyncPauser.Release called while not paused")
+	}
+}
+
+// Close releases the pauser and resets the LeakyBucket callback.
+func (p *ResyncPauser) Close() {
+	p.release()
+}
+
+// release clears the callback and unblocks any paused docs if currently paused, reporting whether
+// it was paused.
+func (p *ResyncPauser) release() bool {
+	if !p.callbackSet.CompareAndSwap(true, false) {
+		return false
+	}
+	p.ds.SetWriteUpdateWithXattrsCallback(nil)
+	close(p.blockCh)
+	return true
+}
