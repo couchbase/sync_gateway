@@ -819,9 +819,9 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	go func() {
 		attachmentCount, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
 		count.Set(attachmentCount)
-		require.NoError(t, err)
-		require.NotNil(t, dcpClient)
-		require.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
+		if assert.NoError(t, err) && assert.NotNil(t, dcpClient) {
+			assert.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
+		}
 	}()
 
 	// RequireStatGreaterThan polls every 10ms so the wait finishes after the mark starts, but before it has time to finish
@@ -843,8 +843,8 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	go func() {
 		attachmentCount, checkpointPrefix, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, "sweep", nil, false, terminator, stat)
 		count.Set(attachmentCount)
-		require.NoError(t, err)
-		require.NotEmpty(t, checkpointPrefix)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, checkpointPrefix)
 	}()
 
 	base.RequireStatGreaterThan(t, stat, 0, "wait for sweeping to start")

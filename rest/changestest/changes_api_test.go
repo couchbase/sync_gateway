@@ -280,7 +280,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	}()
 
 	// Wait for changes feed to get into wait mode where it is blocked on the longpoll changes feed response
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 
 	// Put a doc in channel bernard, that also grants bernard access to channel PBS
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/grant1", `{"value":1, "accessUser":"bernard", "accessChannel":"PBS"}`)
@@ -1316,7 +1316,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	}()
 
 	// Wait for longpoll to get into wait mode
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 
 	// Write the skipped doc, wait for longpoll to return
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
@@ -3329,7 +3329,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 		require.Len(t, changes.Results, 5)
 	}()
 
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 
 	// Update the user doc to grant access to PBS
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", rt.GetSingleDataStore(), []string{"ABC", "PBS"}, nil))
@@ -3377,8 +3377,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	}
 
 	// Wait for all goroutines to get into wait mode
-	caughtUpErr := rt.GetDatabase().WaitForCaughtUp(caughtUpCount + int64(queryCount))
-	assert.NoError(t, caughtUpErr)
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount+int64(queryCount)-1)
 
 	// Wait for compaction to stop
 	compactErr := waitForCompactStopped(rt.GetDatabase())
@@ -3643,7 +3642,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	}()
 
 	// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
-	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+2))
+	base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, caughtUpStart+1)
 
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name, nil), database, slowSequence)
@@ -3734,7 +3733,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	}()
 
 	// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
-	require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+2))
+	base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, caughtUpStart+1)
 
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(base.DatabaseLogCtx(base.TestCtx(t), database.Name, nil), database, slowSequence)

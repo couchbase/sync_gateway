@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -43,29 +42,6 @@ func (db *DatabaseContext) CacheCompactActive() bool {
 		return false
 	}
 	return compactingCache.isCompactActive()
-}
-
-func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
-	for range 100 {
-		// caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
-		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
-		if caughtUpCount >= targetCount {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return errors.New("WaitForCaughtUp didn't catch up")
-}
-
-func (db *DatabaseContext) WaitForTotalCaughtUp(targetCount int64) error {
-	for range 100 {
-		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
-		if caughtUpCount >= targetCount {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return errors.New("WaitForCaughtUp didn't catch up")
 }
 
 type StatWaiter struct {
