@@ -749,19 +749,8 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	_, mutateErr := dataStore.UpdateXattrs(ctx, mobileKey, uint32(0), cas, map[string][]byte{"_nonmobile": base.MustJSONMarshal(t, xattrVal)}, nil)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
-	// Wait until crc match count changes
-	var crcMatchesAfter int64
-	for range 20 {
-		crcMatchesAfter = rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
-		// if they changed, import has been processed
-		if crcMatchesAfter > crcMatchesBefore {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
 	// Expect one crcMatch, no mismatches
-	assert.True(t, crcMatchesAfter-crcMatchesBefore == 1)
+	base.RequireWaitForStat(t, rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value, crcMatchesBefore+1)
 
 	// Get the doc again, validate rev hasn't changed
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")

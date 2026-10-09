@@ -355,7 +355,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	}
 
 	// Wait for everyone to be caught up
-	require.NoError(t, database.WaitForCaughtUp(caughtUpStart+int64(100)))
+	base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpStart+99)
 	log.Printf("Everyone is caught up")
 
 	// Write sequence 1 to all channels, wait for it on feed
@@ -369,7 +369,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	log.Printf("Everyone's seq 1 arrived")
 
 	// Wait for everyone to be caught up again
-	require.NoError(t, database.WaitForCaughtUp(caughtUpStart+int64(100)))
+	base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpStart+99)
 
 	// Write sequence 3 to all channels, wait for it on feed
 	db.WriteDirect(t, collection, channelSet, 3)
@@ -382,7 +382,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	log.Printf("Everyone's seq 2 arrived")
 
 	// Wait for everyone to be caught up again
-	require.NoError(t, database.WaitForCaughtUp(caughtUpStart+int64(100)))
+	base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpStart+99)
 
 	// Cancel the changes context
 	changesCtxCancel(errors.New("cancel changes context after changes are caught up"))

@@ -788,7 +788,7 @@ func DirExists(filename string) bool {
 }
 
 // AssertWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (val int64) {
+func AssertWaitForStat[T int64 | uint64](t testing.TB, getStatFunc func() T, expected T) (val T) {
 	t.Helper()
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()
@@ -798,7 +798,7 @@ func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (
 }
 
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
-func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64, msgAndArgs ...any) (val int64) {
+func RequireWaitForStat[T int64 | uint64](t testing.TB, getStatFunc func() T, expected T, msgAndArgs ...any) (val T) {
 	t.Helper()
 	require.NotNil(t, getStatFunc, "Function for RequireWaitForStat cannot be nil")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -806,6 +806,19 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64, 
 		assert.Equal(c, expected, val, msgAndArgs...)
 	}, 20*time.Second, 100*time.Millisecond)
 	return val
+}
+
+// RequireStatGreaterThan will retry for up to 20 seconds until the value of stat is greater than expected. The
+// failure message includes the stat name when stat has a Name method, for example SgwIntStat.
+func RequireStatGreaterThan[T int64 | uint64](t testing.TB, stat interface{ Value() T }, expected T, msgAndArgs ...any) {
+	t.Helper()
+	statName := fmt.Sprintf("%T", stat)
+	if namedStat, ok := stat.(interface{ Name() string }); ok {
+		statName = namedStat.Name()
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Greater(c, stat.Value(), expected, "stat %s", statName)
+	}, 20*time.Second, 10*time.Millisecond, msgAndArgs...)
 }
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not

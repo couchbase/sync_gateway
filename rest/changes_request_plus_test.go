@@ -56,7 +56,7 @@ func TestRequestPlusSkippedSequence(t *testing.T) {
 		changes := rt.GetChanges(fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&request_plus=true", docSeq), username)
 		require.Len(t, changes.Results, 0)
 	}()
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 	// the request should finish once the sequence is released
 	err = db.ReleaseTestSequence(base.TestCtx(t), rt.GetDatabase(), unusedSeq)
 	require.NoError(t, err)

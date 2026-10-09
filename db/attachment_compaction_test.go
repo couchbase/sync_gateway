@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -816,70 +815,47 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	// Start marking stage
 	terminator := base.NewSafeTerminator()
 	stat := &base.AtomicInt{}
-	count := int64(0)
+	count := &base.AtomicInt{}
 	go func() {
 		attachmentCount, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
-		atomic.StoreInt64(&count, attachmentCount)
-		require.NoError(t, err)
-		require.NotNil(t, dcpClient)
-		require.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
+		count.Set(attachmentCount)
+		if assert.NoError(t, err) && assert.NotNil(t, dcpClient) {
+			assert.NotEmpty(t, dcpClient.GetMetadataKeyPrefix())
+		}
 	}()
 
-	statAboveZeroRetryFunc := func() (shouldRetry bool, err error, value any) {
-		if stat.Value() == 0 {
-			return true, nil, nil
-		}
-		return false, nil, nil
-	}
-
-	compactionFuncReturnedRetryFunc := func() (shouldRetry bool, err error, value any) {
-		if atomic.LoadInt64(&count) == 0 {
-			return true, nil, nil
-		}
-		return false, nil, nil
-	}
-
-	const (
-		maxAttempts = 3_000
-		// The timeToSleepMs here is low to ensure that this retry loop finishes after the mark starts, but before it has time to finish
-		timeToSleepMs = 10
-	)
-	err, _ := base.RetryLoop(ctx, "wait for marking to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	// RequireStatGreaterThan polls every 10ms so the wait finishes after the mark starts, but before it has time to finish
+	base.RequireStatGreaterThan(t, stat, 0, "wait for marking to start")
 
 	terminator.Close() // Terminate mark function
-	err, _ = base.RetryLoop(ctx, "wait for marking function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	base.RequireStatGreaterThan(t, count, 0, "wait for marking function to return")
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	require.Equal(t, count, stat.Value())
-	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+	require.Equal(t, count.Value(), stat.Value())
+	require.False(t, count.Value() == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 
 	// Start sweeping with different compact ID so all documents get swept
 	stat = &base.AtomicInt{}
-	count = 0
+	count.Set(0)
 	terminator = base.NewSafeTerminator()
 	go func() {
 		attachmentCount, checkpointPrefix, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, "sweep", nil, false, terminator, stat)
-		atomic.StoreInt64(&count, attachmentCount)
-		require.NoError(t, err)
-		require.NotEmpty(t, checkpointPrefix)
+		count.Set(attachmentCount)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, checkpointPrefix)
 	}()
 
-	// The timeToSleepMs here is low to ensure that this retry loop finishes after the sweep starts, but before it has time to finish
-	err, _ = base.RetryLoop(ctx, "wait for sweeping to start", statAboveZeroRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	base.RequireStatGreaterThan(t, stat, 0, "wait for sweeping to start")
 
 	terminator.Close() // Terminate sweep function
-	err, _ = base.RetryLoop(ctx, "wait for sweeping function to return", compactionFuncReturnedRetryFunc, base.CreateSleeperFunc(maxAttempts, timeToSleepMs))
-	require.NoError(t, err)
+	base.RequireStatGreaterThan(t, count, 0, "wait for sweeping function to return")
 	// Allow time for timing issue to be hit where stat increments when it shouldn't
 	time.Sleep(time.Second * 1)
 
-	require.Equal(t, count, stat.Value())
-	require.False(t, count == docsToCreate && stat.Value() == docsToCreate,
+	require.Equal(t, count.Value(), stat.Value())
+	require.False(t, count.Value() == docsToCreate && stat.Value() == docsToCreate,
 		"Attachment compaction ran too fast, causing it to process all documents instead of terminating mid-way. Consider upping the docsToCreate")
 }
 
