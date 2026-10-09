@@ -52,10 +52,8 @@ func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err e
 		lastSeq = checkpoint.SnapStart
 	}
 
-	// Guardrail: Ensure lastSeq is within the snapshot boundaries [SnapStart, SnapEnd] of the cbgt checkpoint.
-	if lastSeq < checkpoint.SnapStart {
-		lastSeq = checkpoint.SnapStart
-	}
+	// lastSeq can be below SnapStart when no mutation of the snapshot was processed yet, and raising it would skip the
+	// mutation at SnapStart. Lowering it to SnapEnd is safe since it only reprocesses mutations.
 	if checkpoint.SnapEnd > 0 && lastSeq > checkpoint.SnapEnd {
 		lastSeq = checkpoint.SnapEnd
 	}

@@ -157,7 +157,8 @@ func TestCbgtCheckpointPreservesLargeSequenceNumberPrecision(t *testing.T) {
 	assert.Equal(t, largeSeq, remains.SnapEnd)
 }
 
-// TestCbgtCheckpointGuardrails verifies that readCbgtCheckpoint clamps lastSeq to the checkpoint's snapStart and snapEnd boundaries.
+// TestCbgtCheckpointGuardrails verifies that readCbgtCheckpoint clamps lastSeq to the checkpoint's snapEnd, but never
+// raises it to snapStart.
 func TestCbgtCheckpointGuardrails(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -166,10 +167,10 @@ func TestCbgtCheckpointGuardrails(t *testing.T) {
 		expectedLastSeq  uint64
 	}{
 		{
-			name:             "lastSeq below snapStart is clamped to snapStart",
+			name:             "lastSeq below snapStart is not clamped",
 			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
 			persistedLastSeq: 5,
-			expectedLastSeq:  15,
+			expectedLastSeq:  5,
 		},
 		{
 			name:             "lastSeq above snapEnd is clamped to snapEnd",
