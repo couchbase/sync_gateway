@@ -16,6 +16,7 @@ import (
 	"expvar"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -32,14 +33,22 @@ const (
 // A wrapper around a Bucket's TapFeed that allows any number of client goroutines to wait for
 // changes.
 type changeListener struct {
-	ctx                      context.Context
-	dbCtx                    *DatabaseContext
-	bucket                   base.Bucket
-	bucketName               string                 // Used for logging
-	tapNotifier              *sync.Cond             // Posts notifications when documents are updated
-	counter                  uint64                 // Event counter; increments on every doc update
-	_terminateCheckCounter   uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts                map[channels.ID]uint64 // Latest count at which each doc key was updated
+	ctx                    context.Context
+	dbCtx                  *DatabaseContext
+	bucket                 base.Bucket
+	bucketName             string                 // Used for logging
+	tapNotifier            *sync.Cond             // Posts notifications when documents are updated
+	counter                uint64                 // Event counter; increments on every doc update
+	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts              map[channels.ID]uint64 // Latest count at which each doc key was updated
+	principalCountsLock    sync.RWMutex           // Guards principalCounts
+	// principalCounts holds the latest count for each user/role, keyed by doc key, readable without
+	// tapNotifier.L.  Entries are created only by notifyKey; a principal with no entry reads as zero.
+	// Entries are never replaced or removed, as ChangeWaiters hold the counter pointers directly.
+	principalCounts map[string]*atomic.Uint64
+	// principalCountsInserted counts entries ever added to principalCounts, under principalCountsLock.
+	// A waiter with a missing counter only re-checks the map once this has moved.
+	principalCountsInserted  atomic.Uint64
 	OnChangeCallback         DocChangedFunc
 	terminator               chan bool          // Signal to cause DCP feed to exit
 	doneChan                 <-chan error       // Channel that's closed when DCP feed has exited
@@ -66,6 +75,7 @@ func newChangeListener(name string, groupID string, db *DatabaseContext) (*chang
 	listener.counter = 1
 	listener._terminateCheckCounter = 0
 	listener.keyCounts = map[channels.ID]uint64{}
+	listener.principalCounts = map[string]*atomic.Uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = db.MetadataKeys.SGCfgPrefix(groupID)
 	listener.metaKeys = db.MetadataKeys
@@ -250,6 +260,13 @@ func (listener *changeListener) Stop(ctx context.Context) {
 //////// NOTIFICATIONS:
 
 // Changes the counter, notifying waiting clients.
+//
+// Notify must not be used for principal (user/role) keys.  notifyKey is the only writer of
+// principal keys into keyCounts, and it also stores into principalCounts so that the per-BLIP-
+// message user count check (RefreshUserCount) can read it without tapNotifier.L.  Routing a
+// principal key through Notify instead would advance keyCounts without advancing the matching
+// principalCounts entry: the feed would still wake, but checkForUserUpdates would see no user
+// count change and skip the reload, silently serving stale channel access.
 func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 
 	if len(keys) == 0 {
@@ -323,13 +340,20 @@ func (listener *changeListener) broadcastInterval(skippedSequencePresent bool) t
 
 // Changes the counter, notifying waiting clients. Only use for a key update.
 func (listener *changeListener) notifyKey(ctx context.Context, key channels.ID) {
+	// Resolve the principal counter before taking tapNotifier.L, to keep principalCountsLock out of
+	// its critical section.
+	principalCount := listener.principalCounter(key.Name)
+
 	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
 	listener.counter++
 	listener.keyCounts[key] = listener.counter
+	// Store under tapNotifier.L: a waiter woken by this notify re-acquires it before returning from
+	// Wait, so is guaranteed to see this value when it reads the counter lock-free afterwards.
+	principalCount.Store(listener.counter)
 	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
-	listener.tapNotifier.L.Unlock()
 }
 
 // Changes the counter, notifying waiting clients.
@@ -379,13 +403,6 @@ func (listener *changeListener) Wait(ctx context.Context, keys []channels.ID, co
 	}
 }
 
-// Returns the max value of the counter for all the given keys
-func (listener *changeListener) CurrentCount(keys []channels.ID) uint64 {
-	listener.tapNotifier.L.Lock()
-	defer listener.tapNotifier.L.Unlock()
-	return listener._currentCount(keys)
-}
-
 func (listener *changeListener) _currentCount(keys []channels.ID) uint64 {
 	var max uint64 = 0
 	for _, key := range keys {
@@ -396,6 +413,71 @@ func (listener *changeListener) _currentCount(keys []channels.ID) uint64 {
 	return max
 }
 
+// principalCounter returns the counter for a principal key, creating it if this is the first time
+// the key has been notified.  Only notifyKey should call this - see principalCounts.  An existing
+// counter is always returned as-is: replacing it would orphan any ChangeWaiter that has already
+// cached the old pointer, silently cutting it off from further updates for that key.
+func (listener *changeListener) principalCounter(key string) *atomic.Uint64 {
+	if counter := listener.existingPrincipalCounter(key); counter != nil {
+		return counter
+	}
+	listener.principalCountsLock.Lock()
+	defer listener.principalCountsLock.Unlock()
+	// Check again under the write lock: a concurrent first notify for the same principal may have
+	// inserted it since the read above, and that counter must not be replaced.
+	if counter, ok := listener.principalCounts[key]; ok {
+		return counter
+	}
+	counter := &atomic.Uint64{}
+	listener.principalCounts[key] = counter
+	listener.principalCountsInserted.Add(1)
+	return counter
+}
+
+// existingPrincipalCounter returns the counter for a principal key, or nil if it has never been notified.
+func (listener *changeListener) existingPrincipalCounter(key string) *atomic.Uint64 {
+	listener.principalCountsLock.RLock()
+	defer listener.principalCountsLock.RUnlock()
+	return listener.principalCounts[key]
+}
+
+// lookupPrincipalCounters returns the existing counters for a set of principal keys, with a nil
+// entry for any key that has never been notified, plus the principalCountsInserted value they were
+// resolved at.  principalCountsInserted is only updated under the write lock, so the two are
+// consistent under the read lock here, and a caller that later sees the same inserted value knows
+// its nil entries are still missing.
+func (listener *changeListener) lookupPrincipalCounters(keys []channels.ID) (counters []*atomic.Uint64, inserted uint64, missing bool) {
+	listener.principalCountsLock.RLock()
+	defer listener.principalCountsLock.RUnlock()
+	inserted = listener.principalCountsInserted.Load()
+	counters = make([]*atomic.Uint64, len(keys))
+	for i, key := range keys {
+		counters[i] = listener.principalCounts[key.Name]
+		missing = missing || counters[i] == nil
+	}
+	return counters, inserted, missing
+}
+
+// maxPrincipalCount returns the highest value held by the given counters, read without any lock.
+// A nil counter is a principal that has never been notified, and reads as zero.
+// This is safe because every counter is a snapshot of the single, monotonically increasing
+// changeListener.counter (see notifyKey): a store that lands after a scan begins used a counter
+// value already greater than every value the scan could have read on ANY key, so a change can
+// never be hidden behind a stale read of one of the other counters.  A torn read across keys can
+// only ever move the result forward relative to an earlier scan, never back.
+func maxPrincipalCount(counters []*atomic.Uint64) uint64 {
+	var highest uint64
+	for _, counter := range counters {
+		if counter == nil {
+			continue
+		}
+		if count := counter.Load(); count > highest {
+			highest = count
+		}
+	}
+	return highest
+}
+
 //////// CHANGE WAITER
 
 // Helper for waiting on a changeListener. Every call to wait() will wait for the
@@ -404,6 +486,9 @@ type ChangeWaiter struct {
 	listener                  *changeListener
 	keys                      []channels.ID
 	userKeys                  []channels.ID
+	userCounters              []*atomic.Uint64 // Counters for userKeys, read without tapNotifier.L; nil if not yet notified
+	userCountersInserted      uint64           // listener.principalCountsInserted when userCounters was resolved
+	userCountersMissing       bool             // userCounters has a nil entry that a later notify may create
 	lastCounter               uint64
 	lastTerminateCheckCounter uint64
 	lastUserCount             uint64
@@ -435,6 +520,9 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 		waitKeys = append(waitKeys, channel)
 	}
 	var userKeys []channels.ID
+	var userCounters []*atomic.Uint64
+	var inserted uint64
+	var missing bool
 	if user != nil {
 		usrID := channels.NewID(listener.metaKeys.UserKey(user.Name()), principalDocCollectionIDForChannelID)
 		userKeys = []channels.ID{usrID}
@@ -442,15 +530,21 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 			userKeys = append(userKeys, channels.NewID(listener.metaKeys.RoleKey(role), principalDocCollectionIDForChannelID))
 		}
 		waitKeys = append(waitKeys, userKeys...)
+		// Resolve the user's counters and baseline the user count before taking tapNotifier.L below.
+		// Reading it here rather than under L can only make the baseline older, never newer: at worst
+		// that costs one redundant user reload later, whereas a baseline taken after a concurrent
+		// principal update landed could swallow it.
+		userCounters, inserted, missing = listener.lookupPrincipalCounters(userKeys)
 	}
+	lastUserCount := maxPrincipalCount(userCounters)
+
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	waiter := listener._newWaiter(waitKeys, trackUnusedSequences)
 
 	waiter.userKeys = userKeys
-	if userKeys != nil {
-		waiter.lastUserCount = listener._currentCount(userKeys)
-	}
+	waiter.userCounters, waiter.userCountersInserted, waiter.userCountersMissing = userCounters, inserted, missing
+	waiter.lastUserCount = lastUserCount
 	return waiter
 }
 
@@ -460,9 +554,9 @@ func (waiter *ChangeWaiter) Wait(ctx context.Context) uint32 {
 	lastTerminateCheckCounter := waiter.lastTerminateCheckCounter
 	lastCounter := waiter.lastCounter
 	waiter.lastCounter, waiter.lastTerminateCheckCounter = waiter.listener.Wait(ctx, waiter.keys, waiter.lastCounter, waiter.lastTerminateCheckCounter)
-	if waiter.userKeys != nil {
-		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
-	}
+	// No tapNotifier.L needed: notifyKey updates the counters before releasing it, and listener.Wait
+	// has re-acquired it since.
+	waiter.lastUserCount = waiter.currentPrincipalCount()
 	countChanged := waiter.lastCounter > lastCounter
 
 	// Uses != to compare as value can cycle back through 0
@@ -486,8 +580,19 @@ func (waiter *ChangeWaiter) CurrentUserCount() uint64 {
 // Refreshes the last user count from the listener (without Wait being triggered).  Returns true if the count has changed
 func (waiter *ChangeWaiter) RefreshUserCount() bool {
 	previousCount := waiter.lastUserCount
-	waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
+	waiter.lastUserCount = waiter.currentPrincipalCount()
 	return waiter.lastUserCount != previousCount
+}
+
+// currentPrincipalCount returns the max count across the waiter's user keys, first re-resolving any
+// counters that were missing if a counter has since been created for some principal.  Nothing can
+// have been created while principalCountsInserted is unchanged, so the common case costs one atomic
+// load rather than taking principalCountsLock on every call.
+func (waiter *ChangeWaiter) currentPrincipalCount() uint64 {
+	if waiter.userCountersMissing && waiter.listener.principalCountsInserted.Load() != waiter.userCountersInserted {
+		waiter.userCounters, waiter.userCountersInserted, waiter.userCountersMissing = waiter.listener.lookupPrincipalCounters(waiter.userKeys)
+	}
+	return maxPrincipalCount(waiter.userCounters)
 }
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
@@ -523,7 +628,8 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.Metad
 		for role := range user.RoleNames() {
 			waiter.userKeys = append(waiter.userKeys, channels.NewID(metaKeys.RoleKey(role), principalDocCollectionIDForChannelID))
 		}
-		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
+		waiter.userCounters, waiter.userCountersInserted, waiter.userCountersMissing = waiter.listener.lookupPrincipalCounters(waiter.userKeys)
+		waiter.lastUserCount = maxPrincipalCount(waiter.userCounters)
 
 	}
 }
