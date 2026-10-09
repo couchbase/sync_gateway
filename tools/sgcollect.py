@@ -21,7 +21,6 @@ import pathlib
 import platform
 import re
 import shutil
-import ssl
 import sys
 import urllib.error
 import urllib.parse
@@ -44,10 +43,6 @@ from tasks import (
     make_os_tasks,
     urlopen,
 )
-
-# Don't validate HTTPS by default.
-# The type checker has mismatched types for these functions
-ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
 # Collects the following info from Sync Gateway
 #
@@ -911,7 +906,7 @@ def main() -> NoReturn:
 
     # If user asked to just upload, then upload and exit
     if options.just_upload_into is not None:
-        do_upload(args[0], options.just_upload_into, options.upload_proxy)
+        sys.exit(do_upload(args[0], options.just_upload_into, options.upload_proxy))
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     with TaskRunner(
