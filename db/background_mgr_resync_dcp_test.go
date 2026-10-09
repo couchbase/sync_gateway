@@ -1364,3 +1364,51 @@ func TestResyncResetPurgesStoppedRunCheckpoints(t *testing.T) {
 	requireDCPCheckpointsPurged(t, ctx, db.DatabaseContext, stoppedPrefix,
 		"reset left behind the checkpoints for abandoned resync run %q", stopped.ResyncID)
 }
+
+// completedPartitionsFeed is a cbgt.Feed that reports a fixed set of completed partitions.
+type completedPartitionsFeed struct {
+	cbgt.Feed
+	dests     map[string]cbgt.Dest
+	completed map[string]struct{}
+}
+
+func (f *completedPartitionsFeed) Dests() map[string]cbgt.Dest { return f.dests }
+
+func (f *completedPartitionsFeed) CompletedPartitions() map[string]struct{} { return f.completed }
+
+// TestResyncUnregisterFeedStoppedDest makes sure that streams which end after the dest is stopped are not marked
+// completed, because the stopped dest skipped their data updates.
+func TestResyncUnregisterFeedStoppedDest(t *testing.T) {
+	for _, stopDest := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stopDest=%t", stopDest), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			dest, err := base.NewDCPDest(ctx, base.DCPDestOptions{
+				Callback: func(sgbucket.FeedEvent) bool { return true },
+				MaxVbNo:  2,
+			})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, dest.Close(false)) }()
+			if stopDest {
+				dest.Stop()
+			}
+
+			r := &ResyncManagerDCP{completedvBuckets: newvBucketTracker()}
+			r.getUnregisterFeedFunc(ctx, 2)(&completedPartitionsFeed{
+				dests:     map[string]cbgt.Dest{"0": dest, "1": dest},
+				completed: map[string]struct{}{"0": {}, "1": {}},
+			})
+
+			if stopDest {
+				require.Empty(t, r.completedvBuckets.m)
+				select {
+				case <-r.completedvBuckets.done():
+					require.FailNow(t, "resync completed even though the dest was stopped")
+				default:
+				}
+			} else {
+				require.Len(t, r.completedvBuckets.m, 2)
+				base.RequireChanClosed(t, r.completedvBuckets.done())
+			}
+		})
+	}
+}
