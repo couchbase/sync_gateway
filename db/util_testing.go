@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1190,12 +1189,7 @@ func GetChangeEntryCV(t *testing.T, entry *ChangeEntry) Version {
 // SafeDocumentName returns a document name free of any special characters for use in tests.
 func SafeDocumentName(t *testing.T, name string) string {
 	t.Helper()
-	docName := strings.ToLower(name)
-	for _, c := range []string{" ", "<", ">", "/", "="} {
-		docName = strings.ReplaceAll(docName, c, "_")
-	}
-	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
-	return docName
+	return base.SafeDocumentName(t, name)
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database. Fails the

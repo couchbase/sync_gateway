@@ -16,7 +16,7 @@ require (
 	github.com/couchbase/sg-bucket v0.0.0-20260714130240-329df715dd61
 	github.com/couchbasedeps/fast-skiplist v0.0.0-20250722125747-e0dd031fe2ac
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20220909152808-6d09efa7a338
-	github.com/couchbaselabs/rosmar v0.0.0-20260929095922-bd5a47cd4a28
+	github.com/couchbaselabs/rosmar v0.0.0-20261008154733-017f158d8701
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-jose/go-jose/v4 v4.1.5
@@ -81,9 +81,11 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
+	github.com/petermattis/goid v0.0.0-20250813065127-a731cc31b4fe // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
+	github.com/sasha-s/go-deadlock v0.3.9 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
