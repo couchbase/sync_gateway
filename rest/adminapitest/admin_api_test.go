@@ -4262,21 +4262,9 @@ func TestRetrieveMetadataStoreModeInStatus(t *testing.T) {
 	assert.Equal(t, base.MetadataStoreModeFallbackInactive, statusResponse.Databases["db"].MetadataStoreMode)
 }
 
-// resyncPauser blocks the resync DCP stream at the user documents it encounters, until Release is
-// called. Can be Paused and Released multiple times across a test.
-// Resync runs one goroutine per DCP worker, so several documents can be processed concurrently and
-// every blocked call is released together.
-type resyncPauser struct {
-	t           testing.TB
-	blocked     chan struct{}
-	blockCh     chan struct{}
-	ds          *base.LeakyDataStore
-	callbackSet atomic.Bool
-}
-
 // newResyncPauser binds to the first collection (lexicographically, matching {{.keyspace1}}) so it
 // also works against multi-collection databases where GetSingleDataStore doesn't apply.
-func newResyncPauser(rt *rest.RestTester) *resyncPauser {
+func newResyncPauser(rt *rest.RestTester) *db.ResyncPauser {
 	collections := rt.GetDbCollections()
 	require.NotEmpty(rt.TB(), collections, "database must have at least one collection")
 	ds, err := rt.GetDatabase().Bucket.NamedDataStore(rt.Context(), base.ScopeAndCollectionName{
@@ -4284,63 +4272,7 @@ func newResyncPauser(rt *rest.RestTester) *resyncPauser {
 		Collection: collections[0].Name,
 	})
 	require.NoError(rt.TB(), err)
-	leakyDS, ok := base.AsLeakyDataStore(ds)
-	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
-	return &resyncPauser{
-		t:  rt.TB(),
-		ds: leakyDS,
-	}
-}
-
-// Pause arms the pauser to block resync at every user document it encounters. Call Release
-// before pausing again.
-func (p *resyncPauser) Pause() {
-	if !p.callbackSet.CompareAndSwap(false, true) {
-		require.FailNow(p.t, "resyncPauser.Pause called while already paused; call Release first")
-	}
-	blocked := make(chan struct{})
-	blockCh := make(chan struct{})
-	p.blocked, p.blockCh = blocked, blockCh
-	// Callbacks read the channels they were created with, so a later Pause can't race with a
-	// resync goroutine still inside the previous callback.
-	var blockedOnce sync.Once
-	p.ds.SetWriteUpdateWithXattrsCallback(func(key string) {
-		if strings.HasPrefix(key, "_sync:") {
-			return
-		}
-		blockedOnce.Do(func() { close(blocked) })
-		// Runs on the resync DCP goroutine, so use the goroutine-safe wait.
-		sgtest.RequireChanClosedFromCallback(p.t, blockCh)
-	})
-}
-
-// WaitUntilBlocked blocks until resync is paused at a user document.
-func (p *resyncPauser) WaitUntilBlocked() {
-	p.t.Helper()
-	base.RequireChanClosed(p.t, p.blocked)
-}
-
-// Release clears the callback and unblocks the paused docs. Fails the test if not currently paused.
-func (p *resyncPauser) Release() {
-	if !p.release() {
-		require.FailNow(p.t, "resyncPauser.Release called while not paused")
-	}
-}
-
-// Close releases the pauser and resets the LeakyBucket callback.
-func (p *resyncPauser) Close() {
-	p.release()
-}
-
-// release clears the callback and unblocks any paused docs if currently paused, reporting whether
-// it was paused.
-func (p *resyncPauser) release() bool {
-	if !p.callbackSet.CompareAndSwap(true, false) {
-		return false
-	}
-	p.ds.SetWriteUpdateWithXattrsCallback(nil)
-	close(p.blockCh)
-	return true
+	return db.NewResyncPauser(rt.TB(), ds)
 }
 
 func TestServerGetStatusRace(t *testing.T) {
