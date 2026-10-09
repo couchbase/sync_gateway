@@ -160,6 +160,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
+				revNo = doc.RevSeqNo
 				body = doc.Body(ctx)
 				if body == nil {
 					return nil, nil, false, nil, base.ErrEmptyDocument
