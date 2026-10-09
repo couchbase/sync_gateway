@@ -434,7 +434,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
-	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/bar"), "Error waiting for view availability")
+	rt.WaitForViewAvailable("/db/_design/foo/_view/bar")
 
 	// Create a doc
 	response = rt.SendAdminRequest(http.MethodPut, "/db/query_with_keys", `{"key":"channel_a", "value":99}`)
@@ -471,7 +471,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"composite_key_test": {"map": "function(doc) {emit([doc.key, doc.seq], doc.value);}"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
-	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/composite_key_test"), "Error waiting for view availability")
+	rt.WaitForViewAvailable("/db/_design/foo/_view/composite_key_test")
 
 	// Create a doc
 	response = rt.SendAdminRequest(http.MethodPut, "/db/doc_composite_key", `{"key":"channel_a", "seq":55, "value":99}`)
@@ -508,7 +508,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"int_key_test": {"map": "function(doc) {emit(doc.seq, doc.value);}"}}}`)
 	RequireStatus(t, response, http.StatusCreated)
-	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/int_key_test"), "Error waiting for view availability")
+	rt.WaitForViewAvailable("/db/_design/foo/_view/int_key_test")
 
 	// Create a doc
 	response = rt.SendAdminRequest(http.MethodPut, "/db/doc_int_key", `{"key":"channel_a", "seq":55, "value":99}`)
