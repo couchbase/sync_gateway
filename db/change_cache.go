@@ -389,8 +389,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	// First unmarshal the doc (just its metadata, to save time/memory):
-	doc, syncData, err := UnmarshalDocumentSyncDataFromFeed(dcpValue, event.DataType, collection.UserXattrKey(), false)
+	// Only the sync metadata the cache needs is parsed. The body and the rest of _sync are skipped.
+	feedData, err := unmarshalCachingFeedData(dcpValue, event.DataType, collection.UserXattrKey())
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrEmptyMetadata) {
 			base.WarnfCtx(ctx, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
@@ -400,18 +400,15 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return
 	}
 
-	if syncData == nil {
+	if feedData == nil {
 		return
 	}
 
-	rawUserXattr := doc.Xattrs[collection.UserXattrKey()]
-	var rawVV *rawHLV
-	if vv := doc.Xattrs[base.VvXattrName]; len(vv) > 0 {
-		rawVV = new(rawHLV(vv))
-	}
+	syncData := &feedData.syncData
+	rawUserXattr := feedData.rawUserXattr
 	isDelete := event.Opcode == sgbucket.FeedOpDeletion
 
-	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, rawVV); isSGWriteAmbiguous {
+	if isSGWrite, isSGWriteAmbiguous := syncData.IsSGWriteXattrOnly(ctx, event.Cas, isDelete, rawUserXattr, &feedData.rawVV); isSGWriteAmbiguous {
 		// CRC is the only remaining check, but we need to fetch the doc body now
 		c.db.DbStats.Cache().IsSGWriteKVFetchCount.Add(1)
 		docBody, cas, err := collection.GetCollectionDatastore().GetRaw(ctx, docID)
@@ -544,7 +541,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		Channels:     syncData.Channels,
 		CollectionID: event.CollectionID,
 	}
-	if len(doc.Xattrs[base.VvXattrName]) > 0 {
+	if len(feedData.rawVV) > 0 {
 		change.SourceID = syncData.RevAndVersion.CurrentSource
 		change.Version = base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion)
 	}
