@@ -173,6 +173,12 @@ func TestCbgtCheckpointGuardrails(t *testing.T) {
 			expectedLastSeq:  5,
 		},
 		{
+			name:             "lastSeq of zero is not raised to snapStart",
+			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
+			persistedLastSeq: 0,
+			expectedLastSeq:  0,
+		},
+		{
 			name:             "lastSeq above snapEnd is clamped to snapEnd",
 			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
 			persistedLastSeq: 25,
@@ -359,7 +365,8 @@ func TestMakeVbucketMetadataIncludesLastSeq(t *testing.T) {
 
 			var checkpoint CbgtCheckpoint
 			require.NoError(t, JSONUnmarshal(raw, &checkpoint))
-			assert.Equal(t, sequence, checkpoint.LastSeq)
+			require.NotNil(t, checkpoint.LastSeq)
+			assert.Equal(t, sequence, *checkpoint.LastSeq)
 			assert.Equal(t, sequence, checkpoint.SeqStart)
 			assert.Equal(t, sequence, checkpoint.SnapStart)
 			assert.Equal(t, sequence, checkpoint.SnapEnd)

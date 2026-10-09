@@ -279,7 +279,7 @@ func (c *DCPCommon) makeVbucketMetadataForSequence(vbNo uint16, vbucketUUID uint
 			SnapEnd:     sequence,
 			FailOverLog: [][]uint64{{vbucketUUID, 0}},
 		},
-		LastSeq: sequence,
+		LastSeq: new(sequence),
 	}
 	return JSONMarshal(checkpoint)
 }
