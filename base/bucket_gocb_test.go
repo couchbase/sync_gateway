@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -4024,12 +4025,40 @@ func TestDeleteWithXattrsMissingXattr(t *testing.T) {
 	}
 }
 
-// TestXattrOnlyWriteKeepsTombstone checks that writing only xattrs to a tombstone keeps it a tombstone.
+// TestXattrOnlyWriteKeepsTombstone checks that writing only xattrs to a tombstone keeps it a tombstone, and that the
+// feed reports the write as a deletion.
 func TestXattrOnlyWriteKeepsTombstone(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
 	defer bucket.Close(ctx)
 	dataStore := bucket.GetSingleDataStore()
+
+	type feedEvent struct {
+		opcode sgbucket.FeedOpcode
+		cas    uint64
+	}
+	var eventsLock sync.Mutex
+	events := make(map[string][]feedEvent)
+	dcpClient, err := NewDCPClient(ctx, bucket, DCPClientOptions{
+		FeedID: t.Name(),
+		Callback: func(event sgbucket.FeedEvent) bool {
+			eventsLock.Lock()
+			defer eventsLock.Unlock()
+			events[string(event.Key)] = append(events[string(event.Key)], feedEvent{opcode: event.Opcode, cas: event.Cas})
+			return true
+		},
+		CheckpointPrefix:   DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		CollectionNames:    NewCollectionNameSet(dataStore),
+		FromLatestSequence: true,
+		MetadataStore:      bucket.GetMetadataStore(),
+	})
+	require.NoError(t, err)
+	doneChan, err := dcpClient.Start()
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, dcpClient.Close())
+		RequireChanClosed(t, doneChan)
+	}()
 
 	writes := map[string]func(key string, cas uint64) error{
 		"WriteTombstoneWithXattrs": func(key string, cas uint64) error {
@@ -4050,13 +4079,20 @@ func TestXattrOnlyWriteKeepsTombstone(t *testing.T) {
 	}
 	for name, write := range writes {
 		t.Run(name, func(t *testing.T) {
-			key := t.Name()
+			key := SafeDocumentName(t, t.Name())
 			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
 			require.NoError(t, err)
 			cas, err = dataStore.Remove(ctx, key, cas)
 			require.NoError(t, err)
 
 			require.NoError(t, write(key, cas))
+			_, writeCas, err := dataStore.GetXattrs(ctx, key, []string{VirtualXattrRevSeqNo})
+			require.NoError(t, err)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				eventsLock.Lock()
+				defer eventsLock.Unlock()
+				assert.Contains(c, events[key], feedEvent{opcode: sgbucket.FeedOpDeletion, cas: writeCas})
+			}, 10*time.Second, 10*time.Millisecond)
 			_, _, err = dataStore.GetRaw(ctx, key)
 			require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
 			err = dataStore.Delete(ctx, key)
@@ -4744,6 +4780,82 @@ func testWriteUpdateWithXattrsDocDeletedDuringUpdate(t *testing.T, dataStore sgb
 	require.JSONEq(t, `{"seq":2}`, string(xattrs[SyncXattrName]))
 }
 
+// testDeleteWithXattrsPathMismatch checks that DeleteWithXattrs treats a path through a scalar xattr like a missing
+// xattr.
+func testDeleteWithXattrsPathMismatch(t *testing.T, dataStore sgbucket.DataStore) {
+	const (
+		success    = "success"
+		notFound   = "not found"
+		otherError = "other error"
+	)
+	ctx := TestCtx(t)
+
+	testCases := []struct {
+		name         string
+		tombstone    bool
+		xattrs       map[string][]byte
+		deleteXattrs []string
+		expected     string
+	}{
+		{
+			name:         "live doc, scalar xattr",
+			xattrs:       map[string][]byte{SyncXattrName: []byte(`"scalar"`)},
+			deleteXattrs: []string{SyncXattrName + ".rev"},
+			expected:     success,
+		},
+		{
+			name:         "live doc, scalar xattr and present xattr",
+			xattrs:       map[string][]byte{SyncXattrName: []byte(`"scalar"`), "_xattr1": []byte(`{"seq":1}`)},
+			deleteXattrs: []string{SyncXattrName + ".rev", "_xattr1"},
+			expected:     success,
+		},
+		{
+			name:         "tombstone, scalar xattr",
+			tombstone:    true,
+			xattrs:       map[string][]byte{SyncXattrName: []byte(`"scalar"`)},
+			deleteXattrs: []string{SyncXattrName + ".rev"},
+			expected:     notFound,
+		},
+		{
+			name:         "tombstone, scalar xattr and present xattr",
+			tombstone:    true,
+			xattrs:       map[string][]byte{SyncXattrName: []byte(`"scalar"`), "_xattr1": []byte(`{"seq":1}`)},
+			deleteXattrs: []string{SyncXattrName + ".rev", "_xattr1"},
+			expected:     otherError,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			key := SafeDocumentName(t, t.Name())
+			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), tc.xattrs, nil, nil)
+			require.NoError(t, err)
+			if tc.tombstone {
+				_, err = dataStore.Remove(ctx, key, cas)
+				require.NoError(t, err)
+			}
+
+			err = dataStore.DeleteWithXattrs(ctx, key, tc.deleteXattrs)
+			switch tc.expected {
+			case success:
+				require.NoError(t, err)
+			case notFound:
+				require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
+			case otherError:
+				require.Error(t, err)
+				require.False(t, IsDocNotFoundError(err), "expected an error other than not found, got %v", err)
+			}
+
+			_, _, err = dataStore.GetRaw(ctx, key)
+			require.True(t, IsDocNotFoundError(err), "expected no document body, got %v", err)
+			for xattrName, value := range tc.xattrs {
+				xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{xattrName})
+				require.NoError(t, err)
+				require.JSONEq(t, string(value), string(xattrs[xattrName]))
+			}
+		})
+	}
+}
+
 // TestTombstonesAndNilWrites shares one bucket between its subtests to limit bucket creation on Couchbase Server.
 func TestTombstonesAndNilWrites(t *testing.T) {
 	ctx := TestCtx(t)
@@ -4763,6 +4875,7 @@ func TestTombstonesAndNilWrites(t *testing.T) {
 		"WriteWithXattrsResurrectTombstoneZeroCas":    testWriteWithXattrsResurrectTombstoneZeroCas,
 		"WriteTombstoneWithXattrsKeepBody":            testWriteTombstoneWithXattrsKeepBody,
 		"WriteUpdateWithXattrsDocDeletedDuringUpdate": testWriteUpdateWithXattrsDocDeletedDuringUpdate,
+		"DeleteWithXattrsPathMismatch":                testDeleteWithXattrsPathMismatch,
 	} {
 		t.Run(name, func(t *testing.T) { test(t, dataStore) })
 	}
