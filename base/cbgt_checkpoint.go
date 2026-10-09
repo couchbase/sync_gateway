@@ -32,30 +32,30 @@ func (c cbgtOpaqueCheckpoint) isEmpty() bool {
 // CbgtCheckpoint is the full shape of a persisted DCP checkpoint: cbgt's own opaque checkpoint fields, embedded so
 // they marshal/unmarshal at the top level (matching cbgt's own flat JSON shape), plus SG's own LastSeq tracking
 // field - the last sequence SG actually processed for the vbucket, which isn't part of cbgt's own checkpoint shape.
+// LastSeq is a pointer so that a persisted zero is distinguishable from a legacy checkpoint without the field.
 type CbgtCheckpoint struct {
 	cbgtOpaqueCheckpoint
-	LastSeq uint64 `json:"lastSeq,omitempty"`
+	LastSeq *uint64 `json:"lastSeq,omitempty"`
 }
 
 // readCbgtCheckpoint parses a persisted DCP checkpoint value, returning the last sequence SG actually processed
 // for the vbucket alongside cbgt's own opaque checkpoint fields (i.e. without SG's lastSeq), for use by DCPCommon.
-// Checkpoints persisted before lastSeq was tracked have no lastSeq field at all, which unmarshals the same as a
-// legitimately-persisted value of zero, so this falls back to the checkpoint's snapStart in either case.
+// Checkpoints persisted before lastSeq was tracked have no lastSeq field at all, so this falls back to the checkpoint's
+// snapStart for those.
 func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err error) {
 	var checkpoint CbgtCheckpoint
 	if err := JSONUnmarshal(rawValue, &checkpoint); err != nil {
 		return 0, nil, err
 	}
 
-	lastSeq = checkpoint.LastSeq
-	if lastSeq == 0 {
+	if checkpoint.LastSeq != nil {
+		lastSeq = *checkpoint.LastSeq
+	} else {
 		lastSeq = checkpoint.SnapStart
 	}
 
-	// Guardrail: Ensure lastSeq is within the snapshot boundaries [SnapStart, SnapEnd] of the cbgt checkpoint.
-	if lastSeq < checkpoint.SnapStart {
-		lastSeq = checkpoint.SnapStart
-	}
+	// lastSeq can be below SnapStart when no mutation of the snapshot was processed yet, and raising it would skip the
+	// mutation at SnapStart. Lowering it to SnapEnd is safe since it only reprocesses mutations.
 	if checkpoint.SnapEnd > 0 && lastSeq > checkpoint.SnapEnd {
 		lastSeq = checkpoint.SnapEnd
 	}
@@ -73,7 +73,7 @@ func readCbgtCheckpoint(rawValue []byte) (lastSeq uint64, metadata []byte, err e
 // and the last sequence SG actually processed for the vbucket, for use by DCPCommon. A nil/empty opaqueValue (e.g.
 // a vbucket with no prior cbgt checkpoint) is treated as an empty cbgt checkpoint, rather than a JSON parse error.
 func createCbgtCheckpoint(opaqueValue []byte, lastSeq uint64) ([]byte, error) {
-	checkpoint := CbgtCheckpoint{LastSeq: lastSeq}
+	checkpoint := CbgtCheckpoint{LastSeq: new(lastSeq)}
 	if len(opaqueValue) > 0 {
 		if err := JSONUnmarshal(opaqueValue, &checkpoint.cbgtOpaqueCheckpoint); err != nil {
 			return nil, err
