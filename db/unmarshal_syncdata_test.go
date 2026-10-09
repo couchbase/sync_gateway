@@ -119,24 +119,30 @@ func BenchmarkUnmarshalSyncDataFromFeed(b *testing.B) {
 	base.DisableTestLogging(b)
 	parsers := []struct {
 		name  string
-		parse func(value []byte) (*SyncData, error)
+		parse func(value []byte) (sequence uint64, err error)
 	}{
-		{name: "full", parse: func(value []byte) (*SyncData, error) {
+		{name: "full", parse: func(value []byte) (uint64, error) {
 			_, syncData, err := UnmarshalDocumentSyncDataFromFeed(value, base.MemcachedDataTypeXattr, "")
-			return syncData, err
+			if err != nil {
+				return 0, err
+			}
+			return syncData.Sequence, nil
 		}},
-		{name: "cache", parse: func(value []byte) (*SyncData, error) {
-			_, syncData, err := unmarshalSyncDataFromFeedForCache(value, base.MemcachedDataTypeXattr, "")
-			return syncData, err
+		{name: "cache", parse: func(value []byte) (uint64, error) {
+			feedData, err := unmarshalCachingFeedData(value, base.MemcachedDataTypeXattr, "")
+			if err != nil {
+				return 0, err
+			}
+			return feedData.syncData.Sequence, nil
 		}},
 	}
 	for _, parser := range parsers {
 		for _, shape := range feedSyncShapes {
 			b.Run(parser.name+"/"+shape.name, func(b *testing.B) {
 				value := buildFeedValue(b, shape)
-				syncData, err := parser.parse(value)
+				sequence, err := parser.parse(value)
 				require.NoError(b, err)
-				require.Equal(b, uint64(12345), syncData.Sequence)
+				require.Equal(b, uint64(12345), sequence)
 				b.SetBytes(int64(len(value)))
 				b.ReportAllocs()
 				for b.Loop() {
@@ -163,13 +169,14 @@ func TestCacheFeedSyncDataFieldsMatchSyncData(t *testing.T) {
 	}
 }
 
-// TestUnmarshalSyncDataFromFeedForCacheMatchesFullParse checks that every field the caching feed reads comes out the
-// same as from the full parse, and that the returned xattrs match.
-func TestUnmarshalSyncDataFromFeedForCacheMatchesFullParse(t *testing.T) {
+// TestUnmarshalCachingFeedDataMatchesFullParse checks that every field the caching feed reads comes out the same as
+// from the full parse, and that the raw xattrs match.
+func TestUnmarshalCachingFeedDataMatchesFullParse(t *testing.T) {
 	const userXattrKey = "myXattr"
 	expiry := time.Now().Add(time.Hour).Truncate(time.Second)
 
-	// Populates every field the cache reads, alongside the fields it skips, so a field missed by toSyncData is caught.
+	// Populates every field the cache reads, alongside the fields it skips, so every cacheFeedSyncData field is compared
+	// against a non-zero value.
 	rich := buildFeedSyncData(feedSyncShape{channels: 10, history: 20, removedChannels: 3, accessGrants: 5})
 	rich.Flags = channels.Deleted | channels.UnchangedCV
 	rich.UnusedSequences = []uint64{12343, 12344}
@@ -207,12 +214,12 @@ func TestUnmarshalSyncDataFromFeedForCacheMatchesFullParse(t *testing.T) {
 			fullDoc, fullSyncData, err := UnmarshalDocumentSyncDataFromFeed(value, dataType, userXattrKey)
 			require.NoError(t, err)
 			require.NotNil(t, fullSyncData)
-			cacheXattrs, cacheSyncData, err := unmarshalSyncDataFromFeedForCache(value, dataType, userXattrKey)
+			feedData, err := unmarshalCachingFeedData(value, dataType, userXattrKey)
 			require.NoError(t, err)
-			require.NotNil(t, cacheSyncData)
+			require.NotNil(t, feedData)
 
 			fullValue := reflect.ValueOf(fullSyncData).Elem()
-			cacheValue := reflect.ValueOf(cacheSyncData).Elem()
+			cacheValue := reflect.ValueOf(&feedData.syncData).Elem()
 			for i := range cacheType.NumField() {
 				name := cacheType.Field(i).Name
 				if tc.name == "rich" {
@@ -220,20 +227,33 @@ func TestUnmarshalSyncDataFromFeedForCacheMatchesFullParse(t *testing.T) {
 				}
 				assert.Equalf(t, fullValue.FieldByName(name).Interface(), cacheValue.FieldByName(name).Interface(), "field %s", name)
 			}
-			assert.Nil(t, cacheSyncData.History, "cache parse should skip the revision tree")
-			assert.Nil(t, cacheSyncData.Access, "cache parse should skip access grants")
 
-			assert.Equal(t, fullDoc.Xattrs[base.VvXattrName], cacheXattrs[base.VvXattrName])
-			assert.Equal(t, fullDoc.Xattrs[userXattrKey], cacheXattrs[userXattrKey])
-			_, hasMou := cacheXattrs[base.MouXattrName]
-			assert.False(t, hasMou, "cache parse should not extract xattrs the cache does not read")
+			assert.Equal(t, fullDoc.Xattrs[base.VvXattrName], []byte(feedData.rawVV))
+			assert.Equal(t, fullDoc.Xattrs[userXattrKey], feedData.rawUserXattr)
 		})
 	}
 }
 
-// TestUnmarshalSyncDataFromFeedForCacheNoSyncXattr checks that the cache parse never reads the document body, so a
-// document whose only _sync is inline is not cached.
-func TestUnmarshalSyncDataFromFeedForCacheNoSyncXattr(t *testing.T) {
+// TestUnmarshalCachingFeedDataWithoutOptionalXattrs checks that a document with _sync but no _vv or user xattr leaves
+// those fields empty, and that an empty rawVV is treated as no _vv rather than a corrupt one.
+func TestUnmarshalCachingFeedDataWithoutOptionalXattrs(t *testing.T) {
+	syncJSON, err := base.JSONMarshal(buildFeedSyncData(feedSyncShapes[0]))
+	require.NoError(t, err)
+	value := sgbucket.EncodeValueWithXattrs([]byte(`{"some":"body"}`), sgbucket.Xattr{Name: base.SyncXattrName, Value: syncJSON})
+
+	feedData, err := unmarshalCachingFeedData(value, base.MemcachedDataTypeXattr|base.MemcachedDataTypeJSON, "myXattr")
+	require.NoError(t, err)
+	require.NotNil(t, feedData)
+	require.Empty(t, feedData.rawVV)
+	require.Nil(t, feedData.rawUserXattr)
+
+	_, err = feedData.rawVV.ExtractCV()
+	require.ErrorIs(t, err, base.ErrNotFound)
+}
+
+// TestUnmarshalCachingFeedDataNoSyncXattr checks that the cache parse never reads the document body, so a document
+// whose only _sync is inline is not cached.
+func TestUnmarshalCachingFeedDataNoSyncXattr(t *testing.T) {
 	const userXattrKey = "myXattr"
 	inlineSyncBody := []byte(`{"_sync":{"rev":"1-abc","sequence":100,"channels":{"ABC":null}},"some":"body"}`)
 
@@ -261,9 +281,9 @@ func TestUnmarshalSyncDataFromFeedForCacheNoSyncXattr(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, syncData, err := unmarshalSyncDataFromFeedForCache(tc.value, tc.dataType, userXattrKey)
+			feedData, err := unmarshalCachingFeedData(tc.value, tc.dataType, userXattrKey)
 			require.NoError(t, err)
-			require.Nil(t, syncData)
+			require.Nil(t, feedData)
 		})
 	}
 
@@ -275,15 +295,15 @@ func TestUnmarshalSyncDataFromFeedForCacheNoSyncXattr(t *testing.T) {
 	require.Equal(t, uint64(100), syncData.Sequence)
 }
 
-func TestUnmarshalSyncDataFromFeedForCacheErrors(t *testing.T) {
+func TestUnmarshalCachingFeedDataErrors(t *testing.T) {
 	t.Run("truncated xattrs", func(t *testing.T) {
-		_, _, err := unmarshalSyncDataFromFeedForCache([]byte{0, 0}, base.MemcachedDataTypeXattr, "")
+		_, err := unmarshalCachingFeedData([]byte{0, 0}, base.MemcachedDataTypeXattr, "")
 		require.ErrorIs(t, err, sgbucket.ErrEmptyMetadata)
 	})
 	t.Run("malformed _sync xattr", func(t *testing.T) {
 		value := sgbucket.EncodeValueWithXattrs([]byte(`{}`), sgbucket.Xattr{Name: base.SyncXattrName, Value: []byte(`{"sequence":"not a number"}`)})
-		_, syncData, err := unmarshalSyncDataFromFeedForCache(value, base.MemcachedDataTypeXattr, "")
+		feedData, err := unmarshalCachingFeedData(value, base.MemcachedDataTypeXattr, "")
 		require.Error(t, err)
-		require.Nil(t, syncData)
+		require.Nil(t, feedData)
 	})
 }

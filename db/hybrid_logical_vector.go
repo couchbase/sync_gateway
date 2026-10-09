@@ -1026,9 +1026,10 @@ func GetGenerationFromEncodedVersionValue(value uint64) int {
 
 type rawHLV []byte
 
-// GetCurrentVersion returns the current version from the HLV by unmarshalling a raw _vv xattr. If the rawHLV is nil, returns ErrNotFound.
+// ExtractCV returns the current version from the HLV by unmarshalling a raw _vv xattr. If the rawHLV is nil or empty
+// (no _vv xattr), returns ErrNotFound.
 func (r *rawHLV) ExtractCV() (*Version, error) {
-	if r == nil {
+	if r == nil || len(*r) == 0 {
 		return nil, base.ErrNotFound
 	}
 	limitedHLV := struct {

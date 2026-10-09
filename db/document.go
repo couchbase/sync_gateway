@@ -586,7 +586,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 			syncData = &SyncData{}
 			err = base.JSONUnmarshal(syncXattr, syncData)
 			if err != nil {
-				return nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+				return nil, nil, base.RedactErrorf("Found _sync xattr (%s), but could not unmarshal: %w", base.UD(string(syncXattr)), err)
 			}
 			return rawDoc, syncData, nil
 		}
@@ -624,32 +624,74 @@ type cacheFeedSyncData struct {
 	TimeSaved       time.Time              `json:"time_saved"`
 }
 
-// toSyncData returns a SyncData populated with only the fields the caching feed reads.
-func (c *cacheFeedSyncData) toSyncData() *SyncData {
-	return &SyncData{
-		RevAndVersion:   c.RevAndVersion,
-		Flags:           c.Flags,
-		Sequence:        c.Sequence,
-		UnusedSequences: c.UnusedSequences,
-		RecentSequences: c.RecentSequences,
-		Channels:        c.Channels,
-		Cas:             c.Cas,
-		Crc32c:          c.Crc32c,
-		Crc32cUserXattr: c.Crc32cUserXattr,
-		TimeSaved:       c.TimeSaved,
-	}
+// GetRevTreeID returns the current revision's RevTreeID.
+func (c *cacheFeedSyncData) GetRevTreeID() string {
+	return c.RevAndVersion.RevTreeID
 }
 
-// unmarshalSyncDataFromFeedForCache extracts the sync metadata the caching feed needs from a DCP value, along with the
-// _vv and user xattrs. The returned SyncData is partial (see cacheFeedSyncData) and must not be written back to the
-// bucket. Returns nil SyncData and no error when there is no _sync xattr.
-//
-// Unlike UnmarshalDocumentSyncDataFromFeed this does not look for inline _sync in the document body. Sync Gateway only
-// writes _sync as an xattr now, and the caching feed starts from the latest sequence so an inline _sync can only belong
-// to a write that predates this node and is never cached.
-func unmarshalSyncDataFromFeedForCache(data []byte, dataType uint8, userXattrKey string) (xattrs map[string][]byte, syncData *SyncData, err error) {
+// GetSyncCas returns the CAS of the last Sync Gateway write.
+func (c *cacheFeedSyncData) GetSyncCas() uint64 {
+	return syncCasToUint64(c.Cas)
+}
+
+// CVEqual returns true if the provided CV matches _sync.rev.ver and _sync.rev.src.
+func (c *cacheFeedSyncData) CVEqual(cv Version) bool {
+	return revCVEqual(c.RevAndVersion, cv)
+}
+
+// IsSGWriteXattrOnly determines if a document was written by Sync Gateway using only xattr data (no body).
+// Returns isSGWrite=true if the write is definitively from SG, ambiguous=true if the body CRC is needed to decide.
+func (c *cacheFeedSyncData) IsSGWriteXattrOnly(ctx context.Context, cas uint64, isDelete bool, rawUserXattr []byte, cv cvExtractor) (isSGWrite bool, ambiguous bool) {
+	// 1. CAS match - most common SG write path
+	if cas == c.GetSyncCas() {
+		return true, false
+	}
+
+	// 2. Deletion with non-SG CRC - SG deletions always store DeleteCrc32c
+	if isDelete && c.Crc32c != base.DeleteCrc32c {
+		return false, false
+	}
+
+	// 3. User xattr changed - SDK write
+	if HasUserXattrChanged(rawUserXattr, c.Crc32cUserXattr) {
+		return false, false
+	}
+
+	// 4. CV mismatch - SDK write
+	if c.RevAndVersion.CurrentVersion != "" || c.RevAndVersion.CurrentSource != "" {
+		extractedCV, err := cv.ExtractCV()
+		if !errors.Is(err, base.ErrNotFound) {
+			if err != nil {
+				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWriteXattrOnly check, document will not be processed: %v", err)
+				return false, false
+			}
+			if !c.CVEqual(*extractedCV) {
+				return false, false
+			}
+		}
+	}
+
+	// 5. Deletion with matching SG CRC - all other checks passed, definitive SG write
+	if isDelete && c.Crc32c == base.DeleteCrc32c {
+		return true, false
+	}
+
+	// 6. Non-deleted doc with CAS mismatch but xattr+CV match - body CRC is the only remaining differentiator
+	return false, true
+}
+
+// cachingFeedData is everything the caching feed reads from a DCP value.
+type cachingFeedData struct {
+	syncData     cacheFeedSyncData
+	rawVV        rawHLV // empty when the document has no _vv xattr
+	rawUserXattr []byte
+}
+
+// unmarshalCachingFeedData extracts what the caching feed needs from a DCP value: a subset of _sync, plus the raw _vv
+// and user xattrs. Returns nil and no error when there is no _sync xattr.
+func unmarshalCachingFeedData(data []byte, dataType uint8, userXattrKey string) (*cachingFeedData, error) {
 	if dataType&base.MemcachedDataTypeXattr == 0 {
-		return nil, nil, nil
+		return nil, nil
 	}
 	// Sized to hold the optional user xattr key so it is not reallocated per event.
 	keys := [3]string{base.SyncXattrName, base.VvXattrName, userXattrKey}
@@ -657,19 +699,24 @@ func unmarshalSyncDataFromFeedForCache(data []byte, dataType uint8, userXattrKey
 	if userXattrKey != "" {
 		xattrKeys = keys[:]
 	}
-	_, xattrs, err = sgbucket.DecodeValueWithXattrs(xattrKeys, data)
+	_, xattrs, err := sgbucket.DecodeValueWithXattrs(xattrKeys, data)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	syncXattr := xattrs[base.SyncXattrName]
 	if len(syncXattr) == 0 {
-		return xattrs, nil, nil
+		return nil, nil
 	}
-	var cacheSyncData cacheFeedSyncData
-	if err := base.JSONUnmarshal(syncXattr, &cacheSyncData); err != nil {
-		return nil, nil, fmt.Errorf("Found _sync xattr (%q), but could not unmarshal: %w", string(syncXattr), err)
+	feedData := &cachingFeedData{
+		rawVV: xattrs[base.VvXattrName],
 	}
-	return xattrs, cacheSyncData.toSyncData(), nil
+	if userXattrKey != "" {
+		feedData.rawUserXattr = xattrs[userXattrKey]
+	}
+	if err := base.JSONUnmarshal(syncXattr, &feedData.syncData); err != nil {
+		return nil, base.RedactErrorf("Found _sync xattr (%s), but could not unmarshal: %w", base.UD(string(syncXattr)), err)
+	}
+	return feedData, nil
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -700,12 +747,16 @@ func (s *SyncData) SyncIsEmpty() bool {
 
 // Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value
 func (s *SyncData) GetSyncCas() uint64 {
+	return syncCasToUint64(s.Cas)
+}
 
-	if s.Cas == "" {
+// syncCasToUint64 converts the hex encoded _sync.cas to a uint64. Shared by SyncData and cacheFeedSyncData so the
+// import and caching feeds compare CAS the same way.
+func syncCasToUint64(cas string) uint64 {
+	if cas == "" {
 		return 0
 	}
-
-	return base.HexCasToUint64(s.Cas)
+	return base.HexCasToUint64(cas)
 }
 
 func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
@@ -720,10 +771,16 @@ func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
 
 // CVEqual returns true if the provided CV does not match _sync.rev.ver and _sync.rev.src. The caller is responsible for testing if the values are non-empty.
 func (s *SyncData) CVEqual(cv Version) bool {
-	if cv.SourceID != s.RevAndVersion.CurrentSource {
+	return revCVEqual(s.RevAndVersion, cv)
+}
+
+// revCVEqual returns true if cv matches the CV stored in _sync.rev. Shared by SyncData and cacheFeedSyncData so the
+// import and caching feeds compare CVs the same way.
+func revCVEqual(rev channels.RevAndVersion, cv Version) bool {
+	if cv.SourceID != rev.CurrentSource {
 		return false
 	}
-	return cv.Value == base.HexCasToUint64(s.RevAndVersion.CurrentVersion)
+	return cv.Value == base.HexCasToUint64(rev.CurrentVersion)
 }
 
 // IsSGWrite determines if a document was written by Sync Gateway or via an SDK. CV is an optional parameter to check. This would represent _vv.ver and _vv.src
@@ -758,47 +815,6 @@ func (s *SyncData) IsSGWrite(ctx context.Context, cas uint64, rawBody []byte, ra
 		}
 	}
 	return true, true, false
-}
-
-// IsSGWriteXattrOnly determines if a document was written by Sync Gateway using only xattr data (no body).
-// Returns isSGWrite=true if the write is definitively from SG, ambiguous=true if the body CRC is needed to decide.
-func (s *SyncData) IsSGWriteXattrOnly(ctx context.Context, cas uint64, isDelete bool, rawUserXattr []byte, cv cvExtractor) (isSGWrite bool, ambiguous bool) {
-	// 1. CAS match - most common SG write path
-	if cas == s.GetSyncCas() {
-		return true, false
-	}
-
-	// 2. Deletion with non-SG CRC - SG deletions always store DeleteCrc32c
-	if isDelete && s.Crc32c != base.DeleteCrc32c {
-		return false, false
-	}
-
-	// 3. User xattr changed - SDK write
-	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
-		return false, false
-	}
-
-	// 4. CV mismatch - SDK write
-	if s.RevAndVersion.CurrentVersion != "" || s.RevAndVersion.CurrentSource != "" {
-		extractedCV, err := cv.ExtractCV()
-		if !errors.Is(err, base.ErrNotFound) {
-			if err != nil {
-				base.InfofCtx(ctx, base.KeyImport, "Unable to extract cv during IsSGWriteXattrOnly check, document will not be processed: %v", err)
-				return false, false
-			}
-			if !s.CVEqual(*extractedCV) {
-				return false, false
-			}
-		}
-	}
-
-	// 5. Deletion with matching SG CRC - all other checks passed, definitive SG write
-	if isDelete && s.Crc32c == base.DeleteCrc32c {
-		return true, false
-	}
-
-	// 6. Non-deleted doc with CAS mismatch but xattr+CV match - body CRC is the only remaining differentiator
-	return false, true
 }
 
 // IsSGWrite - used during on-demand import. Check SyncData and HLV to determine if the document was written by Sync Gateway or by a Couchbase Server SDK write.
