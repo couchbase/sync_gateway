@@ -9,10 +9,14 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"maps"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -137,7 +141,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 			if testCase.contextFields != nil {
 				ctx = AuditLogCtx(ctx, testCase.contextFields)
 			}
-			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: new(true)}}, tmpdir, 0, nil, testCase.globalFields)
+			logger, err := NewAuditLogger(ctx, &AuditLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: new(true)}}, tmpdir, 0, testCase.globalFields)
 			require.NoError(t, err)
 			auditLogger.Store(logger)
 
@@ -298,7 +302,7 @@ func BenchmarkAuditFieldwork(b *testing.B) {
 			Output:              buf,
 			CollationBufferSize: new(0),
 		},
-	}, b.TempDir(), auditMinAge, nil, map[string]any{"foo": "bar", "buzz": 1234})
+	}, b.TempDir(), auditMinAge, map[string]any{"foo": "bar", "buzz": 1234})
 	require.NoError(b, err)
 	auditLogger.Store(al)
 
@@ -354,4 +358,33 @@ func Test_expandFieldsAdditionalDataReadOnly(t *testing.T) {
 	}
 	// additionalData should not be modified
 	assert.Len(t, additionalData, 1)
+}
+
+func TestSwapAuditLoggerReplacesMemoryLogger(t *testing.T) {
+	prev := &AuditLogger{FileLogger: FileLogger{Enabled: AtomicBool{1}, closed: make(chan struct{})}}
+	prev.output = &prev.buffer
+	prev.logger = log.New(&prev.buffer, "", 0)
+	prev.log("buffered")
+	var ptr atomic.Pointer[AuditLogger]
+	ptr.Store(prev)
+
+	var output bytes.Buffer
+	logger, err := NewAuditLogger(TestCtx(t), &AuditLoggerConfig{
+		FileLoggerConfig: FileLoggerConfig{
+			Enabled:             new(true),
+			CollationBufferSize: new(0),
+			Output:              &output,
+		},
+	}, t.TempDir(), auditMinAge, nil)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, logger.Close()) }()
+	swapLogger(&ptr, logger)
+	require.Same(t, logger, ptr.Load())
+
+	// a goroutine that loaded the global logger before it was replaced still writes to prev
+	prev.log("forwarded")
+	logger.FlushBufferToLog()
+
+	// forwarded lines go straight to output, so they can precede the buffered lines
+	assert.ElementsMatch(t, []string{"buffered", "forwarded"}, strings.Fields(output.String()))
 }

@@ -777,7 +777,23 @@ func writeSharedDCPCheckpoints(ctx context.Context, feed cbgt.Feed) {
 			return
 		}
 	}
-	base.AssertfCtx(ctx, "Expected to find a SGDest on cbgt.EventHandler.OnUnregisterFeed. Feed: %#+v Dests: %#+v, resync will complete but  some checkpoints may not be written", feed, slices.Collect(maps.Values(feed.Dests())))
+	base.AssertfCtx(ctx, "Expected to find a SGDest on cbgt.EventHandler.OnUnregisterFeed for feed %s (%T). Dests: %s, resync will complete but some checkpoints may not be written", base.MD(feed.Name()), feed, base.MD(fmt.Sprintf("%#+v", slices.Collect(maps.Values(feed.Dests())))))
+}
+
+// stopInitiatedFeedClosure returns true if any dest of the feed was stopped, as CbgtContext.Stop does before closing
+// pindexes.
+func stopInitiatedFeedClosure(ctx context.Context, feed cbgt.Feed) bool {
+	for _, d := range feed.Dests() {
+		sgDest, ok := d.(base.SGDest)
+		if !ok {
+			base.AssertfCtx(ctx, "Expected SGDest on cbgt.EventHandler.OnUnregisterFeed for feed %s (%T) but found %T, completed vBuckets will be recorded even if the dest was stopped", base.MD(feed.Name()), feed, d)
+			continue
+		}
+		if feedable, _ := sgDest.IsFeedable(); !feedable {
+			return true
+		}
+	}
+	return false
 }
 
 // getUnregisterFeedFunc returns a callback function to be called when a cbgt feed exits. This function will close
@@ -785,6 +801,10 @@ func writeSharedDCPCheckpoints(ctx context.Context, feed cbgt.Feed) {
 func (r *ResyncManagerDCP) getUnregisterFeedFunc(ctx context.Context, totalVBuckets uint16) base.CbgtUnregisterFeedCallback {
 	return func(feed cbgt.Feed) {
 		writeSharedDCPCheckpoints(ctx, feed)
+		// If the feed was stopped, we should assume that it isn't done - cbgt can still stream data but we will not update the data.
+		if stopInitiatedFeedClosure(ctx, feed) {
+			return
+		}
 		f, ok := feed.(cbgt.FeedPartitionCompletion)
 		if !ok {
 			base.AssertfCtx(ctx, "Expected feed on cbgt.EventHandler.OnUnregisterFeed to pass feed of type FeedPartitionCompletion but is of %T, resync will not complete in this state", feed)

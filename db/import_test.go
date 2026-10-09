@@ -2439,3 +2439,27 @@ func childHistoryOf(ctx context.Context, doc *Document, body string) []string {
 	generation, _ := ParseRevID(ctx, parent)
 	return []string{CreateRevIDWithBytes(generation+1, parent, []byte(body)), parent}
 }
+
+// TestOnDemandImportOfSupersededUserXattrWrite covers an on-demand import handed a user xattr write that a
+// second user xattr write has superseded. The import re-targets the current document, but the body is
+// unchanged, so it must not create a revision.
+func TestOnDemandImportOfSupersededUserXattrWrite(t *testing.T) {
+	const userXattrKey = "userXattr"
+	dbCtx, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{UserXattrKey: userXattrKey})
+	defer dbCtx.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+
+	docID := SafeDocumentName(t, t.Name())
+	rev, doc, err := collection.Put(ctx, docID, Body{"foo": "sync gateway"})
+	require.NoError(t, err)
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, doc.Cas, map[string][]byte{userXattrKey: []byte(`{"channels": ["a"]}`)}, nil)
+	require.NoError(t, err)
+	value, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+	require.NoError(t, err)
+	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{userXattrKey: []byte(`{"channels": ["b"]}`)}, nil)
+	require.NoError(t, err)
+
+	importedDoc, err := collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: ImportOnDemand}, cas)
+	require.NoError(t, err)
+	require.Equal(t, rev, importedDoc.GetRevTreeID(), "only the user xattr changed, so the import must not create a revision")
+}

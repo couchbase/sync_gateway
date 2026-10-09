@@ -21,6 +21,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -89,7 +90,7 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int, buffer *strings.Builder) (*FileLogger, error) {
+func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, defaultMaxAgeOverride *int) (*FileLogger, error) {
 	if config == nil {
 		config = &FileLoggerConfig{}
 	}
@@ -116,10 +117,6 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 	}
 	logger.Enabled.Set(*config.Enabled)
 
-	if buffer != nil {
-		logger.buffer = *buffer
-	}
-
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
@@ -131,6 +128,37 @@ func NewFileLogger(ctx context.Context, config *FileLoggerConfig, level LogLevel
 	}
 
 	return logger, nil
+}
+
+// swapLogger stores next in ptr, and moves buffered and later writes from the old memory logger to next.
+func swapLogger[T any, P interface {
+	*T
+	fileLogger() *FileLogger
+}](ptr *atomic.Pointer[T], next P) {
+	if prev := P(ptr.Load()); prev != nil {
+		prev, next := prev.fileLogger(), next.fileLogger()
+		if prev.output == &prev.buffer {
+			// SetOutput waits for in-flight writes to prev, so the buffer is stable once it returns.
+			prev.logger.SetOutput(loggerForwarder{next})
+		}
+		next.buffer.WriteString(prev.buffer.String())
+	}
+	ptr.Store(next)
+}
+
+// fileLogger returns l. Loggers that embed FileLogger use it to give swapLogger their FileLogger.
+func (l *FileLogger) fileLogger() *FileLogger {
+	return l
+}
+
+// loggerForwarder is an io.Writer that writes each log line to a FileLogger.
+type loggerForwarder struct {
+	logger *FileLogger
+}
+
+func (f loggerForwarder) Write(p []byte) (int, error) {
+	f.logger.conditionalPrint(strings.TrimSuffix(string(p), "\n"))
+	return len(p), nil
 }
 
 func (l *FileLogger) FlushBufferToLog() {
