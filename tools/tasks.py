@@ -822,8 +822,11 @@ def upload_range(
         response = e
     if response.status != 200:
         body = response.read().decode(errors="replace")
+        safe_url = urllib.parse.urlunsplit(
+            urllib.parse.urlsplit(url)._replace(query="<redacted>")
+        )
         raise UploadError(
-            f"Error uploading to {url}, expected status code 200, got status code: {response.status}, body: {body}"
+            f"Error uploading to {safe_url}, expected status code 200, got status code: {response.status}, body: {body}"
         )
 
 
