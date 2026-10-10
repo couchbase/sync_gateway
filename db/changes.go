@@ -246,10 +246,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	singleChannelCache, err := db.changeCache().getChannelCache().getBypassChannelCache(ch)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error obtaining channel cache for channel %q: %v", base.UD(singleChannelCache.ChannelID().Name), err)
-		change := ChangeEntry{
-			Err: base.ErrChannelFeed,
-		}
-		feed <- &change
+		sendChannelFeedError(options.ChangesCtx, feed)
 		close(feed)
 		return feed
 	}
@@ -258,10 +255,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 		defer func() {
 			if panicked := recover(); panicked != nil {
 				base.WarnfCtx(ctx, "Unexpected panic building revoked feed: %v\n%s", panicked, debug.Stack())
-				select {
-				case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
-				case <-options.ChangesCtx.Done():
-				}
+				sendChannelFeedError(options.ChangesCtx, feed)
 			}
 			close(feed)
 		}()
@@ -291,10 +285,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 			changes, err := singleChannelCache.GetChanges(ctx, paginationOptions)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
-				change := ChangeEntry{
-					Err: base.ErrChannelFeed,
-				}
-				feed <- &change
+				sendChannelFeedError(options.ChangesCtx, feed)
 				return
 			}
 			base.DebugfCtx(ctx, base.KeyChanges, "[revocationChangesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID().Name))
@@ -326,11 +317,8 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 					}
 					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, syncData, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
 					if err != nil {
-						change := ChangeEntry{
-							Err: base.ErrChannelFeed,
-						}
-						feed <- &change
 						base.WarnfCtx(ctx, "Error checking document history during revocation, seq: %v in channel %s, ending revocation feed. Error: %v", seqID, base.UD(singleChannelCache.ChannelID().Name), err)
+						sendChannelFeedError(options.ChangesCtx, feed)
 						return
 					}
 
@@ -342,10 +330,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 				userHasAccessToDoc, err := UserHasDocAccess(ctx, db, logEntry.DocID)
 				if err != nil {
-					change := ChangeEntry{
-						Err: base.ErrChannelFeed,
-					}
-					feed <- &change
+					sendChannelFeedError(options.ChangesCtx, feed)
 					return
 				}
 
@@ -448,6 +433,14 @@ func (col *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx cont
 	return false, nil
 }
 
+// sendChannelFeedError sends ErrChannelFeed on feed, unless the changes request ends first.
+func sendChannelFeedError(changesCtx context.Context, feed chan<- *ChangeEntry) {
+	select {
+	case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
+	case <-changesCtx.Done():
+	}
+}
+
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
@@ -468,10 +461,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 		defer func() {
 			if panicked := recover(); panicked != nil {
 				base.WarnfCtx(ctx, "Unexpected panic building changes feed: %v\n%s", panicked, debug.Stack())
-				select {
-				case feed <- &ChangeEntry{Err: base.ErrChannelFeed}:
-				case <-options.ChangesCtx.Done():
-				}
+				sendChannelFeedError(options.ChangesCtx, feed)
 			}
 			close(feed)
 		}()
@@ -500,10 +490,7 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 			changes, err := singleChannelCache.GetChanges(ctx, paginationOptions)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID().Name), err)
-				change := ChangeEntry{
-					Err: base.ErrChannelFeed,
-				}
-				feed <- &change
+				sendChannelFeedError(options.ChangesCtx, feed)
 				return
 			}
 			base.DebugfCtx(ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID().Name))
