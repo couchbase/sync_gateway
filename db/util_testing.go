@@ -1655,6 +1655,11 @@ func (db *DatabaseCollectionWithUser) ChangesFeedForTest(_ testing.TB, ctx conte
 	return db.changesFeed(ctx, singleChannelCache, options, to)
 }
 
+// BuildRevokedFeedForTest drives a single channel's revoked feed directly.
+func (db *DatabaseCollectionWithUser) BuildRevokedFeedForTest(_ testing.TB, ctx context.Context, ch channels.ID, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
+	return db.buildRevokedFeed(ctx, ch, options, revokedAt, revocationSinceSeq, revokeFrom, to)
+}
+
 // SetCollectionIDForTest sets the entry's collection, which the changes feed populates from the
 // collection the entry was read from. Takes testing.TB to mark it as test-only.
 func (ce *ChangeEntry) SetCollectionIDForTest(_ testing.TB, collectionID uint32) {
