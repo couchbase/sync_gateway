@@ -1160,6 +1160,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
+	// A deleted rev has no body. A removal body is kept, because its _removed property must still be validated.
+	if revMessage.Deleted() && !bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`"`)) {
+		bodyBytes = []byte(base.EmptyDocument)
+	}
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false

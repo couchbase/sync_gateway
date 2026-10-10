@@ -71,7 +71,7 @@ func validateImportBody(body Body) error {
 // Takes a rawBody to avoid an unnecessary call to doc.BodyBytes()
 func validateBlipBody(ctx context.Context, rawBody []byte, doc *Document) error {
 	// Prevent disallowed internal properties from being used
-	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
+	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyRevisions}
 	for _, prop := range disallowed {
 		// Only unmarshal if raw body contains the disallowed property
 		if bytes.Contains(rawBody, []byte(`"`+prop+`"`)) {
