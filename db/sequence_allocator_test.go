@@ -900,3 +900,73 @@ func getClientSequenceBatchSize(allocator *sequenceAllocator) uint64 {
 	defer allocator.mutex.Unlock()
 	return allocator.sequenceBatchSize
 }
+
+// TestSequenceAllocatorAllocateAfterStop verifies that every allocation path that reserves sequences still returns
+// after Stop.
+func TestSequenceAllocatorAllocateAfterStop(t *testing.T) {
+	// Keep the batch size at 1, so that every allocation below reserves a batch and notifies the monitor.
+	oldFrequency := MaxSequenceIncrFrequency
+	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
+	MaxSequenceIncrFrequency = 0
+
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	dataStore := bucket.GetSingleDataStore()
+
+	sgw, err := base.NewSyncGatewayStats()
+	require.NoError(t, err)
+	dbstats, err := sgw.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(t, err)
+	testStats := dbstats.Database()
+
+	a, err := newSequenceAllocator(ctx, dataStore, testStats, base.DefaultMetadataKeys)
+	require.NoError(t, err)
+
+	// Simulate another node allocating, so that nextSequenceGreaterThan can take its path for syncSeq >= target.
+	_, err = dataStore.Incr(ctx, base.DefaultMetadataKeys.SyncSeqKey(), 10, 10, 0)
+	require.NoError(t, err)
+
+	a.Stop(ctx)
+	// Fill the buffer that the exited monitor no longer drains, so that any notify which ignores Stop blocks.
+	a.reserveNotify <- struct{}{}
+
+	nextSequenceGreaterThan := func(existingSequence uint64) func() (uint64, error) {
+		return func() (uint64, error) {
+			sequence, _, err := a.nextSequenceGreaterThan(ctx, existingSequence)
+			return sequence, err
+		}
+	}
+	allocations := []struct {
+		name     string
+		allocate func() (uint64, error)
+		expected uint64
+	}{
+		{name: "nextSequenceGreaterThan syncSeq >= target", allocate: nextSequenceGreaterThan(4), expected: 11},
+		{name: "nextSequenceGreaterThan target <= last", allocate: nextSequenceGreaterThan(0), expected: 12},
+		{name: "nextSequenceGreaterThan catch up", allocate: nextSequenceGreaterThan(20), expected: 21},
+		{name: "nextSequence", allocate: func() (uint64, error) { return a.nextSequence(ctx) }, expected: 22},
+	}
+
+	// Results come back over a channel, because the goroutine outlives the test if a notify blocks.
+	type allocation struct {
+		sequence uint64
+		err      error
+	}
+	allocated := make(chan allocation, len(allocations))
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for _, alloc := range allocations {
+			sequence, err := alloc.allocate()
+			allocated <- allocation{sequence: sequence, err: err}
+		}
+	})
+
+	for _, expected := range allocations {
+		result := base.RequireChanRecv(t, allocated, "%s never returned after Stop", expected.name)
+		require.NoError(t, result.err, expected.name)
+		assert.Equal(t, expected.expected, result.sequence, expected.name)
+	}
+	// Wait for the goroutine to exit before the deferred bucket close removes the datastore.
+	wg.Wait()
+}
