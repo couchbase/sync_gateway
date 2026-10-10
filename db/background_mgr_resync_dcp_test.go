@@ -16,7 +16,9 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1411,4 +1413,60 @@ func TestResyncUnregisterFeedStoppedDest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestJoinResyncDatabaseState verifies that joining a resync started on another node moves an offline database to
+// resyncing while the resync runs.
+func TestJoinResyncDatabaseState(t *testing.T) {
+	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	db, ctx := setupTestDBForBucket(t, bucket)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, _, err := collection.Put(ctx, "doc1", Body{"foo": "bar"})
+	require.NoError(t, err)
+
+	// rosmar uses a single node resync manager, so swap in the multi node manager that a distributed resync uses
+	db.ResyncManager = &BackgroundManager[ResyncOptions]{
+		name: "resync",
+		Process: &ResyncManagerDCP{
+			db:                db.DatabaseContext,
+			completedvBuckets: newvBucketTracker(),
+		},
+		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
+			metadataStore: db.MetadataStore,
+			metaKeys:      db.MetadataKeys,
+			processSuffix: "resync",
+			multiNode:     true,
+		},
+		terminator: base.NewSafeTerminator(),
+	}
+	atomic.StoreUint32(&db.State, DBOffline)
+
+	// hold the joined resync at the document so the state can be checked while it runs
+	leakyDataStore, ok := base.AsLeakyDataStore(collection.dataStore)
+	require.True(t, ok)
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+	var blockedOnce, releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	leakyDataStore.SetWriteUpdateWithXattrsCallback(func(key string) {
+		if strings.HasPrefix(key, base.SyncDocPrefix) {
+			return
+		}
+		blockedOnce.Do(func() { close(blocked) })
+		<-release
+	})
+
+	// stands in for the status document written by the node that started the resync
+	require.NoError(t, db.MetadataStore.Set(ctx, db.ResyncManager.clusterAwareOptions.StatusDocID(), 0, nil, map[string]any{
+		"status": map[string]any{"status": BackgroundProcessStateRunning},
+		"meta":   map[string]any{"options": ResyncOptions{}},
+	}))
+	require.NoError(t, db.ResyncManager.Join(ctx))
+	base.RequireChanClosed(t, blocked)
+	require.Equal(t, RunStateString[DBResyncing], RunStateString[atomic.LoadUint32(&db.State)])
+
+	releaseOnce.Do(func() { close(release) })
+	RequireBackgroundManagerState(t, db.ResyncManager, BackgroundProcessStateCompleted)
+	require.Equal(t, RunStateString[DBOffline], RunStateString[atomic.LoadUint32(&db.State)])
 }

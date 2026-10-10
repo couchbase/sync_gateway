@@ -638,3 +638,67 @@ func TestResyncInvalidCollections(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &status))
 	_ = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
+
+// TestResyncStopFromOtherNode starts a resync on one node and stops it through another node.
+func TestResyncStopFromOtherNode(t *testing.T) {
+	// a non-distributed resync only runs on the node that started it, so other nodes cannot see or stop it
+	base.TestRequiresDistributedResync(t)
+	const dbName = "db"
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{NumNodes: 2})
+	// registered before the pausers so they release blocked resync goroutines before the nodes close
+	t.Cleanup(func() { rtc.Close(base.TestCtx(t)) })
+
+	starter, stopper := rtc.Node(0), rtc.Node(1)
+
+	rest.RequireStatus(t, starter.CreateDatabase(dbName, starter.NewDbConfig()), http.StatusCreated)
+	_, err := rtc.RefreshClusterDbConfigs()
+	require.NoError(t, err)
+
+	const numDocs = 5
+	for i := range numDocs {
+		starter.CreateTestDoc(fmt.Sprintf("doc%d", i))
+	}
+
+	// resync requires the database to be offline on the node handling the request
+	rtc.ForEachNode(func(rt *rest.RestTester) { rt.TakeDbOffline() })
+
+	// the resync can process documents on either node, so pause both
+	var pausers []*resyncPauser
+	rtc.ForEachNode(func(rt *rest.RestTester) {
+		pauser := newResyncPauser(rt)
+		t.Cleanup(pauser.Close)
+		pauser.Pause()
+		pausers = append(pausers, pauser)
+	})
+
+	rest.RequireStatus(t, starter.SendAdminRequest(http.MethodPost, "/"+dbName+"/_resync?action=start", ""), http.StatusOK)
+
+	select {
+	case <-pausers[0].blocked:
+	case <-pausers[1].blocked:
+	case <-time.After(30 * time.Second):
+		require.FailNow(t, "resync did not reach a document on any node")
+	}
+
+	// both nodes report the same in-flight resync
+	resyncID := starter.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateRunning, dbName).ResyncID
+	require.Equal(t, resyncID, stopper.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateRunning, dbName).ResyncID)
+	require.Equal(t, db.RunStateString[db.DBResyncing], starter.GetDatabaseRoot(dbName).State)
+	// the other node reports resyncing once its database state polling joins the resync
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, db.RunStateString[db.DBResyncing], stopper.GetDatabaseRoot(dbName).State)
+	}, 30*time.Second, 100*time.Millisecond)
+
+	rest.RequireStatus(t, stopper.SendAdminRequest(http.MethodPost, "/"+dbName+"/_resync?action=stop", ""), http.StatusOK)
+
+	// the starter picks up the stop asynchronously, so wait for it before letting the resync continue
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NotEqual(c, db.BackgroundProcessStateRunning, starter.GetDatabase().ResyncManager.GetRunState())
+	}, 10*time.Second, 50*time.Millisecond)
+
+	for _, pauser := range pausers {
+		pauser.Release()
+	}
+	starter.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateStopped, dbName)
+	stopper.WaitForResyncDCPStatusForDB(db.BackgroundProcessStateStopped, dbName)
+}
