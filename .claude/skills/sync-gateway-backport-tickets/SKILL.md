@@ -50,7 +50,7 @@ Look at the `issuelinks` of the original for "Cloners" links. A backport exists 
 project = CBG AND (issue in linkedIssues(<original key>) OR (fixVersion = "<version>" AND summary ~ "backport"))
 ```
 
-Request only `["summary", "fixVersions", "issuelinks"]`. Read each result and decide if it is a backport of the original: it links to the original, or its description or summary is the same work. Do not search with words from the original summary, because quotes and other special characters break the JQL string.
+Request only `["summary", "fixVersions", "issuelinks"]`. Read each result and decide if it is a backport of the original: it links to the original, or its summary is the same work. Do not search with words from the original summary, because quotes and other special characters break the JQL string.
 
 Report each existing backport by key and leave that version out.
 
