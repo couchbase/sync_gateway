@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package db
+package changesfeedtest
 
 import (
 	"context"
@@ -19,13 +19,14 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // failingSecondPageCache returns one page of changes, then cancels the changes request and fails the next query.
 type failingSecondPageCache struct {
-	SingleChannelCache
+	db.SingleChannelCache
 	channelID     channels.ID
 	cancelChanges context.CancelCauseFunc
 	calls         int
@@ -35,10 +36,10 @@ func (c *failingSecondPageCache) ChannelID() channels.ID {
 	return c.channelID
 }
 
-func (c *failingSecondPageCache) GetChanges(_ context.Context, _ ChangesOptions) ([]*LogEntry, error) {
+func (c *failingSecondPageCache) GetChanges(_ context.Context, _ db.ChangesOptions) ([]*db.LogEntry, error) {
 	c.calls++
 	if c.calls == 1 {
-		return []*LogEntry{{DocID: "doc1", RevID: "1-a", Sequence: 1}}, nil
+		return []*db.LogEntry{{DocID: "doc1", RevID: "1-a", Sequence: 1}}, nil
 	}
 	c.cancelChanges(errors.New("client disconnected"))
 	return nil, errors.New("query failed")
@@ -68,11 +69,11 @@ func countLabeledGoroutines(t require.TestingT, key, value string) int {
 func TestChangesFeedQueryErrorAfterChangesCancelled(t *testing.T) {
 	const labelKey = "test"
 
-	cacheOptions := DefaultCacheOptions()
+	cacheOptions := db.DefaultCacheOptions()
 	cacheOptions.ChannelQueryLimit = 1
-	db, ctx := SetupTestDBWithCacheOptions(t, cacheOptions)
-	defer db.Close(ctx)
-	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
 
 	changesCtx, cancelChanges := context.WithCancelCause(ctx)
 	defer cancelChanges(nil)
@@ -83,9 +84,9 @@ func TestChangesFeedQueryErrorAfterChangesCancelled(t *testing.T) {
 
 	// The feed goroutine inherits the label, which separates it from goroutines started by other tests. Nothing reads
 	// the feed until the goroutine exits, so the first page fills the feed's buffer.
-	var feed <-chan *ChangeEntry
+	var feed <-chan *db.ChangeEntry
 	pprof.Do(ctx, pprof.Labels(labelKey, t.Name()), func(ctx context.Context) {
-		feed = collection.changesFeed(ctx, cache, ChangesOptions{ChangesCtx: changesCtx}, "")
+		feed = collection.ChangesFeedForTest(t, ctx, cache, db.ChangesOptions{ChangesCtx: changesCtx}, "")
 	})
 	base.RequireChanClosed(t, changesCtx.Done(), "second query never ran")
 
