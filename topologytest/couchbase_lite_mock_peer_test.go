@@ -331,7 +331,7 @@ func (r *CouchbaseLiteMockReplication) Start() {
 	case PeerReplicationDirectionPull:
 		r.btcRunner.StartPull(r.btc.ID())
 	default:
-		require.Fail(r.btc.TB(), fmt.Sprintf("unsupported replication direction %q", r.direction))
+		require.Fail(r.btc.TB(), fmt.Sprintf("unsupported replication direction %d", r.direction))
 	}
 }
 

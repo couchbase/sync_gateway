@@ -93,7 +93,7 @@ type StartupConfig struct {
 	MaxFileDescriptors         uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
 
-	DeprecatedConfig               *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
+	DeprecatedConfig               *DeprecatedConfig `json:"-" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
 	HeapProfileCollectionThreshold *uint64           `json:"heap_profile_collection_threshold,omitempty" help:"Threshold in bytes for collecting heap profiles automatically. If set, Sync Gateway will collect a memory profile when it exceeds this value. The default value will be set to 85% of the lesser of cgroup or system memory."`
 	HeapProfileDisableCollection   bool              `json:"heap_profile_disable_collection,omitempty" help:"Disables automatic heap profile collection"`
 }
