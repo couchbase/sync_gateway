@@ -35,6 +35,8 @@ type tbpCluster struct {
 	clusterSpec CouchbaseClusterSpec
 	// agent is a gocbcore agent for the cluster.
 	agent *gocbcore.Agent
+
+	storageBackend gocb.StorageBackend
 }
 
 // newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.
@@ -56,12 +58,24 @@ func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbp
 		}
 		return nil, err
 	}
-	return &tbpCluster{
-		clusterSpec: clusterSpec,
-		agent:       agent,
-		version:     *version,
-		ee:          ee,
-	}, nil
+	cluster := &tbpCluster{
+		clusterSpec:    clusterSpec,
+		agent:          agent,
+		version:        *version,
+		ee:             ee,
+		storageBackend: gocb.StorageBackendCouchstore,
+	}
+
+	cbs8, err := NewComparableBuildVersionFromString("8.0.0")
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse version string: %w", err)
+	}
+	// for GSI, use default storage backend: magma for 8.0+ or couchstore for <8.0
+	// views aren't supported with magma
+	if !TestsDisableGSI() && ee && !version.Less(cbs8) {
+		cluster.storageBackend = gocb.StorageBackendMagma
+	}
+	return cluster, nil
 }
 
 // getGocbClusterForTest makes cluster connection. Callers must close. Returns the cluster and the connection string used to connect.
@@ -234,6 +248,7 @@ func (c *tbpCluster) insertBucket(name string, quotaMB int, conflictResolution X
 	body.Set("name", name)
 	body.Set("numReplicas", strconv.Itoa(numReplicas))
 	body.Set("ramQuotaMB", fmt.Sprintf("%d", quotaMB))
+	body.Set("storageBackend", string(c.storageBackend))
 	output, status, err := c.MgmtRequest(
 		http.MethodPost,
 		"/pools/default/buckets",
@@ -246,6 +261,7 @@ func (c *tbpCluster) insertBucket(name string, quotaMB int, conflictResolution X
 	if status != http.StatusAccepted {
 		return fmt.Errorf("couldn't create bucket %q: (error code %d) %s", name, status, output)
 	}
+
 	return nil
 }
 
