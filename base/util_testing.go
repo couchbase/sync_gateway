@@ -855,6 +855,17 @@ func TestRequiresCbgt(t testing.TB) {
 	}
 }
 
+// TestRequiresDistributedResync will skip the current test if distributed resync is unavailable, which requires
+// Enterprise Edition and a Couchbase Server backing store.
+func TestRequiresDistributedResync(t testing.TB) {
+	if !IsEnterpriseEdition() {
+		t.Skip("Distributed resync requires EE")
+	}
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Distributed resync not supported for rosmar")
+	}
+}
+
 // RequireDocNotFoundError asserts that the given error represents a document not found error.
 func RequireDocNotFoundError(t testing.TB, e error) {
 	require.True(t, IsDocNotFoundError(e), fmt.Sprintf("Expected error to be a doc not found error, but was: %v", e))
