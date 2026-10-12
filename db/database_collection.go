@@ -413,6 +413,11 @@ func (c *DatabaseCollection) AddCollectionContext(ctx context.Context) context.C
 	return base.CollectionLogCtx(ctx, c.ScopeName, c.Name)
 }
 
+// getAdminDatabaseCollection returns a DatabaseCollectionWithUser with no user, which bypasses access checks.
+func (c *DatabaseCollection) getAdminDatabaseCollection() *DatabaseCollectionWithUser {
+	return &DatabaseCollectionWithUser{DatabaseCollection: c}
+}
+
 // DatabaseCollections is a set of collections
 type DatabaseCollections []*DatabaseCollection
 

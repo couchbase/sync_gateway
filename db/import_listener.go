@@ -25,14 +25,14 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	terminator       chan bool                             // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
-	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
-	dbStats          *base.DatabaseStats                   // Database stats group
-	importStats      *base.SharedBucketImportStats         // import stats group
-	cbgtContext      *base.CbgtContext                     // Handle to cbgt manager,cfg
-	checkpointPrefix string                                // DCP checkpoint key prefix
-	loggingCtx       context.Context                       // ctx for logging on event callbacks
-	importDestKey    string                                // cbgt index name
+	terminator       chan bool                              // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
+	collections      map[uint32]*DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
+	dbStats          *base.DatabaseStats                    // Database stats group
+	importStats      *base.SharedBucketImportStats          // import stats group
+	cbgtContext      *base.CbgtContext                      // Handle to cbgt manager,cfg
+	checkpointPrefix string                                 // DCP checkpoint key prefix
+	loggingCtx       context.Context                        // ctx for logging on event callbacks
+	importDestKey    string                                 // cbgt index name
 }
 
 // NewImportListener constructs an object to start an import feed.
@@ -40,7 +40,7 @@ func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *
 	importListener := &importListener{
 		dbStats:          dbContext.DbStats.Database(),
 		checkpointPrefix: checkpointPrefix,
-		collections:      make(map[uint32]DatabaseCollectionWithUser),
+		collections:      make(map[uint32]*DatabaseCollectionWithUser),
 		importStats:      dbContext.DbStats.SharedBucketImport(),
 		loggingCtx:       base.CorrelationIDLogCtx(ctx, base.DCPImportFeedID),
 
@@ -56,10 +56,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 	ctx := base.CorrelationIDLogCtx(il.loggingCtx, base.DCPImportFeedID)
 
 	for collectionID, collection := range dbContext.CollectionByID {
-		il.collections[collectionID] = DatabaseCollectionWithUser{
-			DatabaseCollection: collection,
-			user:               nil, // admin
-		}
+		il.collections[collectionID] = collection.getAdminDatabaseCollection()
 	}
 	collectionNamesByScope := dbContext.collectionNames()
 	il.importDestKey = base.DestKey(dbContext.Name, dbContext.scopeName, collectionNamesByScope[dbContext.scopeName], base.ShardedDCPFeedTypeImport)
@@ -156,7 +153,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 		return shouldPersistCheckpoint
 	}
 
-	il.ImportFeedEvent(ctx, &collection, event)
+	il.ImportFeedEvent(ctx, collection, event)
 	il.importStats.ImportFeedProcessedCount.Add(1)
 	return shouldPersistCheckpoint
 }

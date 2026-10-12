@@ -427,7 +427,7 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, doc *Document, rawDoc []byte, xattrs map[string][]byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
-	importDb := DatabaseCollectionWithUser{DatabaseCollection: c, user: nil}
+	importDb := c.getAdminDatabaseCollection()
 	var importErr error
 
 	if syncDataErr := doc.validateSyncDataForImport(ctx, c.dbCtx, docid); syncDataErr != nil {
@@ -1163,7 +1163,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		isDelete = deleted
 	}
 	// Use an admin-scoped database for import
-	importDb := DatabaseCollectionWithUser{DatabaseCollection: db.DatabaseCollection, user: nil}
+	importDb := db.getAdminDatabaseCollection()
 
 	importOpts := importDocOptions{
 		expiry:   nil,
@@ -3571,7 +3571,7 @@ func (c *DatabaseCollection) repairRevTreeGenerations(ctx context.Context, doc *
 	}
 	doc.SetRevTreeID(newCurrentRev)
 
-	collectionWithUser := &DatabaseCollectionWithUser{DatabaseCollection: c}
+	collectionWithUser := c.getAdminDatabaseCollection()
 	// No unused sequences to release alongside the allocated one - assignSequence only returns those for
 	// a caller that came in holding a sequence, and this one always allocates fresh.
 	if _, _, err = collectionWithUser.assignSequence(ctx, 0, doc, nil); err != nil {

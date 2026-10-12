@@ -331,9 +331,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 			base.WarnfCtx(ctx, "Resync: Error getting document from DCP event for doc %q: %v", base.UD(docID), err)
 			return false
 		}
-		err = (&DatabaseCollectionWithUser{
-			DatabaseCollection: databaseCollection,
-		}).ResyncDocument(ctx, docID, doc, regenerateSequences)
+		err = databaseCollection.getAdminDatabaseCollection().ResyncDocument(ctx, docID, doc, regenerateSequences)
 
 		if err == nil {
 			r.docsChangedLocal.Add(1)
