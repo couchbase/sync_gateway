@@ -756,6 +756,28 @@ func TestChangesFeedActiveOnlyStopsWhenChannelExhausted(t *testing.T) {
 	assert.Equal(t, 1, stub.calls, "changesFeed should stop after a short batch signals the channel is exhausted")
 }
 
+// TestBuildRevokedFeedChannelCacheError makes sure that buildRevokedFeed returns ErrChannelFeed,
+// and does not panic, when no query handler exists for the channel's collection.
+func TestBuildRevokedFeedChannelCacheError(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+
+	const unknownCollectionID = 999
+	_, ok := database.CollectionByID[unknownCollectionID]
+	require.False(t, ok)
+
+	options := db.ChangesOptions{ChangesCtx: base.TestCtx(t)}
+	feed := collection.BuildRevokedFeedForTest(t, ctx, channels.NewID("ch1", unknownCollectionID), options, 1, 0, 0, "test")
+
+	var received []*db.ChangeEntry
+	for entry := range feed {
+		received = append(received, entry)
+	}
+	require.Len(t, received, 1)
+	require.ErrorIs(t, received[0].Err, base.ErrChannelFeed)
+}
+
 // docMutation names one write-order step in a single-channel feed: whether the doc written at that
 // step is left active in the channel, or removed from it (shows up with the Removed flag). A []docMutation
 // list documents a test case's write sequence directly, without needing to decode a pattern string.
