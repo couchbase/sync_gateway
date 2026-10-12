@@ -2065,8 +2065,7 @@ func TestInvalidRevTreeRepairedOnLoad(t *testing.T) {
 	// _mou.pRev is the document's revSeqNo before the repair's own mutation. The repair is the last write
 	// to the document, so that is one less than its current revSeqNo - and never zero, which is what it
 	// would be if the repair stamped _mou without reading the revSeqNo virtual xattr.
-	revSeqNo, _, err := collection.getRevSeqNo(ctx, "corruptDoc")
-	require.NoError(t, err)
+	revSeqNo := docRevSeqNo(t, collection, "corruptDoc")
 	require.NotZero(t, revSeqNo)
 	assert.Equal(t, revSeqNo-1, mou.PreviousRevSeqNo,
 		"_mou.pRev should be the revSeqNo immediately before the repair (current revSeqNo %d)", revSeqNo)
@@ -2484,4 +2483,115 @@ func TestInvalidRevTreeRepairOfTombstonedDoc(t *testing.T) {
 	var body []byte
 	_, err = collection.dataStore.Get(ctx, docID, &body)
 	assert.True(t, base.IsDocNotFoundError(err), "the repair resurrected the document body, got %v", err)
+}
+
+// TestInvalidRevTreeRepairMou pins the metadata-only update the rev tree repair leaves behind, on both
+// repair paths and both with and without an _mou already on the document.
+//
+// The repair is a metadata-only write, so _mou.cas has to name it - that match is how the import feed
+// tells the repair from an external write - and pCas/pRev have to keep naming the mutation that last
+// wrote the body. The cases that import first are the ones that matter: the import writes its own _mou,
+// and the repair that follows it in the same call has to carry those previous values forward rather than
+// restamp them from the import.
+func TestInvalidRevTreeRepairMou(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+
+	// a gen 10 leaf on a 3 revision branch, so the tree encodes rather than erroring and a client can be
+	// given the fabricated ancestry the write cases push back - see TestInvalidRevTreePushWithFabricatedHistory
+	corruptTree := map[string]string{"1-abc": "", "10-abc": "1-abc", "10-def": "10-abc"}
+	const corruptCurrentRev = "10-def"
+	fabricatedHistory := []string{"11-ghi", "10-def", "9-abc", "8-abc"}
+
+	// plantCorrupt leaves a corrupt document whose last mutation is Sync Gateway's own, so nothing imports
+	// and the repair is the first write to record an _mou.
+	plantCorrupt := func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (uint64, uint64) {
+		PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true}, corruptTree, corruptCurrentRev)
+		_, mou, cas := getSyncAndMou(t, collection, docID)
+		require.Nil(t, mou, "a document that was never imported should not carry a metadata-only update")
+		return cas, docRevSeqNo(t, collection, docID)
+	}
+
+	// plantCorruptAndWriteOutsideSG adds an external write on top, so the repair is preceded by an
+	// on-demand import in the same call and finds that import's _mou in place. The external write is the
+	// last write to the body, and the mutation _mou has to keep naming through both.
+	plantCorruptAndWriteOutsideSG := func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (uint64, uint64) {
+		PlantRevTreeForTest(t, ctx, collection, docID, Body{"planted": true}, corruptTree, corruptCurrentRev)
+		_, _, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
+		require.NoError(t, err)
+		bodyCas, err := collection.dataStore.WriteCas(ctx, docID, 0, cas, []byte(`{"value": "written outside Sync Gateway"}`), 0)
+		require.NoError(t, err)
+		return bodyCas, docRevSeqNo(t, collection, docID)
+	}
+
+	testCases := []struct {
+		name string
+		// setup leaves a corrupt document ready for the repair, and returns the cas and revision sequence
+		// number of the mutation that last wrote its body - what _mou has to point back at afterwards.
+		setup func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bodyCas, bodyRevSeqNo uint64)
+		// repair triggers the repair and nothing else. Any write that carries it has to fail, or that
+		// write lands on top of the repair and removes the _mou under test.
+		repair func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string)
+	}{
+		{
+			name:  "read path, no existing mou",
+			setup: plantCorrupt,
+			repair: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				_, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:  "read path, mou from the import that precedes the repair",
+			setup: plantCorruptAndWriteOutsideSG,
+			repair: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				_, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+				require.NoError(t, err)
+			},
+		},
+		{
+			name:  "write path, no existing mou",
+			setup: plantCorrupt,
+			repair: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				// the repair renames the revision this history branches from, so the push is then rejected
+				_, _, err := collection.PutExistingRevWithBody(ctx, docID, Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+				assertHTTPError(t, err, 409)
+			},
+		},
+		{
+			name:  "write path, mou from the import that precedes the repair",
+			setup: plantCorruptAndWriteOutsideSG,
+			repair: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID string) {
+				_, _, err := collection.PutExistingRevWithBody(ctx, docID, Body{"pushed": true}, fabricatedHistory, false, ExistingVersionWithUpdateToHLV)
+				assertHTTPError(t, err, 409)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dbCtx, ctx := SetupTestDB(t)
+			defer dbCtx.Close(ctx)
+			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
+			invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
+
+			docID := SafeDocumentName(t, t.Name())
+			bodyCas, bodyRevSeqNo := tc.setup(t, ctx, collection, docID)
+			require.NotZero(t, bodyRevSeqNo)
+			dbCtx.FlushRevisionCacheForTest()
+
+			tc.repair(t, ctx, collection, docID)
+			require.Equal(t, int64(1), invalidRevTreeCount.Value(), "the corrupt rev tree should have been repaired")
+
+			syncData, mou, cas := getSyncAndMou(t, collection, docID)
+			require.NotNil(t, mou, "the repair is a metadata-only write, so it has to record a metadata-only update")
+			require.NoError(t, syncData.History.verifyIncreasingGenerations())
+
+			// the repair is the last mutation on the document, so this pins _mou against the repair's own
+			// write rather than against any import that ran before it
+			assert.Equal(t, base.CasToString(cas), mou.HexCAS, "_mou.cas has to name the repair, or the import feed reads it as an external write")
+			assert.NotEqual(t, base.CasToString(bodyCas), mou.HexCAS, "the repair should have written after the body")
+			assert.Equal(t, base.CasToString(bodyCas), mou.PreviousHexCAS, "_mou.pCas has to name the mutation that last wrote the body")
+			assert.Equal(t, bodyRevSeqNo, mou.PreviousRevSeqNo, "_mou.pRev has to name the same mutation as pCas")
+		})
+	}
 }

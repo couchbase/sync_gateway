@@ -226,7 +226,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 
 			// Use an in-memory cfg, set up cbgt manager
 			ctx = DatabaseLogCtx(ctx, tc.dbName, nil)
-			cfg, err := NewCbgtCfgMem()
+			cfg, err := NewCbgtCfgMem(ctx)
 			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName, "", nil, nil)
 			require.NoError(t, err)
@@ -308,7 +308,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	testDbName := "testDB"
 
 	// Use an in-memory cfg, set up cbgt manager
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName, "", nil, nil)
 	require.NoError(t, err)
@@ -389,7 +389,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 		"01234567890123456789012345678901234567890123456789"
 
 	// Use an in-memory cfg, set up cbgt manager
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName, "", nil, nil)
 	require.NoError(t, err)
@@ -815,8 +815,9 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 	}
 
 	t.Run("StartManager error", func(t *testing.T) {
+		ctx := TestCtx(t)
 		dbName := "startManagerErrorDB"
-		baseCfg, err := NewCbgtCfgMem()
+		baseCfg, err := NewCbgtCfgMem(ctx)
 		require.NoError(t, err)
 		cfg := &leakyCfg{Cfg: baseCfg}
 		cfg.failSets(cbgt.INDEX_DEFS_KEY)
@@ -829,8 +830,9 @@ func TestStartShardedDCPFeedCleanupOnError(t *testing.T) {
 	})
 
 	t.Run("registerHeartbeatListener error", func(t *testing.T) {
+		ctx := TestCtx(t)
 		dbName := "heartbeatListenerErrorDB"
-		cfg, err := NewCbgtCfgMem()
+		cfg, err := NewCbgtCfgMem(ctx)
 		require.NoError(t, err)
 
 		cbgtContext, err := StartShardedDCPFeed(ctx, shardedDCPOptions(t, dbName, cfg, newUnstartedHeartbeater(t, dbName)))
@@ -929,7 +931,7 @@ func TestCBGTKvPoolSize(t *testing.T) {
 	spec := bucket.BucketSpec
 	spec.Server += "?kv_pool_size=8"
 
-	cfg, err := NewCbgtCfgMem()
+	cfg, err := NewCbgtCfgMem(ctx)
 	require.NoError(t, err)
 	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, t.Name(), "fakeDb", "", nil, nil)
 	assert.NoError(t, err)

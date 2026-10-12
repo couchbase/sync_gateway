@@ -143,7 +143,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options Attachment
 		}
 
 		a.docsProcessed.Add(1)
-		_, syncData, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.UserXattrKey(), false)
+		_, syncData, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collection.UserXattrKey())
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] error unmarshaling document %s: %v, stopping attachment migration.", migrationLoggingID, base.UD(docID), err)
 			a.docsFailed.Add(1)

@@ -2188,7 +2188,8 @@ func TestImportRollback(t *testing.T) {
 			checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 			checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 			checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
-			checkpointData.LastSeq = 3000 + checkpointData.LastSeq
+			require.NotNil(t, checkpointData.LastSeq)
+			*checkpointData.LastSeq += 3000
 			if testType == rollbackWithFailover {
 				existingVbUUID := checkpointData.FailOverLog[0][0]
 				checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
@@ -2280,7 +2281,8 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
-	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
+	require.NotNil(t, checkpointData.LastSeq)
+	*checkpointData.LastSeq += 3000
 	existingVbUUID := checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2299,7 +2301,8 @@ func TestImportRollbackMultiplePartitions(t *testing.T) {
 	checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 	checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 	checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
-	checkpointData.LastSeq = 3000 + checkpointData.LastSeq
+	require.NotNil(t, checkpointData.LastSeq)
+	*checkpointData.LastSeq += 3000
 	existingVbUUID = checkpointData.FailOverLog[0][0]
 	checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}
 
@@ -2518,7 +2521,8 @@ func TestImportRollbackAllPartitions(t *testing.T) {
 		checkpointData.SnapEnd = 3000 + checkpointData.SnapEnd
 		checkpointData.SeqStart = 3000 + checkpointData.SeqStart
 		checkpointData.SeqEnd = 3000 + checkpointData.SeqEnd
-		checkpointData.LastSeq = 3000 + checkpointData.LastSeq
+		require.NotNil(t, checkpointData.LastSeq)
+		*checkpointData.LastSeq += 3000
 		existingVbUUID := checkpointData.FailOverLog[0][0]
 		// mutate vbUUID to force rollback
 		checkpointData.FailOverLog = [][]uint64{{existingVbUUID + 1, 0}}

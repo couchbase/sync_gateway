@@ -2331,7 +2331,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 	mismatchCV := rawHLV([]byte(`{"ver":"0xff00000000000000","src":"otherSource"}`))
 	errorCV := rawHLV([]byte(`{invalid json}`))
 
-	baseSyncData := SyncData{
+	baseSyncData := cacheFeedSyncData{
 		Cas:             sgCasHex,
 		Crc32c:          "0xaabbccdd",
 		Crc32cUserXattr: "",
@@ -2343,7 +2343,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 
 	testCases := []struct {
 		name            string
-		syncData        SyncData
+		syncData        cacheFeedSyncData
 		cas             uint64
 		isDelete        bool
 		rawUserXattr    []byte
@@ -2387,7 +2387,7 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 		},
 		{
 			name: "deletion with SG CRC and all checks pass",
-			syncData: func() SyncData {
+			syncData: func() cacheFeedSyncData {
 				s := baseSyncData
 				s.Crc32c = base.DeleteCrc32c
 				return s
@@ -2415,8 +2415,18 @@ func TestIsSGWriteXattrOnly(t *testing.T) {
 			expectedAmbig:   false,
 		},
 		{
+			// The caching feed passes an empty rawHLV when the document has no _vv xattr, which must be treated as
+			// absent rather than as a corrupt _vv.
+			name:            "empty CV with sync rev - ambiguous",
+			syncData:        baseSyncData,
+			cas:             otherCas,
+			cv:              new(rawHLV),
+			expectedSGWrite: false,
+			expectedAmbig:   true,
+		},
+		{
 			name: "nil CV with no sync rev - ambiguous",
-			syncData: func() SyncData {
+			syncData: func() cacheFeedSyncData {
 				s := baseSyncData
 				s.RevAndVersion.CurrentSource = ""
 				s.RevAndVersion.CurrentVersion = ""
@@ -2958,12 +2968,11 @@ func TestWritePathRepairMouChain(t *testing.T) {
 
 	// the SDK write is the last real body mutation
 	require.NoError(t, collection.dataStore.Set(ctx, docID, 0, nil, []byte(`{"sdk":true}`)))
-	sdkWriteRevSeqNo, sdkWriteCas, err := collection.getRevSeqNo(ctx, docID)
-	require.NoError(t, err)
+	sdkWriteRevSeqNo, sdkWriteCas := docRevSeqNoAndCas(t, collection, docID)
 	dbCtx.FlushRevisionCacheForTest()
 
 	// a write on top: the callback imports, bails to a CAS retry, then repairs on the retry
-	_, _, err = collection.Put(ctx, docID, Body{"fromSG": true})
+	_, _, err := collection.Put(ctx, docID, Body{"fromSG": true})
 	require.Error(t, err, "a Put with no matching rev against an existing document is a conflict")
 
 	_, casAfterRepair, err := collection.dataStore.GetRaw(ctx, docID)

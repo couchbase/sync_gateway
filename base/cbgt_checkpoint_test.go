@@ -157,7 +157,8 @@ func TestCbgtCheckpointPreservesLargeSequenceNumberPrecision(t *testing.T) {
 	assert.Equal(t, largeSeq, remains.SnapEnd)
 }
 
-// TestCbgtCheckpointGuardrails verifies that readCbgtCheckpoint clamps lastSeq to the checkpoint's snapStart and snapEnd boundaries.
+// TestCbgtCheckpointGuardrails verifies that readCbgtCheckpoint clamps lastSeq to the checkpoint's snapEnd, but never
+// raises it to snapStart.
 func TestCbgtCheckpointGuardrails(t *testing.T) {
 	testCases := []struct {
 		name             string
@@ -166,10 +167,16 @@ func TestCbgtCheckpointGuardrails(t *testing.T) {
 		expectedLastSeq  uint64
 	}{
 		{
-			name:             "lastSeq below snapStart is clamped to snapStart",
+			name:             "lastSeq below snapStart is not clamped",
 			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
 			persistedLastSeq: 5,
-			expectedLastSeq:  15,
+			expectedLastSeq:  5,
+		},
+		{
+			name:             "lastSeq of zero is not raised to snapStart",
+			raw:              `{"failOverLog":[[123,0]],"seqStart":10,"seqEnd":20,"snapStart":15,"snapEnd":20}`,
+			persistedLastSeq: 0,
+			expectedLastSeq:  0,
 		},
 		{
 			name:             "lastSeq above snapEnd is clamped to snapEnd",
@@ -358,7 +365,8 @@ func TestMakeVbucketMetadataIncludesLastSeq(t *testing.T) {
 
 			var checkpoint CbgtCheckpoint
 			require.NoError(t, JSONUnmarshal(raw, &checkpoint))
-			assert.Equal(t, sequence, checkpoint.LastSeq)
+			require.NotNil(t, checkpoint.LastSeq)
+			assert.Equal(t, sequence, *checkpoint.LastSeq)
 			assert.Equal(t, sequence, checkpoint.SeqStart)
 			assert.Equal(t, sequence, checkpoint.SnapStart)
 			assert.Equal(t, sequence, checkpoint.SnapEnd)
