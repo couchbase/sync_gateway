@@ -9,7 +9,7 @@ Backport a merged `main` change to a `release/x.y.z` branch: one ticket, or a wh
 
 ## Find the work
 
-Backport tickets are clones of the original ticket, with `[x.y.z Backport]` in the summary and the release in `fixVersions`.
+Backport tickets are clones of the original ticket, with `[x.y.z backport]` (either case) in the summary and the release in `fixVersions`.
 
 Ask Jira for the current user's open-sprint backports:
 
