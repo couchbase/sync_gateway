@@ -8461,11 +8461,14 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 			tombstoneVersion := passiveRT.DeleteDoc(docID, version)
 			passiveRT.WaitForPendingChanges()
 
-			var demoted atomic.Bool
+			// Demote the tombstone mid-fetch, after the changes feed announced it, so its body is read from storage.
+			// demoted is set after the demote write so that doc2, the checkpoint target, gets the highest sequence.
+			var demoteStarted, demoted atomic.Bool
 			passiveRT.LeakyBucket().SetGetWithXattrCallback(func(key string) error {
-				if key != docID || !demoted.CompareAndSwap(false, true) {
+				if key != docID || !demoteStarted.CompareAndSwap(false, true) {
 					return nil
 				}
+				defer demoted.Store(true)
 				return tc.demoteTombstone(passiveRT, tombstoneVersion)
 			})
 
