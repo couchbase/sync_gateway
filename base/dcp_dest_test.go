@@ -106,3 +106,60 @@ func TestDCPDestStop(t *testing.T) {
 		})
 	}
 }
+
+// TestDCPDestCheckpointAfterStopAtSnapshotStart makes sure that a checkpoint written after cbgt sends a new snapshot
+// marker, but before any of its mutations are processed, resumes the feed before the first mutation of that snapshot.
+func TestDCPDestCheckpointAfterStopAtSnapshotStart(t *testing.T) {
+	testCases := []struct {
+		name               string
+		processedSeqs      uint64 // mutations 1..processedSeqs are processed in a snapshot before the one at seq 4
+		expectedResumedSeq uint64
+	}{
+		{name: "after a processed snapshot", processedSeqs: 3, expectedResumedSeq: 3},
+		// A collection-filtered stream can send snapshot markers before any mutation reaches the dest.
+		{name: "no mutations processed", processedSeqs: 0, expectedResumedSeq: 0},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			const partition = "0"
+			opts := DCPDestOptions{
+				Callback:           func(sgbucket.FeedEvent) bool { return true },
+				MetadataStore:      bucket.GetSingleDataStore(),
+				MaxVbNo:            1,
+				PersistCheckpoints: true,
+				CheckpointPrefix:   t.Name() + "_",
+			}
+			dest, err := NewDCPDest(ctx, opts)
+			require.NoError(t, err)
+
+			_, lastSeq, err := dest.OpaqueGet(partition)
+			require.NoError(t, err)
+			require.Equal(t, uint64(0), lastSeq)
+
+			if testCase.processedSeqs > 0 {
+				require.NoError(t, dest.OpaqueSet(partition, fmt.Appendf(nil, `{"failOverLog":[[123,0]],"snapStart":1,"snapEnd":%d}`, testCase.processedSeqs)))
+				for seq := uint64(1); seq <= testCase.processedSeqs; seq++ {
+					require.NoError(t, dest.DataUpdate(partition, fmt.Appendf(nil, "doc%d", seq), seq, []byte(`{}`), seq, cbgt.DEST_EXTRAS_TYPE_NIL, nil))
+				}
+			}
+			require.NoError(t, dest.OpaqueSet(partition, []byte(`{"failOverLog":[[123,0]],"snapStart":4,"snapEnd":6}`)))
+
+			// Mutations that arrive after Stop are skipped, so the checkpoint must not move past them.
+			dest.Stop()
+			require.NoError(t, dest.DataUpdate(partition, []byte("doc4"), 4, []byte(`{}`), 4, cbgt.DEST_EXTRAS_TYPE_NIL, nil))
+			dest.ForceCheckpointWrite()
+			require.NoError(t, dest.Close(false))
+
+			resumedDest, err := NewDCPDest(ctx, opts)
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, resumedDest.Close(false)) }()
+			_, lastSeq, err = resumedDest.OpaqueGet(partition)
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expectedResumedSeq, lastSeq, "cbgt streams mutations after lastSeq, so doc4 at seq 4 must not be skipped")
+		})
+	}
+}
