@@ -290,7 +290,7 @@ func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid str
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
 // If seq is zero, it removes the history entries of the named channels instead.
 // This is used to prune stale channel assignment history to reduce storage overhead.
-func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64, channels []string) ([]string, error) {
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64, channelsToDelete []string) ([]string, error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -325,13 +325,14 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 
 	compactedChannels := make(base.Set)
+	channelsToDeleteSet := base.SetFromArray(channelsToDelete)
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
 		var del bool
 		if seq != 0 {
 			del = channel.End <= seq
-		} else if len(channels) > 0 {
-			del = slices.Contains(channels, channel.Name)
+		} else {
+			del = channelsToDeleteSet.Contains(channel.Name)
 		}
 		if del {
 			compactedChannels.Add(channel.Name)
@@ -343,8 +344,8 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		var del bool
 		if seq != 0 {
 			del = channel.End != 0 && channel.End <= seq
-		} else if len(channels) > 0 {
-			del = channel.End != 0 && slices.Contains(channels, channel.Name)
+		} else {
+			del = channel.End != 0 && channelsToDeleteSet.Contains(channel.Name)
 		}
 		if del {
 			compactedChannels.Add(channel.Name)
@@ -359,8 +360,8 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		var del bool
 		if seq != 0 {
 			del = chanEntry.Seq <= seq
-		} else if len(channels) > 0 {
-			del = slices.Contains(channels, chanName)
+		} else {
+			del = channelsToDeleteSet.Contains(chanName)
 		}
 		if del {
 			compactedChannels.Add(chanName)
