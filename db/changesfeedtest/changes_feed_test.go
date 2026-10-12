@@ -11,9 +11,7 @@ package changesfeedtest
 import (
 	"context"
 	"errors"
-	"fmt"
 	"runtime/pprof"
-	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // failingSecondPageCache returns one page of changes, then cancels the changes request and fails the next query.
@@ -43,25 +42,6 @@ func (c *failingSecondPageCache) GetChanges(_ context.Context, _ db.ChangesOptio
 	}
 	c.cancelChanges(errors.New("client disconnected"))
 	return nil, errors.New("query failed")
-}
-
-// countLabeledGoroutines returns the number of goroutines carrying the pprof label key=value.
-func countLabeledGoroutines(t require.TestingT, key, value string) int {
-	var profile strings.Builder
-	require.NoError(t, pprof.Lookup("goroutine").WriteTo(&profile, 1))
-	label := fmt.Sprintf("%q:%q", key, value)
-	count := 0
-	// debug=1 output groups identical goroutines into blank-line separated blocks headed by "<count> @ <pcs>".
-	for _, group := range strings.Split(profile.String(), "\n\n") {
-		if !strings.Contains(group, "# labels: ") || !strings.Contains(group, label) {
-			continue
-		}
-		var n int
-		_, err := fmt.Sscanf(group, "%d @", &n)
-		require.NoError(t, err)
-		count += n
-	}
-	return count
 }
 
 // TestChangesFeedQueryErrorAfterChangesCancelled verifies that the channel feed goroutine exits when a query fails
@@ -91,7 +71,7 @@ func TestChangesFeedQueryErrorAfterChangesCancelled(t *testing.T) {
 	base.RequireChanClosed(t, changesCtx.Done(), "second query never ran")
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Zero(c, countLabeledGoroutines(c, labelKey, t.Name()))
+		assert.Zero(c, sgtest.CountLabeledGoroutines(c, labelKey, t.Name()))
 	}, 10*time.Second, 10*time.Millisecond, "changesFeed goroutine did not exit after the changes request was cancelled")
 
 	entry := base.RequireChanRecv(t, feed, "first page entry was not sent")
