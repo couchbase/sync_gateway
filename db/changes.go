@@ -245,7 +245,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	// Use a bypass channel cache for revocations (CBG-1695)
 	singleChannelCache, err := db.changeCache().getChannelCache().getBypassChannelCache(ch)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error obtaining channel cache for channel %q: %v", base.UD(singleChannelCache.ChannelID().Name), err)
+		base.WarnfCtx(ctx, "Error obtaining channel cache for channel %q: %v", base.UD(ch.Name), err)
 		change := ChangeEntry{
 			Err: base.ErrChannelFeed,
 		}
