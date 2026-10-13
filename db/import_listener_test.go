@@ -20,7 +20,7 @@ import (
 func TestImportFeedEventRecover(t *testing.T) {
 	// test the ability for ProcessFeedEvent
 	listener := importListener{
-		collections: map[uint32]DatabaseCollectionWithUser{
+		collections: map[uint32]*DatabaseCollectionWithUser{
 			0: {}, // this is an invalid entry, because we expect this code to panic and recover
 		},
 	}

@@ -130,7 +130,7 @@ type DatabaseContext struct {
 	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
 	State                       uint32                 // The runtime state of the DB from a service perspective
 	ResyncManager               *BackgroundManager[ResyncOptions]
-	TombstoneCompactionManager  *BackgroundManager[TombstoneCompactionOptions]
+	TombstoneCompactionManager  *BackgroundManager[NoOptions]
 	AttachmentCompactionManager *BackgroundManager[AttachmentCompactionOptions]
 	AttachmentMigrationManager  *BackgroundManager[AttachmentMigrationOptions]
 	AsyncIndexInitManager       *BackgroundManager[AsyncIndexInitOptions]
@@ -1607,7 +1607,7 @@ type compactProgressCallbackFunc func(purgedDocCount *int)
 // the document to accomplish the same result.
 //
 // The `isScheduledBackgroundTask` parameter is used to indicate if the compaction is being run as part of a scheduled background task, or an ad-hoc user-initiated `/{db}/_compact` request.
-func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, optionalProgressCallback compactProgressCallbackFunc, terminator *base.SafeTerminator, isScheduledBackgroundTask bool) (purgedDocCount int, err error) {
+func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bool, optionalProgressCallback compactProgressCallbackFunc, terminator *base.SafeTerminator, isScheduledBackgroundTask bool) (purgedDocCount int, err error) {
 	if !skipRunningStateCheck {
 		if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 			return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
@@ -1638,12 +1638,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, opt
 		// shadow ctx, so that we can't misuse the parent's inside the loop
 		ctx := c.AddCollectionContext(ctx)
 
-		// create admin collection interface
-		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName, c.Name)
-		if err != nil {
-			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
-			continue
-		}
+		collection := c.getAdminDatabaseCollection()
 
 		for {
 			purgedDocs := make([]string, 0)
@@ -2543,7 +2538,6 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	if db.Options.CompactInterval != 0 {
 		if db.autoImport {
-			db := Database{DatabaseContext: db}
 			// Wrap the dbContext's terminator in a SafeTerminator for the compaction task
 			bgtTerminator := base.NewSafeTerminator()
 			go func() {
@@ -2611,8 +2605,8 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	db.TombstoneCompactionManager = NewTombstoneCompactionManager()
-	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db.MetadataStore, db.MetadataKeys)
+	db.TombstoneCompactionManager = NewTombstoneCompactionManager(db)
+	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db)
 
 	db.startReplications(ctx)
 
