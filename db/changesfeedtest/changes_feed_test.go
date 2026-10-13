@@ -1,0 +1,80 @@
+//  Copyright 2026-Present Couchbase, Inc.
+//
+//  Use of this software is governed by the Business Source License included
+//  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+//  in that file, in accordance with the Business Source License, use of this
+//  software will be governed by the Apache License, Version 2.0, included in
+//  the file licenses/APL2.txt.
+
+package changesfeedtest
+
+import (
+	"context"
+	"errors"
+	"runtime/pprof"
+	"testing"
+	"time"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
+)
+
+// failingSecondPageCache returns one page of changes, then cancels the changes request and fails the next query.
+type failingSecondPageCache struct {
+	db.SingleChannelCache
+	channelID     channels.ID
+	cancelChanges context.CancelCauseFunc
+	calls         int
+}
+
+func (c *failingSecondPageCache) ChannelID() channels.ID {
+	return c.channelID
+}
+
+func (c *failingSecondPageCache) GetChanges(_ context.Context, _ db.ChangesOptions) ([]*db.LogEntry, error) {
+	c.calls++
+	if c.calls == 1 {
+		return []*db.LogEntry{{DocID: "doc1", RevID: "1-a", Sequence: 1}}, nil
+	}
+	c.cancelChanges(errors.New("client disconnected"))
+	return nil, errors.New("query failed")
+}
+
+// TestChangesFeedQueryErrorAfterChangesCancelled verifies that the channel feed goroutine exits when a query fails
+// after the client stops reading.
+func TestChangesFeedQueryErrorAfterChangesCancelled(t *testing.T) {
+	const labelKey = "test"
+
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.ChannelQueryLimit = 1
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
+	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+
+	changesCtx, cancelChanges := context.WithCancelCause(ctx)
+	defer cancelChanges(nil)
+	cache := &failingSecondPageCache{
+		channelID:     channels.NewID("ABC", collection.GetCollectionID()),
+		cancelChanges: cancelChanges,
+	}
+
+	// The feed goroutine inherits the label, which separates it from goroutines started by other tests. Nothing reads
+	// the feed until the goroutine exits, so the first page fills the feed's buffer.
+	var feed <-chan *db.ChangeEntry
+	pprof.Do(ctx, pprof.Labels(labelKey, t.Name()), func(ctx context.Context) {
+		feed = collection.ChangesFeedForTest(t, ctx, cache, db.ChangesOptions{ChangesCtx: changesCtx}, "")
+	})
+	base.RequireChanClosed(t, changesCtx.Done(), "second query never ran")
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Zero(c, sgtest.CountLabeledGoroutines(c, labelKey, t.Name()))
+	}, 10*time.Second, 10*time.Millisecond, "changesFeed goroutine did not exit after the changes request was cancelled")
+
+	entry := base.RequireChanRecv(t, feed, "first page entry was not sent")
+	require.Equal(t, "doc1", entry.ID)
+	base.RequireChanClosed(t, feed, "feed was not closed")
+}
