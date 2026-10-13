@@ -1054,3 +1054,10 @@ func TestRequiresDeltaSync(t testing.TB) {
 		t.Skipf("Skipping test - Delta Sync requires EE")
 	}
 }
+
+// TestRequiresViews skips a test if the backing bucket doesn't support views.
+func TestRequiresViews(t testing.TB) {
+	if !GTestBucketPool.supportsViews() {
+		t.Skip("Skipping test - views not supported with this bucket configuration")
+	}
+}
