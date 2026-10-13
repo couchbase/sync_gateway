@@ -8469,7 +8469,9 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 					return nil
 				}
 				defer demoted.Store(true)
-				return tc.demoteTombstone(passiveRT, tombstoneVersion)
+				err := tc.demoteTombstone(passiveRT, tombstoneVersion)
+				assert.NoError(t, err, "demoting tombstone")
+				return err
 			})
 
 			ar, err := db.NewActiveReplicator(activeRT.Context(), &db.ActiveReplicatorConfig{
