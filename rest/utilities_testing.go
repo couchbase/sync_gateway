@@ -63,6 +63,7 @@ type RestTesterConfig struct {
 	EnableUserQueries                bool                        // Enable the feature-flag for user N1QL/etc queries
 	CustomTestBucket                 *base.TestBucket            // If set, use this bucket instead of requesting a new one.
 	LeakyBucketConfig                *base.LeakyBucketConfig     // Set to create and use a leaky bucket on the RT and DB. A test bucket cannot be passed in if using this option.
+	ConnectToBucketFn                db.OpenBucketFn             // Replaces the function used to connect to buckets when loading databases. Cannot be used with LeakyBucketConfig.
 	adminInterface                   string                      // adminInterface overrides the default admin interface.
 	SgReplicateEnabled               bool                        // SgReplicateManager disabled by default for RestTester
 	AutoImport                       *bool
@@ -227,6 +228,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.TB().Fatalf("A passed in TestBucket cannot be used on the RestTester when defining a LeakyBucketConfig")
 	}
 	rt.TestBucket = testBucket
+	if rt.ConnectToBucketFn != nil {
+		require.Nil(rt.TB(), rt.LeakyBucketConfig, "ConnectToBucketFn cannot be used on the RestTester with a LeakyBucketConfig")
+	}
 
 	if rt.PersistentConfig != false {
 		require.Zero(rt.TB(), rt.InitSyncSeq, "RestTesterConfig.InitSyncSeq is not supported with RestTesterConfig.PersistentConfig = true")
@@ -318,8 +322,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB()), &sc, rt.RestTesterConfig.PersistentConfig)
 
-	_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
-	if rt.LeakyBucketConfig != nil || isLeaky {
+	if rt.ConnectToBucketFn != nil {
+		rt.RestTesterServerContext.connectToBucketFn = rt.ConnectToBucketFn
+	} else if _, isLeaky := base.AsLeakyBucket(rt.TestBucket); rt.LeakyBucketConfig != nil || isLeaky {
 		rt.RestTesterServerContext.connectToBucketFn = func(ctx context.Context, spec base.BucketSpec, failfast bool) (base.Bucket, error) {
 			if spec.BucketName == testBucket.GetName() {
 				return testBucket.NoCloseClone(), nil
@@ -736,6 +741,10 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 
 // templateResource is a non-fatal version of rt.mustTemplateResource
 func (rt *RestTester) templateResource(resource string) (string, error) {
+	// Skip the database lookup, which can race with a concurrent database delete, when there is nothing to template.
+	if !strings.Contains(resource, "{{") {
+		return resource, nil
+	}
 	tmpl, err := template.New("urltemplate").
 		Option("missingkey=error").
 		Parse(resource)
