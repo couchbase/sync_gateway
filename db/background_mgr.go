@@ -273,6 +273,8 @@ func (b *BackgroundManager[O]) Start(ctx context.Context, options O) error {
 //   - errBackgroundManagerStatusAlreadyStopping if in the process of stopping
 //   - an error from Process.Init
 func (b *BackgroundManager[O]) start(ctx context.Context, options O, processClusterStatus []byte, isJoin bool) error {
+	// The process outlives the request that started it.
+	ctx = context.WithoutCancel(ctx)
 	if b.mode() != backgroundManagerModeMultiNode && b.updateDatabaseState != nil {
 		return fmt.Errorf("updateDatabaseState should only be set for multi-node background managers")
 	}
