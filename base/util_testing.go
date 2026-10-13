@@ -1028,3 +1028,10 @@ func GetNonDefaultDatastoreNames(t testing.TB, bucket Bucket) []sgbucket.DataSto
 	}
 	return nonDefaultDataStoreNames
 }
+
+// TestRequiresViews skips a test if the backing bucket doesn't support views.
+func TestRequiresViews(t testing.TB) {
+	if !GTestBucketPool.supportsViews() {
+		t.Skip("Skipping test - views not supported with this bucket configuration")
+	}
+}
