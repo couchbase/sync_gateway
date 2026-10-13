@@ -434,19 +434,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		return // DCP is sending us an old value from before I started up; ignore it
 	}
 
-	// Measure feed latency from timeSaved or the time we started working the feed, whichever is later
-	var feedLatency time.Duration
-	if !syncData.TimeSaved.IsZero() {
-		if syncData.TimeSaved.After(c.initTime) {
-			feedLatency = time.Since(syncData.TimeSaved)
-		} else {
-			feedLatency = time.Since(c.initTime)
-		}
-		// Record latency when greater than zero
-		feedNano := feedLatency.Nanoseconds()
-		if feedNano > 0 {
-			c.db.DbStats.Database().DCPReceivedTime.Add(feedNano)
-		}
+	latency := FeedLatency(syncData.TimeSaved, c.initTime, time.Now())
+	if latency > 0 {
+		c.db.DbStats.Database().DCPReceivedTime.Add(latency.Nanoseconds())
 	}
 	c.db.DbStats.Database().DCPReceivedCount.Add(1)
 
@@ -546,7 +536,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		change.Version = base.HexCasToUint64(syncData.RevAndVersion.CurrentVersion)
 	}
 
-	millisecondLatency := int(feedLatency / time.Millisecond)
+	millisecondLatency := int(latency / time.Millisecond)
 
 	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
 	if millisecondLatency >= 60*1000 {
@@ -564,6 +554,19 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		c.notifyChangeFunc(ctx, changedChannelsCombined)
 	}
 
+}
+
+// FeedLatency measures from timeSaved or the time the cache started working the feed, whichever is
+// later, so a document written before startup is not charged for the time the cache was down.
+// Returns zero when timeSaved is unset.
+func FeedLatency(timeSaved, initTime, now time.Time) time.Duration {
+	if timeSaved.IsZero() {
+		return 0
+	}
+	if timeSaved.After(initTime) {
+		return now.Sub(timeSaved)
+	}
+	return now.Sub(initTime)
 }
 
 // Simplified principal limited to properties needed by caching
