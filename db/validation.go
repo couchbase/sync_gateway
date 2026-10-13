@@ -67,6 +67,20 @@ func validateImportBody(body Body) error {
 	return nil
 }
 
+// hasRemovedProperty returns true if the body has a non-null top-level _removed property.
+func hasRemovedProperty(rawBody []byte) (bool, error) {
+	if !bytes.Contains(rawBody, []byte(`"`+BodyRemoved+`"`)) {
+		return false, nil
+	}
+	var body struct {
+		Removed any `json:"_removed"`
+	}
+	if err := base.JSONUnmarshal(rawBody, &body); err != nil {
+		return false, err
+	}
+	return body.Removed != nil, nil
+}
+
 // validateBlipBody validates incoming blip rev bodies
 // Takes a rawBody to avoid an unnecessary call to doc.BodyBytes()
 func validateBlipBody(ctx context.Context, rawBody []byte, doc *Document) error {
