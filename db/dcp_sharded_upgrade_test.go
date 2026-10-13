@@ -13,9 +13,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
@@ -236,35 +238,27 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	collection := GetSingleDatabaseCollection(t, db)
 
 	collectionCtx := collection.AddCollectionContext(ctx)
-	err, _ = base.RetryLoop(ctx, "wait for non-existent node to be removed", func() (shouldRetry bool, err error, value any) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
-		if err != nil {
-			return false, err, nil
+		if !assert.NoError(c, err) {
+			return
 		}
 		for uuid := range nodes.NodeDefs {
-			if uuid != db.UUID {
-				return true, nil, nil
-			}
+			assert.Equal(c, db.UUID, uuid)
 		}
-		return false, nil, nil
-	}, base.CreateSleeperFunc(100, 100))
-	require.NoError(t, err)
+	}, 10*time.Second, 100*time.Millisecond, "wait for non-existent node to be removed")
 
-	err, _ = base.RetryLoop(ctx, "wait for all pindexes to be reassigned", func() (shouldRetry bool, err error, value any) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		pIndexes, _, err := cbgt.CfgGetPlanPIndexes(db.CfgSG)
-		if err != nil {
-			return false, nil, err
+		if !assert.NoError(c, err) {
+			return
 		}
 		for _, plan := range pIndexes.PlanPIndexes {
 			for nodeUUID := range plan.Nodes {
-				if nodeUUID != db.UUID {
-					return true, nil, nil
-				}
+				assert.Equal(c, db.UUID, nodeUUID)
 			}
 		}
-		return false, nil, nil
-	}, base.CreateSleeperFunc(100, 100))
-	require.NoError(t, err)
+	}, 10*time.Second, 100*time.Millisecond, "wait for all pindexes to be reassigned")
 
 	// assert that the doc we created before starting this node gets imported once all the pindexes are reassigned
 	db.WaitForPendingChanges(t)
