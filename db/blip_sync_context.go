@@ -1016,7 +1016,7 @@ func (bsc *BlipSyncContext) getKnownRevs(ctx context.Context, docID string, know
 
 	// If we are replicating in isgr mode we only expect maximum 2 entries for the known revs array.
 	if bsc.clientType == BLIPClientTypeSGR2 && cvInKnownRevs && len(knownRevsArray) > 2 {
-		// invalid format received, log but do not error the change
+		// Assert in dev mode; in production, log the invalid format and continue processing the change.
 		base.AssertfCtx(ctx, "Invalid known rev format for doc: %s, too many entries in array %v", base.UD(docID), knownRevsArray)
 	}
 

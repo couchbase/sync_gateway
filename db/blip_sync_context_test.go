@@ -193,7 +193,7 @@ func TestKnownRevs(t *testing.T) {
 			if tc.expectAssertion {
 				// this subtest triggers an assertion on purpose, so it needs to start clean and not leave the failure for the test harness
 				if len(base.AssertionFailures()) > 0 {
-					t.Skip("Skipping test - we have other assertion failures present and we can't reliably run this test this without losing those")
+					t.Skip("Skipping test - we have other assertion failures present and we can't reliably run this test without losing those")
 				}
 				defer base.ClearAssertionFailures()
 			}
