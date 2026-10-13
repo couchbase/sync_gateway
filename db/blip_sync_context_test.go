@@ -105,12 +105,14 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 
 func TestKnownRevs(t *testing.T) {
 	testCases := []struct {
-		name           string
-		knownRevs      []any
-		expectedKnown  []string
-		isLegacyRev    bool
-		legacyProtocol bool
-		errorCase      bool
+		name            string
+		knownRevs       []any
+		expectedKnown   []string
+		isLegacyRev     bool
+		legacyProtocol  bool
+		clientType      BLIPSyncContextClientType
+		expectAssertion bool
+		errorCase       bool
 	}{
 		{
 			name:          "no known revs",
@@ -141,33 +143,78 @@ func TestKnownRevs(t *testing.T) {
 			isLegacyRev:   true,
 		},
 		{
-			name:      "invalid known revs",
-			knownRevs: []any{"123@src1", "1-abc", "123@src2"},
+			name:      "non string known rev",
+			knownRevs: []any{"123@src", 1},
 			errorCase: true,
+		},
+		{
+			// CBL clients with multiple remotes can send more than one cv, this is tolerated
+			name:          "cbl: more than two entries with cv",
+			clientType:    BLIPClientTypeCBL2,
+			knownRevs:     []any{"123@src1", "123@src2", "123@src3"},
+			expectedKnown: []string{"123@src1", "123@src2", "123@src3"},
+		},
+		{
+			// ISGR never sends more than cv + current revtree ID in version vector mode, so this would indicate a bug
+			name:            "isgr: more than two entries with cv",
+			clientType:      BLIPClientTypeSGR2,
+			knownRevs:       []any{"123@src1", "1-abc", "123@src2"},
+			expectedKnown:   []string{"123@src1", "1-abc", "123@src2"},
+			expectAssertion: true,
+		},
+		{
+			// ISGR in revtree mode can return a known rev for each conflicting leaf
+			name:           "isgr < 4 subprotocol: more than two revtree entries",
+			clientType:     BLIPClientTypeSGR2,
+			legacyProtocol: true,
+			knownRevs:      []any{"3-abc", "3-def", "2-ghi"},
+			expectedKnown:  []string{"3-abc", "3-def", "2-ghi"},
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := t.Context()
-			var bsc *BlipSyncContext
+			bsc := &BlipSyncContext{
+				activeCBMobileSubprotocol: CBMobileReplicationV4,
+				clientType:                tc.clientType,
+			}
 			if tc.legacyProtocol {
-				bsc = &BlipSyncContext{
-					activeCBMobileSubprotocol: CBMobileReplicationV3,
-				}
-			} else {
-				bsc = &BlipSyncContext{
-					activeCBMobileSubprotocol: CBMobileReplicationV4,
-				}
+				bsc.activeCBMobileSubprotocol = CBMobileReplicationV3
 			}
 
-			_, changeLegacy, knownRevisions, err := bsc.getKnownRevs(testCtx, "someID", tc.knownRevs)
-			if !tc.errorCase {
+			if tc.errorCase {
+				_, _, _, err := bsc.getKnownRevs(testCtx, "someID", tc.knownRevs)
+				require.Error(t, err)
+				return
+			}
+
+			assertionFailCount := base.SyncGatewayStats.GlobalStats.ResourceUtilization.AssertionFailCount
+			startAssertionFailCount := assertionFailCount.Value()
+			if tc.expectAssertion {
+				// this subtest triggers an assertion on purpose, so it needs to start clean and not leave the failure for the test harness
+				if len(base.AssertionFailures()) > 0 {
+					t.Skip("Skipping test - we have other assertion failures present and we can't reliably run this test this without losing those")
+				}
+				defer base.ClearAssertionFailures()
+			}
+
+			if tc.expectAssertion && base.IsDevMode() {
+				// AssertfCtx panics in dev mode, so the return values can't be checked
+				require.Panics(t, func() {
+					_, _, _, _ = bsc.getKnownRevs(testCtx, "someID", tc.knownRevs)
+				})
+			} else {
+				_, changeLegacy, knownRevisions, err := bsc.getKnownRevs(testCtx, "someID", tc.knownRevs)
 				require.NoError(t, err)
 				assert.Equal(t, tc.isLegacyRev, changeLegacy)
 				base.RequireKeysEqual(t, tc.expectedKnown, knownRevisions)
-			} else {
-				require.Error(t, err)
 			}
+
+			expectedAssertionFailCount := startAssertionFailCount
+			if tc.expectAssertion {
+				expectedAssertionFailCount++
+			}
+			assert.Equal(t, expectedAssertionFailCount, assertionFailCount.Value())
 		})
 	}
 }
