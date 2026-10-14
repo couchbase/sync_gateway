@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
@@ -1344,7 +1345,7 @@ func TestDeltaReplicationWithBypassRevCacheAndInflightRevChanged(t *testing.T) {
 	btcRunner.Run(func(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				docID := SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 				rt := NewRestTester(t,
 					rtConfig)
 				defer rt.Close()
@@ -1438,7 +1439,7 @@ func TestDeltaReplicationWithBypassRevCacheSendDeltaWhenInFlightRevChanged(t *te
 	btcRunner.SkipSubtest[VersionVectorSubtestName] = true // only for rev tree clients will we always load backup rev isf one is available
 	btcRunner.Run(func(t *testing.T) {
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		rt := NewRestTester(t,
 			rtConfig)
 		defer rt.Close()

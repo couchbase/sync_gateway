@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
@@ -61,7 +62,7 @@ func TestActiveReplicatorHLVConflictRemoteAndLocalWins(t *testing.T) {
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, testCase.conflictResType, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -208,7 +209,7 @@ func TestActiveReplicatorLWWDefaultResolver(t *testing.T) {
 		resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
 		require.NoError(t, err)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -463,7 +464,7 @@ func TestActiveReplicatorLocalWinsCases(t *testing.T) {
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverLocalWins, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -763,7 +764,7 @@ func TestActiveReplicatorRemoteWinsCases(t *testing.T) {
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverRemoteWins, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -995,7 +996,7 @@ func TestActiveReplicatorHLVConflictNoCommonMVPV(t *testing.T) {
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, testCase.conflictResolverType, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -1190,7 +1191,7 @@ func TestActiveReplicatorAttachmentHandling(t *testing.T) {
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, testCase.conflictResolverType, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -1337,7 +1338,7 @@ func TestActiveReplicatorHLVConflictWinnerIsTombstone(t *testing.T) {
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, testCase.conflictResolverType, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -1492,7 +1493,7 @@ func TestActiveReplicatorInvalidCustomResolver(t *testing.T) {
 		customConflictResolver, err := db.NewCustomConflictResolver(ctx1, resolver, rt1.GetDatabase().Options.JavascriptTimeout)
 		require.NoError(t, err)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -1642,7 +1643,7 @@ func TestActiveReplicatorHLVConflictCustom(t *testing.T) {
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, testCase.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePushAndPull,
@@ -1762,7 +1763,7 @@ func TestActiveReplicatorHLVConflictWhenNonWinningRevHasMoreRevisions(t *testing
 				resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, testCase.conflictResolverType, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   db.ActiveReplicatorTypePull,
@@ -1897,7 +1898,7 @@ func TestActiveReplicatorHLVConflictLocalWinsWhenNonWinningRevHasLessRevisionsLo
 		resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverLocalWins, "", rt1.GetDatabase().Options.JavascriptTimeout)
 		require.NoError(t, err)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -2007,7 +2008,7 @@ func TestActiveReplicatorHLVConflictWithBothLocalAndRemoteTombstones(t *testing.
 		resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
 		require.NoError(t, err)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -2079,7 +2080,7 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
 
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		rt2Version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 		rt2.WaitForPendingChanges()
 		rt1Version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
@@ -2091,7 +2092,7 @@ func TestActiveReplicatorConflictRemoveCVFromCache(t *testing.T) {
 		// add active rt to simulate two nodes on active cluster
 		active := peers.AddActiveRT(t)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePushAndPull,
@@ -2149,7 +2150,7 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		rt1Version := activeRT.PutDoc(docID, `{"source":"activeRT","channels":["alice"]}`)
 		// delete local version
 		rt1Version = activeRT.DeleteDoc(docID, rt1Version)
@@ -2159,7 +2160,7 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneLocal(t *testing.T) {
 		rt2Version = passiveRT.UpdateDoc(docID, rt2Version, `{"source":"passiveRT-updated","channels":["alice"]}`)
 		passiveRT.WaitForPendingChanges()
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -2200,7 +2201,7 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 	sgrRunner.RunSubprotocolV4(func(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		activeRT, passiveRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		rt2Version := passiveRT.PutDoc(docID, `{"source":"passiveRT","channels":["alice"]}`)
 		rt2Version = passiveRT.DeleteDoc(docID, rt2Version)
@@ -2212,7 +2213,7 @@ func TestActiveReplicatorV4DefaultResolverWithTombstoneRemote(t *testing.T) {
 		rt1Version = activeRT.UpdateDoc(docID, rt1Version, `{"source":"activeRT-updated","channels":["alice"]}`)
 		activeRT.WaitForPendingChanges()
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -2388,7 +2389,7 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 			remoteURL, err := url.Parse(passiveDBURL)
 			require.NoError(t, err)
 			activeCtx := activeRT.Context()
-			docID := rest.SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 
 			plantUpgradeScenario(t, activeRT, passiveRT, docID)
 
@@ -2407,7 +2408,7 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 			passiveRT.WaitForPendingChanges()
 
 			pushOnly, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
-				ID:                     rest.SafeDocumentName(t, t.Name()+"push"),
+				ID:                     sgtest.SafeDocumentName(t, t.Name()+"push"),
 				Direction:              db.ActiveReplicatorTypePush,
 				RemoteDBURL:            remoteURL,
 				ActiveDB:               &db.Database{DatabaseContext: activeRT.GetDatabase()},
@@ -2445,8 +2446,8 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 			require.True(t, strings.HasPrefix(passiveUpdateRev, "11-"), "got %q", passiveUpdateRev)
 			passiveRT.WaitForPendingChanges()
 
-			activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
-			activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
+			activeRT.CreateReplication(sgtest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+			activeRT.WaitForReplicationStatus(sgtest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
 
 			// passive version wins
 			requireRepairConvergedOnPeerBranch(t, activeRT, passiveRT, docID, passiveUpdateRev)
@@ -2461,7 +2462,7 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 		sgrRunner.RunSubprotocolV3(func(t *testing.T) {
 			peers := sgrRunner.SetupSGRPeers(t)
 			activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
-			docID := rest.SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 
 			plantUpgradeScenario(t, activeRT, passiveRT, docID)
 
@@ -2475,8 +2476,8 @@ func TestISGRRepairCausesRevTreeConflictOnPeer(t *testing.T) {
 			passiveRT.WaitForPendingChanges()
 			require.Equal(t, int64(0), activeRT.GetDatabase().DbStats.Database().InvalidRevTreeCount.Value())
 
-			activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
-			activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
+			activeRT.CreateReplication(sgtest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, db.ConflictResolverDefault, "")
+			activeRT.WaitForReplicationStatus(sgtest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
 
 			// passive version wins
 			requireRepairConvergedOnPeerBranch(t, activeRT, passiveRT, docID, passiveUpdateRev)

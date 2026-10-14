@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
@@ -34,12 +35,12 @@ func TestActiveReplicatorPushPullLegacyRev(t *testing.T) {
 		})
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		docIDRT2 := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		docIDRT2 := sgtest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		rt2InitDoc := rt2.CreateDocNoHLV(docIDRT2, db.Body{"source": "rt2", "channels": []string{username}})
 		legacyRevRt2 := rt2InitDoc.GetRevTreeID()
 		ctx1 := rt1.Context()
 
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		docIDRT1 := id + "rt1doc1"
 		rt1InitDoc := rt1.CreateDocNoHLV(docIDRT1, db.Body{"source": "rt1", "channels": []string{username}})
 		legacyRevRt1 := rt1InitDoc.GetRevTreeID()
@@ -119,7 +120,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
-				docID := rest.SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 
 				var legacyRevRT1, legacyRevRT2, initLegacyRevRT1, initLegacyRevRT2 string
 
@@ -151,7 +152,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnPeer(t *testing.T) {
 					legacyRevRT2 = rt2DocInit.GetRevTreeID()
 				}
 
-				id := rest.SafeDocumentName(t, t.Name())
+				id := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          id,
 					Direction:   db.ActiveReplicatorTypePushAndPull,
@@ -227,7 +228,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedDocOnBothSidesAlreadyKnownRev(t
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		// create doc on rt2 with two revisions
 		bodyRT2 := db.Body{"channels": []string{username}}
@@ -344,7 +345,7 @@ func TestActiveReplicatorBiDirectionalPreUpgradedRevInHistory(t *testing.T) {
 				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
-				docID := rest.SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 
 				var initLegacyRevRT2, legacyRevRT2, upgradedRevID, legacyRevRT1, initLegacyRevRT1 string
 				var upgradedDocVersion rest.DocVersion
@@ -485,8 +486,8 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
-		docIDToPull := rest.SafeDocumentName(t, t.Name()+"_pull")
+		docIDToPush := sgtest.SafeDocumentName(t, t.Name()+"_push")
+		docIDToPull := sgtest.SafeDocumentName(t, t.Name()+"_pull")
 
 		// create doc on rt1 with one revision
 		bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
@@ -498,7 +499,7 @@ func TestActiveReplicatorPushPullNewDocLegacyRevAndAllowUpdateAfter(t *testing.T
 		rt2InitDoc := rt2.CreateDocNoHLV(docIDToPull, bodyRT2)
 		legacyRevRt2 := rt2InitDoc.GetRevTreeID()
 
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -581,7 +582,7 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		// create doc on rt1 with two revisions
 		bodyRT1 := db.Body{"channels": []string{username}}
@@ -600,7 +601,7 @@ func TestActiveReplicatorPushConflictingPreUpgradedVersion(t *testing.T) {
 		legacyRevRT2 := rt2InitDoc.GetRevTreeID()
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -691,7 +692,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
-				docID := rest.SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 
 				var legacyRevRT1, initLegacyRevRT1, legacyRevRT2, initLegacyRevRT2 string
 				if tc.activeWins {
@@ -734,7 +735,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionEachSide(t *testing.T) {
 				resolverFuncRevID, err := db.NewConflictResolverFunc(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				id := rest.SafeDocumentName(t, t.Name())
+				id := sgtest.SafeDocumentName(t, t.Name())
 				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -863,7 +864,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 				ctx1 := rt1.Context()
 
-				docID := rest.SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 
 				var legacyRevRT1, initLegacyRevRT1, legacyRevRT2, initLegacyRevRT2, expectedBody string
 				var upgradedDocVersion rest.DocVersion
@@ -909,7 +910,7 @@ func TestActiveReplicatorConflictPreUpgradedVersionOneSide(t *testing.T) {
 				resolverFuncRevID, err := db.NewConflictResolverFunc(ctx1, db.ConflictResolverDefault, "", rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				id := rest.SafeDocumentName(t, t.Name())
+				id := sgtest.SafeDocumentName(t, t.Name())
 				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -1031,7 +1032,7 @@ func TestActiveReplicatorDeltaSyncWhenBothSidesLegacy(t *testing.T) {
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
+		docIDToPush := sgtest.SafeDocumentName(t, t.Name()+"_push")
 
 		// create doc on rt1 with one revision
 		bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}
@@ -1101,7 +1102,7 @@ func TestDeltaSyncWhenOneSideHasEncodedCV(t *testing.T) {
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docIDToPush := rest.SafeDocumentName(t, t.Name()+"_push")
+		docIDToPush := sgtest.SafeDocumentName(t, t.Name()+"_push")
 
 		// create doc on rt1 with one revision
 		bodyRT1 := db.Body{"channels": []string{username}, "source": "rt1"}

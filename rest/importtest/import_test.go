@@ -2799,7 +2799,7 @@ func TestImportSameDbNameOnTwoBuckets(t *testing.T) {
 	wg.Wait()
 	require.Equal(t, rts[0].GetDatabase().Name, rts[1].GetDatabase().Name)
 
-	docID := rest.SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	for _, rt := range rts {
 		_, err := rt.GetSingleDataStore().AddRaw(ctx, docID, 0, []byte(`{"foo":"bar"}`))
 		require.NoError(t, err)

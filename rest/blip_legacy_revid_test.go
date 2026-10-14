@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestLegacyProposeChanges:
@@ -319,7 +320,7 @@ func TestSendUnsolicitedRevWithRTEDerivedFromLocalRevID(t *testing.T) {
 	defer bt.Close()
 	rt := bt.restTester
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	doc := rt.CreateDocNoHLV(docID, db.Body{"key": "val"})
 	sgwVersion := doc.ExtractDocVersion()
 
@@ -691,7 +692,7 @@ func TestDeltaSyncSendRevTreeHistoryWithClientHavingLegacyRev(t *testing.T) {
 		})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			ClientDeltas: true,
@@ -768,7 +769,7 @@ func TestDeltaSyncSendRevTreeHistoryWithHLVHistoryClientHavingLegacyRev(t *testi
 		})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			ClientDeltas: true,
@@ -856,7 +857,7 @@ func TestBothSidesLegacyRevDeltaSync(t *testing.T) {
 		})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
 			ClientDeltas: true,
@@ -1267,7 +1268,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			btcRunner.StartPush(client.id)
 			defer btcRunner.StopPush(client.id)
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			cblDocVersion1 := btcRunner.AddRevTreeRev(client.id, docID, "1-abc", EmptyDocVersion(), []byte(`{"action": "create"}`))
 			rt.WaitForVersion(docID, cblDocVersion1)
 
@@ -1281,7 +1282,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			defer btcRunner.UnsubPullChanges(client.id)
 			defer btcRunner.StopPush(client.id)
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 			revTreeID1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
 			sgDocVersion1 := DocVersion{RevTreeID: revTreeID1}
@@ -1297,7 +1298,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			rt.WaitForVersion(docID, sgVersion3)
 		})
 		t.Run("pull SG legacy rev 2-bcd, both sides have 1-abc", func(t *testing.T) {
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 			sgVersion1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
 			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, sgVersion1, EmptyDocVersion(), []byte(`{"action": "create"}`))
@@ -1308,7 +1309,7 @@ func TestLegacyRevBlipTesterClient(t *testing.T) {
 			btcRunner.WaitForVersion(client.id, docID, DocVersion{RevTreeID: sgVersion2})
 		})
 		t.Run("push CBL legacy rev 2-bcd, both sides have 1-abc", func(t *testing.T) {
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			dbc, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 			sgVersion1, _ := dbc.CreateDocNoHLV(t, ctx, docID, db.Body{"action": "create"})
 			cblVersion1 := btcRunner.AddRevTreeRev(client.id, docID, sgVersion1, EmptyDocVersion(), []byte(`{"action": "create"}`))
@@ -1336,7 +1337,7 @@ func TestCBLPushEncodedCVDerivedFromSGWLocalRevID(t *testing.T) {
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		// add legacy rev on SGW
 		doc := rt.CreateDocNoHLV(docID, db.Body{"key": "val"})
@@ -1390,7 +1391,7 @@ func TestLegacyHistoryPushCreatesDuplicateGenerationRevs(t *testing.T) {
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		// SGW holds a pre-upgrade document - rev tree only, no HLV - and the client holds the same
 		// pre-upgrade revision.
@@ -1445,7 +1446,7 @@ func TestInvalidRevTreePullRepairsAndRedelivers(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 		// 3 revisions with a leaf at generation 2: encodeRevisions produces a _revisions list that
@@ -1515,7 +1516,7 @@ func TestInvalidRevTreeQuietCaseRepairedBeforeSend(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 		// gen 10 leaf on a 3 revision branch: 10 >= 3, so splitRevisionList accepts the encoding and
@@ -1583,7 +1584,7 @@ func TestInvalidRevTreePullRenamedRevReplacementOrNoRev(t *testing.T) {
 				rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 				defer rt.Close()
 
-				docID := SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 				collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 				// 2-def sits at the same generation as its parent, so the repair renumbers it to 3-def

@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // newTestPullMessage builds an incoming message in the shape Sync Gateway sends it, so a test can drive
@@ -62,7 +63,7 @@ func TestBlipTesterClientPullHandling(t *testing.T) {
 // placeholder carries the cv but no body, so the rev that follows is the first copy of the document the
 // client holds, and must be stored rather than answered as a revision the client already has.
 func requireRevAfterNoRevIsStored(t *testing.T, ctx context.Context, client *BlipTesterClient, btcc *BlipTesterCollectionClient) {
-	docID := SafeDocumentName(t, t.Name()) + "_revAfterNoRev"
+	docID := sgtest.SafeDocumentName(t, t.Name()) + "_revAfterNoRev"
 	hlv := db.NewHybridLogicalVector()
 	require.NoError(t, hlv.AddVersion(db.Version{SourceID: "sourceA", Value: 100}))
 	version := DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
@@ -97,7 +98,7 @@ func requireDuplicateRevIsNoop(t *testing.T, ctx context.Context, client *BlipTe
 		return btcc._seqLast
 	}
 
-	docID := SafeDocumentName(t, t.Name()) + "_duplicateRev"
+	docID := sgtest.SafeDocumentName(t, t.Name()) + "_duplicateRev"
 	hlv := db.NewHybridLogicalVector()
 	require.NoError(t, hlv.AddVersion(db.Version{SourceID: "sourceB", Value: 200}))
 	version := DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
@@ -147,7 +148,7 @@ func requireReplacedRevIsStored(t *testing.T, ctx context.Context, client *BlipT
 
 	handleRev := client.pullReplication.handleRev(ctx, client)
 	for _, deleted := range []bool{false, true} {
-		docID := fmt.Sprintf("%s_replacedRev_deleted_%t", SafeDocumentName(t, t.Name()), deleted)
+		docID := fmt.Sprintf("%s_replacedRev_deleted_%t", sgtest.SafeDocumentName(t, t.Name()), deleted)
 		properties := blip.Properties{
 			db.RevMessageID:          docID,
 			db.RevMessageRev:         sentRev,

@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestDeltaCacheStats verifies that DeltaCacheNumItems, DeltaCacheHit and DeltaCacheMiss
@@ -44,7 +45,7 @@ func TestDeltaCacheStats(t *testing.T) {
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	rev1ID, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)
 	rev1CV := doc1.HLV.GetCurrentVersionString()
@@ -97,7 +98,7 @@ func TestDeltaCacheStatsWithBypassRevisionCache(t *testing.T) {
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	rev1ID, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)
 	rev1CV := doc1.HLV.GetCurrentVersionString()
@@ -148,7 +149,7 @@ func TestNumberBasedEvictionForDeltaCache(t *testing.T) {
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	_, doc, err := collection.Put(ctx, docID, Body{"test": "data"})
 	require.NoError(t, err)
 
@@ -201,7 +202,7 @@ func TestUpdateDeltaWhenNoDeltaCacheInit(t *testing.T) {
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	rev1ID, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)
 	rev1CV := doc1.HLV.GetCurrentVersionString()
@@ -292,7 +293,7 @@ func TestGetDeltaStaleChannelAfterUserXattrUpdate(t *testing.T) {
 	}
 
 	t.Run("CV", func(t *testing.T) {
-		docID := SafeDocumentName(t, t.Name()+"CV")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"CV")
 		rev1ID, doc1, err := collection.Put(ctx, docID, Body{"channels": []string{channelNew}, "foo": "bar"})
 		require.NoError(t, err)
 		rev1CV := doc1.HLV.GetCurrentVersionString()
@@ -305,7 +306,7 @@ func TestGetDeltaStaleChannelAfterUserXattrUpdate(t *testing.T) {
 	})
 
 	t.Run("RevID", func(t *testing.T) {
-		docID := SafeDocumentName(t, t.Name()+"revID")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"revID")
 		rev1ID, _, err := collection.Put(ctx, docID, Body{"channels": []string{channelNew}, "foo": "bar"})
 		require.NoError(t, err)
 
@@ -341,7 +342,7 @@ func TestGetDeltaThreeRevisions(t *testing.T) {
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	rev1ID, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)
 	rev1CV := doc1.HLV.GetCurrentVersionString()
@@ -425,7 +426,7 @@ func TestAccessCheckOnNonCurrentRevision(t *testing.T) {
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	rev1ID, doc1, err := collection.Put(ctx, docID, Body{"channels": "A"})
 	require.NoError(t, err)
 	rev1CV := doc1.HLV.GetCurrentVersionString()

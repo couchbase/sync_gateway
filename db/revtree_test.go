@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // testmap is a revtree with a single branch
@@ -2574,7 +2575,7 @@ func TestInvalidRevTreeRepairMou(t *testing.T) {
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 			invalidRevTreeCount := dbCtx.DbStats.Database().InvalidRevTreeCount
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			bodyCas, bodyRevSeqNo := tc.setup(t, ctx, collection, docID)
 			require.NotZero(t, bodyRevSeqNo)
 			dbCtx.FlushRevisionCacheForTest()

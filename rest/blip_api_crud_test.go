@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -1206,7 +1207,7 @@ func TestBlipRevsThrottleUnblockedOnClose(t *testing.T) {
 		// revs that can't get a slot, and so can only be unblocked by the connection closing
 		numThrottledRevs = 3
 	)
-	docIDPrefix := SafeDocumentName(t, t.Name()) + "-"
+	docIDPrefix := sgtest.SafeDocumentName(t, t.Name()) + "-"
 
 	// Hold every rev that has a throttle slot inside its write until the end of the test, so that a
 	// slot is never handed back to the revs that are waiting for one.
@@ -2847,7 +2848,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 
-		replicationID := SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:                     replicationID,
@@ -3689,7 +3690,7 @@ func TestManyChannelsRemovedOnDocUpdate(t *testing.T) {
 		defer rt.Close()
 
 		const alice = "alice"
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		rt.CreateUser(alice, []string{"*"})
 		sgVersion := rt.CreateDocNoHLV(docID, db.Body{"channels": []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"}}).ExtractDocVersion()
 		rt.WaitForPendingChanges()
@@ -3761,7 +3762,7 @@ func TestPushHLVOntoLegacyRev(t *testing.T) {
 			})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		const alice = "alice"
 		rt.CreateUser(alice, []string{"ABC"})
@@ -3872,7 +3873,7 @@ func TestBlipNoRevOnCorruptHistory(t *testing.T) {
 			"seq": seq,
 		}))
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		mutateInOptions := db.DefaultMutateInOpts()
 		_, err = rt.GetSingleDataStore().WriteWithXattrs(
 			ctx,

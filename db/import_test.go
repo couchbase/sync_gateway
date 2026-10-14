@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -113,7 +114,7 @@ func TestFeedImport(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			db.CachedCCVEnabled.Store(testCase.eccv)
 			for vBucket := range db.numVBuckets {
 				db.CachedCCVStartingCas.Store(base.VBNo(vBucket), testCase.startingCAS)
@@ -326,7 +327,7 @@ func TestOnDemandImport(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			db.CachedCCVEnabled.Store(testCase.eccv)
 			for vBucket := range db.numVBuckets {
 				db.CachedCCVStartingCas.Store(base.VBNo(vBucket), testCase.startingCAS)
@@ -1458,7 +1459,7 @@ func TestImportWithSyncCVAndNoVV(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 
 	_, doc, err := collection.Put(ctx, docID, Body{"foo": "baz"})
 	require.NoError(t, err)
@@ -2034,7 +2035,7 @@ func TestOnDemandImportMouRetargetedByConcurrentWrite(t *testing.T) {
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	_, _, err := collection.Put(ctx, docID, Body{"value": 1234})
 	require.NoError(t, err)
 	_, _, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, []string{base.SyncXattrName})
@@ -2122,7 +2123,7 @@ func TestMouChainEndedByBodyWrite(t *testing.T) {
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			_, _, err := collection.Put(ctx, docID, Body{"value": 1234})
 			require.NoError(t, err)
 
@@ -2160,7 +2161,7 @@ func TestUserXattrImportMou(t *testing.T) {
 	defer dbc.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	_, doc, err := collection.Put(ctx, docID, Body{"value": 1234})
 	require.NoError(t, err)
 	revBeforeImport := doc.GetRevTreeID()
@@ -2228,7 +2229,7 @@ func TestDuplicateImportLeavesMouAlone(t *testing.T) {
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			_, doc, err := collection.Put(ctx, docID, Body{"value": 1234})
 			require.NoError(t, err)
 
@@ -2404,7 +2405,7 @@ func TestWriteWithPreImportExistingDoc(t *testing.T) {
 				defer dbCtx.Close(ctx)
 				collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
-				docID := SafeDocumentName(t, t.Name())
+				docID := sgtest.SafeDocumentName(t, t.Name())
 				prior.setup(t, ctx, collection, docID)
 
 				// the read that imports, and hands back the snapshot it read before importing
@@ -2449,7 +2450,7 @@ func TestOnDemandImportOfSupersededUserXattrWrite(t *testing.T) {
 	defer dbCtx.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbCtx)
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	rev, doc, err := collection.Put(ctx, docID, Body{"foo": "sync gateway"})
 	require.NoError(t, err)
 	_, err = collection.dataStore.UpdateXattrs(ctx, docID, 0, doc.Cas, map[string][]byte{userXattrKey: []byte(`{"channels": ["a"]}`)}, nil)
