@@ -1099,12 +1099,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 	stats.bytes.Add(int64(len(bodyBytes)))
 
-	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) {
-		var body Body
-		if err := body.Unmarshal(bodyBytes); err != nil {
+	if bh.BlipSyncContext.purgeOnRemoval {
+		removed, err := hasRemovedProperty(bodyBytes)
+		if err != nil {
 			return err
 		}
-		if removed, ok := body[BodyRemoved].(bool); ok && removed {
+		if removed {
 			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), rev)
 			if err := bh.collection.Purge(bh.loggingCtx, docID, true); err != nil {
 				return err
@@ -1160,6 +1160,16 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
+	// A deleted rev has no body. A removal body is kept, because its _removed property must still be validated.
+	if revMessage.Deleted() {
+		removed, err := hasRemovedProperty(bodyBytes)
+		if err != nil {
+			return err
+		}
+		if !removed {
+			bodyBytes = []byte(base.EmptyDocument)
+		}
+	}
 	newDoc.UpdateBodyBytes(bodyBytes)
 
 	injectedAttachmentsForDelta := false
