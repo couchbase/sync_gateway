@@ -428,8 +428,10 @@ def test_split_upload_reassembles(
 
     paths = [f"/{ZIP_NAME}.{i:03d}" for i in range(num_parts)]
     uploads = record_uploads(httpserver, paths)
-    with unittest.mock.patch("tasks.MAX_UPLOAD_PART_SIZE", part_size):
-        assert tasks.do_upload(zip_path, httpserver.url_for(f"/{ZIP_NAME}"), "") == 0
+    assert (
+        tasks.do_upload(zip_path, httpserver.url_for(f"/{ZIP_NAME}"), "", part_size)
+        == 0
+    )
     httpserver.check()
 
     assert list(uploads) == [paths[i] for i in tasks.upload_part_order(num_parts)]
@@ -469,8 +471,7 @@ def test_split_upload_sizes(
 
     paths = [f"/{ZIP_NAME}{suffix}" for suffix in expected_suffixes]
     uploads = record_uploads(httpserver, paths)
-    with unittest.mock.patch("tasks.MAX_UPLOAD_PART_SIZE", 100):
-        assert tasks.do_upload(p, httpserver.url_for(f"/{ZIP_NAME}"), "") == 0
+    assert tasks.do_upload(p, httpserver.url_for(f"/{ZIP_NAME}"), "", 100) == 0
     httpserver.check()
 
     assert list(uploads) == paths
@@ -492,8 +493,7 @@ def test_split_upload_part_failure(
     httpserver.expect_ordered_request(f"/{ZIP_NAME}.000").respond_with_data(
         "bad part", status=500
     )
-    with unittest.mock.patch("tasks.MAX_UPLOAD_PART_SIZE", 100):
-        assert tasks.do_upload(p, httpserver.url_for(f"/{ZIP_NAME}"), "") == 1
+    assert tasks.do_upload(p, httpserver.url_for(f"/{ZIP_NAME}"), "", 100) == 1
     httpserver.check()
     assert len(httpserver.log) == 2
     err = capsys.readouterr().err
@@ -503,10 +503,13 @@ def test_split_upload_part_failure(
 
 
 def test_split_upload_url_with_query(
-    tmp_path: pathlib.Path, httpserver: HTTPServer
+    tmp_path: pathlib.Path,
+    httpserver: HTTPServer,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """
-    Make sure that part suffixes go on the URL path and the query string is kept for every part.
+    Make sure that part suffixes go on the URL path, the query string is kept for every part and the query string is
+    not logged.
     """
     p = tmp_path / ZIP_NAME
     p.write_bytes(os.urandom(150))
@@ -516,9 +519,49 @@ def test_split_upload_url_with_query(
             f"/{ZIP_NAME}.{i:03d}", method="PUT", query_string="sig=abc"
         ).respond_with_data("")
     url = httpserver.url_for(f"/{ZIP_NAME}") + "?sig=abc"
-    with unittest.mock.patch("tasks.MAX_UPLOAD_PART_SIZE", 100):
-        assert tasks.do_upload(p, url, "") == 0
+    assert tasks.do_upload(p, url, "", 100) == 0
     httpserver.check()
+    err = capsys.readouterr().err
+    assert "Uploading part 2 of 2" in err
+    assert "sig=abc" not in err
+
+
+def test_upload_failure_redacts_query(
+    tmp_path: pathlib.Path,
+    httpserver: HTTPServer,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Make sure that the error for a failed upload does not show the query string.
+    """
+    p = tmp_path / ZIP_NAME
+    p.write_bytes(b"data")
+
+    httpserver.expect_request(f"/{ZIP_NAME}", method="PUT").respond_with_data(
+        "denied", status=403
+    )
+    url = httpserver.url_for(f"/{ZIP_NAME}") + "?sig=abc"
+    assert tasks.do_upload(p, url, "") == 1
+    httpserver.check()
+    err = capsys.readouterr().err
+    assert f"{httpserver.url_for(f'/{ZIP_NAME}')}?<redacted>" in err
+    assert "status code: 403, body: denied" in err
+    assert "sig=abc" not in err
+
+
+def test_upload_no_split(tmp_path: pathlib.Path, httpserver: HTTPServer) -> None:
+    """
+    Make sure that a part_size of None uploads a file in one request with no suffix.
+    """
+    p = tmp_path / ZIP_NAME
+    body = os.urandom(300)
+    p.write_bytes(body)
+
+    path = f"/{ZIP_NAME}"
+    uploads = record_uploads(httpserver, [path])
+    assert tasks.do_upload(p, httpserver.url_for(path), "", None) == 0
+    httpserver.check()
+    assert uploads == {path: body}
 
 
 @pytest.mark.parametrize(
@@ -547,3 +590,118 @@ def test_main_just_upload_into_exits(
     ):
         sgcollect.main()
     runner.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "args, part_size",
+    [
+        pytest.param([], tasks.MAX_UPLOAD_PART_SIZE, id="default"),
+        pytest.param(["--upload-part-size", "1000"], 1000, id="part size"),
+        pytest.param(["--no-upload-split"], None, id="no split"),
+    ],
+)
+def test_main_upload_part_size(
+    tmp_path: pathlib.Path, args: list[str], part_size: int | None
+) -> None:
+    """
+    Make sure that the upload options reach do_upload, and that a filename without .zip uploads the .zip file.
+    """
+    p = tmp_path / ZIP_NAME
+    p.write_bytes(b"data")
+    url = "https://example.com/foo.zip"
+    with (
+        unittest.mock.patch("sgcollect.do_upload", return_value=0) as do_upload,
+        unittest.mock.patch(
+            "sys.argv",
+            ["sg_collect", "--just-upload-into", url, *args, str(tmp_path / "foo")],
+        ),
+        pytest.raises(SystemExit, check=lambda e: e.code == 0),
+    ):
+        sgcollect.main()
+    do_upload.assert_called_once_with(str(p), url, "", part_size)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        pytest.param(["--upload-part-size", "0"], id="zero"),
+        pytest.param(["--upload-part-size", "-1"], id="negative"),
+        pytest.param(
+            ["--upload-part-size", "1000", "--no-upload-split"], id="both options"
+        ),
+    ],
+)
+def test_main_invalid_upload_split_options(
+    tmp_path: pathlib.Path, args: list[str]
+) -> None:
+    with (
+        unittest.mock.patch("sgcollect.do_upload") as do_upload,
+        unittest.mock.patch(
+            "sys.argv",
+            [
+                "sg_collect",
+                "--just-upload-into",
+                "https://example.com/foo.zip",
+                *args,
+                str(tmp_path / ZIP_NAME),
+            ],
+        ),
+        pytest.raises(SystemExit, check=lambda e: e.code == 2),
+    ):
+        sgcollect.main()
+    do_upload.assert_not_called()
+
+
+@pytest.mark.usefixtures("main_norun_redacted_zip")
+@pytest.mark.parametrize(
+    "redact_level, uploaded_zip",
+    [
+        pytest.param("none", ZIP_NAME, id="unredacted"),
+        pytest.param("partial", REDACTED_ZIP_NAME, id="redacted"),
+    ],
+)
+@pytest.mark.parametrize(
+    "args, part_size",
+    [
+        pytest.param([], tasks.MAX_UPLOAD_PART_SIZE, id="default"),
+        pytest.param(["--upload-part-size", "1000"], 1000, id="part size"),
+        pytest.param(["--no-upload-split"], None, id="no split"),
+    ],
+)
+def test_main_upload_host_part_size(
+    taskrunner_workdir: pathlib.Path,
+    redact_level: str,
+    uploaded_zip: str,
+    args: list[str],
+    part_size: int | None,
+) -> None:
+    """
+    Make sure that the upload options reach do_upload after a collection.
+    """
+    with (
+        unittest.mock.patch("sgcollect.do_upload", return_value=0) as do_upload,
+        unittest.mock.patch(
+            "sys.argv",
+            [
+                "sg_collect",
+                "--log-redaction-level",
+                redact_level,
+                "--upload-host",
+                "https://example.com",
+                "--customer",
+                "fakeCustomer",
+                "--tmp-dir",
+                str(taskrunner_workdir),
+                *args,
+                ZIP_NAME,
+            ],
+        ),
+        pytest.raises(SystemExit, check=lambda e: e.code == 0),
+    ):
+        sgcollect.main()
+    do_upload.assert_called_once_with(
+        uploaded_zip,
+        f"https://example.com/fakeCustomer/{uploaded_zip}",
+        "",
+        part_size,
+    )

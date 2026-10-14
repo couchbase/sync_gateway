@@ -800,6 +800,16 @@ def part_url(url: str, part: int) -> str:
     return urllib.parse.urlunsplit(parts._replace(path=f"{parts.path}.{part:03d}"))
 
 
+def redact_url(url: str) -> str:
+    """
+    Returns url with the query string redacted, because it can carry an auth signature.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if not parts.query:
+        return url
+    return urllib.parse.urlunsplit(parts._replace(query="<redacted>"))
+
+
 def upload_range(
     opener: urllib.request.OpenerDirector,
     f: BinaryIO,
@@ -822,18 +832,20 @@ def upload_range(
         response = e
     if response.status != 200:
         body = response.read().decode(errors="replace")
-        safe_url = urllib.parse.urlunsplit(
-            urllib.parse.urlsplit(url)._replace(query="<redacted>")
-        )
         raise UploadError(
-            f"Error uploading to {safe_url}, expected status code 200, got status code: {response.status}, body: {body}"
+            f"Error uploading to {redact_url(url)}, expected status code 200, got status code: {response.status}, body: {body}"
         )
 
 
-def do_upload(path: str | os.PathLike[str], url: str, proxy: str) -> int:
+def do_upload(
+    path: str | os.PathLike[str],
+    url: str,
+    proxy: str,
+    part_size: int | None = MAX_UPLOAD_PART_SIZE,
+) -> int:
     """
-    Uploads file path to a URL and returns exit code for the program. Files larger than MAX_UPLOAD_PART_SIZE are
-    uploaded as parts with .000, .001, ... appended to the URL.
+    Uploads file path to a URL and returns exit code for the program. Files larger than part_size are uploaded as
+    parts with .000, .001, ... appended to the URL. If part_size is None, the file uploads in one request.
     """
 
     with open(path, "rb") as f:
@@ -848,16 +860,15 @@ def do_upload(path: str | os.PathLike[str], url: str, proxy: str) -> int:
             urllib.request.HTTPSHandler(context=ssl._create_unverified_context()),
         )
         size = os.fstat(f.fileno()).st_size
-        part_size = MAX_UPLOAD_PART_SIZE
 
         try:
-            if size <= part_size:
+            if part_size is None or size <= part_size:
                 upload_range(opener, f, 0, size, url)
             else:
                 num_parts = math.ceil(size / part_size)
                 for i in upload_part_order(num_parts):
                     url_i = part_url(url, i)
-                    log(f"Uploading part {i + 1} of {num_parts} to {url_i}")
+                    log(f"Uploading part {i + 1} of {num_parts} to {redact_url(url_i)}")
                     offset = i * part_size
                     upload_range(
                         opener, f, offset, min(part_size, size - offset), url_i
