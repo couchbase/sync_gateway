@@ -451,8 +451,8 @@ def test_split_upload_reassembles(
     [
         pytest.param(10, [""], id="under limit"),
         pytest.param(100, [""], id="exactly limit"),
-        pytest.param(101, [".001", ".000"], id="limit plus one"),
-        pytest.param(300, [".002", ".000", ".001"], id="exact multiple"),
+        pytest.param(101, [".000", ".001"], id="limit plus one"),
+        pytest.param(300, [".000", ".002", ".001"], id="exact multiple"),
     ],
 )
 def test_split_upload_sizes(
@@ -462,8 +462,8 @@ def test_split_upload_sizes(
     expected_suffixes: list[str],
 ) -> None:
     """
-    A file at or below the limit uploads in one request with no suffix. One byte over the limit adds a part. The last
-    part uploads first.
+    A file at or below the limit uploads in one request with no suffix. One byte over the limit adds a part. The first
+    part uploads first, then the last part.
     """
     p = tmp_path / ZIP_NAME
     body = os.urandom(size)
@@ -489,15 +489,15 @@ def test_split_upload_part_failure(
     p = tmp_path / ZIP_NAME
     p.write_bytes(os.urandom(450))
 
-    httpserver.expect_ordered_request(f"/{ZIP_NAME}.004").respond_with_data("")
-    httpserver.expect_ordered_request(f"/{ZIP_NAME}.000").respond_with_data(
+    httpserver.expect_ordered_request(f"/{ZIP_NAME}.000").respond_with_data("")
+    httpserver.expect_ordered_request(f"/{ZIP_NAME}.004").respond_with_data(
         "bad part", status=500
     )
     assert tasks.do_upload(p, httpserver.url_for(f"/{ZIP_NAME}"), "", 100) == 1
     httpserver.check()
     assert len(httpserver.log) == 2
     err = capsys.readouterr().err
-    assert httpserver.url_for(f"/{ZIP_NAME}.000") in err
+    assert httpserver.url_for(f"/{ZIP_NAME}.004") in err
     assert "status code: 500, body: bad part" in err
     assert "Traceback" not in err
 
