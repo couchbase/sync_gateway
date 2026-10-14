@@ -2740,7 +2740,7 @@ func TestBlipSDKDocWithDeletedProperty(t *testing.T) {
 		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 		defer rt.Close()
 
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		_, err := rt.GetSingleDataStore().AddRaw(rt.Context(), docID, 0, []byte(`{"_deleted":true,"foo":"bar"}`))
 		require.NoError(t, err)
 
