@@ -9,7 +9,7 @@ Backport a merged `main` change to a `release/x.y.z` branch: one ticket, or a wh
 
 ## Find the work
 
-Backport tickets are clones of the original ticket, with `[x.y.z Backport]` in the summary and the release in `fixVersions`.
+Backport tickets copy the original ticket, with `[x.y.z backport]` (either case) in the summary and the release in `fixVersions`.
 
 Ask Jira for the current user's open-sprint backports:
 
@@ -28,7 +28,7 @@ Skip tickets whose *backport* ticket is already `In Review`/`Resolved` unless as
 
 ## Per ticket
 
-1. **Resolve the upstream change.** Fetch the backport ticket with `fields: ["summary","fixVersions","issuelinks"]`. The `Cloners` link points at the original ticket. Fetch that ticket's `status` too — it, not the backport ticket's status, decides whether the work is possible. Then:
+1. **Resolve the upstream change.** Fetch the backport ticket with `fields: ["summary","fixVersions","issuelinks"]`. The `Backport` link ("is a backport of") points at the original ticket. Older backport tickets have a `Cloners` link ("clones") instead. Fetch the original ticket's `status` too — it, not the backport ticket's status, decides whether the work is possible. Then:
    ```bash
    git log --oneline origin/main --grep='CBG-<original>'   # commit + (#PR) in the subject
    ```
@@ -95,7 +95,7 @@ git log --oneline origin/release/x.y.z -i --grep='CBG-<candidate>'  # is it on t
 | Prerequisite state | Action |
 |---|---|
 | Has its own backport ticket | Backport it as its own layer, stacked below |
-| No backport ticket, low risk — test-only, or a small self-contained code change | Backport it anyway as its own layer; title it with the **upstream** ticket key; tell the user it has no backport ticket and offer to create the clone |
+| No backport ticket, low risk — test-only, or a small self-contained code change | Backport it anyway as its own layer; title it with the **upstream** ticket key; tell the user it has no backport ticket and offer to create the backport ticket |
 | No backport ticket, higher risk — behaviour change, wide blast radius, or you can't tell | **Stop and ask** (AskUserQuestion): backport the prerequisite / adapt the change to the release branch without it / skip the backport |
 
 Adapting around a missing prerequisite is legitimate but costs more and diverges from upstream: every adaptation is a place the branches can drift. If you adapt, list each deviation in the PR body. **Re-run the cherry-pick once the prerequisite is in place** — conflicts frequently vanish entirely and the diff becomes upstream-identical, which is worth far more than a clever manual merge.

@@ -106,6 +106,9 @@ const (
 	BackgroundProcessActionStop  BackgroundProcessAction = "stop"
 )
 
+// NoOptions is the options type for a BackgroundManager whose process takes no per-run options.
+type NoOptions struct{}
+
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext.
 // O is the type of the options struct passed to BackgroundManagerProcessI.Init and BackgroundManagerProcessI.Run - this allows BackgroundManager to unmarshal the options as
 // the (process-specific) options struct during Join.

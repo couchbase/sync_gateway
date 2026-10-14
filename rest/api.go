@@ -287,9 +287,7 @@ func (h *handler) handleCompact() error {
 	if compactionType == compactionTypeTombstone {
 		if action == string(db.BackgroundProcessActionStart) {
 			if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
-				err := h.db.TombstoneCompactionManager.Start(h.ctx(), db.TombstoneCompactionOptions{
-					Database: h.db,
-				})
+				err := h.db.TombstoneCompactionManager.Start(h.ctx(), db.NoOptions{})
 				if err != nil {
 					return err
 				}
@@ -326,9 +324,8 @@ func (h *handler) handleCompact() error {
 	if compactionType == compactionTypeAttachment {
 		if action == string(db.BackgroundProcessActionStart) {
 			err := h.db.AttachmentCompactionManager.Start(h.ctx(), db.AttachmentCompactionOptions{
-				Database: h.db,
-				Reset:    h.getBoolQuery("reset"),
-				DryRun:   h.getBoolQuery("dry_run"),
+				Reset:  h.getBoolQuery("reset"),
+				DryRun: h.getBoolQuery("dry_run"),
 			})
 			if err != nil {
 				return err

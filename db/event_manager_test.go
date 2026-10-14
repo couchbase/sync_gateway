@@ -362,24 +362,11 @@ func (wr *WebhookRequest) Clear() {
 	wr.mutex.Unlock()
 }
 
-func (em *EventManager) waitForProcessedTotal(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
-	startTime := time.Now()
-
-	worker := func() (bool, error, any) {
-		eventTotal := em.GetEventsProcessedSuccess() + em.GetEventsProcessedFail()
-		if eventTotal >= int64(waitCount) {
-			base.DebugfCtx(ctx, base.KeyAll, "waitForProcessedTotal(%d) took %v", waitCount, time.Since(startTime))
-			return false, nil, nil
-		}
-
-		return true, nil, nil
-	}
-
-	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
-	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 1000), ctx)
-	err, _ := base.RetryLoop(ctx, fmt.Sprintf("waitForProcessedTotal(%d)", waitCount), worker, sleeper)
-	cancel()
-	return err
+func (em *EventManager) waitForProcessedTotal(t testing.TB, waitCount int, maxWaitTime time.Duration) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.GreaterOrEqual(c, em.GetEventsProcessedSuccess()+em.GetEventsProcessedFail(), int64(waitCount))
+	}, maxWaitTime, 10*time.Millisecond, "waitForProcessedTotal(%d)", waitCount)
 }
 
 func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
@@ -478,8 +465,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err := em.waitForProcessedTotal(ctx, 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, DefaultWaitForWebhook)
 	assert.Equal(t, int64(10), em.GetEventsProcessedSuccess())
 
 	// Test webhook filter function
@@ -503,8 +489,7 @@ func TestWebhookBasic(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = em.waitForProcessedTotal(ctx, 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, DefaultWaitForWebhook)
 	assert.Equal(t, int64(4), em.GetEventsProcessedSuccess())
 
 	// Validate payload
@@ -519,8 +504,7 @@ func TestWebhookBasic(t *testing.T) {
 	require.NoError(t, err)
 	err = em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, "", channels, false)
 	assert.NoError(t, err)
-	err = em.waitForProcessedTotal(ctx, 1, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 1, DefaultWaitForWebhook)
 	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
 	assert.Equal(t, `{"_id":"0","value":0}`, receivedPayload)
@@ -572,8 +556,7 @@ func TestWebhookOverflows(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err := em.waitForProcessedTotal(ctx, 100, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 100, DefaultWaitForWebhook)
 	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 
 	// CBG-2281 skip test temporarily under windows
@@ -596,8 +579,7 @@ func TestWebhookOverflows(t *testing.T) {
 	}
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	err = em.waitForProcessedTotal(ctx, 21, 10*time.Second)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 21, 10*time.Second)
 	assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
 	assert.Equal(t, 79, errCount)
 	//}
@@ -615,8 +597,7 @@ func TestWebhookOverflows(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(ctx, 100, 10*time.Second)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 100, 10*time.Second)
 	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 }
 
@@ -666,8 +647,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		assert.NoError(t, err)
 
 	}
-	err := em.waitForProcessedTotal(ctx, 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, DefaultWaitForWebhook)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
@@ -694,8 +674,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, string(oldBodyBytes), channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(ctx, 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, DefaultWaitForWebhook)
 	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
@@ -722,8 +701,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, string(oldBodyBytes), channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(ctx, 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, DefaultWaitForWebhook)
 	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
@@ -756,8 +734,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docId, string(oldBodyBytes), channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(ctx, 20, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 20, DefaultWaitForWebhook)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
@@ -806,8 +783,7 @@ func TestWebhookTimeout(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(ctx, bodyBytes, docid, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err := em.waitForProcessedTotal(ctx, 10, DefaultWaitForWebhook)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, DefaultWaitForWebhook)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess > webhook timeout.  All events should get processed.
@@ -833,8 +809,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
-	err = em.waitForProcessedTotal(ctx, 10, 30*time.Second)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, 30*time.Second)
 	assert.Equal(t, int64(0), em.GetEventsProcessedSuccess())
 	assert.Equal(t, int64(10), em.GetEventsProcessedFail())
 
@@ -858,8 +833,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = em.waitForProcessedTotal(ctx, 5, 30*time.Second)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 5, 30*time.Second)
 	assert.Equal(t, int64(5), em.GetEventsProcessedSuccess())
 
 	// Test slow webhook, no timeout, numProcess=1, waitForProcess=5s.  All events should complete.
@@ -883,8 +857,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = em.waitForProcessedTotal(ctx, 10, 20*time.Second)
-	assert.NoError(t, err)
+	em.waitForProcessedTotal(t, 10, 20*time.Second)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 
 }

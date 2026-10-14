@@ -859,7 +859,7 @@ func TestContinuousChangesUserDeleted(t *testing.T) {
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	feed := rt.StartContinuousChanges("/{{.keyspace}}/_changes?feed=continuous&since=0", username)
 
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 
 	rt.DeleteUser(username)
 	rest.RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_changes", "", username), http.StatusUnauthorized)
@@ -894,7 +894,7 @@ func TestLongpollChangesUserDeleted(t *testing.T) {
 		changes = rt.PostChanges("/{{.keyspace}}/_changes", fmt.Sprintf(`{"since":"%s", "feed":"longpoll"}`, since), username)
 	}()
 
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 
 	rt.DeleteUser(username)
 
@@ -932,7 +932,7 @@ func TestContinuousChangesRolePurge(t *testing.T) {
 	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	feed := rt.StartContinuousChanges(fmt.Sprintf("/{{.keyspace}}/_changes?feed=continuous&limit=1&since=%s", since), username)
 
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
+	base.RequireStatGreaterThan(t, rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, caughtUpCount)
 
 	// The purge has to be notified before the writes below, otherwise the feed wakes on the document
 	// notification alone and is still holding the stale channel set.

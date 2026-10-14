@@ -37,6 +37,8 @@ type AttachmentCompactionManager struct {
 	// PurgedAttachments counts attachments deleted during the sweep phase.
 	PurgedAttachments base.AtomicInt
 
+	database *DatabaseContext // set at construction and never modified, so read without lock
+
 	// The following fields are protected by lock and must be accessed via their getters/setters.
 	_compactID string   // unique identifier for the current compaction run, used to tag marked attachments
 	_phase     string   // current phase: "mark", "sweep", "cleanup", or "" when idle
@@ -49,8 +51,6 @@ type AttachmentCompactionManager struct {
 
 // AttachmentCompactionOptions defines options for running the attachment compaction process.
 type AttachmentCompactionOptions struct {
-	// Database is the reference to the Database context compaction is running on.
-	Database *Database
 	// DryRun indicates that compaction should report progress without purging any attachments.
 	DryRun bool
 	// Reset indicates whether to restart the compaction process from scratch rather than resuming.
@@ -59,13 +59,13 @@ type AttachmentCompactionOptions struct {
 
 var _ BackgroundManagerProcessI[AttachmentCompactionOptions] = &AttachmentCompactionManager{}
 
-func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager[AttachmentCompactionOptions] {
+func NewAttachmentCompactionManager(database *DatabaseContext) *BackgroundManager[AttachmentCompactionOptions] {
 	return &BackgroundManager[AttachmentCompactionOptions]{
 		name:    "attachment_compaction",
-		Process: &AttachmentCompactionManager{},
+		Process: &AttachmentCompactionManager{database: database},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			metadataStore: metadataStore,
-			metaKeys:      metaKeys,
+			metadataStore: database.MetadataStore,
+			metaKeys:      database.MetadataKeys,
 			processSuffix: "compact",
 		},
 		terminator: base.NewSafeTerminator(),
@@ -73,7 +73,7 @@ func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base
 }
 
 func (a *AttachmentCompactionManager) Init(ctx context.Context, options AttachmentCompactionOptions, clusterStatus []byte) (backgroundManagerInitMode, error) {
-	options.Database.DbStats.Database().CompactionAttachmentStartTime.Set(uint64(time.Now().UTC().Unix()))
+	a.database.DbStats.Database().CompactionAttachmentStartTime.Set(uint64(time.Now().UTC().Unix()))
 
 	newRunInit := func() error {
 		uniqueUUID, err := uuid.NewRandom()
@@ -107,7 +107,7 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options Attachme
 			// The new compaction ID abandons the previous run's checkpoints, so remove them first. A
 			// failure here must not block the new run.
 			if statusDoc.CompactID != "" {
-				if purgeErr := a.purgeAllPhaseCheckpoints(ctx, options.Database, statusDoc.CompactID); purgeErr != nil {
+				if purgeErr := a.purgeAllPhaseCheckpoints(ctx, statusDoc.CompactID); purgeErr != nil {
 					base.WarnfCtx(ctx, "Failed to delete checkpoints for previous compact ID %q: %v, these will be abandoned and unused", statusDoc.CompactID, purgeErr)
 				}
 			}
@@ -135,7 +135,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options Attachmen
 	//
 	// This may not be true if a user migrated/XDCR'd an existing _default collection into a named collection,
 	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
-	dataStore := options.Database.Bucket.DefaultDataStore(ctx)
+	dataStore := a.database.Bucket.DefaultDataStore(ctx)
 	collectionID := base.DefaultCollectionID
 
 	persistClusterStatus := func() {
@@ -157,7 +157,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options Attachmen
 		a.SetPhase("mark")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, options.Database, a.getCompactID(), terminator, &a.MarkedAttachments)
+			_, dcpClient, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, a.database, a.getCompactID(), terminator, &a.MarkedAttachments)
 			if dcpClient != nil {
 				a.setVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 			}
@@ -168,7 +168,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options Attachmen
 					return false, err, nil
 				}
 
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, options.Database, err, MarkPhase, dcpClient.GetMetadataKeyPrefix())
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, err, MarkPhase, dcpClient.GetMetadataKeyPrefix())
 			}
 			return shouldRetry, err, nil
 		}
@@ -185,7 +185,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options Attachmen
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, options.Database, a.getCompactID(), a.getVBUUIDs(), a.getDryRun(), terminator, &a.PurgedAttachments)
+		_, _, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, a.database, a.getCompactID(), a.getVBUUIDs(), a.getDryRun(), terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -194,9 +194,9 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options Attachmen
 		a.SetPhase("cleanup")
 		worker := func() (shouldRetry bool, err error, value any) {
 			persistClusterStatus()
-			metadataKeyPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, options.Database, a.getCompactID(), a.getVBUUIDs(), terminator)
+			metadataKeyPrefix, err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, a.database, a.getCompactID(), a.getVBUUIDs(), terminator)
 			if err != nil {
-				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, options.Database, err, CleanupPhase, metadataKeyPrefix)
+				shouldRetry, err = a.handleAttachmentCompactionRollbackError(ctx, options, err, CleanupPhase, metadataKeyPrefix)
 			}
 			return shouldRetry, err, nil
 		}
@@ -216,35 +216,35 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options Attachmen
 }
 
 // purgeCheckpoints removes the checkpoints for a specific checkpointPrefix and feed name.
-func (*AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, database *Database, checkpointPrefix string) error {
+func (a *AttachmentCompactionManager) purgeCheckpoints(ctx context.Context, checkpointPrefix string) error {
 	return base.PurgeDCPCheckpoints(
 		ctx,
-		database.MetadataStore,
+		a.database.MetadataStore,
 		checkpointPrefix,
-		database.dcpFeedMode(),
+		a.database.dcpFeedMode(),
 	)
 }
 
 // purgeAllPhaseCheckpoints removes the DCP checkpoints for every phase of the given compaction run,
 // which persists one checkpoint prefix per phase.
-func (a *AttachmentCompactionManager) purgeAllPhaseCheckpoints(ctx context.Context, database *Database, compactID string) error {
+func (a *AttachmentCompactionManager) purgeAllPhaseCheckpoints(ctx context.Context, compactID string) error {
 	var errs []error
 	for _, phase := range []attachmentCompactionPhase{MarkPhase, SweepPhase, CleanupPhase} {
-		prefix := GetAttachmentCompactionDCPCheckpointPrefix(database.DatabaseContext, compactID, phase)
-		if err := a.purgeCheckpoints(ctx, database, prefix); err != nil {
+		prefix := GetAttachmentCompactionDCPCheckpointPrefix(a.database, compactID, phase)
+		if err := a.purgeCheckpoints(ctx, prefix); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options AttachmentCompactionOptions, database *Database, err error, phase attachmentCompactionPhase, keyPrefix string) (bool, error) {
+func (a *AttachmentCompactionManager) handleAttachmentCompactionRollbackError(ctx context.Context, options AttachmentCompactionOptions, err error, phase attachmentCompactionPhase, keyPrefix string) (bool, error) {
 	var rollbackErr gocbcore.DCPRollbackError
 	if errors.As(err, &rollbackErr) || errors.Is(err, base.ErrVbUUIDMismatch) {
 		base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on %s phase of attachment compaction, resetting the task", phase)
 		// to rollback any phase for attachment compaction we need to purge all persisted dcp metadata
 		base.InfofCtx(ctx, base.KeyDCP, "Purging invalid checkpoints for background task run %s", a.getCompactID())
-		err = a.purgeCheckpoints(ctx, database, keyPrefix)
+		err = a.purgeCheckpoints(ctx, keyPrefix)
 		if err != nil {
 			base.WarnfCtx(ctx, "error occurred during purging of dcp metadata: %s", err)
 			return false, err

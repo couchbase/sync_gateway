@@ -156,9 +156,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options Attachment
 		}
 
 		collCtx := collection.AddCollectionContext(ctx)
-		collWithUser := &DatabaseCollectionWithUser{
-			DatabaseCollection: collection,
-		}
+		collWithUser := collection.getAdminDatabaseCollection()
 		// xattr migration to take place
 		err = collWithUser.MigrateAttachmentMetadata(collCtx, docID, event.Cas, syncData)
 		if err != nil {
