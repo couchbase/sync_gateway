@@ -3015,7 +3015,7 @@ func TestRequestPlusPull(t *testing.T) {
 		btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Continuous: true, RequestPlus: true})
 
 		// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
-		require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
+		base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, caughtUpStart)
 
 		// Release the slow sequence
 		releaseErr := db.ReleaseTestSequence(base.TestCtx(t), database, slowSequence)
@@ -3080,7 +3080,7 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		btcRunner.StartOneshotPull(client.id)
 
 		// Wait for the one-shot changes feed to go into wait mode before releasing the slow sequence
-		require.NoError(t, database.WaitForTotalCaughtUp(caughtUpStart+1))
+		base.RequireStatGreaterThan(t, database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, caughtUpStart)
 
 		// Release the slow sequence
 		releaseErr := db.ReleaseTestSequence(base.TestCtx(t), database, slowSequence)
