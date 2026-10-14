@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestReplicationHeartbeatRemovalPushWithConfigReload is a push variant of TestReplicationHeartbeatRemoval
@@ -49,8 +50,8 @@ func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
-		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
-		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
+		docABC1 := sgtest.SafeDocumentName(t, t.Name()+"ABC1")
+		docDEF1 := sgtest.SafeDocumentName(t, t.Name()+"DEF1")
 		_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
 		_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 		activeRT.WaitForPendingChanges()
@@ -118,9 +119,9 @@ func TestReplicationHeartbeatRemovalPushWithConfigReload(t *testing.T) {
 		activeRT.WaitForAssignedReplications(1)
 		activeRT2.WaitForAssignedReplications(1)
 
-		docABC2 := rest.SafeDocumentName(t, t.Name()+"ABC2")
+		docABC2 := sgtest.SafeDocumentName(t, t.Name()+"ABC2")
 		_ = activeRT.PutDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
-		docDEF2 := rest.SafeDocumentName(t, t.Name()+"DEF2")
+		docDEF2 := sgtest.SafeDocumentName(t, t.Name()+"DEF2")
 		_ = activeRT.PutDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
 
 		// Post-reload writes must still reach the remote, whichever node now owns the replications.

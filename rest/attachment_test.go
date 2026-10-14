@@ -30,6 +30,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 //from api_test.go
@@ -2038,7 +2039,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rt.GetDatabase().CachedCCVEnabled.Store(tc.eccv)
 
-			docID := db.SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			// Create doc rev 1
 			version := rt.PutDoc(docID, `{"test": "x"}`)
 
@@ -2204,7 +2205,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 			lastImportCount := rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()
 
 			rt.GetDatabase().CachedCCVEnabled.Store(tc.eccv)
-			docID := db.SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			// Create doc with attachment and expiry
 			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 1}`)
 			RequireStatus(t, resp, http.StatusCreated)

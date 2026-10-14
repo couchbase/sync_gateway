@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // testBackingStore always returns an empty doc at rev:"1-abc" in channel "*" except for docs not in 'notFoundDocIDs'
@@ -2566,7 +2567,7 @@ func TestItemResidentInCacheBackupRevLoaded(t *testing.T) {
 			defer db.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			var firstRevisionID, firstCV string
 			_, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 			require.NoError(t, err)
@@ -2639,8 +2640,8 @@ func TestMultipleRevCacheItemsForSameDocs(t *testing.T) {
 
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
 
-	docID := SafeDocumentName(t, t.Name())
-	docID2 := SafeDocumentName(t, t.Name()+"_2")
+	docID := sgtest.SafeDocumentName(t, t.Name())
+	docID2 := sgtest.SafeDocumentName(t, t.Name()+"_2")
 
 	_, doc1, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)

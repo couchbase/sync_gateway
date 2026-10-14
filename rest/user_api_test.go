@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestUsersAPI tests pagination of QueryPrincipals
@@ -1420,7 +1421,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	for _, tc := range collectionAccessTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a fresh user and role for this test case, each with initial access to collection1.
-			userName := "user" + SafeDocumentName(t, tc.name)
+			userName := "user" + sgtest.SafeDocumentName(t, tc.name)
 			userPayload := fmt.Sprintf(`{
 				"email": "%s@couchbase.com",
 				"password": "letmein",
@@ -1434,7 +1435,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 			}`, userName, scopeName, collection1Name)
 			RequireStatus(t, rt.SendAdminRequest("PUT", "/db/_user/"+userName, userPayload), http.StatusCreated)
 
-			roleName := "role" + SafeDocumentName(t, tc.name)
+			roleName := "role" + sgtest.SafeDocumentName(t, tc.name)
 			rolePayload := fmt.Sprintf(`{
 				"collection_access": {
 					"%s": {

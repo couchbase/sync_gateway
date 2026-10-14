@@ -16,6 +16,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestResyncLegacyRev makes sure that running resync on a legacy rev will send future blip messages as a legacy rev and not as an HLV
@@ -31,7 +32,7 @@ func TestResyncLegacyRev(t *testing.T) {
 	// default collection will use channel Name and named collection will use collection.Name
 	rt.CreateUser(alice, []string{channelName, collection.Name})
 
-	docID := db.SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	doc := rt.CreateDocNoHLV(docID, db.Body{"channels": channelName})
 
 	btcRunner := NewBlipTesterClientRunner(t)

@@ -26,6 +26,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestSetGet(t *testing.T) {
@@ -4079,7 +4080,7 @@ func TestXattrOnlyWriteKeepsTombstone(t *testing.T) {
 	}
 	for name, write := range writes {
 		t.Run(name, func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
 			require.NoError(t, err)
 			cas, err = dataStore.Remove(ctx, key, cas)
@@ -4129,7 +4130,7 @@ func testTombstoneRemovesUserXattrs(t *testing.T, dataStore sgbucket.DataStore) 
 	}
 	for name, deleteFn := range deletes {
 		t.Run(name, func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`),
 				map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`), "user": []byte(`{"a":1}`)}, nil, nil)
 			require.NoError(t, err)
@@ -4173,7 +4174,7 @@ func testWriteCasNil(t *testing.T, dataStore sgbucket.DataStore) {
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s/%s", tc.name, tc.state), func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			var cas, revSeqNo uint64
 			if tc.state != missing {
 				var err error
@@ -4286,7 +4287,7 @@ func testTombstoneFlagMatchesBody(t *testing.T, dataStore sgbucket.DataStore) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`)}, nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, dataStore.Delete(ctx, key))
@@ -4340,7 +4341,7 @@ func testUpdateByDocState(t *testing.T, dataStore sgbucket.DataStore) {
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s/value=%t/delete=%t", tc.state, tc.value != nil, tc.delete), func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			if tc.state != missing {
 				cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
 				require.NoError(t, err)
@@ -4560,7 +4561,7 @@ func testTombstoneExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 				for _, preserve := range preserves {
 					for resurrectionName, resurrect := range resurrections {
 						t.Run(fmt.Sprintf("%s/docExp=%t/opExp=%t/preserve=%t/%s", tc.name, docExp != 0, opExp != 0, preserve, resurrectionName), func(t *testing.T) {
-							key := SafeDocumentName(t, t.Name())
+							key := sgtest.SafeDocumentName(t, t.Name())
 							var cas uint64
 							if tc.state != missing {
 								var err error
@@ -4660,7 +4661,7 @@ func testNilWritesStoreBody(t *testing.T, dataStore sgbucket.DataStore) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			if tc.live {
 				_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`),
 					map[string][]byte{SyncXattrName: []byte(`{"rev":"1-a"}`), "user": []byte(`{"u":1}`)}, nil, nil)
@@ -4683,7 +4684,7 @@ func testNilWritesStoreBody(t *testing.T, dataStore sgbucket.DataStore) {
 
 func testUpdateDelete(t *testing.T, dataStore sgbucket.DataStore) {
 	ctx := TestCtx(t)
-	key := SafeDocumentName(t, t.Name())
+	key := sgtest.SafeDocumentName(t, t.Name())
 	require.NoError(t, dataStore.Set(ctx, key, 0, nil, []byte(`{"foo":"bar"}`)))
 
 	_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
@@ -4698,7 +4699,7 @@ func testUpdateDelete(t *testing.T, dataStore sgbucket.DataStore) {
 // testUpdateNilValueWithExpiry checks that a nil value with a new expiry replaces the body with an empty body.
 func testUpdateNilValueWithExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 	ctx := TestCtx(t)
-	key := SafeDocumentName(t, t.Name())
+	key := sgtest.SafeDocumentName(t, t.Name())
 	require.NoError(t, dataStore.Set(ctx, key, 0, nil, []byte(`{"foo":"bar"}`)))
 
 	exp := uint32(time.Now().Add(time.Hour).Unix())
@@ -4720,7 +4721,7 @@ func testUpdateNilValueWithExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 // that kept its system xattr.
 func testWriteWithXattrsResurrectTombstoneZeroCas(t *testing.T, dataStore sgbucket.DataStore) {
 	ctx := TestCtx(t)
-	key := SafeDocumentName(t, t.Name())
+	key := sgtest.SafeDocumentName(t, t.Name())
 
 	_, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
 	require.NoError(t, err)
@@ -4739,7 +4740,7 @@ func testWriteWithXattrsResurrectTombstoneZeroCas(t *testing.T, dataStore sgbuck
 // updates its xattrs and keeps the body.
 func testWriteTombstoneWithXattrsKeepBody(t *testing.T, dataStore sgbucket.DataStore) {
 	ctx := TestCtx(t)
-	key := SafeDocumentName(t, t.Name())
+	key := sgtest.SafeDocumentName(t, t.Name())
 
 	cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"body":1}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
 	require.NoError(t, err)
@@ -4757,7 +4758,7 @@ func testWriteTombstoneWithXattrsKeepBody(t *testing.T, dataStore sgbucket.DataS
 // deleted between the read and the write.
 func testWriteUpdateWithXattrsDocDeletedDuringUpdate(t *testing.T, dataStore sgbucket.DataStore) {
 	ctx := TestCtx(t)
-	key := SafeDocumentName(t, t.Name())
+	key := sgtest.SafeDocumentName(t, t.Name())
 
 	firstCas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"a":"body"}`), map[string][]byte{SyncXattrName: []byte(`{"seq":1}`)}, nil, nil)
 	require.NoError(t, err)
@@ -4826,7 +4827,7 @@ func testDeleteWithXattrsPathMismatch(t *testing.T, dataStore sgbucket.DataStore
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			key := SafeDocumentName(t, t.Name())
+			key := sgtest.SafeDocumentName(t, t.Name())
 			cas, err := dataStore.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"foo":"bar"}`), tc.xattrs, nil, nil)
 			require.NoError(t, err)
 			if tc.tombstone {

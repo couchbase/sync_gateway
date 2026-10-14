@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/testing/require"
 	rosmar "github.com/couchbaselabs/rosmar"
 )
 
@@ -58,4 +59,15 @@ func GetBackgroundManagerStatusTransitionTimeout(t testing.TB) time.Duration {
 		return 60 * time.Second
 	}
 	return 10 * time.Second
+}
+
+// SafeDocumentName returns a document name free of any special characters banned by Couchbase Server for use in tests.
+func SafeDocumentName(t *testing.T, name string) string {
+	t.Helper()
+	docName := strings.ToLower(name)
+	for _, c := range []string{" ", "<", ">", "/", "="} {
+		docName = strings.ReplaceAll(docName, c, "_")
+	}
+	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
+	return docName
 }

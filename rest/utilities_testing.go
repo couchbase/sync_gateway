@@ -2724,12 +2724,6 @@ func SafeDatabaseName(t *testing.T, name string) string {
 	return dbName
 }
 
-// SafeDocumentName returns a document name free of any special characters for use in tests.
-func SafeDocumentName(t *testing.T, name string) string {
-	t.Helper()
-	return base.SafeDocumentName(t, name)
-}
-
 func JsonToMap(t *testing.T, jsonStr string) map[string]any {
 	result := make(map[string]any)
 	err := json.Unmarshal([]byte(jsonStr), &result)

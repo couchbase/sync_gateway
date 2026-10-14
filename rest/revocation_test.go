@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 type ChannelRevocationTester struct {
@@ -1530,7 +1531,7 @@ func TestReplicatorRevocations(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1597,7 +1598,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1673,7 +1674,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1744,7 +1745,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword(revocationTestUser, RestTesterDefaultUserPassword)
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		revocationTester.addRole(revocationTestUser, revocationTestRole)
 		rt2.WaitForPendingChanges()
@@ -1843,7 +1844,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword("user", "letmein")
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -1925,7 +1926,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 			password = RestTesterDefaultUserPassword
 		)
 
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		passiveDBURL.User = url.UserPassword(username, password)
 
 		_ = rt2.PutDoc("docA", `{"channels": ["ABC"]}`)
@@ -2002,7 +2003,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword("user", RestTesterDefaultUserPassword)
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
 		_ = rt2.PutDoc("docAB", `{"channels": ["A","B"]}`)
@@ -2090,7 +2091,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 		require.NoError(t, err)
 
 		passiveDBURL.User = url.UserPassword("user", "letmein")
-		id := SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 
 		activeReplCfg := &db.ActiveReplicatorConfig{
 			ID:          id,
@@ -2465,7 +2466,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeersWithOptions(t, TestISGRPeerOpts{UserChannelAccess: []string{"A", "B"}})
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		replicationID := SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		for i := range 10 {
 			_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)

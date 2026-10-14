@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
@@ -63,7 +64,7 @@ func TestActiveReplicatorRevTreeReconciliation(t *testing.T) {
 					rt1.WaitForPendingChanges()
 				}
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   tc.replicationType,
@@ -174,7 +175,7 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 		remoteURL, err := url.Parse(remoteURLString)
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollectionWithUser()
 
@@ -184,7 +185,7 @@ func TestActiveReplicatorNoHLVConflictConflictInRevTree(t *testing.T) {
 		resolverFunc, err := db.NewConflictResolverFuncForHLV(ctx1, db.ConflictResolverRemoteWins, "", rt1.GetDatabase().Options.JavascriptTimeout)
 		require.NoError(t, err)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -306,7 +307,7 @@ func TestActiveReplicatorRevtreeLargeDiffInSize(t *testing.T) {
 					rt1.WaitForPendingChanges()
 				}
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
 					Direction:   tc.replicationType,

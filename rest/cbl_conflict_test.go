@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestBlipConflictResolution covers CBL-side conflict resolution over BLIP, including the norev-clobber
@@ -66,7 +67,7 @@ func testBlipPullConflict(t *testing.T, rt *RestTester) {
 			alice   = "alice"
 			cblBody = `{"actor": "cbl"}`
 		)
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		rt.CreateUser(alice, []string{"*"})
 		sgVersion := rt.PutDoc(docID, `{"actor": "sg", "channels": ["shared"]}`)
 		rt.WaitForPendingChanges()
@@ -110,7 +111,7 @@ func testBlipPullConflictNoRevLosesBody(t *testing.T, rt *RestTester) {
 
 	btcRunner.Run(func(t *testing.T) {
 		const cblBody = `{"actor": "cbl"}`
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
@@ -154,7 +155,7 @@ func testBlipNoRevIgnoredSingleChangesEntry(t *testing.T, rt *RestTester) {
 
 	btcRunner.Run(func(t *testing.T) {
 		const cblBody = `{"actor": "cbl"}`
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer btc.Close()
@@ -212,7 +213,7 @@ func testBlipNoRevOnCorruptHistoryDelta(t *testing.T, rt *RestTester) {
 		defer btc.Close()
 
 		ctx := rt.Context()
-		docID := SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		docRev1 := rt.CreateDocNoHLV(docID, db.Body{"delta": true, "channels": []string{channelA}})
 		btcRunner.StartOneshotPull(btc.id)
 		btcRunner.WaitForVersion(btc.id, docID, DocVersion{RevTreeID: docRev1.GetRevTreeID()})

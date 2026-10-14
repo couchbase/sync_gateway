@@ -39,6 +39,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/robertkrimen/otto/underscore"
 )
 
@@ -4405,7 +4406,7 @@ func TestInvalidRevTreeRestGetRepairsAndRenames(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	docID := SafeDocumentName(t, t.Name())
+	docID := sgtest.SafeDocumentName(t, t.Name())
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	// 2-def sits at the same generation as its parent, so the repair renumbers it to 3-def

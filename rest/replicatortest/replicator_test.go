@@ -30,6 +30,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/google/uuid"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -479,11 +480,11 @@ func TestPushReplicationAPI(t *testing.T) {
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt1
-		docID1 := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID1 := sgtest.SafeDocumentName(t, t.Name()+"rt1doc")
 		_ = rt1.PutDoc(docID1, `{"source":"rt1","channels":["alice"]}`)
 
 		// Create push replication, verify running
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -496,7 +497,7 @@ func TestPushReplicationAPI(t *testing.T) {
 		assert.Equal(t, "rt1", doc1Body["source"])
 
 		// Create doc2 on rt1
-		docID2 := rest.SafeDocumentName(t, t.Name()+"rt1doc2")
+		docID2 := sgtest.SafeDocumentName(t, t.Name()+"rt1doc2")
 		_ = rt2.PutDoc(docID2, `{"source":"rt1","channels":["alice"]}`)
 
 		// wait for doc2 to arrive at rt2
@@ -560,11 +561,11 @@ func TestPullReplicationAPI(t *testing.T) {
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt2
-		docID1 := rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		docID1 := sgtest.SafeDocumentName(t, t.Name()+"rt2doc")
 		_ = rt2.PutDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
 
 		// Create pull replication, verify running
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -577,7 +578,7 @@ func TestPullReplicationAPI(t *testing.T) {
 		assert.Equal(t, "rt2", doc1Body["source"])
 
 		// Create doc2 on rt2
-		docID2 := rest.SafeDocumentName(t, t.Name()+"rt2doc2")
+		docID2 := sgtest.SafeDocumentName(t, t.Name()+"rt2doc2")
 		_ = rt2.PutDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
 
 		// wait for new document to arrive at rt1
@@ -609,17 +610,17 @@ func TestDisableConcurrentReplicationLimitDuringReplications(t *testing.T) {
 		}
 
 		// create two replications to take us to the limit
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"1")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		rt1.WaitForActiveReplicatorInitialization(2)
 
 		// try create a new replication to take it beyond the threshold set by runtime config call
 		// assert it enter error state
-		replicationID = rest.SafeDocumentName(t, t.Name()+"2")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"2")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
@@ -630,7 +631,7 @@ func TestDisableConcurrentReplicationLimitDuringReplications(t *testing.T) {
 		// assert the replications aren't killed as result of change in limit
 		rt2.WaitForActiveReplicatorCount(2)
 		// assert we still can create a new replication given that originally the limit was 2 replications
-		replicationID = rest.SafeDocumentName(t, t.Name()+"3")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"3")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 	})
@@ -656,17 +657,17 @@ func TestConcurrentReplicationLimitContinuous(t *testing.T) {
 		}
 
 		// create two replications to take us to the limit
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
-		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"1")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		rt1.WaitForActiveReplicatorInitialization(2)
 
 		// try create a new replication to take it beyond the threshold set by runtime config call
 		// assert it enter error state
-		replicationID = rest.SafeDocumentName(t, t.Name()+"2")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"2")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
@@ -677,20 +678,20 @@ func TestConcurrentReplicationLimitContinuous(t *testing.T) {
 		// assert the replications aren't killed as result of change in limit
 		rt2.WaitForActiveReplicatorCount(2)
 		// assert we still can't create a new replication
-		replicationID = rest.SafeDocumentName(t, t.Name()+"3")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"3")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 
 		// stop one of the replicators currently running
-		replicationID = rest.SafeDocumentName(t, t.Name()+"1")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"1")
 		resp = rt1.SendAdminRequest(http.MethodPut, "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 		rest.RequireStatus(t, resp, http.StatusOK)
-		rt1.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()+"1"), db.ReplicationStateStopped)
+		rt1.WaitForReplicationStatus(sgtest.SafeDocumentName(t, t.Name()+"1"), db.ReplicationStateStopped)
 		// assert the count has been decremented
 		rt2.WaitForActiveReplicatorCount(1)
 
 		// assert we still can't create new replication (new limit is 1)
-		replicationID = rest.SafeDocumentName(t, t.Name()+"4")
+		replicationID = sgtest.SafeDocumentName(t, t.Name()+"4")
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateReconnecting)
 	})
@@ -715,11 +716,11 @@ func TestReplicationStatusActions(t *testing.T) {
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt2
-		docID1 := rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		docID1 := sgtest.SafeDocumentName(t, t.Name()+"rt2doc")
 		_ = rt2.PutDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
 
 		// Create pull replication, verify running
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -751,7 +752,7 @@ func TestReplicationStatusActions(t *testing.T) {
 		assert.Equal(t, "rt2", doc1Body["source"])
 
 		// Create doc2 on rt2
-		docID2 := rest.SafeDocumentName(t, t.Name()+"rt2doc2")
+		docID2 := sgtest.SafeDocumentName(t, t.Name()+"rt2doc2")
 		_ = rt2.PutDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
 
 		// wait for new document to arrive at rt1
@@ -812,7 +813,7 @@ func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 		defer srv.Close()
 
 		// Put replication on remote RT where sg replicate is off, so will not get assigned a node
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		remoteRT.CreateReplication(replicationID, activeDBURL.String(), db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault, "")
 
 		remoteRT.WaitForAssignedReplications(0)
@@ -844,8 +845,8 @@ func TestReplicationRebalancePull(t *testing.T) {
 		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on remote
-		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
-		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
+		docABC1 := sgtest.SafeDocumentName(t, t.Name()+"ABC1")
+		docDEF1 := sgtest.SafeDocumentName(t, t.Name()+"DEF1")
 		_ = remoteRT.PutDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
 		_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 		remoteRT.WaitForPendingChanges()
@@ -884,9 +885,9 @@ func TestReplicationRebalancePull(t *testing.T) {
 		t.Logf("==============replication rebalance is done================")
 
 		// Create additional docs on remoteRT
-		docABC2 := rest.SafeDocumentName(t, t.Name()+"ABC2")
+		docABC2 := sgtest.SafeDocumentName(t, t.Name()+"ABC2")
 		_ = remoteRT.PutDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
-		docDEF2 := rest.SafeDocumentName(t, t.Name()+"DEF2")
+		docDEF2 := sgtest.SafeDocumentName(t, t.Name()+"DEF2")
 		_ = remoteRT.PutDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
 
 		// wait for new documents to arrive at activeRT
@@ -938,8 +939,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on active
-		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
-		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
+		docABC1 := sgtest.SafeDocumentName(t, t.Name()+"ABC1")
+		docDEF1 := sgtest.SafeDocumentName(t, t.Name()+"DEF1")
 		_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
 		_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
@@ -979,9 +980,9 @@ func TestReplicationRebalancePush(t *testing.T) {
 		activeRT2.WaitForAssignedReplications(1)
 
 		// Create additional docs on local
-		docABC2 := rest.SafeDocumentName(t, t.Name()+"ABC2")
+		docABC2 := sgtest.SafeDocumentName(t, t.Name()+"ABC2")
 		_ = activeRT.PutDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
-		docDEF2 := rest.SafeDocumentName(t, t.Name()+"DEF2")
+		docDEF2 := sgtest.SafeDocumentName(t, t.Name()+"DEF2")
 		_ = activeRT.PutDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
 
 		// wait for new documents to arrive at remote
@@ -1026,7 +1027,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 		// Create 20 docs on rt2
 		docCount := 20
 		docIDs := make([]string, 20)
-		prefix := rest.SafeDocumentName(t, t.Name())
+		prefix := sgtest.SafeDocumentName(t, t.Name())
 		for i := range 20 {
 			docID := fmt.Sprintf("%s%s%d", prefix, "rt2doc", i)
 			_ = remoteRT.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
@@ -1036,7 +1037,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 		remoteRT.WaitForPendingChanges()
 
 		// Create oneshot replication, verify running
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		activeRT.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault, "")
 		activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -1090,8 +1091,8 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		activeRT.WaitForActiveReplicatorInitialization(2)
 
 		// Create docs on active
-		docAllChannels1 := rest.SafeDocumentName(t, t.Name()+"All1")
-		docAllChannels2 := rest.SafeDocumentName(t, t.Name()+"All2")
+		docAllChannels1 := sgtest.SafeDocumentName(t, t.Name()+"All1")
+		docAllChannels2 := sgtest.SafeDocumentName(t, t.Name()+"All2")
 		_ = activeRT.PutDoc(docAllChannels1, `{"source":"activeRT1","channels":["ABC","DEF"]}`)
 		_ = activeRT.PutDoc(docAllChannels2, `{"source":"activeRT2","channels":["ABC","DEF"]}`)
 
@@ -1773,8 +1774,8 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		activeRT, remoteRT, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create docs on remote
-		docABC1 := rest.SafeDocumentName(t, t.Name()+"ABC1")
-		docDEF1 := rest.SafeDocumentName(t, t.Name()+"DEF1")
+		docABC1 := sgtest.SafeDocumentName(t, t.Name()+"ABC1")
+		docDEF1 := sgtest.SafeDocumentName(t, t.Name()+"DEF1")
 		_ = remoteRT.PutDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
 		_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 
@@ -1800,9 +1801,9 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		activeRT2.WaitForAssignedReplications(1)
 
 		// Create additional docs on remoteRT
-		docABC2 := rest.SafeDocumentName(t, t.Name()+"ABC2")
+		docABC2 := sgtest.SafeDocumentName(t, t.Name()+"ABC2")
 		_ = remoteRT.PutDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
-		docDEF2 := rest.SafeDocumentName(t, t.Name()+"DEF2")
+		docDEF2 := sgtest.SafeDocumentName(t, t.Name()+"DEF2")
 		_ = remoteRT.PutDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
 
 		// wait for new documents to arrive at activeRT
@@ -1838,9 +1839,9 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 		activeRT2.WaitForAssignedReplications(1)
 
 		// Add more docs to remote, to validate rebalanced replications are running
-		docABC3 := rest.SafeDocumentName(t, t.Name()+"ABC3")
+		docABC3 := sgtest.SafeDocumentName(t, t.Name()+"ABC3")
 		_ = remoteRT.PutDoc(docABC3, `{"source":"remoteRT","channels":["ABC"]}`)
-		docDEF3 := rest.SafeDocumentName(t, t.Name()+"DEF3")
+		docDEF3 := sgtest.SafeDocumentName(t, t.Name()+"DEF3")
 		_ = remoteRT.PutDoc(docDEF3, `{"source":"remoteRT","channels":["DEF"]}`)
 
 		changesResults = activeRT.WaitForChanges(2, "/{{.keyspace}}/_changes?since="+changesResults.Last_Seq.String(), "", true)
@@ -1929,11 +1930,11 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
 		// Create doc1 on rt1
-		docID1 := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID1 := sgtest.SafeDocumentName(t, t.Name()+"rt1doc")
 		_ = rt1.PutDoc(docID1, `{"source":"rt1","channels":["alice"]}`)
 
 		// Create push replication, verify running
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
@@ -1957,10 +1958,10 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		rt1, rt2, remoteURLString := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc")
 		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
 		rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 		sgrRunner.WaitForDocReplicated(docID, rt1, rt2, version)
@@ -1981,7 +1982,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 		}()
 
 		// Start creating documents in the background on rt1 for the replicator to push to rt2
-		docPrefix := rest.SafeDocumentName(t, t.Name())
+		docPrefix := sgtest.SafeDocumentName(t, t.Name())
 		wg.Go(func() {
 			for i := 0; shouldCreateDocs.IsTrue(); i++ {
 				docID := fmt.Sprintf("%s-doc%d", docPrefix, i)
@@ -2098,7 +2099,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		const username = "AL_1c.e-@"
 		rt2.CreateUser(username, []string{username})
 
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["`+username+`"]}`)
 
 		rt2collection, rt2ctx := rt2.GetSingleTestDatabaseCollection()
@@ -2107,7 +2108,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 		ctx1 := rt1.Context()
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -2194,7 +2195,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 		dbstats := dbReplicatorStats(t, rt1.GetDatabase())
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -2211,7 +2212,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { assert.NoError(t, ar.Stop()) }()
 
-		docIDPrefix := rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		docIDPrefix := sgtest.SafeDocumentName(t, t.Name()+"rt2doc")
 
 		docID1 := docIDPrefix + "1"
 		doc1Version := rt2.PutDoc(docID1, `{"source":"rt2","channels":["`+username+`"]}`)
@@ -2619,12 +2620,12 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
-		docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		version := rt2.PutDoc(docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
 		ctx1 := rt1.Context()
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
 			Direction:   db.ActiveReplicatorTypePull,
@@ -2659,7 +2660,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 		assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
 
-		docID = rest.SafeDocumentName(t, t.Name()+"rt2doc2")
+		docID = sgtest.SafeDocumentName(t, t.Name()+"rt2doc2")
 		version = rt2.PutDoc(docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 		// wait for the new document written to rt2 to arrive at rt1
@@ -2891,7 +2892,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		})
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		// Create first batch of docs
-		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
+		docIDPrefix := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc"
 		for i := range numRT2DocsInitial {
 			resp := rt2.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s%d", docIDPrefix, i), `{"source":"rt2","channels":["alice"]}`)
 			rest.RequireStatus(t, resp, http.StatusCreated)
@@ -2899,7 +2900,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		arConfig := db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePull,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3054,7 +3055,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		// Create first batch of docs
-		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "doc"
+		docIDPrefix := sgtest.SafeDocumentName(t, t.Name()) + "doc"
 		for i := range numRT2DocsInitial {
 			rt1Version := rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
 			rt2Version := rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"channels":["alice"]}`)
@@ -3186,12 +3187,12 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 		})
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 		ctx1 := rt1.Context()
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePull,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3235,7 +3236,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 		rt1.WaitForPendingChanges()
 
@@ -3244,7 +3245,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		assert.NoError(t, err)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3295,11 +3296,11 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		ctx1 := rt1.Context()
 		attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
 
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc1")
 		version := rt1.PutDoc(docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3324,7 +3325,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 		assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
 
-		docID = rest.SafeDocumentName(t, t.Name()+"rt1doc2")
+		docID = sgtest.SafeDocumentName(t, t.Name()+"rt1doc2")
 		version = rt1.PutDoc(docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
 
 		// wait for the new document written to rt1 to arrive at rt2
@@ -3367,13 +3368,13 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		// Create first batch of docs
-		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
+		docIDPrefix := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc"
 		for i := range numRT1DocsInitial {
 			rt1.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 		}
 
 		arConfig := db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3508,7 +3509,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		})
 		rt2 := peers.PassiveRT
 		// Create first batch of docs
-		docIDPrefix := rest.SafeDocumentName(t, t.Name()) + "rt1doc"
+		docIDPrefix := sgtest.SafeDocumentName(t, t.Name()) + "rt1doc"
 		for i := range numRT1DocsInitial {
 			rt2.PutDoc(fmt.Sprintf("%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 		}
@@ -3668,7 +3669,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 		rt1.WaitForPendingChanges()
 
@@ -3678,7 +3679,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 		ctx1 := rt1.Context()
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3731,12 +3732,12 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		})
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 		ctx1 := rt1.Context()
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePull,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3795,13 +3796,13 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 			UserChannelAccess: []string{username},
 		})
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
-		docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		version := rt2.PutDoc(docID, `{"source":"rt2","channels":["alice"]}`)
 
 		ctx1 := rt1.Context()
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePull,
 			RemoteDBURL: userDBURL(rt2, username),
 			ActiveDB: &db.Database{
@@ -3972,7 +3973,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				replicationStats := dbReplicatorStats(t, rt1.GetDatabase())
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-					ID:          rest.SafeDocumentName(t, t.Name()),
+					ID:          sgtest.SafeDocumentName(t, t.Name()),
 					Direction:   db.ActiveReplicatorTypePull,
 					RemoteDBURL: remoteURL,
 					ActiveDB: &db.Database{
@@ -4209,7 +4210,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 
-				replicationID := rest.SafeDocumentName(t, t.Name())
+				replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 				ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 					ID:          replicationID,
@@ -4348,11 +4349,11 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc1")
 		version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
 		rt1.WaitForPendingChanges()
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 		srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -4414,7 +4415,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		rt1, rt2 := peers.ActiveRT, peers.PassiveRT
 		ctx1 := rt1.Context()
 
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc1")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc1")
 		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -4428,7 +4429,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		// Add basic auth creds to target db URL
 		passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4478,7 +4479,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		rt2.CreateUser(username, []string{username})
 
 		// Create doc on rt2
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc"
 		resp := rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
@@ -4497,7 +4498,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		rt1 := rest.NewRestTester(t, nil)
 		ctx1 := rt1.Context()
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4646,14 +4647,14 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		ctx1 := rt1.Context()
 
 		// Create doc on rt1
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc")
 		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
 		rt1.WaitForPendingChanges()
 
 		arConfig := db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: passiveDBURL,
 			ActiveDB: &db.Database{
@@ -4794,13 +4795,13 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		ctx1 := activeRT.Context()
 
 		// Create doc1 on activeRT
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc")
 		docID2 := docID + "2"
 		resp := activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"activeRT","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
 		activeRT.WaitForPendingChanges()
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4937,7 +4938,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx1 := rt1.Context()
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -4974,7 +4975,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create doc1 on rt1
-		docID := rest.SafeDocumentName(t, t.Name()+"rt1doc")
+		docID := sgtest.SafeDocumentName(t, t.Name()+"rt1doc")
 		resp := rt1.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 		rt1.WaitForPendingChanges()
@@ -4984,7 +4985,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		assert.Equal(t, docID, changesResults.Results[0].ID)
 
 		// Create doc2 on rt2
-		docID = rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		docID = sgtest.SafeDocumentName(t, t.Name()+"rt2doc")
 		resp = rt2.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2","channels":["alice"]}`)
 		rest.RequireStatus(t, resp, http.StatusCreated)
 		rt2.WaitForPendingChanges()
@@ -5025,10 +5026,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		require.NoError(t, err)
 		ctx1 := rt1.Context()
 
-		rt1docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		rt1docID := sgtest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		rt1Version := rt1.PutDoc(rt1docID, `{"source":"rt1","channels":["alice"]}`)
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -5062,7 +5063,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		assert.Equal(t, "rt1", body["source"])
 
 		// write a doc on rt2 ...
-		rt2docID := rest.SafeDocumentName(t, t.Name()+"rt2doc1")
+		rt2docID := sgtest.SafeDocumentName(t, t.Name()+"rt2doc1")
 		rt2Version := rt2.PutDoc(rt2docID, `{"source":"rt2","channels":["alice"]}`)
 
 		// ... and wait to arrive at rt1
@@ -5111,14 +5112,14 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create first batch of docs, creating numRT2DocsInitial in each channel
-		docIDPrefix := rest.SafeDocumentName(t, t.Name()+"rt2doc")
+		docIDPrefix := sgtest.SafeDocumentName(t, t.Name()+"rt2doc")
 		for i := range numDocsPerChannelInitial {
 			rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
 			rt2.PutDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
 		}
 
 		ctx1 := rt1.Context()
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		arConfig := db.ActiveReplicatorConfig{
 			ID:          replicationID,
@@ -5713,7 +5714,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				rt1Version := rt1.PutNewEditsFalse(docID, test.localVersion, test.commonAncestorVersion, test.localRevisionBody)
 				rest.RequireDocRevTreeEqual(t, test.localVersion, *rt1Version)
 
-				id := rest.SafeDocumentName(t, t.Name())
+				id := sgtest.SafeDocumentName(t, t.Name())
 				customConflictResolver, err := db.NewCustomConflictResolver(ctx1, test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 				require.NoError(t, err)
 				replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
@@ -6563,7 +6564,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 					parentVersion = activeRT.PutNewEditsFalse(docID, newVersion, parentVersion, "{}")
 				}
 
-				replicationID := "replication_" + rest.SafeDocumentName(t, t.Name())
+				replicationID := "replication_" + sgtest.SafeDocumentName(t, t.Name())
 				activeRT.CreateReplication(replicationID, passiveDBURL, db.ActiveReplicatorTypePushAndPull, nil, true, test.conflictResolution, "")
 				defer activeRT.DeleteReplication(replicationID)
 				activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
@@ -6649,7 +6650,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		}`, rt1.GetDatabase().Options.JavascriptTimeout)
 		require.NoError(t, err)
 
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		replicationStats := rest.DbReplicatorStats(t, rt1.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -6704,7 +6705,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		activeRT.WaitForVersion("test", version)
 
 		// Set-up replicator //
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		replicationStats := rest.DbReplicatorStats(t, activeRT.GetDatabase(), id)
 
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
@@ -6782,7 +6783,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 		version := activeRT.PutDoc("test", `{"field1":"f1_1","field2":"f2_1"}`)
 		activeRT.WaitForVersion("test", version)
 
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:          id,
 			Direction:   db.ActiveReplicatorTypePush,
@@ -6846,7 +6847,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		activeCtx := activeRT.Context()
 		collection, _ := activeRT.GetSingleTestDatabaseCollection()
 
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		// Create the docs //
 		// Doc rev 1
 		version1 := activeRT.PutDoc(docID, `{"key":"12","channels": ["rev1chan"]}`)
@@ -6864,7 +6865,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		err := collection.PurgeOldRevisionJSON(activeCtx, docID, version2.RevTreeID)
 		require.NoError(t, err)
 
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:          id,
 			Direction:   db.ActiveReplicatorTypePush,
@@ -6904,12 +6905,12 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 		activeCtx := activeRT.Context()
 
 		// Create the document
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 		rawDoc := `{"_foo": true, "_exp": 120, "true": false, "_attachments": {"bar": {"data": "Zm9vYmFy"}}}`
 		_ = activeRT.PutDoc(docID, rawDoc)
 
 		// Set-up replicator
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 			ID:          id,
 			Direction:   db.ActiveReplicatorTypePush,
@@ -6995,7 +6996,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		require.NoError(t, err)
 		ctx := rt.Context()
 
-		id := rest.SafeDocumentName(t, t.Name())
+		id := sgtest.SafeDocumentName(t, t.Name())
 		ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 			ID:                     id,
 			Direction:              db.ActiveReplicatorTypePushAndPull,
@@ -7141,7 +7142,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		activeRT, passiveRT, remoteURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
 
-		replicationID := rest.SafeDocumentName(t, t.Name())
+		replicationID := sgtest.SafeDocumentName(t, t.Name())
 
 		// increase checkpointing interval temporarily to ensure the checkpointer doesn't fire on an
 		// interval during the running of the test
@@ -7977,7 +7978,7 @@ func TestISGRRunAsNonExistentUserPushesAsAdmin(t *testing.T) {
 	// Admin-authored private document on active, in a channel that would
 	// never match a scoped run_as user's access (because no such user
 	// exists to grant access to).
-	docID := "private_doc_" + rest.SafeDocumentName(t, t.Name())
+	docID := "private_doc_" + sgtest.SafeDocumentName(t, t.Name())
 	version := activeRT.PutDoc(docID, `{"channels":["`+privateChannel+`"],"content":"secret"}`)
 	activeRT.WaitForPendingChanges()
 
@@ -8116,7 +8117,7 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 
 	// Admin-authored private document; a non-existent run_as user can never
 	// be granted access to this channel.
-	docID := "private_doc_" + rest.SafeDocumentName(t, t.Name())
+	docID := "private_doc_" + sgtest.SafeDocumentName(t, t.Name())
 	activeRT.PutDoc(docID, `{"channels":["`+privateChannel+`"],"content":"secret"}`)
 	activeRT.WaitForPendingChanges()
 
@@ -8149,7 +8150,7 @@ func TestActiveReplicatorPullNewDocChannels(t *testing.T) {
 
 		ctx1 := activeRT.Context()
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePull,
 			RemoteDBURL: remoteURL,
 			ActiveDB: &db.Database{
@@ -8166,7 +8167,7 @@ func TestActiveReplicatorPullNewDocChannels(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// brand new document created on the remote, assigned to chanName by the sync function
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt2doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt2doc1"
 		version := passiveRT.PutDoc(docID, `{"source":"rt2","channels":["`+chanName+`"]}`)
 
 		sgrRunner.WaitForDocReplicated(docID, passiveRT, activeRT, version)
@@ -8204,7 +8205,7 @@ func TestActiveReplicatorPushNewDocChannels(t *testing.T) {
 		ctx1 := activeRT.Context()
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePush,
 			RemoteDBURL: userDBURL(passiveRT, username),
 			ActiveDB: &db.Database{
@@ -8221,7 +8222,7 @@ func TestActiveReplicatorPushNewDocChannels(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// brand new document created on the active peer, assigned to chanName by the sync function
-		docID := rest.SafeDocumentName(t, t.Name()) + "rt1doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "rt1doc1"
 		version := activeRT.PutDoc(docID, `{"source":"rt1","channels":["`+chanName+`"]}`)
 
 		sgrRunner.WaitForDocReplicated(docID, activeRT, passiveRT, version)
@@ -8261,7 +8262,7 @@ func TestActiveReplicatorPullUpdatedDocChannels(t *testing.T) {
 		ctx1 := activeRT.Context()
 
 		ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
-			ID:          rest.SafeDocumentName(t, t.Name()),
+			ID:          sgtest.SafeDocumentName(t, t.Name()),
 			Direction:   db.ActiveReplicatorTypePushAndPull,
 			RemoteDBURL: userDBURL(passiveRT, username),
 			ActiveDB: &db.Database{
@@ -8278,7 +8279,7 @@ func TestActiveReplicatorPullUpdatedDocChannels(t *testing.T) {
 		require.NoError(t, ar.Start(ctx1))
 
 		// doc originates LOCALLY on active, so active's channel metadata starts out correct
-		docID := rest.SafeDocumentName(t, t.Name()) + "doc1"
+		docID := sgtest.SafeDocumentName(t, t.Name()) + "doc1"
 		v1 := activeRT.PutDoc(docID, `{"channels":["`+chanA+`"]}`)
 		activeRTCollection, activeRTCtx := activeRT.GetSingleTestDatabaseCollection()
 		localDoc, err := activeRTCollection.GetDocument(activeRTCtx, docID, db.DocUnmarshalAll)
@@ -8358,7 +8359,7 @@ func TestISGRInvalidRevTreeRepairedBeforeSend(t *testing.T) {
 	sgrRunner.Run(func(t *testing.T) {
 		peers := sgrRunner.SetupSGRPeers(t)
 		activeRT, passiveRT, passiveDBURL := peers.ActiveRT, peers.PassiveRT, peers.PassiveDBURL
-		docID := rest.SafeDocumentName(t, t.Name())
+		docID := sgtest.SafeDocumentName(t, t.Name())
 
 		activeCollection, activeCollectionCtx := activeRT.GetSingleTestDatabaseCollectionWithUser()
 		db.PlantRevTreeForTest(t, activeCollectionCtx, activeCollection, docID,
@@ -8374,8 +8375,8 @@ func TestISGRInvalidRevTreeRepairedBeforeSend(t *testing.T) {
 		require.Equal(t, quietCaseTree, tree)
 		require.Equal(t, int64(0), invalidRevTreeCount.Value())
 
-		activeRT.CreateReplication(rest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
-		activeRT.WaitForReplicationStatus(rest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
+		activeRT.CreateReplication(sgtest.SafeDocumentName(t, t.Name()), passiveDBURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
+		activeRT.WaitForReplicationStatus(sgtest.SafeDocumentName(t, t.Name()), db.ReplicationStateRunning)
 
 		// passive get repaired version of doc
 		passiveCollection, passiveCollectionCtx := passiveRT.GetSingleTestDatabaseCollectionWithUser()

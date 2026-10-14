@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func unmarshalBody(t *testing.T, j string) Body {
@@ -2014,7 +2015,7 @@ func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
 			_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("preResync");}`)
 			require.NoError(t, err)
 
-			docID := SafeDocumentName(t, t.Name())
+			docID := sgtest.SafeDocumentName(t, t.Name())
 			var rev1ID string
 			if tc.create != nil {
 				rev1ID = tc.create(t, ctx, collection, docID)

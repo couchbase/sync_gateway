@@ -1186,12 +1186,6 @@ func GetChangeEntryCV(t *testing.T, entry *ChangeEntry) Version {
 	return Version{}
 }
 
-// SafeDocumentName returns a document name free of any special characters for use in tests.
-func SafeDocumentName(t *testing.T, name string) string {
-	t.Helper()
-	return base.SafeDocumentName(t, name)
-}
-
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database. Fails the
 // test harness if cache does not catch up.
 func (db *DatabaseContext) WaitForPendingChanges(t testing.TB) {
