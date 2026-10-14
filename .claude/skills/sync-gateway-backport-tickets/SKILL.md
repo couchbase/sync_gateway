@@ -1,11 +1,11 @@
 ---
 name: sync-gateway-backport-tickets
-description: Use when the user wants Jira backport tickets created for a CBG ticket. Each backport ticket is a clone of the original, with "[x.y.z backport]" in the summary and the version as fixVersion. Use for requests like "make backport tickets for CBG-1234", "clone CBG-1234 for 4.0.9 and 3.3.9", or "we need to backport this to 4.1.x". Not for doing the code backport itself (that is sync-gateway-backport).
+description: Use when the user wants Jira backport tickets created for a CBG ticket. Each backport ticket copies the fields of the original, with "[x.y.z backport]" in the summary, the version as fixVersion, and a Backport link to the original. Use for requests like "make backport tickets for CBG-1234", "clone CBG-1234 for 4.0.9 and 3.3.9", or "we need to backport this to 4.1.x". Not for doing the code backport itself (that is sync-gateway-backport).
 ---
 
 # Sync Gateway Backport Tickets
 
-Create one Jira backport ticket per release version for an existing CBG ticket. Each backport ticket is a clone of the original. CBG-5914 is a reference example: its clones are CBG-5915 (4.1.3), CBG-5916 (4.0.9), and CBG-5917 (3.3.9).
+Create one Jira backport ticket per release version for an existing CBG ticket. Each backport ticket copies the fields of the original and has a Backport link ("is a backport of") to the original. CBG-5765 is a reference example: its backports are CBG-5996 (4.1.3), CBG-5995 (4.0.9), and CBG-5994 (3.3.9).
 
 ## Get the inputs
 
@@ -44,7 +44,7 @@ If the summary of the original already starts with `[x.y.z backport]`, the user 
 
 ## Skip versions that already have a backport
 
-Look at the `issuelinks` of the original for "Cloners" links. A backport exists when the original "is cloned by" a ticket whose summary starts with `[<version> backport]`, in any case. Also search, because someone can create a clone without a link, or edit the summary of a clone:
+Look at the `issuelinks` of the original for "Backport" and "Cloners" links. Older backports were made with the Jira clone action and have only a "Cloners" link. A backport exists when the original "backports to" or "is cloned by" a ticket whose summary starts with `[<version> backport]`, in any case. Also search, because someone can create a backport without a link, or edit the summary of a backport:
 
 ```
 project = CBG AND (issue in linkedIssues(<original key>) OR (fixVersion = "<version>" AND summary ~ "backport"))
@@ -71,7 +71,7 @@ If the original has a `security` value and `security` is not on the create scree
 
 ## Read the link direction
 
-Call `getIssueLinkTypes` and find the "Cloners" type. Its `outward` text is "clones" and its `inward` text is "is cloned by". Use these texts with the mapping in [Copy the other links](#copy-the-other-links) to decide the `inwardIssue` and `outwardIssue` of each link before you create any link.
+Call `getIssueLinkTypes` and find the "Backport" type. Its `outward` text is "is a backport of" and its `inward` text is "backports to". Use these texts with the mapping in [Copy the other links](#copy-the-other-links) to decide the `inwardIssue` and `outwardIssue` of each link before you create any link.
 
 ## Confirm before you create
 
@@ -80,7 +80,7 @@ Creating Jira tickets and links is outward-facing. Show the plan and ask for per
 ```
 [4.1.3 backport] <original summary>   fixVersion 4.1.3   security <level>
   copied fields: priority, components, labels, <custom field names>
-  links: clones CBG-5914, is caused by CBG-1234, relates to MB-56789
+  links: is a backport of CBG-5914, is caused by CBG-1234, relates to MB-56789
 ```
 
 Each link also shows on the other ticket, so name every linked ticket. Also show the description content that the Markdown conversion loses, and the versions that you skip and why.
@@ -102,20 +102,20 @@ Then set the copied fields that are not on the create screen with one `editJiraI
 
 Then link the new ticket to the original with `createIssueLink`:
 
-- `type`: `Cloners`
-- `inwardIssue`: the new backport ticket (the ticket that "clones")
-- `outwardIssue`: the original ticket (the ticket that "is cloned by")
+- `type`: `Backport`
+- `inwardIssue`: the new backport ticket (the ticket that "is a backport of")
+- `outwardIssue`: the original ticket (the ticket that "backports to")
 
-After the first link, fetch the original and make sure that it shows "is cloned by <new key>". If the direction is reversed, the mapping below is reversed for every link type. Stop and create no more links. Tell the user which link is wrong, because no tool can delete a link and the user must remove it by hand. Then ask whether to continue with `inwardIssue` and `outwardIssue` swapped for all links, copied links included.
+After the first link, fetch the original and make sure that it shows "backports to <new key>". If the direction is reversed, the mapping below is reversed for every link type. Stop and create no more links. Tell the user which link is wrong, because no tool can delete a link and the user must remove it by hand. Then ask whether to continue with `inwardIssue` and `outwardIssue` swapped for all links, copied links included.
 
 ### Copy the other links
 
-Copy each issue link of the original to the new ticket, with the same type and the same direction. A `getJiraIssue` link entry names the other ticket as `outwardIssue` or `inwardIssue`. Map it to `createIssueLink` as follows, unless the first Cloners link showed that the direction is reversed:
+Copy each issue link of the original to the new ticket, with the same type and the same direction. A `getJiraIssue` link entry names the other ticket as `outwardIssue` or `inwardIssue`. Map it to `createIssueLink` as follows, unless the first Backport link showed that the direction is reversed:
 
 - Entry has `outwardIssue: X`: the original is the subject of the outward verb (for example "causes X"). Use `inwardIssue` = new ticket, `outwardIssue` = X.
-- Entry has `inwardIssue: X`: X is the subject (for example "X clones the original"). Use `inwardIssue` = X, `outwardIssue` = new ticket.
+- Entry has `inwardIssue: X`: X is the subject (for example "X is a backport of the original"). Use `inwardIssue` = X, `outwardIssue` = new ticket.
 
-Do not copy the "Cloners" links between the original and its other backport tickets. A backport ticket does not clone its sibling backports.
+Do not copy the "Backport" or "Cloners" links between the original and its other backport tickets. A backport ticket is not a backport of its sibling backports.
 
 If a link fails, continue with the other links and list the failure in the report.
 
@@ -129,7 +129,7 @@ The new tickets have no sprint. The sync-gateway-backport skill finds work with 
 
 ```
 Created:
-- CBG-5915 [4.1.3 backport] ... https://jira.issues.couchbase.com/browse/CBG-5915
+- CBG-5996 [4.1.3 backport] ... https://jira.issues.couchbase.com/browse/CBG-5996
 Skipped:
-- 4.0.9: CBG-5916 already exists
+- 4.0.9: CBG-5995 already exists
 ```
