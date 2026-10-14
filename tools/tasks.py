@@ -785,10 +785,10 @@ class FileRangeReader:
 
 def upload_part_order(num_parts: int) -> list[int]:
     """
-    Returns the order to upload parts. The last part goes first, so a partial upload always has a gap and a receiver
-    cannot mistake it for a complete file with fewer parts.
+    Returns the order to upload parts: the first part, then the last part, then the rest. A partial upload is either
+    a lone .000 or has a gap, so a receiver cannot mistake it for a complete file with fewer parts.
     """
-    return [num_parts - 1, *range(num_parts - 1)]
+    return [0, num_parts - 1, *range(1, num_parts - 1)]
 
 
 def part_url(url: str, part: int) -> str:
