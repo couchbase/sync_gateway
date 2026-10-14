@@ -390,6 +390,7 @@ func requireDefaultCollectionIndexes(t *testing.T, tb *base.TestBucket, indexesT
 	require.NoError(t, err)
 	expected := db.GetIndexNames(db.InitializeIndexOptions{
 		MetadataIndexes:     indexesType,
+		UseXattrs:           base.TestUseXattrs(),
 		NumPartitions:       db.DefaultNumIndexPartitions,
 		LegacySyncDocsIndex: testUseLegacySyncDocsIndex,
 	}, db.GetSGIndexes())
