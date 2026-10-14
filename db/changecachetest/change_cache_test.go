@@ -3178,11 +3178,10 @@ func TestDocChangedRecentSequences(t *testing.T) {
 	assert.Equal(t, []uint64{103}, starSeqs, "the star channel holds one entry per document, so the removal at 102 is displaced by 103")
 }
 
-// TestDocChangedFeedLatencyStat pins where feed latency is measured from: the document's write
-// time, or the point this cache started working the feed, whichever is later. Asserting only that
-// some latency was recorded would hold either way - and taking the earlier of the two would charge
-// a document that sat in the bucket for hours before startup as hours of feed latency, swamping
-// the average on every restart.
+// TestDocChangedFeedLatencyStat checks that DocChanged passes the document's write time and the
+// cache start time through to the feed latency stat. TestFeedLatency covers the calculation itself
+// with a fixed clock, because TimeSaved loses its monotonic reading on the feed and wall clock jumps
+// make exact bounds here unreliable.
 func TestDocChangedFeedLatencyStat(t *testing.T) {
 	// recordedLatency runs one mutation through a cache that started at initTime, carrying
 	// timeSaved as its write time, and returns the latency that landed on the stat.
@@ -3215,25 +3214,21 @@ func TestDocChangedFeedLatencyStat(t *testing.T) {
 		return time.Duration(database.DbStats.Database().DCPReceivedTime.Value())
 	}
 
-	// Both cases place the later of the two inputs a minute ago and the earlier an hour ago, so
-	// the recorded latency says which one was used. The window is wide at the top because only
-	// the lower bound of the elapsed time is under the test's control.
-	const (
-		expectedFloor = time.Minute
-		wrongInput    = 10 * time.Minute
-	)
+	// Both cases place the later of the two inputs a minute ago and the earlier an hour ago, so a
+	// latency under the ceiling shows the later input was used.
+	const wrongInput = 10 * time.Minute
 
 	t.Run("a write after the cache started is charged from its write time", func(t *testing.T) {
 		latency := recordedLatency(t, time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
 
-		assert.GreaterOrEqual(t, latency, expectedFloor)
+		assert.Positive(t, latency)
 		assert.Less(t, latency, wrongInput, "latency must come from TimeSaved, not the older cache start")
 	})
 
 	t.Run("a write from before the cache started is charged from the cache start", func(t *testing.T) {
 		latency := recordedLatency(t, time.Now().Add(-time.Minute), time.Now().Add(-time.Hour))
 
-		assert.GreaterOrEqual(t, latency, expectedFloor)
+		assert.Positive(t, latency)
 		assert.Less(t, latency, wrongInput, "a pre-startup write is only this cache's problem from startup")
 	})
 }
