@@ -21,7 +21,6 @@ import pathlib
 import platform
 import re
 import shutil
-import ssl
 import sys
 import urllib.error
 import urllib.parse
@@ -31,6 +30,7 @@ from typing import Literal, NoReturn
 
 import password_remover
 from tasks import (
+    MAX_UPLOAD_PART_SIZE,
     AllOsTask,
     CbcollectInfoOptions,
     PythonTask,
@@ -44,10 +44,6 @@ from tasks import (
     make_os_tasks,
     urlopen,
 )
-
-# Don't validate HTTPS by default.
-# The type checker has mismatched types for these functions
-ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
 # Collects the following info from Sync Gateway
 #
@@ -206,6 +202,23 @@ def create_option_parser():
         dest="upload_proxy",
         default="",
         help="specifies proxy for upload",
+    )
+    parser.add_option(
+        "--upload-part-size",
+        dest="upload_part_size",
+        type="int",
+        default=None,
+        help="used in conjunction with '--upload-host', uploads a zip file larger than this many bytes as parts named"
+        " <name>.zip.000, <name>.zip.001, ... Join the parts in order to get the zip file, e.g. 'cat <name>.zip.* >"
+        f" <name>.zip'. Defaults to {MAX_UPLOAD_PART_SIZE} (4.9 GiB). Cannot be used with '--no-upload-split'",
+    )
+    parser.add_option(
+        "--no-upload-split",
+        dest="no_upload_split",
+        action="store_true",
+        default=False,
+        help="used in conjunction with '--upload-host', uploads the zip file as one file of any size. Cannot be"
+        " used with '--upload-part-size'",
     )
     parser.add_option(
         "--tmp-dir",
@@ -875,6 +888,17 @@ def main() -> NoReturn:
             "Invalid redaction level. Only 'none' and 'partial' are supported."
         )
 
+    upload_part_size = options.upload_part_size
+    if options.no_upload_split:
+        if upload_part_size is not None:
+            parser.error(
+                "--upload-part-size and --no-upload-split cannot be used together"
+            )
+    elif upload_part_size is None:
+        upload_part_size = MAX_UPLOAD_PART_SIZE
+    elif upload_part_size <= 0:
+        parser.error("--upload-part-size must be greater than 0")
+
     should_redact = should_redact_from_options(options)
     redact_zip_file = zip_filename[:-4] + "-redacted" + zip_filename[-4:]
     if should_redact:
@@ -911,7 +935,14 @@ def main() -> NoReturn:
 
     # If user asked to just upload, then upload and exit
     if options.just_upload_into is not None:
-        do_upload(args[0], options.just_upload_into, options.upload_proxy)
+        sys.exit(
+            do_upload(
+                zip_filename,
+                options.just_upload_into,
+                options.upload_proxy,
+                upload_part_size,
+            )
+        )
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     with TaskRunner(
@@ -975,9 +1006,13 @@ def main() -> NoReturn:
                 sys.exit(0)
             # Upload the zip to the URL to S3 if required
             if should_redact:
-                exit_code = do_upload(redact_zip_file, upload_url, options.upload_proxy)
+                exit_code = do_upload(
+                    redact_zip_file, upload_url, options.upload_proxy, upload_part_size
+                )
             else:
-                exit_code = do_upload(zip_filename, upload_url, options.upload_proxy)
+                exit_code = do_upload(
+                    zip_filename, upload_url, options.upload_proxy, upload_part_size
+                )
             sys.exit(exit_code)
         finally:
             if not options.keep_zip and upload_url:
