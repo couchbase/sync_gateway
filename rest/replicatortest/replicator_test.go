@@ -508,6 +508,41 @@ func TestPushReplicationAPI(t *testing.T) {
 	})
 }
 
+// TestPushReplicationAfterDbAuditConfigUpdate ensures a database reloaded by PUT /{db}/_config/audit can still run
+// replications once the request that triggered the reload has completed and its context has been cancelled.
+func TestPushReplicationAfterDbAuditConfigUpdate(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	activeRT := rest.NewRestTesterPersistentConfig(t)
+	t.Cleanup(activeRT.Close)
+	passiveRT := rest.NewRestTesterPersistentConfig(t)
+	t.Cleanup(passiveRT.Close)
+
+	const username = "alice"
+	passiveRT.CreateUser(username, []string{"*"})
+	passiveDBURL := userDBURL(passiveRT, username)
+
+	// RestTester requests use a context that is never cancelled, so go over real HTTP to get net/http behaviour.
+	resp, err := http.Post(adminDBURL(activeRT).String()+"/_config/audit", "application/json", strings.NewReader(`{"enabled":false}`))
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	activeRT.WaitForDBOnline()
+
+	const replicationID = "rep1"
+	activeRT.CreateReplication(replicationID, passiveDBURL.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault, "")
+	activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	const docID = "doc1"
+	version := activeRT.CreateTestDoc(docID)
+	passiveRT.WaitForVersion(docID, version)
+
+	changes := activeRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, changes.Last_Seq.String(), activeRT.GetReplicationStatus(replicationID).LastSeqPush)
+	}, 20*time.Second, 50*time.Millisecond)
+}
+
 // TestPullReplicationAPI
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates documents on rt2.
