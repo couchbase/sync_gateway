@@ -205,5 +205,5 @@ func (c *tbpCluster) supportsMobileRBAC() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return major >= 7 && minor >= 1, nil
+	return major > 7 || (major == 7 && minor >= 1), nil
 }
