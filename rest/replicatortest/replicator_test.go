@@ -8558,6 +8558,10 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 			passiveRT.CreateUser(username, []string{"*"})
 
 			version := passiveRT.PutDoc(docID, `{"foo":"bar"}`)
+			// The doc must already exist on the active peer, so the concurrent pulls of the tombstone and the demoting
+			// revision are CAS checked. See TestWriteUpdateWithXattrsConcurrentTombstoneInsert.
+			activeVersion := activeRT.PutDoc(docID, `{"foo":"bar"}`)
+			require.Equal(t, version.RevTreeID, activeVersion.RevTreeID)
 			tombstoneVersion := passiveRT.DeleteDoc(docID, version)
 			passiveRT.WaitForPendingChanges()
 
