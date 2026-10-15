@@ -1636,6 +1636,42 @@ func TestWriteUpdateWithXattrsReplacingNilDoc(t *testing.T) {
 
 }
 
+// TestWriteUpdateWithXattrsConcurrentTombstoneInsert creates a tombstone while an update of the missing doc is in
+// flight. The update must retry against the tombstone rather than overwrite its xattr.
+func TestWriteUpdateWithXattrsConcurrentTombstoneInsert(t *testing.T) {
+	t.Skip("CBG-3918: a CAS 0 insert replaces a tombstone and its xattrs on Couchbase Server")
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	col := bucket.GetSingleDataStore()
+
+	docID := t.Name()
+	xattrKeys := []string{SyncXattrName}
+
+	var calls []string
+	writeUpdateFunc := func(_ []byte, xattrs map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+		calls = append(calls, string(xattrs[SyncXattrName]))
+		if len(calls) == 1 {
+			_, err := col.WriteUpdateWithXattrs(ctx, docID, xattrKeys, 0, nil, nil, func(_ []byte, _ map[string][]byte, _ uint64) (sgbucket.UpdatedDoc, error) {
+				return sgbucket.UpdatedDoc{
+					Xattrs:      map[string][]byte{SyncXattrName: []byte(`{"tombstone":true}`)},
+					IsTombstone: true,
+				}, nil
+			})
+			require.NoError(t, err)
+		}
+		return sgbucket.UpdatedDoc{
+			Doc:    []byte(`{"foo":"bar"}`),
+			Xattrs: map[string][]byte{SyncXattrName: []byte(`{"live":true}`)},
+		}, nil
+	}
+
+	_, err := col.WriteUpdateWithXattrs(ctx, docID, xattrKeys, 0, nil, nil, writeUpdateFunc)
+	require.NoError(t, err)
+	require.Len(t, calls, 2, "update was not retried after the tombstone was written, xattrs seen: %v", calls)
+	require.JSONEq(t, `{"tombstone":true}`, calls[1])
+}
+
 func requireDocNotFoundOrCasMismatchError(t testing.TB, err error) {
 	t.Helper()
 	require.Error(t, err)
