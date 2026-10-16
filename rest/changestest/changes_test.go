@@ -55,9 +55,9 @@ func TestChangesSinceLogging(t *testing.T) {
 		{"999", "999"}, // past the end of the feed
 
 		// {TriggeredBy, Seq}
-		{"10:5", "10:5"},           // valid backfill, Seq < TriggeredBy
-		{"5:10", "10 (raw: 5:10)"}, // TriggeredBy < Seq, TriggeredBy dropped
-		{"5:5", "5 (raw: 5:5)"},    // TriggeredBy == Seq, TriggeredBy dropped
+		{"10:5", "10:5"}, // valid backfill, Seq < TriggeredBy
+		{"5:10", "5:10"}, // TriggeredBy < Seq, e.g. a revocation of a doc written after the revocation
+		{"5:5", "5:5"},   // TriggeredBy == Seq
 
 		// {LowSeq, Seq}
 		{"2::5", "2::5"},          // valid, LowSeq < Seq
@@ -67,9 +67,9 @@ func TestChangesSinceLogging(t *testing.T) {
 		// {LowSeq, TriggeredBy, Seq}
 		{"2:10:5", "2:10:5"},               // valid, LowSeq < TriggeredBy and Seq < TriggeredBy
 		{"12:10:5", "10:5 (raw: 12:10:5)"}, // backfill active but LowSeq >= TriggeredBy, LowSeq dropped
-		{"2:5:10", "2::10 (raw: 2:5:10)"},  // no backfill (Seq >= TriggeredBy), TriggeredBy dropped
-		{"12:5:10", "10 (raw: 12:5:10)"},   // no backfill and LowSeq >= Seq, both dropped
-		{"5:5:5", "5 (raw: 5:5:5)"},        // all equal, both dropped
+		{"2:5:10", "2:5:10"},               // valid, LowSeq < TriggeredBy and Seq >= TriggeredBy
+		{"12:5:10", "5:10 (raw: 12:5:10)"}, // LowSeq >= TriggeredBy, LowSeq dropped
+		{"5:5:5", "5:5 (raw: 5:5:5)"},      // LowSeq == TriggeredBy, LowSeq dropped
 
 		// A leading zero component parses away entirely, so the raw value is preserved and reported even
 		// though the parsed sequence is indistinguishable from a plain "5".

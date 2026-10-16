@@ -253,24 +253,24 @@ func TestIntSeqToString(t *testing.T) {
 			seqStr: "110:20",
 		},
 		{
-			name:   "backfill is complete, triggeredBy is less than lowseq",
+			name:   "seq greater than triggeredBy (revocation of a doc written after the revocation) keeps triggeredBy",
 			seq:    db.SequenceID{TriggeredBy: 110, Seq: 150},
-			seqStr: "150",
+			seqStr: "110:150",
 		},
 		{
-			name:   "backfill is complete and seq is less than lowSeq, triggeredBy is less than lowseq",
+			name:   "seq greater than triggeredBy and lowSeq greater than triggeredBy - lowSeq is dropped",
 			seq:    db.SequenceID{LowSeq: 120, TriggeredBy: 100, Seq: 110},
-			seqStr: "110",
+			seqStr: "100:110",
 		},
 		{
-			name:   "backfill is complete and lowseq is less than seq, triggeredBy is greater than lowseq",
+			name:   "seq greater than triggeredBy and lowSeq less than triggeredBy - all components kept",
 			seq:    db.SequenceID{LowSeq: 120, TriggeredBy: 130, Seq: 150},
-			seqStr: "120::150",
+			seqStr: "120:130:150",
 		},
 		{
-			name:   "seq equal to triggeredBy - backfill is complete, not active",
+			name:   "seq equal to triggeredBy keeps triggeredBy",
 			seq:    db.SequenceID{TriggeredBy: 110, Seq: 110},
-			seqStr: "110",
+			seqStr: "110:110",
 		},
 		{
 			name:   "lowSeq equal to triggeredBy during backfill - lowSeq is dropped",
