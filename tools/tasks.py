@@ -34,12 +34,6 @@ from http.client import HTTPResponse
 from typing import Any, BinaryIO
 
 
-def running_as_root_user() -> bool:
-    if sys.platform == "win32":
-        return False
-    return os.getuid() == 0
-
-
 class LogRedactor:
     def __init__(self, salt: str, tmpdir: str | pathlib.Path):
         self.target_dir = os.path.join(tmpdir, "redacted")
@@ -127,7 +121,6 @@ def log(message, end="\n"):
 
 
 class Task:
-    privileged = False
     no_header = False
     num_samples = 1
     interval = 0
@@ -227,7 +220,6 @@ class PythonTask:
     These will run on any platform.
     """
 
-    privileged = False
     no_header = False
     num_samples = 1
     interval = 0
@@ -355,10 +347,6 @@ class TaskRunner:
         command_to_print = getattr(task, "command_to_print", task.command)
         if task.will_run():
             log(f"{task.description} ({command_to_print}) - ", end="")
-            if task.privileged and not running_as_root_user():
-                log("skipped (needs root privs)")
-                return
-
             if hasattr(task, "log_file"):
                 filename = task.log_file
             else:
@@ -667,16 +655,7 @@ def make_os_tasks(processes):
         UnixTask("System activity reporter", "sar 1 10"),
         UnixTask("System paging activity", "vmstat 1 10"),
         UnixTask("System uptime", "uptime"),
-        UnixTask("couchbase user definition", "getent passwd couchbase"),
-        UnixTask(
-            "couchbase user limits", 'su couchbase -c "ulimit -a"', privileged=True
-        ),
         UnixTask("sync_gateway user definition", "getent passwd sync_gateway"),
-        UnixTask(
-            "sync_gateway user limits",
-            'su sync_gateway -c "ulimit -a"',
-            privileged=True,
-        ),
         UnixTask("Interrupt status", "intrstat 1 10"),
         UnixTask("Processor status", "mpstat 1 10"),
         UnixTask("System log", "cat /var/adm/messages"),
