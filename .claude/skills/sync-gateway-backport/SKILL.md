@@ -80,7 +80,13 @@ Skip tickets whose *backport* ticket is already `In Review`/`Resolved` unless as
 
    A new finding that exists identically on `main`, and is only "new" because the file is new to the release branch: fix it and list it as a deviation. A red CI is worse than an extra bullet in the body.
 
-   Integration tests need `SG_TEST_BACKING_STORE=Couchbase`. If you can't run them, say so explicitly rather than implying they passed.
+7. **Run the integration tests on Jenkins.** Trigger `SyncGatewayIntegration-Pipeline` with `SG_COMMIT` set to the backport branch name. Rosmar passes do not cover all behaviour. Jenkins fetches the branch from `origin`. Trigger the job after `gh stack submit` pushes the branch.
+
+   Use the `jenkins` MCP server for every Jenkins call. Trigger the build with `triggerBuild`, and leave every other parameter at its default. Use `getQueueItem` to get the build URL.
+
+   Put the build URL in the PR body's integration tests item as soon as you have it (see [PR title and body](#pr-title-and-body)), and give it to the user. Do not wait for the build to finish.
+
+   If the `jenkins` MCP server is not available, or the trigger fails, write the integration tests item as a TODO in the PR body and tell the user. Do not imply that the integration tests ran.
 
 ## Prerequisites
 
@@ -177,6 +183,9 @@ Clean cherry pick of #8495 to 4.1.2
 
 test-only
 
+## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/build?delay=0sec)
+- [x] https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/1234/
+
 🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
 
@@ -190,17 +199,25 @@ Changes from main commit:
 - `rest/manualbucketpooltest/database_init_manager_test.go` — package doesn't exist on 4.1.2; the signature change was applied to the copy of that test in `rest/` instead
 - `rest/database_init_manager_test.go` — `dbConfig.setup()` takes an extra `forcePerBucketAuth` arg on 4.1.2
 
+## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/build?delay=0sec)
+- [ ] TODO: Jenkins was not reachable, integration tests not run
+
 🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
 
 One bullet per deviation, naming the file and the reason. "Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. For a stacked PR, add a line naming the PR it sits on.
+
+Every body carries the `## Integration Tests` section from the repo PR template, with one item for the Jenkins build from step 7:
+
+- `- [ ] <build-url>`, added as soon as the build is queued
+- `- [ ] TODO: Jenkins was not reachable, integration tests not run`, if you could not trigger the build
 
 ### The `test-only` marker
 
 `test-only` tells a reviewer the PR carries no production risk, so it earns a much lighter review. It goes in two places, and they must agree:
 
 - the title, as a `(test-only)` suffix — this is what makes a low-risk PR obvious in a list view
-- the body, on its own line between the cherry-pick line (and any deviation bullets) and the footer
+- the body, on its own line between the cherry-pick line (and any deviation bullets) and the integration tests section
 
 Include it only when **every file the branch touches is recognised test code**. Check the real diff, do not judge from the commit subject. List all changed paths — not just `*.go` — and strip the ones the table below classifies as test code:
 
@@ -247,6 +264,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - `gh stack init` against a stale local `release/x.y.z` ref — the stack records the wrong base
 - `gh stack submit --auto` without `--open` — the whole stack lands as drafts and nobody reviews it
 - Reporting a backport done without `go build`/`go vet`, or implying integration tests ran when they didn't
+- A PR body with no `## Integration Tests` item, or a ticked box before the Jenkins result is `SUCCESS`
 - Calling lint clean after a `golangci-lint` run that used the default config instead of `.golangci-strict.yml`, or a format check that can't fail
 - Leaving the auto-generated PR body or the repo PR template in place
 - Submitting or editing a PR body without the `sync-gateway-backport` attribution footer
