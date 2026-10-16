@@ -47,15 +47,16 @@ var MaxSequenceID = SequenceID{
 //	LowSeq:TriggeredBy:Seq - when LowSeq is non-zero.
 //
 // When LowSeq is non-zero but TriggeredBy is zero, will appear as LowSeq::Seq.
-// When LowSeq is non-zero but is greater than s.Seq (occurs when sending previously skipped sequences), ignore LowSeq.
+// LowSeq is ignored when it is not below the sequence it qualifies: TriggeredBy when that is non-zero, otherwise
+// Seq (occurs when sending previously skipped sequences).
 func (s SequenceID) String() string {
 	return s.intSeqToString()
 }
 
 // intSeqToString implements the formatting rules documented on String() above. A non-zero LowSeq
 // is silently omitted from the result in two cases:
-//   - omit LowSeq when it's higher than the current sequence (no TriggeredBy)
-//   - omit LowSeq when it's higher than the triggeredBy sequence (TriggeredBy set)
+//   - omit LowSeq when it's at or above the current sequence (no TriggeredBy)
+//   - omit LowSeq when it's at or above the triggeredBy sequence (TriggeredBy set)
 func (s SequenceID) intSeqToString() string {
 	if s.TriggeredBy > 0 {
 		if s.LowSeq > 0 && s.LowSeq < s.TriggeredBy {

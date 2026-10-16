@@ -938,13 +938,13 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				// Resume this channel from TriggeredBy-1 when either another channel's backfill is in progress (case 4),
 				// or the since is a revocation entry (case 5). Backfill entries always have Seq < TriggeredBy, so a since
 				// with Seq >= TriggeredBy means any backfill at TriggeredBy, including this channel's, has finished.
-				backfillInOtherChannel := options.Since.TriggeredBy != 0 &&
+				resumeFromTriggeredBy := options.Since.TriggeredBy != 0 &&
 					(options.Since.TriggeredBy > seqAddedAt || options.Since.Seq >= options.Since.TriggeredBy)
 
 				if isNewChannel || (backfillRequired && backfillPending) {
 					// Newly added channel so initiate backfill:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
-				} else if backfillInOtherChannel {
+				} else if resumeFromTriggeredBy {
 					// If we're in a backfill for another channel, this channel should use triggeredBy-1 as Seq
 					chanOpts.Since = SequenceID{LowSeq: options.Since.LowSeq, Seq: options.Since.TriggeredBy - 1}
 				}
@@ -1461,8 +1461,8 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 }
 
 // sinceString renders Since for logging, appending the client's unparsed value when it differs.
-// SequenceID.String() drops LowSeq or TriggeredBy when they are not below the sequence they qualify, so
-// without the raw value a malformed client sequence is indistinguishable from a well-formed one.
+// SequenceID.String() drops LowSeq when it is not below the sequence it qualifies, so without the raw
+// value a malformed client sequence is indistinguishable from a well-formed one.
 func (options ChangesOptions) sinceString() string {
 	since := options.Since.String()
 	if options.SinceRaw != "" && options.SinceRaw != since {

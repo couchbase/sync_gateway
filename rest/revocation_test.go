@@ -881,7 +881,6 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 func TestRevocationLimitDoesNotSkipLaterSequences(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
@@ -976,6 +975,11 @@ func TestRevocationLimitWithGrantAtSameSequenceAndSkippedSequence(t *testing.T) 
 	require.Equal(t, uint64(4), skippedSeq)
 	_ = rt.UpdateDoc("a1", a1Version, `{"channels": "A"}`)
 	rt.WaitForPendingChanges()
+
+	base.RequireWaitForStat(t, func() int64 {
+		rt.GetDatabase().UpdateCalculatedStats(rt.Context())
+		return rt.GetDatabase().DbStats.Cache().NumCurrentSeqsSkipped.Value()
+	}, 1)
 
 	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=2&revocations=true&limit=1", username)
 	changes.RequireDocIDs(t, []string{"a1"})
