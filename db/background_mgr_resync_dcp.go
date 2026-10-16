@@ -294,6 +294,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 	}
 	defer persistClusterStatus()
 
+	// update the state here as well as in the REST API to pick up nodes that join the resync process
+	atomic.CompareAndSwapUint32(&db.State, DBOffline, DBResyncing)
 	defer atomic.CompareAndSwapUint32(&db.State, DBResyncing, DBOffline)
 
 	callback := func(event sgbucket.FeedEvent) bool {
