@@ -11,10 +11,13 @@ parameters:
 post:
   summary: Compact Channel History of Document
   description: |-
-    Compacts channel history for a specified document.  Channel history older than the specified sequence will be removed.
+    Compacts channel history for a specified document.  The request must contain either `seq` or `channels`, but not both.
 
-    This endpoint removes all channel entries (for sequences before the specified sequence number where the document left the channel),
-    effectively cleaning up historical channel membership information while preserving active channels and recent changes.
+    With `seq`, this endpoint removes all channel entries where the document left the channel at or before the specified sequence number.
+    With `channels`, this endpoint removes the channel history entries for the named channels, whatever sequence the document left them at.
+    Channels that the document is still in are not removed.
+
+    Compaction cleans up historical channel membership information while preserving active channels and recent changes.
     This can be useful for reducing metadata size for documents that frequently gain and lose access to channels.
 
     Required Sync Gateway RBAC roles:
@@ -25,23 +28,42 @@ post:
       application/json:
         schema:
           type: object
-          required:
-            - seq
           properties:
             seq:
               description: |-
-                Channel history having end sequences earlier than this sequence will be removed from the specified document's metadata.
+                Channel history having end sequences at or before this sequence will be removed from the specified document's metadata.
+
+                Cannot be used together with `channels`.
               type: integer
               format: int64
               minimum: 1
               example: 12345
+            channels:
+              description: |-
+                Channel history for these channels will be removed from the specified document's metadata.
+
+                A non-empty array cannot be used together with `seq`.
+              type: array
+              items:
+                type: string
+              example:
+                - channel1
+                - channel2
+          oneOf:
+            - required:
+                - seq
+            - required:
+                - channels
+              properties:
+                channels:
+                  minItems: 1
   responses:
     '200':
       description: |-
         Successfully compacted channel history from the specified document.
         Returns a list of channels that were compacted.
 
-        If the response has an empty array, it means either no channels were compacted.
+        If the response has an empty array, it means no channels were compacted.
 
       content:
         application/json:
@@ -55,13 +77,13 @@ post:
               description: |-
                 Array of channel names that were compacted.
             description: |-
-              A array of all the compacted channels
+              An array of all the compacted channels
             example:
               compacted_channels:
                 - channel1
                 - channel2
     '400':
-      description: 'Bad request. This could be due to invalid request parameters such as invalid seq value.'
+      description: 'Bad request. This could be due to invalid request parameters such as an invalid seq value, an empty channels array with no seq, or both seq and a non-empty channels array in the same request.'
       content:
         application/json:
           schema:
