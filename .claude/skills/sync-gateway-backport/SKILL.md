@@ -181,10 +181,8 @@ CBG-5591
 
 Clean cherry pick of #8495 to 4.1.2
 
-test-only
-
 ## [Integration Tests](https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/build?delay=0sec)
-- [x] https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/1234/
+- [ ] https://jenkins.sgwdev.com/job/SyncGatewayIntegration-Pipeline/1234/
 
 🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
