@@ -9,6 +9,8 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -169,4 +171,66 @@ func TestCollectionBlipHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsPermanentRevStatus(t *testing.T) {
+	permanent := []int{
+		http.StatusBadRequest,
+		http.StatusUnauthorized,
+		http.StatusForbidden,
+		http.StatusNotFound,
+		http.StatusConflict,
+		http.StatusRequestEntityTooLarge,
+		http.StatusInternalServerError,
+	}
+	notPermanent := []int{
+		// a failed delta, which the sender resends in full
+		http.StatusUnprocessableEntity,
+		// transient
+		http.StatusRequestTimeout,
+		http.StatusTooManyRequests,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+		// unknown, so held rather than skipped
+		http.StatusMethodNotAllowed,
+		http.StatusPreconditionFailed,
+		http.StatusNotImplemented,
+		0,
+	}
+	for _, status := range permanent {
+		require.True(t, isPermanentRevStatus(status), "status %d", status)
+	}
+	for _, status := range notPermanent {
+		require.False(t, isPermanentRevStatus(status), "status %d", status)
+	}
+}
+
+// TestHandleRevPanicHoldsPullCheckpoint checks that a panic while handling a pulled rev does not mark it processed, so
+// the checkpoint holds before it rather than skipping it.
+func TestHandleRevPanicHoldsPullCheckpoint(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	ctx, cancelFunc := context.WithCancelCause(ctx)
+	defer cancelFunc(errors.New("test teardown"))
+
+	ctx, blipContext, err := NewSGBlipContext(ctx, "", nil, nil)
+	require.NoError(t, err)
+	bsc, err := NewBlipSyncContext(ctx, blipContext, db, nil, cancelFunc)
+	require.NoError(t, err)
+	defer bsc.Close()
+
+	// the handler has no collection, so processRev panics when it writes the rev
+	bh := newBlipHandler(ctx, bsc, db, 1)
+	marked := false
+	bh.collectionCtx = &blipSyncCollectionContext{sgr2PullProcessedSeqCallback: func(*SequenceID, IDAndRev) { marked = true }}
+
+	rq := blip.NewRequest()
+	rq.SetProfile(MessageRev)
+	rq.Properties[RevMessageID] = "doc"
+	rq.Properties[RevMessageRev] = "1-abc"
+	rq.Properties[RevMessageSequence] = "1"
+	rq.SetBody([]byte(`{}`))
+	require.PanicsWithError(t, "runtime error: invalid memory address or nil pointer dereference", func() { _ = bh.handleRev(rq) })
+	require.False(t, marked)
 }

@@ -94,6 +94,10 @@ type TestISGRPeerOpts struct {
 	UserChannelAccess []string
 	// AvoidUserCreation if true, don't create the user on the passive peer
 	AvoidUserCreation bool
+	// ActiveSyncFn overrides the active peer's sync function. Empty means the default.
+	ActiveSyncFn string
+	// PassiveSyncFn overrides the passive peer's sync function. Empty means the default.
+	PassiveSyncFn string
 }
 
 // deltaSyncConfig returns a delta sync config when enabled, and nil - the database default - when not.
@@ -120,13 +124,17 @@ type TestISGRPeers struct {
 // activeRTConfig returns the config for a node in the active cluster. Built per node, since RestTester rewrites the
 // config it holds as it starts up.
 func (p *TestISGRPeers) activeRTConfig() *RestTesterConfig {
+	syncFn := channels.DocChannelsSyncFunction
+	if p.opts.ActiveSyncFn != "" {
+		syncFn = p.opts.ActiveSyncFn
+	}
 	return &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Name:      "activedb",
 			DeltaSync: deltaSyncConfig(p.opts.UseDeltas),
 		}},
 		SgReplicateEnabled:            true,
-		SyncFn:                        channels.DocChannelsSyncFunction,
+		SyncFn:                        syncFn,
 		ISGRSupportedBLIPSubprotocols: p.opts.ActivePeerSupportedBLIPSubProtocols,
 		CustomTestBucket:              p.activeTestBucket.NoCloseClone(),
 	}
@@ -550,13 +558,17 @@ func (runner *SGRTestRunner) SetupSGRPeersWithOptions(t *testing.T, opts TestISG
 // PassiveRT has user 'alice' created with star channel access and is listening on an HTTP port.
 func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) *TestISGRPeers {
 	ctx := base.TestCtx(t)
+	passiveSyncFn := channels.DocChannelsSyncFunction
+	if opts.PassiveSyncFn != "" {
+		passiveSyncFn = opts.PassiveSyncFn
+	}
 	// Set up passive RestTester (rt2)
 	passiveRTConfig := &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Name:      "passivedb",
 			DeltaSync: deltaSyncConfig(opts.UseDeltas),
 		}},
-		SyncFn: channels.DocChannelsSyncFunction,
+		SyncFn: passiveSyncFn,
 	}
 	if opts.PassiveMaxWaitPending != nil {
 		passiveRTConfig.DatabaseConfig.CacheConfig = &CacheConfig{
@@ -612,9 +624,25 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) *TestISGRPeers 
 // replication is still unable to checkpoint it - stopping in that window rewinds the replication on the next start.
 func WaitForISGRPullSequence(rt *RestTester, replicationID string, seq uint64) {
 	rt.TB().Helper()
+	waitForISGRSequence(rt, replicationID, seq, func(s *db.ReplicationStatus) string { return s.LastSeqPull })
+}
+
+// WaitForISGRPushSequence waits for the push replication on rt to have checkpointed the given local sequence.
+func WaitForISGRPushSequence(rt *RestTester, replicationID string, seq uint64) {
+	rt.TB().Helper()
+	waitForISGRSequence(rt, replicationID, seq, func(s *db.ReplicationStatus) string { return s.LastSeqPush })
+}
+
+// waitForISGRSequence reads the status in-process, since a poll still running after a timeout must not make HTTP
+// requests to a RestTester that is being torn down.
+func waitForISGRSequence(rt *RestTester, replicationID string, seq uint64, lastSeq func(*db.ReplicationStatus) string) {
+	rt.TB().Helper()
+	ar := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(replicationID)
+	require.NotNil(rt.TB(), ar, "replication %q is not running on this node", replicationID)
+	ctx := rt.Context()
 	expectedSeq := strconv.FormatUint(seq, 10)
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		assert.Equal(c, expectedSeq, rt.GetReplicationStatus(replicationID).LastSeqPull)
+		assert.Equal(c, expectedSeq, lastSeq(ar.GetStatus(ctx)))
 	}, 20*time.Second, 10*time.Millisecond)
 }
 
