@@ -935,13 +935,18 @@ func TestRevocationLimitWithGrantAtSameSequence(t *testing.T) {
 	_ = rt.UpdateDoc("a1", a1Version, `{"channels": "A"}`)
 	rt.WaitForPendingChanges()
 
-	// B's backfill and the a1 revocation are both ordered at 4, so limit=2 returns only those
+	// B's backfill (Seq < 4) sorts before the a1 revocation (Seq 6 > 4) within the entries at 4
 	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=2&revocations=true&limit=2", username)
-	changes.RequireDocIDs(t, []string{"b1", "a1"})
+	require.Len(t, changes.Results, 2)
+	require.Equal(t, "b1", changes.Results[0].ID)
+	require.Equal(t, "4:3", changes.Results[0].Seq.String())
+	require.Equal(t, "a1", changes.Results[1].ID)
+	require.True(t, changes.Results[1].Revoked)
 	require.Equal(t, "4:6", changes.Last_Seq.String())
 
+	// B's backfill is finished, so the resume sends only what follows the entries at 4
 	changes = rt.GetChanges("/{{.keyspace}}/_changes?revocations=true&since="+changes.Last_Seq.String(), username)
-	changes.GetChangeEntry(t, "b2")
+	changes.RequireDocIDs(t, []string{"_user/" + username, "b2"})
 }
 
 // TestRevocationLimitWithGrantAtSameSequenceAndSkippedSequence is TestRevocationLimitWithGrantAtSameSequence with
