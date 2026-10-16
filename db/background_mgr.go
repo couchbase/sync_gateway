@@ -168,7 +168,7 @@ type BackgroundManagerProcessI[O any] interface {
 	// Returns backgroundManagerInitResume if resuming an existing (stopped) run, backgroundManagerInitReset if starting a new one.
 	Init(ctx context.Context, options O, clusterStatus []byte) (backgroundManagerInitMode, error)
 	// Run implements all of the work of the process.
-	Run(ctx context.Context, options O, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error
+	Run(ctx context.Context, options O, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error
 	// GetProcessStatus accepts the current BackgroundManagerStatus and the previousStatus that was serialized. previousStatus is
 	// only populated when updating cluster status, it may be nil in some circumstances. This is only used for multi
 	// node background managers.
@@ -870,7 +870,7 @@ func (b *BackgroundManager[O]) UpdateHeartbeatDocClusterAware(ctx context.Contex
 
 // updateHeartbeatDocPeriodically refreshes the heartbeat doc until the terminator closes, keeping other nodes from
 // starting the same process.
-func (b *BackgroundManager[O]) updateHeartbeatDocPeriodically(ctx context.Context, terminator *base.SafeTerminator) {
+func (b *BackgroundManager[O]) updateHeartbeatDocPeriodically(ctx context.Context, terminator base.ReadOnlyTerminator) {
 	ticker := time.NewTicker(BackgroundManagerHeartbeatIntervalSecs * time.Second)
 	for {
 		select {
@@ -886,7 +886,7 @@ func (b *BackgroundManager[O]) updateHeartbeatDocPeriodically(ctx context.Contex
 }
 
 // startPollingSingleNodeStatus starts a loop which writes the local status to the bucket until the terminator closes.
-func (b *BackgroundManager[O]) startPollingSingleNodeStatus(ctx context.Context, terminator *base.SafeTerminator) {
+func (b *BackgroundManager[O]) startPollingSingleNodeStatus(ctx context.Context, terminator base.ReadOnlyTerminator) {
 	ticker := time.NewTicker(BackgroundManagerStatusUpdateIntervalSecs * time.Second)
 	for {
 		select {

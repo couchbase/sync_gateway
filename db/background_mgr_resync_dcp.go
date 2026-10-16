@@ -255,7 +255,7 @@ func (r *ResyncManagerDCP) SetVBUUIDs(vbuuids []uint64) {
 }
 
 // Run starts a DCP feed to process documents for resync.
-func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) (err error) {
+func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) (err error) {
 	db := r.db
 	regenerateSequences := options.RegenerateSequences
 	ctx = db.AddDatabaseLogContext(ctx)

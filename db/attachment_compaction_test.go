@@ -389,7 +389,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	var err error
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb1)
@@ -419,7 +419,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb2)
@@ -431,7 +431,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateStopped)
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
-	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, _ *base.SafeTerminator) {
+	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, _ base.ReadOnlyTerminator) {
 		err := testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{})
 		assert.ErrorContains(t, err, "Process already running")
 	})
@@ -473,7 +473,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	var err error
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb1)
@@ -503,7 +503,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb2)
