@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1904,4 +1905,47 @@ func TestIsRevTreeID(t *testing.T) {
 			assert.Equalf(t, tt.expected, IsRevTreeID(tt.value), "IsRevTreeID(%v)", tt.value)
 		})
 	}
+}
+
+func TestRequireChan(t *testing.T) {
+	t.Run("send to buffered channel with space", func(t *testing.T) {
+		ch := make(chan int, 10)
+		RequireChanSend(t, ch, 1)
+		RequireChanSend(t, ch, 2)
+	})
+
+	t.Run("receive from buffered channel with value", func(t *testing.T) {
+		ch := make(chan int, 1)
+		ch <- 42
+		val := RequireChanRecv(t, ch)
+		assert.Equal(t, 42, val)
+	})
+
+	t.Run("receive from buffered channel with string", func(t *testing.T) {
+		ch := make(chan string, 1)
+		ch <- "hello"
+		val := RequireChanRecv(t, ch)
+		assert.Equal(t, "hello", val)
+	})
+
+	t.Run("send and recv unbuffered channel", func(t *testing.T) {
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		ch := make(chan string)
+		var val string
+
+		go func() {
+			defer wg.Done()
+			RequireChanSend(t, ch, "hello?")
+		}()
+		go func() {
+			defer wg.Done()
+			val = RequireChanRecv(t, ch)
+		}()
+
+		wg.Wait()
+		assert.Equal(t, "hello?", val)
+	})
 }
