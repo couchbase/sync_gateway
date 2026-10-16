@@ -230,6 +230,11 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch channels.ID, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
+	// With a TriggeredBy, Seq is a position within the entries ordered at TriggeredBy, not how far the client has
+	// got in this channel, so docs above revocationSinceSeq must go through the history check below.
+	if options.Since.TriggeredBy != 0 {
+		sinceVal = min(sinceVal, revocationSinceSeq)
+	}
 
 	queryLimit := db.channelQueryLimit()
 	requestLimit := options.Limit
@@ -907,15 +912,17 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 				// Check whether requires backfill based on current sequence, seqAddedAt
 				// Triggered by handling:
-				//   1. options.Since.TriggeredBy == seqAddedAt : We're in the middle of backfill for this channel, based
-				//    on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill would be done in one
-				//    changes feed iteration, but this can be split over multiple iterations when 'limit' is used.
+				//   1. options.Since.TriggeredBy == seqAddedAt and options.Since.Seq < options.Since.TriggeredBy: We're in the middle of
+				//    backfill for this channel, based on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill
+				//    would be done in one changes feed iteration, but this can be split over multiple iterations when 'limit' is used.
 				//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
 				//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
 				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
 				//   4. options.Since.TriggeredBy !=0 and options.Since.TriggeredBy > seqAddedAt: We're in the
 				//  middle of a backfill for another channel.  This should issue normal (non-backfill) changes
 				//  request with  since= options.Since.TriggeredBy for the non-backfill channel.
+				//   5. options.Since.TriggeredBy != 0 and options.Since.Seq >= options.Since.TriggeredBy: The since is a revocation entry,
+				//  which is ordered after every backfill triggered at that sequence, so handle as 4.
 
 				// Backfill required when seqAddedAt is before current sequence
 				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
@@ -928,7 +935,11 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				// Ensure backfill isn't already in progress for this seqAddedAt
 				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
 
-				backfillInOtherChannel := options.Since.TriggeredBy != 0 && options.Since.TriggeredBy > seqAddedAt
+				// Resume this channel from TriggeredBy-1 when either another channel's backfill is in progress (case 4),
+				// or the since is a revocation entry (case 5). Backfill entries always have Seq < TriggeredBy, so a since
+				// with Seq >= TriggeredBy means any backfill at TriggeredBy, including this channel's, has finished.
+				backfillInOtherChannel := options.Since.TriggeredBy != 0 &&
+					(options.Since.TriggeredBy > seqAddedAt || options.Since.Seq >= options.Since.TriggeredBy)
 
 				if isNewChannel || (backfillRequired && backfillPending) {
 					// Newly added channel so initiate backfill:

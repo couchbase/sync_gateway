@@ -840,7 +840,7 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 
 	// Get changes and ensure doc is revoked through ID-only revocation
 	changes = revocationTester.getChanges(10, 1)
-	assert.Equal(t, "20", changes.Last_Seq.String())
+	assert.Equal(t, "15:20", changes.Last_Seq.String())
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -872,8 +872,160 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	_ = rt.UpdateDoc(docID, version, `{"channels": "A"}`)
 
 	changes = revocationTester.getChanges(5, 1)
-	assert.Equal(t, "10", changes.Last_Seq.String())
+	assert.Equal(t, "8:10", changes.Last_Seq.String())
 	assert.True(t, changes.Results[0].Revoked)
+}
+
+// TestRevocationLimitDoesNotSkipLaterSequences stops a changes feed on a revocation entry whose Seq is
+// after the revocation. Resuming from the last_seq given must still deliver docs written in between.
+func TestRevocationLimitDoesNotSkipLaterSequences(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	revocationTester, rt := InitScenario(t, nil)
+	defer rt.Close()
+
+	revocationTester.addUserChannel("user", "A")
+	revocationTester.addUserChannel("user", "B")
+
+	revocationTester.fillToSeq(9)
+	docAVersion := rt.PutDoc("docA", `{"channels": "A"}`)
+	changes := revocationTester.getChanges(9, 1)
+	require.Equal(t, "10", changes.Last_Seq.String())
+
+	// Revoke A at 11, write docB to B at 12, then update docA at 13
+	revocationTester.removeUserChannel("user", "A")
+	_ = rt.PutDoc("docB", `{"channels": "B"}`)
+	_ = rt.UpdateDoc("docA", docAVersion, `{"channels": "A"}`)
+	rt.WaitForPendingChanges()
+
+	// The docA revocation is ordered at 11, ahead of docB, so limit=1 returns only the revocation
+	changes = rt.WaitForChangesWithOptions(1, WaitForChangesOptions{
+		Method:   http.MethodGet,
+		URL:      "/{{.keyspace}}/_changes?since=10&revocations=true&limit=1",
+		Username: "user",
+	})
+	require.Equal(t, "docA", changes.Results[0].ID)
+	require.True(t, changes.Results[0].Revoked)
+	require.Equal(t, "11:13", changes.Last_Seq.String())
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Equal(t, "docB", changes.Results[0].ID)
+}
+
+// TestRevocationLimitWithGrantAtSameSequence revokes A and grants B in the same user update, then stops a
+// changes feed on a revocation entry with Seq after that update. Resuming must still deliver B's later docs.
+func TestRevocationLimitWithGrantAtSameSequence(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const username = "user"
+	rt.CreateUser(username, []string{"A"})
+	a1Version := rt.PutDoc("a1", `{"channels": "A"}`)
+	rt.WaitForPendingChanges()
+	require.Equal(t, "2", rt.GetChanges("/{{.keyspace}}/_changes?revocations=true", username).Last_Seq.String())
+
+	// Write b1 at 3, swap the user from A to B at 4, write b2 at 5, then update a1 at 6
+	_ = rt.PutDoc("b1", `{"channels": "B"}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username,
+		GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), []string{"B"}, nil))
+	RequireStatus(t, resp, http.StatusOK)
+	_ = rt.PutDoc("b2", `{"channels": "B"}`)
+	_ = rt.UpdateDoc("a1", a1Version, `{"channels": "A"}`)
+	rt.WaitForPendingChanges()
+
+	// B's backfill and the a1 revocation are both ordered at 4, so limit=2 returns only those
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=2&revocations=true&limit=2", username)
+	changes.RequireDocIDs(t, []string{"b1", "a1"})
+	require.Equal(t, "4:6", changes.Last_Seq.String())
+
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?revocations=true&since="+changes.Last_Seq.String(), username)
+	changes.GetChangeEntry(t, "b2")
+}
+
+// TestRevocationLimitWithGrantAtSameSequenceAndSkippedSequence is TestRevocationLimitWithGrantAtSameSequence with
+// a skipped sequence in B, which must still be delivered once it arrives.
+func TestRevocationLimitWithGrantAtSameSequenceAndSkippedSequence(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			CacheConfig: &CacheConfig{
+				// Move sequence 4 to skipped quickly
+				ChannelCacheConfig: &ChannelCacheConfig{MaxWaitPending: new(uint32(5))},
+			},
+		}},
+	})
+	defer rt.Close()
+
+	const username = "user"
+	rt.CreateUser(username, []string{"A"})
+	a1Version := rt.PutDoc("a1", `{"channels": "A"}`)
+	rt.WaitForPendingChanges()
+	require.Equal(t, "2", rt.GetChanges("/{{.keyspace}}/_changes?revocations=true", username).Last_Seq.String())
+
+	// Swap the user from A to B at 3, allocate 4 without writing it, then update a1 at 5
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username,
+		GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), []string{"B"}, nil))
+	RequireStatus(t, resp, http.StatusOK)
+	skippedSeq, err := db.AllocateTestSequence(rt.Context(), rt.GetDatabase())
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), skippedSeq)
+	_ = rt.UpdateDoc("a1", a1Version, `{"channels": "A"}`)
+	rt.WaitForPendingChanges()
+
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=2&revocations=true&limit=1", username)
+	changes.RequireDocIDs(t, []string{"a1"})
+	require.True(t, changes.Results[0].Revoked)
+
+	// Write sequence 4 into B late
+	collection, _ := rt.GetSingleTestDatabaseCollection()
+	db.WriteDirect(t, collection, []string{"B"}, skippedSeq)
+	rt.WaitForSequenceNotSkipped(skippedSeq)
+
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?revocations=true&since="+changes.Last_Seq.String(), username)
+	changes.GetChangeEntry(t, "doc-4")
+}
+
+// TestRevocationLimitDoesNotRevokeDocsNeverAccessible stops a changes feed part way through one channel's
+// revocation, then resumes into a second channel's revocation. Docs written to the second channel after access
+// was lost must not be sent as revocations.
+func TestRevocationLimitDoesNotRevokeDocsNeverAccessible(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const username = "user"
+	updateUserChannels := func(chans []string) {
+		resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username,
+			GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), chans, nil))
+		RequireStatus(t, resp, http.StatusOK)
+	}
+
+	rt.CreateUser(username, []string{"A", "C"})
+	a1Version := rt.PutDoc("a1", `{"channels": "A"}`)
+	_ = rt.PutDoc("c1", `{"channels": "C"}`)
+	rt.WaitForPendingChanges()
+	require.Equal(t, "3", rt.GetChanges("/{{.keyspace}}/_changes?revocations=true", username).Last_Seq.String())
+
+	// Revoke A at 4, revoke C at 5, write c_secret to C at 6, then update a1 at 7
+	updateUserChannels([]string{"C"})
+	updateUserChannels([]string{})
+	_ = rt.PutDoc("c_secret", `{"channels": "C"}`)
+	_ = rt.UpdateDoc("a1", a1Version, `{"channels": "A"}`)
+	rt.WaitForPendingChanges()
+
+	changes := rt.GetChanges("/{{.keyspace}}/_changes?since=3&revocations=true&limit=1", username)
+	changes.RequireDocIDs(t, []string{"a1"})
+	require.Equal(t, "4:7", changes.Last_Seq.String())
+
+	changes = rt.GetChanges("/{{.keyspace}}/_changes?revocations=true&since="+changes.Last_Seq.String(), username)
+	changes.RequireDocIDs(t, []string{"c1", "_user/" + username})
+	require.True(t, changes.GetChangeEntry(t, "c1").Revoked)
 }
 
 func TestRevocationWithAdminChannels(t *testing.T) {

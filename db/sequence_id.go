@@ -53,13 +53,11 @@ func (s SequenceID) String() string {
 }
 
 // intSeqToString implements the formatting rules documented on String() above. A non-zero LowSeq
-// or TriggeredBy is silently omitted from the result in three cases:
-//   - omit LowSeq when it's higher than the current sequence (non-backfill)
-//   - omit LowSeq when it's higher than the triggeredBy sequence (backfill)
-//   - omit TriggeredBy when it's higher than the current sequence
+// is silently omitted from the result in two cases:
+//   - omit LowSeq when it's higher than the current sequence (no TriggeredBy)
+//   - omit LowSeq when it's higher than the triggeredBy sequence (TriggeredBy set)
 func (s SequenceID) intSeqToString() string {
-	backfillActive := s.TriggeredBy > 0 && s.Seq < s.TriggeredBy
-	if backfillActive {
+	if s.TriggeredBy > 0 {
 		if s.LowSeq > 0 && s.LowSeq < s.TriggeredBy {
 			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
 		}
