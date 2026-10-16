@@ -1319,6 +1319,14 @@ func (t *SafeTerminator) Close() {
 	}
 }
 
+// ReadOnlyTerminator is handed to code that must stop when a SafeTerminator closes, but does not own it.
+type ReadOnlyTerminator interface {
+	IsClosed() bool
+	Done() <-chan struct{}
+}
+
+var _ ReadOnlyTerminator = (*SafeTerminator)(nil)
+
 func Sha1HashString(str string, salt string) string {
 	h := sha1.New()
 	h.Write([]byte(salt + str))

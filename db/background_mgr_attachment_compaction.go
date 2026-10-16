@@ -25,7 +25,7 @@ import (
 // =====================================================================
 
 // runFunctionStartedCallbackFunc is a test seam called at the top of Run before any compaction phases execute.
-type runFunctionStartedCallbackFunc func(context.Context, AttachmentCompactionOptions, updateStatusCallbackFunc, *base.SafeTerminator)
+type runFunctionStartedCallbackFunc func(context.Context, AttachmentCompactionOptions, updateStatusCallbackFunc, base.ReadOnlyTerminator)
 
 // AttachmentCompactionManager implements the attachment compaction background process. Compaction
 // runs in three sequential phases — mark, sweep, cleanup.
@@ -124,7 +124,7 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options Attachme
 	return backgroundManagerInitReset, newRunInit()
 }
 
-func (a *AttachmentCompactionManager) Run(ctx context.Context, options AttachmentCompactionOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AttachmentCompactionManager) Run(ctx context.Context, options AttachmentCompactionOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	if cb := a.runFunctionStartedCallback.Load(); cb != nil {
 		(*cb)(ctx, options, persistClusterStatusCallback, terminator)
 		a.runFunctionStartedCallback.Store(nil)

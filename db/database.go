@@ -1607,7 +1607,7 @@ type compactProgressCallbackFunc func(purgedDocCount *int)
 // the document to accomplish the same result.
 //
 // The `isScheduledBackgroundTask` parameter is used to indicate if the compaction is being run as part of a scheduled background task, or an ad-hoc user-initiated `/{db}/_compact` request.
-func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bool, optionalProgressCallback compactProgressCallbackFunc, terminator *base.SafeTerminator, isScheduledBackgroundTask bool) (purgedDocCount int, err error) {
+func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bool, optionalProgressCallback compactProgressCallbackFunc, terminator base.ReadOnlyTerminator, isScheduledBackgroundTask bool) (purgedDocCount int, err error) {
 	if !skipRunningStateCheck {
 		if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 			return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")

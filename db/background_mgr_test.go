@@ -52,7 +52,7 @@ func (m *MockProcess) Init(ctx context.Context, options MockProcessOptions, clus
 	return backgroundManagerInitReset, nil
 }
 
-func (m *MockProcess) Run(ctx context.Context, options MockProcessOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (m *MockProcess) Run(ctx context.Context, options MockProcessOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	m.lock.Lock()
 	m.RunCalled = true
 	m.updateStatusCallback = persistClusterStatusCallback
@@ -927,7 +927,7 @@ type immediateCallbackProcess struct {
 	MockProcess
 }
 
-func (m *immediateCallbackProcess) Run(ctx context.Context, _ MockProcessOptions, cb updateStatusCallbackFunc, _ *base.SafeTerminator) error {
+func (m *immediateCallbackProcess) Run(ctx context.Context, _ MockProcessOptions, cb updateStatusCallbackFunc, _ base.ReadOnlyTerminator) error {
 	m.lock.Lock()
 	m.RunCalled = true
 	m.lock.Unlock()

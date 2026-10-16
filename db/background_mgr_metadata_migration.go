@@ -111,7 +111,7 @@ func (m *MetadataMigrationManager) Init(ctx context.Context, options MetadataMig
 	return backgroundManagerInitReset, newRunInit()
 }
 
-func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigrationOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigrationOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	metadataMigrationLoggingID := "Metadata Migration: " + m.MigrationID
 
 	persistClusterStatus := func() {
@@ -163,7 +163,7 @@ func (m *MetadataMigrationManager) Run(ctx context.Context, options MetadataMigr
 	if ms, ok := m.dbContext.MetadataStore.(*base.MetadataStore); ok {
 		// Bridge the terminator into context cancellation so long-running ops inside
 		// migrateSeqCounter (retry loop) and MigrateMetadata (range scan iteration) can
-		// observe stop requests without us having to thread *SafeTerminator through every
+		// observe stop requests without us having to thread ReadOnlyTerminator through every
 		// function signature.
 		runCtx, cancel := context.WithCancelCause(ctx)
 		defer cancel(nil)
