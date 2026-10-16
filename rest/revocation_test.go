@@ -1013,6 +1013,9 @@ func TestRevocationLimitDoesNotRevokeDocsNeverAccessible(t *testing.T) {
 		resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username,
 			GetUserPayload(t, "", RestTesterDefaultUserPassword, "", rt.GetSingleDataStore(), chans, nil))
 		RequireStatus(t, resp, http.StatusOK)
+		// The cache skips a user doc's feed event if the doc has changed again before it's processed, so wait for each
+		// update to be seen, otherwise its sequence ends up skipped and last_seq gains a LowSeq
+		rt.WaitForPendingChanges()
 	}
 
 	rt.CreateUser(username, []string{"A", "C"})
