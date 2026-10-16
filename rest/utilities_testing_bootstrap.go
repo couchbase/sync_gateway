@@ -53,14 +53,7 @@ func BootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.ServerTLSSkipVerify = new(base.TestTLSSkipVerify())
 	config.Bootstrap.UseTLSServer = new(base.ServerIsTLS(sgtest.UnitTestUrl()))
 
-	uniqueUUID, err := uuid.NewRandom()
-	require.NoError(t, err)
-
-	if base.IsEnterpriseEdition() {
-		config.Bootstrap.ConfigGroupID = uniqueUUID.String()
-	} else if !sgtest.UnitTestUrlIsWalrus() {
-		t.Skip("BootstrapStartupConfigForTest requires EE support, since the config files can be read by future tests in the bucket pool")
-	}
+	config.Bootstrap.ConfigGroupID = uuid.NewString()
 
 	return config
 }
@@ -191,25 +184,23 @@ func doBootstrapRequest(t *testing.T, sc *ServerContext, method, path, body stri
 
 // StartBootstrapServer starts a server with a default bootstrap config, and returns a function to close the server. This differs from RestTester in that this is running a real server listening on random port. Prefer use of RestTester for more ergnomic APIs.
 func StartBootstrapServer(t *testing.T) (*ServerContext, func()) {
-	return StartBootstrapServerWithGroupID(t, nil)
-}
-
-// StartBootstrapServerWithGroupID starts a server with a bootstrap config, and returns a function to close the server. This differs from RestTester in that this is running a real server listening on random port. Prefer use of random groupID if appropriate. Prefer use of RestTester for more ergonomic APIs.
-func StartBootstrapServerWithGroupID(t *testing.T, groupID *string) (*ServerContext, func()) {
 	config := BootstrapStartupConfigForTest(t)
-	if groupID != nil {
-		config.Bootstrap.ConfigGroupID = *groupID
-	}
 	return StartServerWithConfig(t, &config)
-
 }
 
 // StartServerWithConfig starts a server from given config, and returns a function to close the server. Prefer use of RestTester for more ergonomic APIs.
 func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext, func()) {
 	ctx := base.TestCtx(t)
+	groupID := config.Bootstrap.ConfigGroupID
+	if !base.IsEnterpriseEdition() {
+		// CE rejects a custom group_id at validation, so apply it after setup
+		config.Bootstrap.ConfigGroupID = PersistentConfigDefaultGroupID
+	}
 	sc, err := SetupServerContext(ctx, config, true)
 	require.NoError(t, err)
-
+	if !base.IsEnterpriseEdition() {
+		sc.Config.Bootstrap.ConfigGroupID = groupID
+	}
 	serverErr := make(chan error)
 
 	closeFn := func() {
@@ -222,7 +213,6 @@ func StartServerWithConfig(t *testing.T, config *StartupConfig) (*ServerContext,
 		if !started {
 			closeFn()
 		}
-
 	}()
 	go func() {
 		serverErr <- StartServer(ctx, config, sc)

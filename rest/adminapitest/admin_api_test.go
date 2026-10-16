@@ -3128,9 +3128,17 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 			ctx := base.TestCtx(t)
 			config := rest.BootstrapStartupConfigForTest(t)
 			config.Unsupported.UseGOCBFastFailRetry = new(fastFail)
+			groupID := config.Bootstrap.ConfigGroupID
+			if !base.IsEnterpriseEdition() {
+				// CE rejects a custom group_id at validation, so apply it after setup
+				config.Bootstrap.ConfigGroupID = rest.PersistentConfigDefaultGroupID
+			}
 			// explicitly start with persistent config disabled
 			sc, err := rest.SetupServerContext(ctx, &config, false)
 			require.NoError(t, err)
+			if !base.IsEnterpriseEdition() {
+				sc.Config.Bootstrap.ConfigGroupID = groupID
+			}
 
 			serverErr := make(chan error)
 			defer func() {
@@ -3523,9 +3531,6 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server with xattrs")
-	}
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 	sc, closeFn := rest.StartBootstrapServer(t)
 	defer closeFn()
@@ -3553,6 +3558,10 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, sc, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
+	// import only uses cbgt in EE against Couchbase Server
+	if !base.IsEnterpriseEdition() || base.UnitTestUrlIsWalrus() {
+		return
+	}
 	scopeName := ""
 	collectionNames := []string{}
 	// Validate that the deleted database no longer has a registered import dest

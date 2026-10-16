@@ -31,7 +31,6 @@ import (
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbase/sync_gateway/testing/sgtest"
-	"github.com/google/uuid"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -7184,9 +7183,6 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 // Tests replications to make sure they are namespaced by group ID
 func TestGroupIDReplications(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if !base.IsEnterpriseEdition() {
-		t.Skip("Requires EE to use GroupID")
-	}
 	base.RequireNumTestBuckets(t, 2)
 
 	// Create test buckets to replicate between
@@ -7199,16 +7195,11 @@ func TestGroupIDReplications(t *testing.T) {
 
 	passiveDBURL := adminDBURL(rt)
 
-	// Start SG nodes for default group, group A and group B
-	groupIDs := []string{"", "GroupA", "GroupB"}
-	serverContexts := make([]*rest.ServerContext, 0, len(groupIDs))
-	for _, group := range groupIDs {
-
-		config := rest.BootstrapStartupConfigForTest(t)
-		uniqueUUID, err := uuid.NewRandom()
-		require.NoError(t, err)
-		config.Bootstrap.ConfigGroupID = group + uniqueUUID.String()
-		sc, closeFn := rest.StartServerWithConfig(t, &config)
+	// Start SG nodes, each in its own unique group
+	nodeSuffixes := []string{"", "GroupA", "GroupB"}
+	serverContexts := make([]*rest.ServerContext, 0, len(nodeSuffixes))
+	for range nodeSuffixes {
+		sc, closeFn := rest.StartBootstrapServer(t)
 		defer closeFn()
 
 		serverContexts = append(serverContexts, sc)
@@ -7235,8 +7226,8 @@ func TestGroupIDReplications(t *testing.T) {
 		resp.RequireStatus(http.StatusCreated)
 	}
 	// Start replicators
-	for i, group := range groupIDs {
-		channelFilter := []string{"chan" + group}
+	for i, suffix := range nodeSuffixes {
+		channelFilter := []string{"chan" + suffix}
 		replicationConfig := db.ReplicationConfig{
 			ID:                     "repl",
 			Remote:                 passiveDBURL.String(),
@@ -7260,9 +7251,9 @@ func TestGroupIDReplications(t *testing.T) {
 		require.NoError(t, err)
 		keyspace = fmt.Sprintf("/db.%s.%s/", dataStore.ScopeName(), dataStore.CollectionName())
 	}
-	for groupNum, group := range groupIDs {
-		channel := "chan" + group
-		key := "doc" + group
+	for nodeNum, suffix := range nodeSuffixes {
+		channel := "chan" + suffix
+		key := "doc" + suffix
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
 		added, err := dataStore.Add(ctx, key, 0, []byte(body))
 		require.NoError(t, err)
@@ -7277,7 +7268,7 @@ func TestGroupIDReplications(t *testing.T) {
 		for scNum, sc := range serverContexts {
 			var expectedPushed int64
 			// If replicated doc to db already (including this loop iteration) then expect 1
-			if scNum <= groupNum {
+			if scNum <= nodeNum {
 				expectedPushed = 1
 			}
 

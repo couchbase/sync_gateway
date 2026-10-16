@@ -25,13 +25,9 @@ func TestBootstrapConfig(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
 
 	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	bootstrapContext := sc.BootstrapContext
 
@@ -45,25 +41,16 @@ func TestBootstrapConfig(t *testing.T) {
 
 	var dbConfig1 *DatabaseConfig
 
-	_, err = bootstrapContext.GetConfig(ctx, bucketName, configGroup1, db1Name, dbConfig1)
+	_, err := bootstrapContext.GetConfig(ctx, bucketName, configGroup1, db1Name, dbConfig1)
 	require.Error(t, err)
 }
 
 func TestComputeMetadataID(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
-
 	base.TestRequiresCollections(t)
 	// Start SG with no databases
-	config := BootstrapStartupConfigForTest(t)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer func() {
-		sc.Close(ctx)
-	}()
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	bootstrapContext := sc.BootstrapContext
 
@@ -154,16 +141,11 @@ func TestComputeMetadataID(t *testing.T) {
 // computeMetadataID, plus the corrupt-doc fallback. Existing TestComputeMetadataID covers
 // the legacy JSON, no-doc, and short-circuit cases
 func TestComputeMetadataIDBinaryFormat(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
 	base.TestRequiresCollections(t)
 
-	config := BootstrapStartupConfigForTest(t)
 	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	defer sc.Close(ctx)
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	bootstrapContext := sc.BootstrapContext
 
