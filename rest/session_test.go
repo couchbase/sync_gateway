@@ -874,3 +874,66 @@ func TestDisabledUserSessionRejected(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":false}`), http.StatusOK)
 	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusOK)
 }
+
+// TestRejectedSessionNotExtended ensures that a session rejected at authentication time does not have its expiry
+// refreshed, so repeated requests on a rejected session can't keep it alive.
+func TestRejectedSessionNotExtended(t *testing.T) {
+	testCases := []struct {
+		name         string
+		rejectAction func(rt *RestTester, username string)
+	}{
+		{
+			name: "disabled user",
+			rejectAction: func(rt *RestTester, username string) {
+				RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`), http.StatusOK)
+			},
+		},
+		{
+			name: "all sessions deleted",
+			rejectAction: func(rt *RestTester, username string) {
+				RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username+"/_session", ""), http.StatusOK)
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			const username = "alice"
+			rt.CreateUser(username, []string{"*"})
+
+			authenticator := rt.GetDatabase().Authenticator(ctx)
+			user, err := authenticator.GetUser(username)
+			require.NoError(t, err)
+
+			id, err := base.GenerateRandomSecret()
+			require.NoError(t, err)
+
+			// more than 10% of the TTL has elapsed, so a valid request on this session would refresh it
+			originalExpiration := time.Now().Add(4 * time.Hour).Truncate(time.Second)
+			session := auth.LoginSession{
+				ID:          id,
+				Username:    username,
+				Expiration:  originalExpiration,
+				Ttl:         24 * time.Hour,
+				SessionUUID: user.GetSessionUUID(),
+			}
+			require.NoError(t, rt.MetadataStore().Set(ctx, authenticator.DocIDForSession(session.ID), 0, nil, session))
+
+			tc.rejectAction(rt, username)
+
+			response := rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{
+				"Cookie": auth.DefaultCookieName + "=" + session.ID,
+			})
+			RequireStatus(t, response, http.StatusUnauthorized)
+			assert.Empty(t, response.Header().Get("Set-Cookie"))
+
+			var storedSession auth.LoginSession
+			_, err = rt.MetadataStore().Get(ctx, authenticator.DocIDForSession(session.ID), &storedSession)
+			require.NoError(t, err)
+			assert.True(t, originalExpiration.Equal(storedSession.Expiration), "expected expiration %s, got %s", originalExpiration, storedSession.Expiration)
+		})
+	}
+}

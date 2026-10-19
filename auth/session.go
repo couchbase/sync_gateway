@@ -46,6 +46,23 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		}
 		return nil, err
 	}
+	// Validate the session before refreshing its expiry, so that requests rejected here can't keep extending a session
+	// that is no longer usable.
+	user, err := auth.GetUser(session.Username)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil || session.SessionUUID != user.GetSessionUUID() {
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
+	}
+	// Disabling a user leaves its sessions in place so they resume if the user is re-enabled, so the disabled state
+	// has to be checked on each use rather than relying on the session UUID.
+	if user.Disabled() {
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session rejected for disabled user %s", base.UD(session.Username))
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
+	}
+
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
 	// update the session Expiration if 10% or more of the current expiration time has elapsed
 	// if the session does not contain a Ttl (probably created prior to upgrading SG), use
@@ -69,20 +86,6 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		http.SetCookie(response, cookie)
 	}
 
-	user, err := auth.GetUser(session.Username)
-	if err != nil {
-		return nil, err
-	}
-	if user == nil || session.SessionUUID != user.GetSessionUUID() {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
-	}
-	// Disabling a user leaves its sessions in place so they resume if the user is re-enabled, so the disabled state
-	// has to be checked on each use rather than relying on the session UUID.
-	if user.Disabled() {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session rejected for disabled user %s", base.UD(session.Username))
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
-	}
 	err = auth.deleteOneTimeSession(auth.LogCtx, &session)
 	if err != nil {
 		return nil, err
