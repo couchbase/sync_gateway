@@ -325,14 +325,17 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 
 	compactedChannels := make(base.Set)
-	channelsToDeleteSet := base.SetFromArray(channelsToDelete)
+	channelsToDeleteMap := make(map[string]struct{})
+	for _, chanName := range channelsToDelete {
+		channelsToDeleteMap[chanName] = struct{}{}
+	}
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
 		var del bool
 		if seq != 0 {
 			del = channel.End <= seq
 		} else {
-			del = channelsToDeleteSet.Contains(channel.Name)
+			_, del = channelsToDeleteMap[channel.Name]
 		}
 		if del {
 			compactedChannels.Add(channel.Name)
@@ -345,7 +348,8 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		if seq != 0 {
 			del = channel.End != 0 && channel.End <= seq
 		} else {
-			del = channel.End != 0 && channelsToDeleteSet.Contains(channel.Name)
+			_, ok := channelsToDeleteMap[channel.Name]
+			del = channel.End != 0 && ok
 		}
 		if del {
 			compactedChannels.Add(channel.Name)
@@ -361,7 +365,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		if seq != 0 {
 			del = chanEntry.Seq <= seq
 		} else {
-			del = channelsToDeleteSet.Contains(chanName)
+			_, del = channelsToDeleteMap[chanName]
 		}
 		if del {
 			compactedChannels.Add(chanName)
