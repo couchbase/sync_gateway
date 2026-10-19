@@ -77,6 +77,12 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
+	// Disabling a user leaves its sessions in place so they resume if the user is re-enabled, so the disabled state
+	// has to be checked on each use rather than relying on the session UUID.
+	if user.Disabled() {
+		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session rejected for disabled user %s", base.UD(session.Username))
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
+	}
 	err = auth.deleteOneTimeSession(auth.LogCtx, &session)
 	if err != nil {
 		return nil, err
@@ -90,6 +96,12 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessionID string) (User, error) {
 	session, user, err := auth.GetSession(sessionID)
 	if err != nil {
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+	}
+	// The disabled check lives here rather than in GetSession so that admin endpoints can still inspect and delete a
+	// disabled user's sessions.
+	if user.Disabled() {
+		base.InfofCtx(ctx, base.KeyAuth, "One-time session rejected for disabled user %s", base.UD(session.Username))
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 	}
 

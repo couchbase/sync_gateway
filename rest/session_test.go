@@ -826,3 +826,51 @@ func TestOneTimeSessionWithCookie(t *testing.T) {
 	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)
 	RequireStatus(t, resp, http.StatusUnauthorized)
 }
+
+// TestDisabledUserSessionRejected ensures that disabling a user revokes access through sessions that were created
+// while the user was still enabled, matching the behaviour of basic auth for a disabled user.
+func TestDisabledUserSessionRejected(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"alicechan"})
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"channels":["alicechan"]}`), http.StatusCreated)
+
+	sessionID := createSession(t, rt, username)
+	cookieHeaders := map[string]string{
+		"Cookie": auth.DefaultCookieName + "=" + sessionID,
+	}
+
+	// session works while the user is enabled
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusOK)
+
+	// one-time session for websocket token auth, created while the user is enabled and redeemed after disabling
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+	RequireStatus(t, resp, http.StatusOK)
+	var oneTimeSession struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &oneTimeSession))
+	require.NotEmpty(t, oneTimeSession.SessionID)
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`), http.StatusOK)
+
+	// basic auth is already rejected for a disabled user
+	RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc2", "", username), http.StatusUnauthorized)
+
+	// the pre-existing session must be rejected for both reads and writes
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusUnauthorized)
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc3", `{"channels":["alicechan"]}`, cookieHeaders), http.StatusUnauthorized)
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + oneTimeSession.SessionID,
+	}), http.StatusUnauthorized)
+
+	// admin can still inspect the disabled user's session
+	RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_session/"+sessionID, ""), http.StatusOK)
+
+	// re-enabling the user restores the existing session
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":false}`), http.StatusOK)
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusOK)
+}
