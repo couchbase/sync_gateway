@@ -198,7 +198,9 @@ var (
 	DefaultWarnThresholdChannelsPerUser = uint32(50000)
 	DefaultWarnThresholdGrantsPerDoc    = uint32(50)
 	DefaultWarnThresholdChannelNameSize = uint32(250)
-	DefaultClientPartitionWindow        = time.Hour * 24 * 30
+	// DefaultClientPartitionWindow is the window in auth.DefaultAuthenticatorOptions, which only tests use.
+	// A database uses client_partition_window_secs, or the metadata purge interval if that is not set.
+	DefaultClientPartitionWindow = time.Hour * 24 * 30
 
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")

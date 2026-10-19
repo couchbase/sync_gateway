@@ -119,6 +119,13 @@ func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*Db
 	return defaultDbConfig, nil
 }
 
+// setRuntimeClientPartitionWindow sets the window that the database uses when the config does not set one.
+func setRuntimeClientPartitionWindow(ctx context.Context, config *DbConfig, database *db.DatabaseContext) {
+	if config.ClientPartitionWindowSecs == nil {
+		config.ClientPartitionWindowSecs = new(int(database.ClientPartitionWindow(ctx).Seconds()))
+	}
+}
+
 // DefaultDbConfig provides a DbConfig with all the default values populated. Used with MergeDatabaseConfigWithDefaults
 // to provide defaults to  include_runtime config endpoints.
 // Note that this does not include unsupported options
@@ -184,7 +191,6 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		ServeInsecureAttachmentTypes:      new(false),
 		QueryPaginationLimit:              new(db.DefaultQueryPaginationLimit),
 		UserXattrKey:                      nil,
-		ClientPartitionWindowSecs:         new(int(base.DefaultClientPartitionWindow.Seconds())),
 		Guest:                             &auth.PrincipalConfig{Disabled: new(true)},
 		JavascriptTimeoutSecs:             new(base.DefaultJavascriptTimeoutSecs),
 		ChangesRequestPlus:                new(false),

@@ -4509,3 +4509,98 @@ func TestLocalEndpointForPublicAPI(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultClientPartitionWindow makes sure that the database config reports client_partition_window_secs when it is
+// set, and reports the server purge interval only with include_runtime when it is not set.
+func TestDefaultClientPartitionWindow(t *testing.T) {
+	// Rosmar always returns db.DefaultPurgeInterval, which equals base.DefaultClientPartitionWindow, so the default
+	// cases cannot tell the server purge interval apart from a fixed default there.
+	if sgtest.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+	ctx := base.TestCtx(t)
+
+	rt1 := NewRestTester(t, nil)
+	defer rt1.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt2.Close()
+
+	serverPurgeIntervalSecs := func(rt *RestTester) int {
+		cbStore, ok := base.AsCouchbaseBucketStore(rt.Bucket())
+		require.True(t, ok)
+		purgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
+		require.NoError(t, err)
+		return int(purgeInterval.Seconds())
+	}
+
+	// Non-persistent config has no bootstrap credentials, so the database config must carry the bucket credentials.
+	rt1DbConfig := rt1.NewDbConfig()
+	rt1DbConfig.Username, rt1DbConfig.Password, _ = rt1.TestBucket.BucketSpec.Auth.GetCredentials()
+
+	testers := []struct {
+		name          string
+		rt            *RestTester
+		dbConfig      DbConfig
+		purgeInterval int
+	}{
+		{name: "non-persistent config", rt: rt1, dbConfig: rt1DbConfig, purgeInterval: serverPurgeIntervalSecs(rt1)},
+		{name: "persistent config", rt: rt2, dbConfig: rt2.NewDbConfig(), purgeInterval: serverPurgeIntervalSecs(rt2)},
+	}
+
+	// rt1 creates a database at startup, so remove it to let each test case create its own. This also closes the
+	// test bucket of rt1, which is why the configs and purge intervals above are read first.
+	RequireStatus(t, rt1.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+
+	explicitWindow := int((7 * 24 * time.Hour).Seconds())
+	for _, tester := range testers {
+		tests := []struct {
+			name            string
+			clientPartition int // 0 leaves client_partition_window_secs unset
+			includeRuntime  bool
+			expectedValue   int // 0 means that the config must not report client_partition_window_secs
+		}{
+			{name: "explicit value with include_runtime", clientPartition: explicitWindow, includeRuntime: true, expectedValue: explicitWindow},
+			{name: "explicit value without include_runtime", clientPartition: explicitWindow, includeRuntime: false, expectedValue: explicitWindow},
+			{name: "default value with include_runtime", includeRuntime: true, expectedValue: tester.purgeInterval},
+			{name: "default value without include_runtime", includeRuntime: false},
+		}
+		t.Run(tester.name, func(t *testing.T) {
+			rt := tester.rt
+			for _, test := range tests {
+				t.Run(test.name, func(t *testing.T) {
+					dbConfig := tester.dbConfig
+					if test.clientPartition != 0 {
+						dbConfig.ClientPartitionWindowSecs = new(test.clientPartition)
+					}
+					RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+					defer func() {
+						RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+					}()
+
+					resp := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_config?include_runtime=%t", test.includeRuntime), "")
+					RequireStatus(t, resp, http.StatusOK)
+					var cfg DbConfig
+					require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &cfg))
+
+					if test.expectedValue == 0 {
+						assert.Nil(t, cfg.ClientPartitionWindowSecs)
+					} else {
+						require.NotNil(t, cfg.ClientPartitionWindowSecs)
+						assert.Equal(t, test.expectedValue, *cfg.ClientPartitionWindowSecs)
+					}
+
+					// The server-level config lists the databases only with include_runtime.
+					if test.includeRuntime {
+						resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+						RequireStatus(t, resp, http.StatusOK)
+						var serverCfg RunTimeServerConfigResponse
+						require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &serverCfg))
+						require.Contains(t, maps.Keys(serverCfg.Databases), "db")
+						require.NotNil(t, serverCfg.Databases["db"].ClientPartitionWindowSecs)
+						assert.Equal(t, test.expectedValue, *serverCfg.Databases["db"].ClientPartitionWindowSecs)
+					}
+				})
+			}
+		})
+	}
+}

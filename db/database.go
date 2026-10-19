@@ -220,7 +220,7 @@ type DatabaseContextOptions struct {
 	SlowQueryWarningThreshold        time.Duration
 	QueryPaginationLimit             int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
 	UserXattrKey                     string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
-	ClientPartitionWindow            time.Duration
+	ClientPartitionWindow            *time.Duration
 	BcryptCost                       int
 	GroupID                          string
 	JavascriptTimeout                time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
@@ -644,6 +644,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), joinResync)
 
+	// Fill the purge interval cache before any request can run, so that later callers do not read Bucket during Close.
+	dbContext.GetMetadataPurgeInterval(ctx, false)
+
 	return dbContext, nil
 }
 
@@ -1032,7 +1035,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
-		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
+		ClientPartitionWindow:    context.ClientPartitionWindow(ctx),
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
 		BcryptCost:               context.Options.BcryptCost,
@@ -1757,6 +1760,7 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 	// fetch from server
 	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
 	if !ok {
+		db.CachedPurgeInterval.Store(new(DefaultPurgeInterval))
 		return DefaultPurgeInterval
 	}
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
@@ -2799,4 +2803,13 @@ func (db *DatabaseContext) collections(names base.CollectionNames) (DatabaseColl
 		}
 	}
 	return collections, nil
+}
+
+// ClientPartitionWindow returns how long revoked channel and role grants stay in principal history. If
+// client_partition_window_secs is not set, it returns the metadata purge interval of the bucket.
+func (db *DatabaseContext) ClientPartitionWindow(ctx context.Context) time.Duration {
+	if db.Options.ClientPartitionWindow != nil {
+		return *db.Options.ClientPartitionWindow
+	}
+	return db.GetMetadataPurgeInterval(ctx, false)
 }
