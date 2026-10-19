@@ -276,7 +276,7 @@ func TestHandleRevClosedSenderHoldsPullCheckpoint(t *testing.T) {
 // TestSendRevClosedConnectionHoldsPushCheckpoint checks that a pushed rev is not marked processed when the connection
 // closes before the peer replies, so the checkpoint holds before it rather than skipping it.
 func TestSendRevClosedConnectionHoldsPushCheckpoint(t *testing.T) {
-	t.Skip("TODO: go-blip completes a reply cut short by a closed connection as a successful empty reply")
+	t.Skip("CBG-6047: go-blip completes a reply cut short by a closed connection as a successful empty reply")
 	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 

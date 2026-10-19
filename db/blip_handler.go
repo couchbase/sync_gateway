@@ -1459,7 +1459,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	err = bh.processRev(rq, &stats)
 	// Only a failure known to be permanent marks the rev processed. Any other failure, or a panic, holds the checkpoint
 	// before it, so the rev is retried after a reconnect rather than skipped.
-	// TODO: drop the connection after a non-permanent failure, so the rev is retried without waiting for a reconnect
+	// TODO: CBG-6048 drop the connection after a non-permanent failure, so the rev is retried without waiting for a reconnect
 	if status, _ := base.ErrorAsHTTPStatus(err); err == nil || isPermanentRevStatus(status) {
 		bh.markPullSeqProcessed(rq)
 	}

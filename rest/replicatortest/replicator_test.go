@@ -2220,6 +2220,7 @@ func TestActiveReplicatorCheckpointFailedRev(t *testing.T) {
 		// failedStat overrides the direction's count of failed revs, for a failure that does not fail a rev
 		failedStat func(*base.DbReplicatorStats) *base.SgwIntStat
 	}{
+		// TODO: CBG-6046 add a temporary KV error, such as gocb.ErrOverload, which returns 500 and moves the checkpoint past the rev
 		{
 			name:         "transient503",
 			blockingBody: `{"channels":["alice"]}`,

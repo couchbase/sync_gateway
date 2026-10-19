@@ -535,7 +535,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 
 			bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 
-			// TODO: drop the connection after a non-permanent failure, so the rev is retried without waiting for a reconnect
+			// TODO: CBG-6048 drop the connection after a non-permanent failure, so the rev is retried without waiting for a reconnect
 			if collectionCtx.sgr2PushProcessedSeqCallback != nil && processed {
 				collectionCtx.sgr2PushProcessedSeqCallback(seq)
 			}

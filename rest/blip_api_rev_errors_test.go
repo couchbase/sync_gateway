@@ -70,6 +70,7 @@ func TestProcessRevErrorStatus(t *testing.T) {
 		},
 		{
 			// the sender has no getAttachment handler, so the attachment can't be fetched
+			// TODO: CBG-6046 return the peer's status rather than 500
 			name:   "attachmentFetchFailed",
 			body:   `{"_attachments":{"att":{"stub":true,"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"revpos":1}}}`,
 			status: "500",
@@ -116,6 +117,7 @@ func TestProcessRevErrorStatus(t *testing.T) {
 			status: "503",
 			reason: "Database cache is behind",
 		},
+		// TODO: CBG-6046 add temporary KV errors, such as gocb.ErrOverload and gocb.ErrCircuitBreakerOpen, which should return 503
 		{
 			name:       "deltaSrcMissing",
 			body:       `{}`,
