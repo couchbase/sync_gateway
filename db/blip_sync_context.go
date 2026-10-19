@@ -32,7 +32,8 @@ const (
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 )
 
-var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
+// ErrClosedBLIPSender is a 503 so that a rev that fails with it is retried after a reconnect, rather than skipped.
+var ErrClosedBLIPSender = base.HTTPErrorf(http.StatusServiceUnavailable, "use of closed BLIP sender")
 
 // NewBlipSyncContext creates a new BlipSyncContext for a given database and register the handlers. This does not make a connection.
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelCauseFunc) (*BlipSyncContext, error) {

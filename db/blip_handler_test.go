@@ -12,10 +12,15 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
@@ -233,4 +238,90 @@ func TestHandleRevPanicHoldsPullCheckpoint(t *testing.T) {
 	rq.SetBody([]byte(`{}`))
 	require.PanicsWithError(t, "runtime error: invalid memory address or nil pointer dereference", func() { _ = bh.handleRev(rq) })
 	require.False(t, marked)
+}
+
+// TestHandleRevClosedSenderHoldsPullCheckpoint checks that a pulled rev that fails because the connection closed is not
+// marked processed, so the checkpoint holds before it rather than skipping it.
+func TestHandleRevClosedSenderHoldsPullCheckpoint(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	ctx, cancelFunc := context.WithCancelCause(ctx)
+	defer cancelFunc(errors.New("test teardown"))
+
+	ctx, blipContext, err := NewSGBlipContext(ctx, "", nil, nil)
+	require.NoError(t, err)
+	bsc, err := NewBlipSyncContext(ctx, blipContext, db, nil, cancelFunc)
+	require.NoError(t, err)
+
+	bh := newBlipHandler(ctx, bsc, db, 1)
+	marked := false
+	bh.collectionCtx = &blipSyncCollectionContext{sgr2PullProcessedSeqCallback: func(*SequenceID, IDAndRev) { marked = true }}
+
+	// fill the rev throttle and close the connection, so processRev returns ErrClosedBLIPSender while it waits
+	for range cap(bh.inFlightRevsThrottle) {
+		bh.inFlightRevsThrottle <- struct{}{}
+	}
+	bsc.Close()
+
+	rq := blip.NewRequest()
+	rq.SetProfile(MessageRev)
+	rq.Properties[RevMessageID] = "doc"
+	rq.Properties[RevMessageRev] = "1-abc"
+	rq.Properties[RevMessageSequence] = "1"
+	rq.SetBody([]byte(`{}`))
+	require.ErrorIs(t, bh.handleRev(rq), ErrClosedBLIPSender)
+	require.False(t, marked)
+}
+
+// TestSendRevClosedConnectionHoldsPushCheckpoint checks that a pushed rev is not marked processed when the connection
+// closes before the peer replies, so the checkpoint holds before it rather than skipping it.
+func TestSendRevClosedConnectionHoldsPushCheckpoint(t *testing.T) {
+	t.Skip("TODO: go-blip completes a reply cut short by a closed connection as a successful empty reply")
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+
+	// the passive peer holds each rev without replying until the test closes the connection
+	revReceived := make(chan struct{}, 1)
+	releaseRev := make(chan struct{})
+	defer close(releaseRev)
+	_, passiveBlipContext, err := NewSGBlipContext(ctx, t.Name()+"-passive", nil, nil)
+	require.NoError(t, err)
+	passiveBlipContext.HandlerForProfile[MessageRev] = func(*blip.Message) {
+		revReceived <- struct{}{}
+		<-releaseRev
+	}
+	srv := httptest.NewServer(passiveBlipContext.WebSocketServer())
+	defer srv.Close()
+
+	ctx, cancelFunc := context.WithCancelCause(ctx)
+	defer cancelFunc(errors.New("test teardown"))
+	ctx, activeBlipContext, err := NewSGBlipContext(ctx, t.Name()+"-active", nil, nil)
+	require.NoError(t, err)
+	sender, err := activeBlipContext.Dial("ws" + strings.TrimPrefix(srv.URL, "http"))
+	require.NoError(t, err)
+	defer sender.Close()
+
+	bsc, err := NewBlipSyncContext(ctx, activeBlipContext, db, nil, cancelFunc)
+	require.NoError(t, err)
+	defer bsc.Close()
+	var marked atomic.Bool
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collectionCtx := newBlipSyncCollectionContext(ctx, collection)
+	collectionCtx.sgr2PushProcessedSeqCallback = func(SequenceID) { marked.Store(true) }
+	bsc.collections.setNonCollectionAware(collectionCtx)
+
+	ctx = base.KeyspaceLogCtx(ctx, db.Bucket.GetName(), collection.ScopeName, collection.Name)
+	require.NoError(t, bsc.sendRevisionWithProperties(ctx, sender, "doc", "1-abc", nil, []byte(`{}`), nil, blip.Properties{}, SequenceID{Seq: 1}, nil))
+	select {
+	case <-revReceived:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "passive peer did not receive the rev")
+	}
+	sender.Close()
+
+	// the response handler counts the rev as sent or failed before it decides whether to mark it processed
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Positive(c, bsc.replicationStats.SendRevCount.Value()+bsc.replicationStats.SendRevErrorTotal.Value())
+	}, 10*time.Second, 10*time.Millisecond)
+	require.Never(t, marked.Load, 100*time.Millisecond, 10*time.Millisecond)
 }
