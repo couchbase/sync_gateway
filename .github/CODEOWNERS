@@ -55,11 +55,14 @@
 /db/access*                             @bbrks @torcolvin
 /db/users*                              @bbrks @torcolvin
 
-# Logging, audit and diagnostics.
+# Logging, audit and sgcollect.
 /rest/audit*                            @bbrks @torcolvin
 /rest/logging*                          @bbrks @torcolvin
 /rest/sgcollect*                        @bbrks @torcolvin
 /rest/sgcollecttest/                    @bbrks @torcolvin
+
+# Diagnostic API.
+/rest/diagnostic*                       @bbrks @RIT3shSapata
 
 # Sync function and user functions.
 /rest/sync_fn*                          @bbrks @torcolvin
