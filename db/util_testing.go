@@ -2016,6 +2016,12 @@ func (p *ResyncPauser) WaitUntilBlocked() {
 	base.RequireChanClosed(p.t, p.blocked)
 }
 
+// Blocked returns a channel that is closed once resync is paused at a user document, for tests that need to wait on
+// several pausers at once. Only valid after Pause.
+func (p *ResyncPauser) Blocked() <-chan struct{} {
+	return p.blocked
+}
+
 // Release clears the callback and unblocks the paused docs. Fails the test if not currently paused.
 func (p *ResyncPauser) Release() {
 	if !p.release() {

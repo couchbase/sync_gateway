@@ -663,7 +663,7 @@ func TestResyncStopFromOtherNode(t *testing.T) {
 	rtc.ForEachNode(func(rt *rest.RestTester) { rt.TakeDbOffline() })
 
 	// the resync can process documents on either node, so pause both
-	var pausers []*resyncPauser
+	var pausers []*db.ResyncPauser
 	rtc.ForEachNode(func(rt *rest.RestTester) {
 		pauser := newResyncPauser(rt)
 		t.Cleanup(pauser.Close)
@@ -674,8 +674,8 @@ func TestResyncStopFromOtherNode(t *testing.T) {
 	rest.RequireStatus(t, starter.SendAdminRequest(http.MethodPost, "/"+dbName+"/_resync?action=start", ""), http.StatusOK)
 
 	select {
-	case <-pausers[0].blocked:
-	case <-pausers[1].blocked:
+	case <-pausers[0].Blocked():
+	case <-pausers[1].Blocked():
 	case <-time.After(30 * time.Second):
 		require.FailNow(t, "resync did not reach a document on any node")
 	}
