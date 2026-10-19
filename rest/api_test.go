@@ -4518,6 +4518,7 @@ func TestDefaultClientPartitionWindow(t *testing.T) {
 	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
+	base.RequireNumTestBuckets(t, 2)
 	ctx := base.TestCtx(t)
 
 	rt1 := NewRestTester(t, nil)
