@@ -526,8 +526,6 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 						// runtime exceptions return 500 status codes, but we have no other way to determine if this 500 error was caused by the sync-function than matching on the error message.
 						if bytes.Contains(respBody, []byte("JS sync function")) {
 							bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-						} else {
-							bsc.replicationStats.SendRevErrorOtherCount.Add(1)
 						}
 					}
 				}
