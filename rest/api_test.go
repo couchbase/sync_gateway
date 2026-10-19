@@ -4036,13 +4036,13 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 		t.Run("multiple channels with mixed history"+test.name, func(t *testing.T) {
 			docID := "multiple_channels_with_mixed_history" + test.name
 			// Complex scenario with multiple channels
-			version := rt.PutDoc(docID, `{"channels": ["a", "b"]}`)
-			version = rt.UpdateDoc(docID, version, `{"channels": ["a"]}`)
-
-			docSeq := rt.GetDocumentSequence(docID)
-			channelsToCompact := []string{"b"}
+			version := rt.PutDoc(docID, `{"channels": ["a"]}`)
+			version = rt.UpdateDoc(docID, version, `{"channels": ["b"]}`)
 
 			_ = rt.UpdateDoc(docID, version, `{"channels": ["a", "c"]}`)
+
+			docSeq := rt.GetDocumentSequence(docID)
+			channelsToCompact := []string{"a", "b"}
 
 			syncDataBefore, err := collection.GetDocSyncData(ctx, docID)
 			require.NoError(t, err)
@@ -4050,7 +4050,7 @@ func TestDocumentChannelHistoryCompact(t *testing.T) {
 			req := GetCompactionRequestFromType(test.name, docSeq, channelsToCompact)
 			compactedChannels, err := collection.CompactDocChannelHistory(ctx, docID, req.Seq, req.Channels)
 			require.NoError(t, err)
-			assert.Equal(t, []string{"b"}, compactedChannels)
+			assert.Equal(t, []string{"a", "b"}, compactedChannels)
 
 			syncData, err := collection.GetDocSyncData(ctx, docID)
 			require.NoError(t, err)
