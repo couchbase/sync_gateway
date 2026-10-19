@@ -178,14 +178,6 @@ def test_make_curl_task_zero_size(tmpdir, httpserver):
     httpserver.check()
 
 
-def test_task_print_literal(tmp_path):
-    task = tasks.AllOsTask("test_task", ["notacommand"], literal="literal")
-    runner = tasks.TaskRunner(tmp_dir=tmp_path)
-    runner.run(task)
-    with open(pathlib.Path(runner.tmpdir) / runner.default_name) as fh:
-        assert "literal" in fh.read()
-
-
 def test_task_timeout(tmp_path):
     task = tasks.AllOsTask("test_task", ["sleep", "5"], timeout=0.01)
     runner = tasks.TaskRunner(tmp_dir=tmp_path)
@@ -403,13 +395,6 @@ def test_log_result_no_message(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 # Task.execute() — return-code assertions
 # ---------------------------------------------------------------------------
-
-
-def test_task_execute_literal_return():
-    task = tasks.AllOsTask("test", ["notacommand"], literal="hello")
-    exit_code, message = task.execute(io.BytesIO())
-    assert exit_code == 0
-    assert message == ""
 
 
 def test_task_execute_popen_exception_return():

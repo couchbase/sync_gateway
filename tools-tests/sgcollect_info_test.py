@@ -382,3 +382,63 @@ def test_get_auth_headers() -> None:
                 "cmdlineusername", "stdinpassword"
             )
         }
+
+
+@pytest.mark.parametrize("redact_level", ["none", "partial"])
+def test_get_sgcollect_info_options_task_no_shell(
+    redact_level: str, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    url = "x'$(touch subshell_file)`touch backtick_file`;touch semicolon_file"
+    parser = sgcollect.create_option_parser()
+    options, args = parser.parse_args(
+        [
+            f"--log-redaction-level={redact_level}",
+            f"--sync-gateway-url={url}",
+            "out.zip;touch arg_file",
+        ]
+    )
+    task = sgcollect.get_sgcollect_info_options_task(options, args)
+    fp = io.BytesIO()
+    assert task.execute(fp) == (0, "")
+    assert list(tmp_path.iterdir()) == []
+    output = fp.getvalue().decode("utf-8")
+    assert url in output
+    assert "out.zip;touch arg_file" in output
+
+
+@pytest.mark.parametrize(
+    "redact_level,expected",
+    [
+        (
+            "none",
+            "options: {'sync_gateway_url': 'http://sg:4985', 'sync_gateway_username': 'admin', 'root': '/root', 'redact_level': 'none', 'salt_value': 'secretsalt', 'just_upload_into': None, 'upload_host': None, 'upload_customer': None, 'upload_ticket': None, 'sync_gateway_config': None, 'sync_gateway_executable': None, 'do_not_use': None, 'upload_proxy': '', 'upload_part_size': None, 'no_upload_split': False, 'tmp_dir': None, 'keep_zip': False, 'product_only': False, 'verbosity': 0} args: ['out.zip']\n",
+        ),
+        (
+            "partial",
+            "options: {'sync_gateway_url': '<ud>http://sg:4985</ud>', 'sync_gateway_username': '<ud>admin</ud>', 'root': '<ud>/root</ud>', 'redact_level': '<ud>partial</ud>', 'salt_value': '<ud>secretsalt</ud>', 'just_upload_into': '<ud>None</ud>', 'upload_host': '<ud>None</ud>', 'upload_customer': '<ud>None</ud>', 'upload_ticket': '<ud>None</ud>', 'sync_gateway_config': '<ud>None</ud>', 'sync_gateway_executable': '<ud>None</ud>', 'do_not_use': '<ud>None</ud>', 'upload_proxy': '<ud></ud>', 'upload_part_size': '<ud>None</ud>', 'no_upload_split': '<ud>False</ud>', 'tmp_dir': '<ud>None</ud>', 'keep_zip': '<ud>False</ud>', 'product_only': '<ud>False</ud>', 'verbosity': '<ud>0</ud>'} args: ['out.zip']\n",
+        ),
+    ],
+)
+def test_get_sgcollect_info_options_task_contents(
+    redact_level: str, expected: str
+) -> None:
+    parser = sgcollect.create_option_parser()
+    options, args = parser.parse_args(
+        [
+            "-r",
+            "/root",
+            f"--log-redaction-level={redact_level}",
+            "--sync-gateway-url=http://sg:4985",
+            "--sync-gateway-username=admin",
+            "--log-redaction-salt=secretsalt",
+            "out.zip",
+        ]
+    )
+    options.sync_gateway_password = "secretpassword"
+    task = sgcollect.get_sgcollect_info_options_task(options, args)
+    fp = io.BytesIO()
+    assert task.execute(fp) == (0, "")
+    output = fp.getvalue().decode("utf-8")
+    assert output == expected
+    assert "secretpassword" not in output
