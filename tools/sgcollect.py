@@ -31,7 +31,6 @@ from typing import Literal, NoReturn
 
 import password_remover
 from tasks import (
-    AllOsTask,
     CbcollectInfoOptions,
     PythonTask,
     TaskRunner,
@@ -973,22 +972,20 @@ def ud(value, should_redact=True):
 
 def get_sgcollect_info_options_task(
     options: optparse.Values, args: list[str]
-) -> AllOsTask:
+) -> PythonTask:
     """
     Create a task that returns all the options used to run sgcollect_info.
     """
     should_redact = should_redact_from_options(options)
-    return AllOsTask(
+    options_dict = {
+        k: ud(v, should_redact)
+        for k, v in list(options.__dict__.items())
+        if k != "sync_gateway_password"
+    }
+    return PythonTask(
         "Echo sgcollect_info cmd line args",
-        "echo options: {} args: {}".format(
-            {
-                k: ud(v, should_redact)
-                for k, v in list(options.__dict__.items())
-                if k != "sync_gateway_password"
-            },
-            args,
-        ),
-        log_file="sgcollect_info_options.log",
+        lambda: f"options: {options_dict} args: {args}\n",
+        log_file=SGCOLLECT_INFO_OPTIONS_LOG,
     )
 
 

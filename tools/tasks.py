@@ -134,10 +134,6 @@ class Task:
         import subprocess
 
         use_shell = not isinstance(self.command, list)
-        if "literal" in self.__dict__:
-            fp.write(self.literal.encode("utf-8"))
-            return 0
-
         env = None
         if "addenv" in self.__dict__:
             env = os.environ.copy()
