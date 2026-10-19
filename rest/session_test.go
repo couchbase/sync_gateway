@@ -827,8 +827,8 @@ func TestOneTimeSessionWithCookie(t *testing.T) {
 	RequireStatus(t, resp, http.StatusUnauthorized)
 }
 
-// TestDisabledUserSessionRejected ensures that disabling a user revokes access through sessions that were created
-// while the user was still enabled, matching the behaviour of basic auth for a disabled user.
+// TestDisabledUserSessionRejected ensures that disabling a user invalidates sessions that were created while the user
+// was still enabled, and that they stay invalid if the user is re-enabled.
 func TestDisabledUserSessionRejected(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
@@ -867,12 +867,10 @@ func TestDisabledUserSessionRejected(t *testing.T) {
 		secWebSocketProtocolHeader: blipSessionIDPrefix + oneTimeSession.SessionID,
 	}), http.StatusUnauthorized)
 
-	// admin can still inspect the disabled user's session
-	RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.db}}/_session/"+sessionID, ""), http.StatusOK)
-
-	// re-enabling the user restores the existing session
+	// re-enabling the user doesn't restore the session, but basic auth works again
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":false}`), http.StatusOK)
-	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusOK)
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusUnauthorized)
+	RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc2", "", username), http.StatusOK)
 }
 
 // TestRejectedSessionNotExtended ensures that a session rejected at authentication time does not have its expiry

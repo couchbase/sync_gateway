@@ -138,7 +138,10 @@ func (bh *blipHandler) refreshUser() error {
 		if userChanged {
 			// Refresh the BlipSyncContext database
 			err := bc.blipContextDb.ReloadUser(bh.loggingCtx)
-			if err != nil {
+			if errors.Is(err, ErrUserDisabled) {
+				// asking the client to reconnect would only lead to a failed login, so reject outright
+				return err
+			} else if err != nil {
 				return base.NewHTTPError(CBLReconnectErrorCode, err.Error())
 			}
 			newUser := bc.blipContextDb.User()

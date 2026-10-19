@@ -268,6 +268,9 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	if user == nil {
 		return fmt.Errorf("User not found during reload")
 	}
+	if user.Disabled() {
+		return ErrUserDisabled
+	}
 	c.user = user
 	return nil
 }
