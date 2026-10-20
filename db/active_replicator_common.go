@@ -54,6 +54,7 @@ type activeReplicatorCommon struct {
 	ctx                             context.Context
 	ctxCancel                       context.CancelCauseFunc
 	reconnectActive                 base.AtomicBool                                             // Tracks whether reconnect goroutine is active
+	connClosed                      base.AtomicBool                                             // set when a connection closes, cleared by each connect attempt
 	replicatorConnectFn             func() error                                                // the function called inside reconnect.
 	registerCheckpointerCallbacksFn func(*activeReplicatorCollection) error                     // function to register checkpointer callbacks
 	activeSendChanges               atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
@@ -156,6 +157,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 
 	arc.startStatusReporter(arc.ctx)
 
+	arc.connClosed.Set(false)
 	err := arc.replicatorConnectFn()
 	if err != nil {
 		base.InfofCtx(arc.ctx, base.KeyReplicate, "Couldn't connect: %s", err)
@@ -245,7 +247,9 @@ func (arc *activeReplicatorCommon) reset() error {
 
 // reconnect asynchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
 func (arc *activeReplicatorCommon) reconnect() {
-	arc.reconnectActive.Set(true)
+	if !arc.reconnectActive.CompareAndSwap(false, true) {
+		return
+	}
 	go arc.synchronousReconnect()
 }
 
@@ -253,10 +257,21 @@ func (arc *activeReplicatorCommon) reconnect() {
 //
 //go:norace
 func (arc *activeReplicatorCommon) synchronousReconnect() {
-	base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
-	defer func() {
+	// a connection that closes while the loop exits fails the CompareAndSwap in reconnect, so check again after clearing
+	for {
+		arc.reconnectLoop()
 		arc.reconnectActive.Set(false)
-	}()
+		if arc.ctx.Err() != nil || !arc.connClosed.IsTrue() || !arc.reconnectActive.CompareAndSwap(false, true) {
+			return
+		}
+	}
+}
+
+// reconnectLoop calls replicatorConnectFn until successful, or times out trying.
+//
+//go:norace
+func (arc *activeReplicatorCommon) reconnectLoop() {
+	base.DebugfCtx(arc.ctx, base.KeyReplicate, "starting reconnector")
 
 	initialReconnectInterval := defaultInitialReconnectInterval
 	if arc.config.InitialReconnectInterval != 0 {
@@ -307,8 +322,13 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 			base.InfofCtx(arc.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
 		}
 
+		// cleared after _disconnect so that only a close of the new connection is seen below
+		arc.connClosed.Set(false)
 		// set lastError, but don't set an error state inside the reconnect loop
 		err = arc.replicatorConnectFn()
+		if err == nil && arc.connClosed.IsTrue() {
+			err = errors.New("connection closed during connect")
+		}
 		arc.setLastError(err)
 		arc._publishStatus()
 
