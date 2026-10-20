@@ -134,6 +134,10 @@ type BlipSyncContext struct {
 	// stopped
 	fatalErrorCallback func(err error)
 
+	// disconnecting is set by an active replicator before it closes this connection on purpose, so that the
+	// blip.Context.OnExitCallback doesn't start a reconnect.
+	disconnecting base.AtomicBool
+
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 

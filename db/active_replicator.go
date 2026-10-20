@@ -236,8 +236,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
-		// fall into a reconnect loop only if the connection is unexpectedly closed.
-		if ctx.Err() == nil {
+		if !bsc.disconnecting.IsTrue() {
 			arc.reconnect()
 		}
 	}

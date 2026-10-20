@@ -346,16 +346,6 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 	arc._stop("stopping after failed reconnect attempts: " + retryErr.Error())
 }
 
-// disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
-func (arc *activeReplicatorCommon) disconnect() error {
-	arc.lock.Lock()
-	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect without stopping the replicator")
-	err := arc._disconnect()
-	arc._publishStatus()
-	arc.lock.Unlock()
-	return err
-}
-
 // stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
 func (arc *activeReplicatorCommon) stopAndDisconnect() error {
 	arc.lock.Lock()
@@ -392,6 +382,9 @@ func (arc *activeReplicatorCommon) _disconnect() error {
 	}
 	arc.checkpointerCtx = nil
 
+	if arc.blipSyncContext != nil {
+		arc.blipSyncContext.disconnecting.Set(true)
+	}
 	if arc.blipSender != nil {
 		base.TracefCtx(arc.ctx, base.KeyReplicate, "closing blip sender")
 		arc.blipSender.Close()
