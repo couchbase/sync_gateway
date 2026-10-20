@@ -887,6 +887,19 @@ func TestRejectedSessionNotExtended(t *testing.T) {
 			},
 		},
 		{
+			// an older node disables the user without changing its session UUID
+			name: "disabled user with unchanged session UUID",
+			rejectAction: func(rt *RestTester, username string) {
+				ctx := base.TestCtx(rt.TB())
+				userDocID := rt.GetDatabase().Authenticator(ctx).DocIDForUser(username)
+				var userDoc map[string]any
+				_, err := rt.MetadataStore().Get(ctx, userDocID, &userDoc)
+				require.NoError(rt.TB(), err)
+				userDoc["disabled"] = true
+				require.NoError(rt.TB(), rt.MetadataStore().Set(ctx, userDocID, 0, nil, userDoc))
+			},
+		},
+		{
 			name: "all sessions deleted",
 			rejectAction: func(rt *RestTester, username string) {
 				RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username+"/_session", ""), http.StatusOK)

@@ -183,9 +183,10 @@ func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, User, er
 	return session, user, nil
 }
 
-// getValidSession returns a session by ID along with its user. If the session exists but its user has been deleted or
-// its session UUID has changed (on password change, disable, or deleting all sessions), the session is returned along
-// with errSessionRevoked so that callers can still identify whose session it was.
+// getValidSession returns a session by ID along with its user. If the session exists but its user has been deleted, is
+// disabled, or its session UUID has changed (on password change, disable, or deleting all sessions), the session is
+// returned along with errSessionRevoked so that callers can still identify whose session it was. The disabled check
+// covers users disabled without a session UUID change, such as by an older node.
 func (auth *Authenticator) getValidSession(sessionID string) (*LoginSession, User, error) {
 	var session LoginSession
 	_, err := auth.datastore.Get(auth.LogCtx, auth.DocIDForSession(sessionID), &session)
@@ -196,7 +197,7 @@ func (auth *Authenticator) getValidSession(sessionID string) (*LoginSession, Use
 	if err != nil {
 		return nil, nil, err
 	}
-	if user == nil || session.SessionUUID != user.GetSessionUUID() {
+	if user == nil || user.Disabled() || session.SessionUUID != user.GetSessionUUID() {
 		return &session, nil, errSessionRevoked
 	}
 	return &session, user, nil
