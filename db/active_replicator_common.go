@@ -249,6 +249,17 @@ func (arc *activeReplicatorCommon) reconnect() {
 	go arc.synchronousReconnect()
 }
 
+// reconnectIfCurrent starts a reconnect only if bsc is still the active connection. A connection replaced by _disconnect is
+// left to the caller of _disconnect.
+func (arc *activeReplicatorCommon) reconnectIfCurrent(bsc *BlipSyncContext) {
+	arc.lock.Lock()
+	defer arc.lock.Unlock()
+	if arc.ctx.Err() != nil || arc.blipSyncContext != bsc {
+		return
+	}
+	arc.reconnect()
+}
+
 // TODO: CBG-4882 - reconnect() and Start() race on reading/writing ctx
 //
 //go:norace
@@ -344,16 +355,6 @@ func (arc *activeReplicatorCommon) synchronousReconnect() {
 	arc.setState(ReplicationStateError)
 	arc._publishStatus()
 	arc._stop("stopping after failed reconnect attempts: " + retryErr.Error())
-}
-
-// disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
-func (arc *activeReplicatorCommon) disconnect() error {
-	arc.lock.Lock()
-	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect without stopping the replicator")
-	err := arc._disconnect()
-	arc._publishStatus()
-	arc.lock.Unlock()
-	return err
 }
 
 // stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
