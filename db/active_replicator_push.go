@@ -220,10 +220,7 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
 			}
 		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
-			err = apr.disconnect()
-			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to disconnect replication after database went away: %v", err)
-			}
+			apr.reconnect()
 		}
 		// No special handling for error
 	}
