@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strconv"
@@ -524,9 +525,10 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 }
 
 func TestAttachmentProcessError(t *testing.T) {
+	errMark := errors.New("injected mark error")
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
-			return fmt.Errorf("some error")
+			return errMark
 		},
 	})
 	defer b.Close(base.TestCtx(t))
@@ -540,7 +542,8 @@ func TestAttachmentProcessError(t *testing.T) {
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{})
 	assert.NoError(t, err)
 
-	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
+	status := RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
+	require.Equal(t, errMark.Error(), status.LastErrorMessage)
 }
 
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
