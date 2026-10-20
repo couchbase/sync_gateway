@@ -245,7 +245,9 @@ func (arc *activeReplicatorCommon) reset() error {
 
 // reconnect asynchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
 func (arc *activeReplicatorCommon) reconnect() {
-	arc.reconnectActive.Set(true)
+	if !arc.reconnectActive.CompareAndSwap(false, true) {
+		return
+	}
 	go arc.synchronousReconnect()
 }
 
