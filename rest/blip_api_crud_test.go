@@ -3943,17 +3943,12 @@ func TestMOUDeletedOnTombstone(t *testing.T) {
 }
 
 func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("rosmar doesn't support escaping characters in sub doc keys")
-	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	btcRunner := NewBlipTesterClientRunner(t)
 
 	btcRunner.Run(func(t *testing.T) {
-		// Sync function assigns each doc to "chan<doc.chan>" and grants alice access
-		// via a per-doc "test.<docID>" channel, so the channels under test exercise
-		// subdoc-path backtick escaping for special characters such as dots and/or
-		// square brackets.
+		// Sync function assigns each doc to "chan<doc.chan>" and grants alice access via a per-doc "test.<docID>"
+		// channel, so channel names carry the dots and square brackets under test.
 		rtConfig := RestTesterConfig{
 			SyncFn: `function (doc, oldDoc) {
   var testChannel = "test." + doc._id;
@@ -4009,31 +4004,28 @@ func TestChannelRemovalWithSpecialCharsInName(t *testing.T) {
 			assert.Equal(t, syncData.RevAndVersion.RevTreeID, removalData.Rev.RevTreeID)
 		}
 
-		// Dots in channel name — path component must be backtick-escaped.
+		// Dots in channel name.
 		assertChannelRemoval(
 			"38839af8-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "channel.test1",
 			"2-abc", "channel.test2",
 			"chanchannel.test1",
 		)
-		// Brackets with an index — e.g. "example[10]ChannelName". Brackets are CBS
-		// array-index syntax in subdoc paths; the dot prefix means the component is
-		// backtick-wrapped so the brackets are treated as literals.
+		// Brackets with an index inside the name.
 		assertChannelRemoval(
 			"bracket-index-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "example[10]ChannelName",
 			"2-abc", "example[11]ChannelName",
 			"chanexample[10]ChannelName",
 		)
-		// Empty brackets — same escaping concern as above.
+		// Empty brackets.
 		assertChannelRemoval(
 			"bracket-empty-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "literal[]bracketchannel",
 			"2-abc", "literalbothchannels",
 			"chanliteral[]bracketchannel",
 		)
-		// Brackets with index at end of name — CBS would interpret this as an array
-		// index operator if not escaped; the dot prefix ensures backtick-wrapping.
+		// Brackets with an index at the end of the name.
 		assertChannelRemoval(
 			"bracket-suffix-7874-4e28-b369-51b265d7e6ce",
 			"1-abc", "exampleChannelName[10]",

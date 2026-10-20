@@ -596,9 +596,6 @@ func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) 
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("can not create new buckets and scopes in walrus")
-	}
 
 	base.TestRequiresCollections(t)
 
@@ -614,11 +611,17 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 		require.NoError(t, tb.CreateDataStore(ctx, col))
 	}
 	defer func() {
+		for _, col := range collectionNames {
+			assert.NoError(t, tb.DropDataStore(ctx, col))
+		}
+		// Rosmar test buckets are discarded, so only Couchbase Server needs the scopes dropped.
+		if base.UnitTestUrlIsWalrus() {
+			return
+		}
 		collection, err := base.AsCollection(tb.DefaultDataStore(ctx))
 		require.NoError(t, err)
 		cm := collection.Collection.Bucket().Collections()
 		for _, col := range collectionNames {
-			assert.NoError(t, tb.DropDataStore(ctx, col))
 			assert.NoError(t, cm.DropScope(col.ScopeName(), nil))
 		}
 	}()
@@ -630,33 +633,14 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	defer rt.Close()
 
 	// Create a DB configured with one scope
-	res := rt.SendAdminRequest(http.MethodPut, "/db/", string(base.MustJSONMarshal(t, map[string]any{
-		"bucket":    tb.GetName(),
-		"index":     map[string]any{"num_replicas": 0},
-		"use_views": base.TestsDisableGSI(),
-		"scopes": ScopesConfig{
-			"fooScope": {
-				Collections: CollectionsConfig{
-					"bar": {},
-				},
-			},
-		},
-	})))
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = ScopesConfig{"fooScope": {Collections: CollectionsConfig{"bar": {}}}}
+	res := rt.CreateDatabase("db", dbConfig)
 	RequireStatus(t, res, http.StatusCreated)
 
 	// Try updating its scopes
-	res = rt.SendAdminRequest(http.MethodPut, "/db/_config", string(base.MustJSONMarshal(t, map[string]any{
-		"bucket":    tb.GetName(),
-		"index":     map[string]any{"num_replicas": 0},
-		"use_views": base.TestsDisableGSI(),
-		"scopes": ScopesConfig{
-			"quxScope": {
-				Collections: CollectionsConfig{
-					"quux": {},
-				},
-			},
-		},
-	})))
+	dbConfig.Scopes = ScopesConfig{"quxScope": {Collections: CollectionsConfig{"quux": {}}}}
+	res = rt.ReplaceDbConfig("db", dbConfig)
 	assert.Contains(t, res.Body.String(), "cannot change scopes after database creation")
 	RequireStatus(t, res, http.StatusBadRequest)
 }

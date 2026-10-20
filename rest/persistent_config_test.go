@@ -25,10 +25,6 @@ import (
 )
 
 func TestAutomaticConfigUpgrade(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBS required")
-	}
-
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -117,10 +113,6 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 }
 
 func TestAutomaticConfigUpgradeError(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBS required")
-	}
-
 	testCases := []struct {
 		Name   string
 		Config string
@@ -172,9 +164,6 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 func TestUnmarshalBrokenConfig(t *testing.T) {
 	t.Skip("Disabled, CBG-2420")
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBS required")
-	}
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
 
@@ -211,9 +200,6 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 
 func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	ctx := base.TestCtx(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBS required")
-	}
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
@@ -1546,9 +1532,6 @@ func TestDeleteDbConfigAlreadyDeletedByPeer(t *testing.T) {
 // The peer finds the node's delete in progress in the registry, times out waiting for it, and completes the delete
 // itself before the node removes the config doc.
 func TestDeleteDbConfigDocDeletedByPeerDuringDelete(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TODO: CBG-4796 unskip once Rosmar returns not found instead of a CAS mismatch when removing a deleted doc")
-	}
 	const dbName = "db"
 	var peer *RestTester
 	var peerDeleteResp *TestResponse
@@ -1585,9 +1568,6 @@ func TestDeleteDbConfigDocDeletedByPeerDuringDelete(t *testing.T) {
 // TestDeleteDbConfigFinalizesRegistryAfterPeerDeletesConfigDoc deletes a database on a node while a peer removes the
 // config doc but stops before it removes the database from the registry, as happens when the peer crashes.
 func TestDeleteDbConfigFinalizesRegistryAfterPeerDeletesConfigDoc(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TODO: CBG-4796 unskip once Rosmar returns not found instead of a CAS mismatch when removing a deleted doc")
-	}
 	const dbName = "db"
 	var peer *RestTester
 	peerDeleted := false
@@ -1684,9 +1664,6 @@ func requireRegistryVersion(t *testing.T, ctx context.Context, rt *RestTester, b
 // TestDeleteDbConfigKeepsDbRecreatedByPeer deletes a database on a node while a peer removes the config doc and starts
 // to recreate the database, having written the new registry entry but not yet the new config doc.
 func TestDeleteDbConfigKeepsDbRecreatedByPeer(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TODO: CBG-4796 unskip once Rosmar returns not found instead of a CAS mismatch when removing a deleted doc")
-	}
 	const dbName = "db"
 	var peer *RestTester
 	var recreatedVersion string

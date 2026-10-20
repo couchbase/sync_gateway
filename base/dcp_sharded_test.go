@@ -722,12 +722,8 @@ func TestCfgNodePoller_Poll(t *testing.T) {
 		require.Equal(t, 1, eventCount, "third poll should not fire event since CAS unchanged")
 	})
 
-	// Verify deletion (tombstone) triggers event with cas=0 - Couchbase Server only
+	// Verify deletion (tombstone) triggers event with cas=0
 	t.Run("poll_detects_document_deletion", func(t *testing.T) {
-		if UnitTestUrlIsWalrus() {
-			t.Skip("This test requires Couchbase Server - deletion behavior differs in Rosmar")
-		}
-
 		eventFired := false
 		var firedCas uint64
 

@@ -284,10 +284,6 @@ func TestSGReplicateValidation(t *testing.T) {
 
 // CBG-1754 - Guest user not enabled during legacy config migration
 func TestLegacyGuestUserMigration(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBS required")
-	}
-
 	ctx := base.TestCtx(t)
 	expected := auth.PrincipalConfig{
 		ExplicitChannels: base.SetFromArray([]string{"*"}),
@@ -347,9 +343,6 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 
 // CBG-1751: Install legacy config principals prior to upgrade
 func TestLegacyConfigPrinciplesMigration(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBS required")
-	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	bucket := rt.Bucket()

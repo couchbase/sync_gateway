@@ -991,10 +991,6 @@ func TestValidateServerContextSharedBuckets(t *testing.T) {
 	ctx := base.TestCtx(t)
 	base.RequireNumTestBuckets(t, 2)
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Skipping this test; requires Couchbase Bucket")
-	}
-
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close(ctx)
 

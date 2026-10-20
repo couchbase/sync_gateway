@@ -2522,12 +2522,6 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	})
 	defer rt.Close()
 
-	bucket := rt.Bucket()
-	_, ok := base.AsCouchbaseBucketStore(bucket)
-	if !ok {
-		t.Skip("Requires Couchbase bucket")
-	}
-
 	dataStore := rt.GetSingleDataStore()
 	_, err := dataStore.Add(ctx, t.Name(), 0, map[string]any{"val": "val"})
 	require.NoError(t, err)
@@ -2559,27 +2553,23 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	})
 	defer rt.Close()
 
-	bucket := rt.Bucket()
-	_, ok := base.AsCouchbaseBucketStore(bucket)
-	if !ok {
-		t.Skip("Requires Couchbase bucket")
-	}
+	dataStore := rt.GetSingleDataStore()
 
 	// Create the document to trigger cas failure
 	value := make(map[string]any)
 	value["foo"] = "bar"
-	insCas, err := bucket.DefaultDataStore(ctx).WriteCas(ctx, t.Name(), 0, 0, value, 0)
+	insCas, err := dataStore.WriteCas(ctx, t.Name(), 0, 0, value, 0)
 	require.NoError(t, err)
 
 	// Delete document
-	_, err = bucket.DefaultDataStore(ctx).Remove(ctx, t.Name(), insCas)
+	_, err = dataStore.Remove(ctx, t.Name(), insCas)
 	require.NoError(t, err)
 
 	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]any
-	_, err = rt.GetDatabase().Bucket.DefaultDataStore(ctx).Get(ctx, t.Name(), &body)
+	_, err = dataStore.Get(ctx, t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
@@ -3672,10 +3662,6 @@ func TestFetchBackupRevisionWithAttachmentWhenCurrentHasNone(t *testing.T) {
 // for _cluster_info endpoint. ECCV value is returned for each bucket, if the
 // bucket does not contain any SGW database, the value will be set to false
 func TestECCV(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server since it requires a gocb bucket")
-	}
-
 	tests := []struct {
 		name             string
 		persistentConfig bool
