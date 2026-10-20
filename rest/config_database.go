@@ -191,6 +191,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		Logging:                           DefaultPerDBLogging(sc.Logging),
 		DisablePublicAllDocs:              new(false),
 		UseSystemMobileMetadataCollection: new(DefaultUseSystemMetadataCollection),
+		EnableChannelHistoryCompaction:    new(DefaultEnableChannelHistoryCompaction),
 		AutoImport:                        new(base.DefaultAutoImport),
 	}
 

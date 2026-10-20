@@ -74,6 +74,9 @@ const (
 	// opt-in -> opt-out -> remove lifecycle for the system metadata collection feature.
 	DefaultUseSystemMetadataCollection = false
 
+	// DefaultEnableChannelHistoryCompaction is the default for DbConfig.EnableChannelHistoryCompaction
+	DefaultEnableChannelHistoryCompaction = false
+
 	tapFeedType = "tap"
 )
 
@@ -194,6 +197,7 @@ type DbConfig struct {
 	CreatedAt                         *time.Time                       `json:"created_at,omitempty"`                           // Time at which the database config was created
 	DisablePublicAllDocs              *bool                            `json:"disable_public_all_docs,omitempty"`              // Whether to disable public access to the _all_docs endpoint for this database
 	UseSystemMobileMetadataCollection *bool                            `json:"use_system_metadata_collection,omitempty"`       // Whether to use the system metadata collection for storing Sync Gateway metadata documents.
+	EnableChannelHistoryCompaction    *bool                            `json:"enable_channel_history_compaction,omitempty"`    // Whether to enable automated document channel history compaction
 }
 
 type ScopesConfig map[string]ScopeConfig

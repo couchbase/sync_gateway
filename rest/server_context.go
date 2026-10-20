@@ -1648,12 +1648,13 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		JavascriptTimeout:         javascriptTimeout,
 		ChangesRequestPlus:        base.ValDefault(config.ChangesRequestPlus, false),
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
-		MaxConcurrentChangesBatches: sc.Config.Replicator.MaxConcurrentChangesBatches,
-		MaxConcurrentRevs:           sc.Config.Replicator.MaxConcurrentRevs,
-		NumIndexReplicas:            config.numIndexReplicas(),
-		DisablePublicAllDocs:        disablePublicAllDocs,
-		StoreLegacyRevTreeData:      new(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
-		UseSystemMetadataCollection: useMobileCollection,
+		MaxConcurrentChangesBatches:    sc.Config.Replicator.MaxConcurrentChangesBatches,
+		MaxConcurrentRevs:              sc.Config.Replicator.MaxConcurrentRevs,
+		NumIndexReplicas:               config.numIndexReplicas(),
+		DisablePublicAllDocs:           disablePublicAllDocs,
+		StoreLegacyRevTreeData:         new(base.ValDefault(config.StoreLegacyRevTreeData, db.DefaultStoreLegacyRevTreeData)),
+		UseSystemMetadataCollection:    useMobileCollection,
+		EnableChannelHistoryCompaction: base.ValDefault(config.EnableChannelHistoryCompaction, DefaultEnableChannelHistoryCompaction),
 	}
 
 	if config.Index != nil && config.Index.NumPartitions != nil {
