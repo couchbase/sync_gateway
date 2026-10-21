@@ -256,7 +256,7 @@ The reviewer compares the backport with the upstream PR. They need to know what 
 Check how close it is by comparing only the added and removed lines, so line numbers and context are ignored:
 
 ```bash
-changed() { git show --format= "$1" | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) '; }
+changed() { git show --format= "$1" | grep -E '^(diff --git |[-+])'; }
 diff <(changed <upstream-sha>) <(changed HEAD)
 ```
 
