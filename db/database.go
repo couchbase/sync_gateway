@@ -66,11 +66,7 @@ const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 
-	// DefaultPurgeInterval represents a time duration of 30 days to be
-	// used as default metadata purge interval when the server’s purge
-	// interval (either bucket specific or cluster wide) is not available.
-	DefaultPurgeInterval                    = 30 * 24 * time.Hour
-	DefaultVersionPruningWindow             = DefaultPurgeInterval
+	DefaultVersionPruningWindow             = base.DefaultClientPartitionWindow
 	DefaultSGReplicateEnabled               = true
 	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 	DefaultCompactInterval                  = 24 * time.Hour
@@ -645,7 +641,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), joinResync)
 
 	// Fill the purge interval cache before any request can run, so that later callers do not read Bucket during Close.
-	dbContext.GetMetadataPurgeInterval(ctx, false)
+	dbContext.GetMetadataPurgeInterval(ctx, true)
 
 	return dbContext, nil
 }
@@ -1035,7 +1031,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
-		ClientPartitionWindow:    context.ClientPartitionWindow(ctx),
+		ClientPartitionWindow:    context.ClientPartitionWindow(),
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
 		BcryptCost:               context.Options.BcryptCost,
@@ -1760,15 +1756,15 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 	// fetch from server
 	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
 	if !ok {
-		db.CachedPurgeInterval.Store(new(DefaultPurgeInterval))
-		return DefaultPurgeInterval
+		db.CachedPurgeInterval.Store(new(base.DefaultClientPartitionWindow))
+		return base.DefaultClientPartitionWindow
 	}
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
+		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", base.DefaultClientPartitionWindow.Hours()/24, err)
 	}
 
-	mpi := DefaultPurgeInterval
+	mpi := base.DefaultClientPartitionWindow
 	if serverPurgeInterval > 0 {
 		mpi = serverPurgeInterval
 	}
@@ -2805,11 +2801,17 @@ func (db *DatabaseContext) collections(names base.CollectionNames) (DatabaseColl
 	return collections, nil
 }
 
-// ClientPartitionWindow returns how long revoked channel and role grants stay in principal history. If
-// client_partition_window_secs is not set, it returns the metadata purge interval of the bucket.
-func (db *DatabaseContext) ClientPartitionWindow(ctx context.Context) time.Duration {
-	if db.Options.ClientPartitionWindow != nil {
-		return *db.Options.ClientPartitionWindow
+// ClientPartitionWindow returns client_partition_window_secs if set, otherwise the cached metadata purge
+// interval. It never fetches from the bucket, so request paths can call it at any time.
+func (db *DatabaseContext) ClientPartitionWindow() time.Duration {
+	if w := db.Options.ClientPartitionWindow; w != nil {
+		return *w
 	}
-	return db.GetMetadataPurgeInterval(ctx, false)
+	if o := db.Options.TestPurgeIntervalOverride; o != nil {
+		return *o
+	}
+	if mpi := db.CachedPurgeInterval.Load(); mpi != nil {
+		return *mpi
+	}
+	return base.DefaultClientPartitionWindow
 }

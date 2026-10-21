@@ -120,9 +120,9 @@ func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*Db
 }
 
 // setRuntimeClientPartitionWindow sets the window that the database uses when the config does not set one.
-func setRuntimeClientPartitionWindow(ctx context.Context, config *DbConfig, database *db.DatabaseContext) {
+func setRuntimeClientPartitionWindow(config *DbConfig, database *db.DatabaseContext) {
 	if config.ClientPartitionWindowSecs == nil {
-		config.ClientPartitionWindowSecs = new(int(database.ClientPartitionWindow(ctx).Seconds()))
+		config.ClientPartitionWindowSecs = new(int(database.ClientPartitionWindow().Seconds()))
 	}
 }
 

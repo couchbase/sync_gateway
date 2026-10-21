@@ -620,7 +620,7 @@ func (h *handler) handleGetDbConfig() error {
 		if err != nil {
 			return err
 		}
-		setRuntimeClientPartitionWindow(h.ctx(), responseConfig, h.db.DatabaseContext)
+		setRuntimeClientPartitionWindow(responseConfig, h.db.DatabaseContext)
 	}
 
 	// defensive check - there could've been an in-flight request to remove the database between entering the handler and getting the config above.
@@ -706,7 +706,7 @@ func (h *handler) handleGetConfig() error {
 			if err != nil {
 				return err
 			}
-			setRuntimeClientPartitionWindow(h.ctx(), dbConfig, database)
+			setRuntimeClientPartitionWindow(dbConfig, database)
 
 			if database.SGReplicateMgr != nil {
 				replications, err := database.SGReplicateMgr.GetReplications()

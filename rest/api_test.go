@@ -4513,8 +4513,8 @@ func TestLocalEndpointForPublicAPI(t *testing.T) {
 // TestDefaultClientPartitionWindow makes sure that the database config reports client_partition_window_secs when it is
 // set, and reports the server purge interval only with include_runtime when it is not set.
 func TestDefaultClientPartitionWindow(t *testing.T) {
-	// Rosmar always returns db.DefaultPurgeInterval, which equals base.DefaultClientPartitionWindow, so the default
-	// cases cannot tell the server purge interval apart from a fixed default there.
+	// Rosmar always returns base.DefaultClientPartitionWindow as the purge interval, so the default cases cannot tell
+	// the server purge interval apart from the fallback there.
 	if sgtest.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}

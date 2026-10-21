@@ -97,6 +97,10 @@ const (
 	// How long to wait for response headers once a request has been written.
 	DefaultHttpResponseHeaderTimeout = 30 * time.Second
 
+	// DefaultClientPartitionWindow is the metadata purge interval that Sync Gateway uses when it cannot read one from
+	// the bucket, so it is also the client partition window when client_partition_window_secs is not set.
+	DefaultClientPartitionWindow = time.Hour * 24 * 30
+
 	// Number of kv connections (pipelines) per Couchbase Server node
 	DefaultGocbKvPoolSize = 2
 
@@ -198,9 +202,6 @@ var (
 	DefaultWarnThresholdChannelsPerUser = uint32(50000)
 	DefaultWarnThresholdGrantsPerDoc    = uint32(50)
 	DefaultWarnThresholdChannelNameSize = uint32(250)
-	// DefaultClientPartitionWindow is the window in auth.DefaultAuthenticatorOptions, which only tests use.
-	// A database uses client_partition_window_secs, or the metadata purge interval if that is not set.
-	DefaultClientPartitionWindow = time.Hour * 24 * 30
 
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")
