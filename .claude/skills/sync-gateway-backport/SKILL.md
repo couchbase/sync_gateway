@@ -179,7 +179,7 @@ Do not pass `--draft`. Title and body follow [PR title and body](#pr-title-and-b
 
 Bottom of the stack = the prerequisite; top = the change that needs it. Only build a stack after [When to stack](#when-to-stack) has found a real dependency.
 
-`gh stack` is a GitHub CLI extension, not a built-in subcommand — install it once, or the first call fails with `unknown command`. The `gh-stack` skill covers the extension in full; only the backport-specific parts are below.
+`gh stack` is a GitHub CLI extension, not a built-in subcommand — install it once, or the first call fails with `unknown command`. For full usage, run `gh stack --help`; only the backport-specific parts are below.
 
 ```bash
 gh extension list | grep -q gh-stack || gh extension install github/gh-stack
