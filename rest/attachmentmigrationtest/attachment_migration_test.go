@@ -45,6 +45,9 @@ func TestMigrationJobStartOnDbStart(t *testing.T) {
 //     to be processed twice in the job, so we can assert that the job has processed more docs than we added
 //   - Assert sync info: metaVersion is written to BOTH collections in the db config
 func TestChangeDbCollectionsRestartMigrationJob(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test currently fails under rosmar due to bucket closing when updating the database.")
+	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
 
