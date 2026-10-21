@@ -1,0 +1,126 @@
+*                                       @bbrks @torcolvin @gregns1
+
+/rest/                                  @bbrks @gregns1
+/db/                                    @bbrks @gregns1
+/base/                                  @bbrks @torcolvin
+/auth/                                  @bbrks @torcolvin
+/channels/                              @bbrks @torcolvin
+/docs/                                  @bbrks @torcolvin
+/xdcr/                                  @torcolvin @gregns1
+/topologytest/                          @torcolvin @gregns1
+
+# Build, CI, dependencies, lint and tooling.
+/.github/                               @bbrks @torcolvin
+/.ci/                                   @bbrks @torcolvin
+/Jenkinsfile                            @bbrks @torcolvin
+/build/                                 @bbrks @torcolvin
+/manifest/                              @bbrks @torcolvin
+/integration-test/                      @bbrks @torcolvin
+/tools/                                 @bbrks @torcolvin
+/tools-tests/                           @bbrks @torcolvin
+/examples/                              @bbrks @torcolvin
+/service/                               @bbrks @torcolvin
+/ruleguard/                             @bbrks @torcolvin
+/go.mod                                 @bbrks @torcolvin
+/go.sum                                 @bbrks @torcolvin
+/.golangci*.yml                         @bbrks @torcolvin
+
+# Config and bootstrap.
+/rest/config*                           @bbrks @torcolvin
+/rest/handler_config*                   @bbrks @torcolvin
+/rest/persistent_config*                @bbrks @torcolvin
+/rest/server_context*                   @bbrks @torcolvin
+/rest/bootstrap*                        @bbrks @torcolvin
+/rest/database_init*                    @bbrks @torcolvin
+/rest/cluster_compat*                   @bbrks @torcolvin
+/rest/handler_cluster_compat*           @bbrks @torcolvin
+/rest/main*                             @bbrks @torcolvin
+/rest/utilities_testing_bootstrap*      @bbrks @torcolvin
+/rest/upgradetest/                      @bbrks @torcolvin
+
+# Auth, users and roles.
+/rest/oidc*                             @bbrks @torcolvin
+/rest/jwt*                              @bbrks @torcolvin
+/rest/facebook*                         @bbrks @torcolvin
+/rest/google*                           @bbrks @torcolvin
+/rest/x509*                             @bbrks @torcolvin
+/rest/cors*                             @bbrks @torcolvin
+/rest/session*                          @bbrks @torcolvin
+/rest/user_api*                         @bbrks @torcolvin
+/rest/role_api*                         @bbrks @torcolvin
+/rest/access*                           @bbrks @torcolvin
+/rest/admin_api_auth*                   @bbrks @torcolvin
+/rest/revocation*                       @bbrks @torcolvin
+/rest/utilities_testing_user*           @bbrks @torcolvin
+/db/access*                             @bbrks @torcolvin
+/db/users*                              @bbrks @torcolvin
+
+# Logging, audit and sgcollect.
+/rest/audit*                            @bbrks @torcolvin
+/rest/logging*                          @bbrks @torcolvin
+/rest/sgcollect*                        @bbrks @torcolvin
+/rest/sgcollecttest/                    @bbrks @torcolvin
+
+# Diagnostic API.
+/rest/diagnostic*                       @bbrks @RIT3shSapata
+
+# Sync function and user functions.
+/rest/sync_fn*                          @bbrks @torcolvin
+/rest/functions_api*                    @bbrks @torcolvin
+/rest/admin_functions_api*              @bbrks @torcolvin
+/rest/utilities_testing_functions_api*  @bbrks @torcolvin
+/rest/functionsapitest/                 @bbrks @torcolvin
+/db/functions*                          @bbrks @torcolvin
+/db/functions/                          @bbrks @torcolvin
+
+# Inter-SG replication (ISGR) and the sg-replicate manager.
+/db/active_replicator*                  @bbrks @torcolvin
+/db/sg_replicate*                       @bbrks @torcolvin
+/rest/replicatortest/                   @bbrks @torcolvin
+/rest/utilities_testing_isgr*           @bbrks @torcolvin
+
+# Import, DCP feeds and cbgt (sharded DCP, cluster config, node heartbeats).
+/db/import*                             @torcolvin @gregns1
+/db/dcp*                                @torcolvin @gregns1
+/db/pindex*                             @torcolvin @gregns1
+/base/dcp*                              @torcolvin @gregns1
+/base/gocb_dcp*                         @torcolvin @gregns1
+/base/rosmar_dcp*                       @torcolvin @gregns1
+/base/cbgt*                             @torcolvin @gregns1
+/base/sg_cluster_cfg*                   @torcolvin @gregns1
+/base/heartbeat*                        @torcolvin @gregns1
+/rest/cbgt*                             @torcolvin @gregns1
+/rest/importtest/                       @torcolvin @gregns1
+/rest/importuserxattrtest/              @torcolvin @gregns1
+
+# Background tasks (resync, compaction, migration), indexes and queries.
+/db/background_mgr*                     @torcolvin @gregns1
+/db/indexes*                            @torcolvin @gregns1
+/db/query*                              @torcolvin @gregns1
+/db/design_doc*                         @torcolvin @gregns1
+/db/indextest/                          @torcolvin @gregns1
+/rest/indextest/                        @torcolvin @gregns1
+/rest/view_api*                         @torcolvin @gregns1
+
+# HLV.
+/db/hybrid_logical_vector*              @torcolvin @gregns1
+/db/utilities_hlv*                      @torcolvin @gregns1
+
+# Changes feed, change and channel caches, sequences.
+/db/change_cache*                       @torcolvin @gregns1
+/db/change_listener*                    @torcolvin @gregns1
+/db/changes*                            @torcolvin @gregns1
+/db/channel_cache*                      @torcolvin @gregns1
+/db/cache_memory_controller*            @torcolvin @gregns1
+/db/caching_devmode*                    @torcolvin @gregns1
+/db/skipped_sequence*                   @torcolvin @gregns1
+/db/sequence_*                          @torcolvin @gregns1
+/db/changecachetest/                    @torcolvin @gregns1
+/db/changesfeedtest/                    @torcolvin @gregns1
+/db/channelcachetest/                   @torcolvin @gregns1
+/rest/changes*                          @torcolvin @gregns1
+/rest/changestest/                      @torcolvin @gregns1
+/rest/utilities_testing_changes*        @torcolvin @gregns1
+
+/docs/api/                              @bbrks @torcolvin @gregns1
+/.github/CODEOWNERS                     @bbrks @torcolvin @gregns1
