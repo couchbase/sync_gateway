@@ -1,6 +1,6 @@
 module github.com/couchbase/sync_gateway
 
-go 1.26.9
+go 1.26.10
 
 require (
 	dario.cat/mergo v1.0.0
