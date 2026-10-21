@@ -28,7 +28,7 @@ _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "to
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
 DEFAULT_CBS_VERSION = "8.0.1"
 DEFAULT_SERVICES = "kv,n1ql,index"
-DEFAULT_MEMORY_MB = 3072
+DEFAULT_MEMORY_MB = 1200
 DEFAULT_NODES = 1
 # Tracks the cluster this script last allocated from a given working directory, so repeated
 # local invocations (e.g. re-running tests) reuse the running cluster instead of allocating a
@@ -184,6 +184,17 @@ def main() -> None:
         help="Request a TLS (couchbases://) connection string instead of the default couchbase://",
     )
     parser.add_argument(
+        "--no-reuse",
+        action="store_true",
+        help=f"Always allocate a new cluster, and don't read or write ./{STATE_FILE_NAME}. "
+        "Lets parallel callers in one directory each get their own cluster",
+    )
+    parser.add_argument(
+        "--init-only",
+        action="store_true",
+        help="Initialize cbdinocluster if needed, then exit without allocating a cluster",
+    )
+    parser.add_argument(
         "--env-file",
         default=os.path.join(os.getcwd(), DEFAULT_ENV_FILE_NAME),
         help="Path to write shell-sourceable 'export SG_TEST_COUCHBASE_SERVER_URL=...' and "
@@ -192,11 +203,18 @@ def main() -> None:
     opts = parser.parse_args()
 
     ensure_initialized()
+    if opts.init_only:
+        return
 
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
-    cluster_id = find_reusable_cluster(opts.version, opts.nodes, opts.services)
+    cluster_id = (
+        None
+        if opts.no_reuse
+        else find_reusable_cluster(opts.version, opts.nodes, opts.services)
+    )
 
-    if cluster_id is None:
+    allocated = cluster_id is None
+    if allocated:
         services = ", ".join(s.strip() for s in opts.services.split(",") if s.strip())
 
         # A version containing '/' is a full docker image reference (e.g.
@@ -245,17 +263,25 @@ def main() -> None:
         cluster_id = result.stdout.strip()
         print(f"Cluster ID: {cluster_id}", flush=True)
 
-        with open(state_path, "w") as f:
-            f.write(cluster_id + "\n")
-        print(f"Wrote cluster ID to {state_path}", flush=True)
+        if not opts.no_reuse:
+            with open(state_path, "w") as f:
+                f.write(cluster_id + "\n")
+            print(f"Wrote cluster ID to {state_path}", flush=True)
 
     connstr_cmd = [*CBDINOCLUSTER, "connstr", cluster_id]
     connstr_cmd += ["--tls"] if opts.tls else ["--no-tls"]
-    connstr_result = run(
-        connstr_cmd,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
+    try:
+        connstr_result = run(connstr_cmd, stdout=subprocess.PIPE, text=True)
+    except subprocess.CalledProcessError:
+        # The caller never learns the ID of a cluster allocated here, so it can't clean it up.
+        if allocated:
+            print(
+                f"connstr failed, removing cluster {cluster_id}",
+                file=sys.stderr,
+                flush=True,
+            )
+            subprocess.run([*CBDINOCLUSTER, "rm", cluster_id], check=False)
+        raise
     connstr = connstr_result.stdout.strip()
     print(f"Connection string: {connstr}", flush=True)
 
