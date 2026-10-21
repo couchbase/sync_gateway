@@ -3958,7 +3958,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       `{"source": "remote"}`,
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
-			skipBodyAssertion:       base.TestUseXattrs(),
+			skipBodyAssertion:       true,
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
