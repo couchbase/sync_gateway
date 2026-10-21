@@ -362,15 +362,12 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
-	docsToCreate := 5000
-	// rosmar runs too quickly, increase doc count
-	if base.UnitTestUrlIsWalrus() {
-		docsToCreate *= 2
-	}
+	docsToCreate := 1000
 	db, ctx := setupTestDBForResyncWithDocs(t, testDBForResyncOptions{
 		docsToCreate:                 docsToCreate,
 		updateSyncFuncAfterDocsAdded: true,
 		resyncPartitions:             new(uint16(1)),
+		bucket:                       base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{}),
 	})
 	defer db.Close(ctx)
 
@@ -378,16 +375,14 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 		Collections: base.NewCollectionNames(),
 	}
 
-	err := db.ResyncManager.Start(ctx, options)
-	require.NoError(t, err)
-
-	// Attempt to Stop Process
-	wg := sync.WaitGroup{}
-	defer base.WaitWithTimeout(t, &wg, 30*time.Second)
-	wg.Go(func() {
-		waitForResyncDocsProcessed(t, db, 1)
-		require.NoError(t, db.ResyncManager.Stop(ctx))
-	})
+	collection, _ := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	pauser := NewResyncPauser(t, collection.GetCollectionDatastore())
+	defer pauser.Close()
+	pauser.Pause()
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
+	pauser.WaitUntilBlocked()
+	require.NoError(t, db.ResyncManager.Stop(ctx))
+	pauser.Release()
 
 	stats := waitForResyncState(t, db, BackgroundProcessStateStopped)
 	initialDocsTargeted := stats.DocsTargeted
@@ -400,8 +395,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	assert.Less(t, db.DbStats.Database().ResyncNumProcessed.Value(), int64(docsToCreate))
 	assert.Less(t, db.DbStats.Database().ResyncNumChanged.Value(), int64(docsToCreate))
 	// Resume process
-	err = db.ResyncManager.Start(ctx, options)
-	require.NoError(t, err)
+	require.NoError(t, db.ResyncManager.Start(ctx, options))
 
 	stats = waitForResyncState(t, db, BackgroundProcessStateCompleted)
 	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
