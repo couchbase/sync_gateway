@@ -46,6 +46,14 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		return false
 	}
 
+	// a callback failure closes the DCP client, so report its cause over any resulting shutdown error
+	getError := func(err error) error {
+		if cause := context.Cause(ctx); cause != nil {
+			return cause
+		}
+		return err
+	}
+
 	callback := func(event sgbucket.FeedEvent) bool {
 		docID := string(event.Key)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", compactionLoggingID, event.Opcode, base.UD(docID))
@@ -153,7 +161,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
-		return 0, dcpClient, err
+		return markedAttachmentCount.Value(), dcpClient, getError(err)
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
 
@@ -170,10 +178,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		}
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
-	if markErr := context.Cause(ctx); markErr != nil {
-		return markedAttachmentCount.Value(), dcpClient, markErr
-	}
-	return markedAttachmentCount.Value(), dcpClient, err
+	return markedAttachmentCount.Value(), dcpClient, getError(err)
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
