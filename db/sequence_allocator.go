@@ -97,6 +97,15 @@ func (s *sequenceAllocator) Stop(ctx context.Context) {
 	s.releaseUnusedSequences(ctx)
 }
 
+// notifyReserved starts the release sequence monitor's clock for a newly reserved batch. Does not block after Stop,
+// because releaseSequenceMonitor has exited.
+func (s *sequenceAllocator) notifyReserved() {
+	select {
+	case s.reserveNotify <- struct{}{}:
+	case <-s.terminator:
+	}
+}
+
 // Release sequence monitor runs in its own goroutine, and releases allocated sequences
 // that aren't used within 'releaseSequenceTimeout'.
 func (s *sequenceAllocator) releaseSequenceMonitor(ctx context.Context) {
@@ -182,7 +191,7 @@ func (s *sequenceAllocator) nextSequence(ctx context.Context) (sequence uint64, 
 	// If sequences were reserved, send notification to the release sequence monitor, to start the clock for releasing these sequences.
 	// Must be done after mutex is released.
 	if sequencesReserved {
-		s.reserveNotify <- struct{}{}
+		s.notifyReserved()
 	}
 	return sequence, nil
 }
@@ -215,7 +224,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 			return 0, 0, err
 		}
 		if sequencesReserved {
-			s.reserveNotify <- struct{}{}
+			s.notifyReserved()
 		}
 		return sequence, 0, nil
 	}
@@ -272,7 +281,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 			return 0, 0, err
 		}
 		if sequencesReserved {
-			s.reserveNotify <- struct{}{}
+			s.notifyReserved()
 		}
 		return sequence, releasedSequenceCount, nil
 	}
@@ -308,7 +317,7 @@ func (s *sequenceAllocator) nextSequenceGreaterThan(ctx context.Context, existin
 
 	// Perform standard batch handling and stats updates
 	s.lastSequenceReserveTime = time.Now()
-	s.reserveNotify <- struct{}{}
+	s.notifyReserved()
 	s.dbStats.SequenceAssignedCount.Add(1)
 
 	// Release the newly allocated sequences that were used to catch up to existingSequence (d)
