@@ -376,7 +376,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 
 | Mistake | Fix |
 |---|---|
-| One stack for every backport in a run | Each backport is its own PR on `release/x.y.z` unless it fails to build, fails its tests, or is functionally wrong without the PR below it |
+| One stack for every backport in a run | Each backport is its own PR on `release/x.y.z` unless it fails to build, fails its tests, is functionally wrong without the PR below it, or has a text-only conflict with a change that is also being backported (see [When to stack](#when-to-stack)) |
 | Resolving a text-only conflict by hand when the commit that changed the nearby lines is also being backported to this release | Stack on that backport instead, so both diffs match upstream |
 | Stacking on a text-only conflict when the commit that changed the nearby lines is not being backported | Resolve it and list it as a deviation |
 | Backport ticket key used for the upstream ticket in the title | Title always carries the backport ticket; body's cherry-pick line carries the upstream PR |
