@@ -5,7 +5,7 @@ description: Use when backporting merged Sync Gateway changes to a release branc
 
 # Sync Gateway Backport
 
-Backport a merged `main` change to a `release/x.y.z` branch: one ticket, or a whole sprint's worth. Each backport is one commit, one branch, one PR. When backports depend on each other, they become a GitHub Stacked PR chain.
+Backport a merged `main` change to a `release/x.y.z` branch: one ticket, or a whole sprint's worth. Each backport is one commit, one branch, one PR. By default each PR is based directly on `release/x.y.z`. Only stack PRs when one backport really depends on another — see [When to stack](#when-to-stack).
 
 ## Find the work
 
@@ -50,7 +50,7 @@ Skip tickets whose *backport* ticket is already `In Review`/`Resolved` unless as
    git fetch origin --prune
    ```
    Everything below works off `origin/release/x.y.z`. A *local* `release/x.y.z` branch is only needed for stacking — see [Stacking](#stacking-dependent-backports).
-3. **Branch and cherry-pick.** Branch name = backport ticket key. Use `-c rerere.enabled=false` so you see the real conflicts instead of a replay of an earlier resolution.
+3. **Branch and cherry-pick.** Branch name = backport ticket key. Always branch from `origin/release/x.y.z`, even in a multi-ticket run — never from the backport branch you made just before. Use `-c rerere.enabled=false` so you see the real conflicts instead of a replay of an earlier resolution.
    ```bash
    git checkout -b CBG-<backport> origin/release/x.y.z
    git -c rerere.enabled=false cherry-pick -x <upstream-sha>
@@ -94,7 +94,7 @@ git log --oneline origin/release/x.y.z -i --grep='CBG-<candidate>'  # is it on t
 
 | Prerequisite state | Action |
 |---|---|
-| Has its own backport ticket | Backport it as its own layer, stacked below |
+| Has its own backport ticket | Backport it as its own layer, stacked below (if it is a real dependency — see [When to stack](#when-to-stack)) |
 | No backport ticket, low risk — test-only, or a small self-contained code change | Backport it anyway as its own layer; title it with the **upstream** ticket key; tell the user it has no backport ticket and offer to create the backport ticket |
 | No backport ticket, higher risk — behaviour change, wide blast radius, or you can't tell | **Stop and ask** (AskUserQuestion): backport the prerequisite / adapt the change to the release branch without it / skip the backport |
 
@@ -114,7 +114,7 @@ git diff HEAD -- <file>                        # confirm the import block is the
 Do not backport the wrapper packages themselves to make the conflict go away — that is a branch-wide change riding in on an unrelated ticket. Do not drop the hunk either. Rename the imports in the cherry-picked file to whatever that branch already uses, keep the assertions as they are, and note it as a deviation:
 
 ```
-- `rest/attachment_test.go` — release branch predates the `testing/require` wrappers; imports renamed back to `github.com/stretchr/testify/require`
+- testify imports kept in `rest/attachment_test.go`
 ```
 
 If the conflict is *only* the import lines, this makes the backport routine — but it is still an edit after the cherry-pick, so the PR is unclean, not clean. Only escalate if upstream also uses a wrapper helper that testify has no equivalent for; that is a real prerequisite and goes through the table above.
@@ -127,11 +127,59 @@ If you still believe a hunk should be dropped, **stop and ask** (AskUserQuestion
 
 **Name the tests, not the files.** "Dropped the `admin_api_test.go` half" reads like a packaging detail; "`TestDCPResyncCollectionsStatus` keeps the 1000-doc timing race this commit was removing" is the actual consequence, and it is the sentence that lets a reviewer overrule you. Half-applying a flake fix is the worst version of this: the backport looks done, CI is green on the run you watched, and the flake is still on the branch.
 
+## When to stack
+
+A stack makes reviewers merge PRs in order, and one slow PR blocks every PR above it. So stack **only** when the upper backport cannot work without the lower one. That means at least one of these is true when the upper change is cherry-picked straight onto `origin/release/x.y.z`:
+
+| Real dependency | How you see it |
+|---|---|
+| **Compile failure** | `go build` / `go vet` fails because it uses a symbol, helper, or signature that only the lower PR adds |
+| **Test failure** | The affected tests fail, and they pass once the lower PR is applied under it |
+| **Required functional change** | The upper change builds and its tests pass, but it is only correct with the lower PR's behaviour — e.g. it relies on a bug the lower PR fixes |
+| **Text-only conflict with a change that is also being backported** | See [Text-only conflicts](#text-only-conflicts) |
+
+Anything else is **not** a dependency. Do not stack because:
+
+- the backports are in the same sprint, the same release, or the same run
+- they touch the same package or file, but cherry-pick without conflict
+- they are about the same feature or were written by the same person
+- one merged upstream before the other
+
+### Text-only conflicts
+
+A text-only conflict is when git can't apply the change only because nearby lines are different on the release branch. The code does not need anything from the commit that changed those lines. After you resolve it by keeping the release branch's version of the nearby lines, it builds, the tests pass, and it behaves correctly. (If it doesn't, it is a compile, test or functional dependency instead — see the table above.)
+
+Find the upstream commit that changed the nearby lines:
+
+```bash
+git log --oneline origin/main -L <start>,<end>:<file>   # the conflicting line range on main
+```
+
+Then check whether that commit is also being backported to **this** release. It is if any of these is true: it has a backport ticket with this release in `fixVersions`, it has an open backport PR against `release/x.y.z`, or it is one of the tickets in this run.
+
+| Nearby-line commit | Action |
+|---|---|
+| Also being backported to this release | Stack: its backport goes below, and this one is cherry-picked on top. The conflict goes away and both diffs stay the same as upstream |
+| Not being backported to this release | Do not stack. Resolve the conflict, keep the release branch's nearby lines, and list it as a deviation |
+
+When you are not sure, test it: cherry-pick the upper change alone onto `origin/release/x.y.z`, then build and run its tests. If both pass, there is no functional need, and there is no text-only conflict with a change that is also being backported, open it as its own PR.
+
+In a multi-ticket run, check each ticket on its own. Most of them should be separate PRs. A run can end with a few small stacks and many single PRs — never one big stack of everything.
+
+### Opening an unstacked PR
+
+```bash
+git push -u origin CBG-<backport>
+gh pr create --base release/x.y.z --head CBG-<backport> --title '<title>' --body-file <file>
+```
+
+Do not pass `--draft`. Title and body follow [PR title and body](#pr-title-and-body).
+
 ## Stacking dependent backports
 
-Bottom of the stack = the prerequisite; top = the change that needs it.
+Bottom of the stack = the prerequisite; top = the change that needs it. Only build a stack after [When to stack](#when-to-stack) has found a real dependency.
 
-`gh stack` is a GitHub CLI extension, not a built-in subcommand — install it once, or the first call fails with `unknown command`. The `gh-stack` skill covers the extension in full; only the backport-specific parts are below.
+`gh stack` is a GitHub CLI extension, not a built-in subcommand — install it once, or the first call fails with `unknown command`. For full usage, run `gh stack --help`; only the backport-specific parts are below.
 
 ```bash
 gh extension list | grep -q gh-stack || gh extension install github/gh-stack
@@ -193,7 +241,74 @@ Changes from main commit:
 🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
 
-One bullet per deviation, naming the file and the reason. "Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. For a stacked PR, add a line naming the PR it sits on.
+"Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. How much to write for an unclean one depends on how far the diff is from upstream — see [Keep it short when the diff matches upstream](#keep-it-short-when-the-diff-matches-upstream). For a stacked PR, add a line naming the PR it sits on and the dependency:
+
+```
+Stacked on #8601 — uses the `base.NewFoo` helper added there; does not compile without it
+```
+
+If you can't write that reason, the PR should not be stacked.
+
+### Keep it short when the diff matches upstream
+
+The reviewer compares the backport with the upstream PR. They need to know what is *different* in the final diff, not how you got there. Most unclean backports end up very close to upstream, so most bodies should be one or two lines.
+
+Check how close it is by comparing only the added and removed lines, so line numbers and context are ignored:
+
+```bash
+changed() { git show --format= "$1" | grep -E '^(diff --git |[-+])'; }
+diff <(changed <upstream-sha>) <(changed HEAD)
+```
+
+(`git patch-id` does not work for this — it counts context lines, so a context-only conflict still gives a different ID.)
+
+| Result | Body |
+|---|---|
+| No output — conflicts were only in nearby lines, and the changed lines match upstream | The cherry-pick line with a short reason. No bullets |
+| Only small, mechanical differences — import renames, a renamed helper, gofmt | One short bullet per *kind* of change, not per file |
+| Real code differences — a different signature, a test moved, logic adapted, a hunk dropped | One bullet per difference, naming the file (or the tests, for a drop) and the reason |
+
+```
+Unclean cherry pick of #8495 to 4.1.2 — conflicts in nearby lines only; changed lines match upstream
+```
+
+For example, #8894 (a backport of #8806) differed from upstream in only two ways: the options were a `map[string]any` instead of a typed struct, and the testify imports were kept. Its body was much longer than that:
+
+```
+CBG-5874 (backport of CBG-5869)
+
+A GET of `_index_init` while index initialisation was running could crash Sync Gateway: the status map was marshalled while the init worker was still writing to it. Status now lives in an `IndexStatusTracker` that is written and copied under its own lock.
+
+Unclean cherry pick of #8806 to 4.1.3
+Adapted to 4.1.3 without CBG-5653 (typed background manager options), per team advice.
+Stacked on #8893.
+Changes from main commit:
+- `db/background_mgr_async_index_init.go`, `rest/admin_api.go` — main passes the tracker in the typed `AsyncIndexInitOptions` from CBG-5653; 4.1.3 still uses `map[string]any` options, so it is passed as `options["statusTracker"].(*IndexStatusTracker)`. The race fix itself is as upstream
+- `db/background_mgr_async_index_init_test.go` — `Init` takes map options to match; release branch predates the `testing/{require,assert}` wrappers, so imports renamed back to testify
+```
+
+It should have been:
+
+```
+CBG-5874
+
+Unclean cherry pick of #8806 to 4.1.3
+Stacked on #8893 — <the dependency>
+Changes from main commit:
+- options passed as `map[string]any`, not the typed `AsyncIndexInitOptions` (CBG-5653 is not on 4.1.3)
+- testify imports kept in the test file
+```
+
+Rules for the body:
+
+- No summary of what the change does. The upstream PR already says that, and the cherry-pick line links to it.
+- Say each thing once. The bullet about the missing prerequisite is enough — do not also add an "Adapted to x.y.z without …" line.
+- One line per bullet. No paragraphs, no "because…, so…" chains.
+- One bullet per *kind* of change. When the same change hits several files, say it once; name a file only when the reader needs it to find the change.
+- Only describe what is different in the final diff. Do not say what stayed the same ("the fix itself is as upstream") — that is what a cherry-pick means. A conflict you resolved by taking upstream's lines is not a difference.
+- Leave out how you got there: no conflict markers, line numbers, `git log` output, hashes of the commits that changed nearby lines, or who advised what.
+
+These stay in full, however small the diff: a dropped hunk (name the tests that lose the fix), a change in behaviour from upstream, and the stacked-on line.
 
 ### The `test-only` marker
 
@@ -244,6 +359,8 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 - Building a backport branch when the upstream PR hasn't merged — check the *original* ticket's status, not the backport ticket's
 - Hand-merging a conflict without checking for a missing prerequisite first
 - Cherry-picking with rerere on, then trusting a resolution you never looked at
+- Stacking backports that do not depend on each other — same sprint, same release, or same file is not a dependency
+- Branching a backport from the previous backport branch instead of `origin/release/x.y.z`
 - `gh stack init` against a stale local `release/x.y.z` ref — the stack records the wrong base
 - `gh stack submit --auto` without `--open` — the whole stack lands as drafts and nobody reviews it
 - Reporting a backport done without `go build`/`go vet`, or implying integration tests ran when they didn't
@@ -259,6 +376,9 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 
 | Mistake | Fix |
 |---|---|
+| One stack for every backport in a run | Each backport is its own PR on `release/x.y.z` unless it fails to build, fails its tests, is functionally wrong without the PR below it, or has a text-only conflict with a change that is also being backported (see [When to stack](#when-to-stack)) |
+| Resolving a text-only conflict by hand when the commit that changed the nearby lines is also being backported to this release | Stack on that backport instead, so both diffs match upstream |
+| Stacking on a text-only conflict when the commit that changed the nearby lines is not being backported | Resolve it and list it as a deviation |
 | Backport ticket key used for the upstream ticket in the title | Title always carries the backport ticket; body's cherry-pick line carries the upstream PR |
 | Upstream title pasted whole, keeping its `CBG-nnnn:` prefix | Strip it — one ticket reference per title |
 | `cherry-pick --continue` leaves the upstream commit subject | `git commit --amend` to the backport message |
@@ -269,6 +389,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | Treating a `testing/require` vs `github.com/stretchr/testify/require` import conflict as a blocker or a prerequisite | Rename the imports to the branch's own and take the upstream side of the rest; list it as a deviation |
 | Backporting the `testing/assert` / `testing/require` wrapper packages to resolve one import conflict | Branch-wide change on an unrelated ticket — rename the imports in the cherry-picked file instead |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
+| Long body for a backport whose diff is almost the same as upstream — a summary of the fix, a bullet per file, the same adaptation explained twice | Run the changed-lines `diff`; write one short line per kind of difference, or no bullets at all if it is empty |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
 | `test-only` withheld because the PR touches a test helper, `base/leaky_*.go`, or anything under `testing/` | Test-support code counts as test code, and the whole `testing/` package is test code by definition — see the pattern table. Only a real production file blocks the marker |
 | `test-only` on a PR touching `rest/oidc_test_provider.go` | Despite the name it backs the live `/_oidc_testing` route, so it is production |
