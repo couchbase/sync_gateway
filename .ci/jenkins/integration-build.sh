@@ -12,6 +12,17 @@ DEFAULT_PACKAGE_TIMEOUT="45m"
 set -u
 set -e # Abort on errors
 
+# Use Git SSH and define private repos
+git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
+export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
+
+# Jenkins fetches this script from main, so it also has to run revisions that predate integration-tester.
+# Those fall through to the shell runner below.
+if [ -d testing/integration-tester ]; then
+    ./.ci/retry.sh go build -o integration-tester ./testing/integration-tester
+    exec ./integration-tester -v -filter "$@"
+fi
+
 if [ "${1:-}" == "-m" ]; then
     echo "Running in automated master integration mode"
     # Set automated setting parameters
@@ -23,7 +34,7 @@ if [ "${1:-}" == "-m" ]; then
     RUN_COUNT="1"
     # CBS server settings
     COUCHBASE_SERVER_PROTOCOL="couchbase"
-    COUCHBASE_SERVER_VERSION="enterprise-7.6.6"
+    COUCHBASE_SERVER_VERSION="enterprise-7.6.12"
     export SG_TEST_BUCKET_POOL_DEBUG="true"
     GSI="true"
     TLS_SKIP_VERIFY="false"
@@ -46,9 +57,6 @@ for var in "${REQUIRED_VARS[@]}"; do
         exit 1
     fi
 done
-# Use Git SSH and define private repos
-git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
-export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
 # Print commit
 SG_COMMIT_HASH=$(git rev-parse HEAD)
