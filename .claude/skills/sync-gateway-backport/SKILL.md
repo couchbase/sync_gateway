@@ -114,7 +114,7 @@ git diff HEAD -- <file>                        # confirm the import block is the
 Do not backport the wrapper packages themselves to make the conflict go away — that is a branch-wide change riding in on an unrelated ticket. Do not drop the hunk either. Rename the imports in the cherry-picked file to whatever that branch already uses, keep the assertions as they are, and note it as a deviation:
 
 ```
-- `rest/attachment_test.go` — release branch predates the `testing/require` wrappers; imports renamed back to `github.com/stretchr/testify/require`
+- testify imports kept in `rest/attachment_test.go`
 ```
 
 If the conflict is *only* the import lines, this makes the backport routine — but it is still an edit after the cherry-pick, so the PR is unclean, not clean. Only escalate if upstream also uses a wrapper helper that testify has no equivalent for; that is a real prerequisite and goes through the table above.
@@ -241,13 +241,74 @@ Changes from main commit:
 🤖 Opened with the `sync-gateway-backport` skill in [Claude Code](https://claude.com/claude-code)
 ```
 
-One bullet per deviation, naming the file and the reason. "Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. For a stacked PR, add a line naming the PR it sits on and the dependency:
+"Clean" means the cherry-pick applied with no conflicts *and* you changed nothing afterwards — a compile fix still makes it unclean. How much to write for an unclean one depends on how far the diff is from upstream — see [Keep it short when the diff matches upstream](#keep-it-short-when-the-diff-matches-upstream). For a stacked PR, add a line naming the PR it sits on and the dependency:
 
 ```
 Stacked on #8601 — uses the `base.NewFoo` helper added there; does not compile without it
 ```
 
 If you can't write that reason, the PR should not be stacked.
+
+### Keep it short when the diff matches upstream
+
+The reviewer compares the backport with the upstream PR. They need to know what is *different* in the final diff, not how you got there. Most unclean backports end up very close to upstream, so most bodies should be one or two lines.
+
+Check how close it is by comparing only the added and removed lines, so line numbers and context are ignored:
+
+```bash
+changed() { git show --format= "$1" | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) '; }
+diff <(changed <upstream-sha>) <(changed HEAD)
+```
+
+(`git patch-id` does not work for this — it counts context lines, so a context-only conflict still gives a different ID.)
+
+| Result | Body |
+|---|---|
+| No output — conflicts were only in nearby lines, and the changed lines match upstream | The cherry-pick line with a short reason. No bullets |
+| Only small, mechanical differences — import renames, a renamed helper, gofmt | One short bullet per *kind* of change, not per file |
+| Real code differences — a different signature, a test moved, logic adapted, a hunk dropped | One bullet per difference, naming the file (or the tests, for a drop) and the reason |
+
+```
+Unclean cherry pick of #8495 to 4.1.2 — conflicts in nearby lines only; changed lines match upstream
+```
+
+For example, #8894 (a backport of #8806) differed from upstream in only two ways: the options were a `map[string]any` instead of a typed struct, and the testify imports were kept. Its body was much longer than that:
+
+```
+CBG-5874 (backport of CBG-5869)
+
+A GET of `_index_init` while index initialisation was running could crash Sync Gateway: the status map was marshalled while the init worker was still writing to it. Status now lives in an `IndexStatusTracker` that is written and copied under its own lock.
+
+Unclean cherry pick of #8806 to 4.1.3
+Adapted to 4.1.3 without CBG-5653 (typed background manager options), per team advice.
+Stacked on #8893.
+Changes from main commit:
+- `db/background_mgr_async_index_init.go`, `rest/admin_api.go` — main passes the tracker in the typed `AsyncIndexInitOptions` from CBG-5653; 4.1.3 still uses `map[string]any` options, so it is passed as `options["statusTracker"].(*IndexStatusTracker)`. The race fix itself is as upstream
+- `db/background_mgr_async_index_init_test.go` — `Init` takes map options to match; release branch predates the `testing/{require,assert}` wrappers, so imports renamed back to testify
+```
+
+It should have been:
+
+```
+CBG-5874
+
+Unclean cherry pick of #8806 to 4.1.3
+Stacked on #8893 — <the dependency>
+Changes from main commit:
+- options passed as `map[string]any`, not the typed `AsyncIndexInitOptions` (CBG-5653 is not on 4.1.3)
+- testify imports kept in the test file
+```
+
+Rules for the body:
+
+- No summary of what the change does. The upstream PR already says that, and the cherry-pick line links to it.
+- Say each thing once. The bullet about the missing prerequisite is enough — do not also add an "Adapted to x.y.z without …" line.
+- One line per bullet. No paragraphs, no "because…, so…" chains.
+- One bullet per *kind* of change. When the same change hits several files, say it once; name a file only when the reader needs it to find the change.
+- Only describe what is different in the final diff. Do not say what stayed the same ("the fix itself is as upstream") — that is what a cherry-pick means. A conflict you resolved by taking upstream's lines is not a difference.
+- Leave out how you got there: no conflict markers, line numbers, `git log` output, hashes of the commits that changed nearby lines, or who advised what.
+
+These stay in full, however small the diff: a dropped hunk (name the tests that lose the fix), a change in behaviour from upstream, and the stacked-on line.
 
 ### The `test-only` marker
 
@@ -328,6 +389,7 @@ gh pr edit <N> --body-file <file>   # file already ends with the footer line
 | Treating a `testing/require` vs `github.com/stretchr/testify/require` import conflict as a blocker or a prerequisite | Rename the imports to the branch's own and take the upstream side of the rest; list it as a deviation |
 | Backporting the `testing/assert` / `testing/require` wrapper packages to resolve one import conflict | Branch-wide change on an unrelated ticket — rename the imports in the cherry-picked file instead |
 | Marking a PR clean after fixing compile errors | Any post-cherry-pick edit makes it unclean; list it |
+| Long body for a backport whose diff is almost the same as upstream — a summary of the fix, a bullet per file, the same adaptation explained twice | Run the changed-lines `diff`; write one short line per kind of difference, or no bullets at all if it is empty |
 | Footer lost when the body is rewritten to add deviations or a stack line | The footer is part of the body template — re-add it as the last line every time |
 | `test-only` withheld because the PR touches a test helper, `base/leaky_*.go`, or anything under `testing/` | Test-support code counts as test code, and the whole `testing/` package is test code by definition — see the pattern table. Only a real production file blocks the marker |
 | `test-only` on a PR touching `rest/oidc_test_provider.go` | Despite the name it backs the live `/_oidc_testing` route, so it is production |
