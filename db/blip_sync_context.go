@@ -679,7 +679,11 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 	base.TracefCtx(ctx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
 	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	var bodyBytes []byte
-	if base.IsEnterpriseEdition() {
+	if rev.Deleted {
+		// A stored tombstone body can carry an internal _deleted property, which the peer would reject. Deletion
+		// travels as the deleted property instead, matching what delta sync sends for a tombstone.
+		bodyBytes = []byte(base.EmptyDocument)
+	} else if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
 			DeleteAttachmentVersion(rev.Attachments)

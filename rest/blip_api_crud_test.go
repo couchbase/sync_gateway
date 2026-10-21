@@ -2437,10 +2437,9 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			rejectMsg: "top-level property '_rev' is a reserved internal property",
 		},
 		{
+			// The rev message's deleted property decides deletion, so this body is stored as a live doc.
 			name:      "Valid _deleted",
-			inputBody: map[string]interface{}{"_deleted": false},
-			errorCode: "404",
-			rejectMsg: "top-level property '_deleted' is a reserved internal property",
+			inputBody: map[string]any{"_deleted": true},
 		},
 		{
 			name:      "Invalid _attachments",
@@ -2577,7 +2576,7 @@ func TestBlipRevRejectionLogsDocID(t *testing.T) {
 		revRequest.SetProfile(db.MessageRev)
 		revRequest.Properties[db.RevMessageID] = docID
 		revRequest.Properties[db.RevMessageRev] = "1-abc"
-		revRequest.SetBody([]byte(`{"_deleted": false}`))
+		revRequest.SetBody([]byte(`{"_rev": "1-abc"}`))
 		client.addCollectionProperty(revRequest)
 
 		var (
@@ -2594,8 +2593,112 @@ func TestBlipRevRejectionLogsDocID(t *testing.T) {
 		})
 		require.NotNil(t, resp)
 		require.NoError(t, bodyErr)
-		require.Contains(t, string(body), "top-level property '_deleted' is a reserved internal property")
+		require.Contains(t, string(body), "top-level property '_rev' is a reserved internal property")
 		require.Equal(t, "404", resp.Properties[db.BlipErrorCode])
+	})
+}
+
+// TestBlipSDKDocWithDeletedProperty writes a live doc through the SDK with a top-level "_deleted": true property.
+// Import keeps the property, so a pull sends it to the client in the body of a live revision. When the client
+// pushes the doc back with the property still set, Sync Gateway stores it as a live doc with the property kept.
+func TestBlipSDKDocWithDeletedProperty(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		docID := SafeDocumentName(t, t.Name())
+		_, err := rt.GetSingleDataStore().AddRaw(docID, 0, []byte(`{"_deleted":true,"foo":"bar"}`))
+		require.NoError(t, err)
+
+		// GetDoc requires a 200, so the imported doc is live.
+		version, body := rt.GetDoc(docID)
+		assert.Equal(t, true, body[db.BodyDeleted])
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		btcRunner.StartOneshotPull(client.id)
+		msg := btcRunner.WaitForBlipRevMessage(client.id, docID, version)
+		_, deletedProperty := msg.Properties[db.RevMessageDeleted]
+		assert.False(t, deletedProperty, "imported doc is live, so the rev must not be marked deleted")
+		msgBody, err := msg.Body()
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"_deleted":true,"foo":"bar"}`, string(msgBody))
+
+		newVersion := btcRunner.AddRev(client.id, docID, &version, []byte(`{"_deleted":true,"foo":"baz"}`))
+		btcRunner.StartPush(client.id)
+		rt.WaitForVersion(docID, newVersion)
+
+		collection, ctx := rt.GetSingleTestDatabaseCollection()
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+		require.NoError(t, err)
+		assert.False(t, doc.IsDeleted())
+		storedBody, err := doc.BodyBytes(ctx)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"_deleted":true,"foo":"baz"}`, string(storedBody))
+	})
+}
+
+// TestBlipDeletedRevBody sends deleted revs with a body, as a Sync Gateway older than 4.2 does for a stored tombstone
+// body. A deleted rev has no body, so the body is ignored, except for a removal body, whose _removed property must
+// still be rejected.
+func TestBlipDeletedRevBody(t *testing.T) {
+	testCases := []struct {
+		name      string
+		body      string
+		rejectMsg string
+	}{
+		{
+			name: "_deleted in body",
+			body: `{"_deleted":true,"foo":"bar"}`,
+		},
+		{
+			name:      "removal",
+			body:      `{"_removed":true}`,
+			rejectMsg: "revision is not accessible",
+		},
+	}
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
+		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+		defer rt.Close()
+
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer client.Close()
+
+		for i, tc := range testCases {
+			rt.Run(tc.name, func(t *testing.T) {
+				docID := fmt.Sprintf("doc%d", i)
+				revRequest := blip.NewRequest()
+				revRequest.SetProfile(db.MessageRev)
+				revRequest.Properties[db.RevMessageID] = docID
+				revRequest.Properties[db.RevMessageRev] = "1-abc"
+				revRequest.Properties[db.RevMessageDeleted] = "1"
+				revRequest.SetBody([]byte(tc.body))
+				client.addCollectionProperty(revRequest)
+				client.pushReplication.sendMsg(revRequest)
+
+				resp := revRequest.Response()
+				respBody, err := resp.Body()
+				require.NoError(t, err)
+				if tc.rejectMsg != "" {
+					require.Contains(t, string(respBody), tc.rejectMsg)
+					return
+				}
+				require.Empty(t, respBody)
+
+				collection, ctx := rt.GetSingleTestDatabaseCollection()
+				doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalAll)
+				require.NoError(t, err)
+				assert.True(t, doc.IsDeleted())
+				storedBody, err := doc.BodyBytes(ctx)
+				require.NoError(t, err)
+				assert.JSONEq(t, `{}`, string(storedBody))
+			})
+		}
 	})
 }
 

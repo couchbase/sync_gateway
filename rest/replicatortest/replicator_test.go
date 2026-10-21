@@ -3958,7 +3958,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       `{"source": "remote"}`,
 			expectedLocalVersion:    rest.NewDocVersionFromFakeRev("1-b"),
 			skipActiveLeafAssertion: true,
-			skipBodyAssertion:       base.TestUseXattrs(),
+			skipBodyAssertion:       true,
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
@@ -8305,4 +8305,126 @@ func TestISGRRunAsNonExistentUserReplicationConfigInDbConfig(t *testing.T) {
 
 	resp := passiveRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
 	require.Equal(t, http.StatusNotFound, resp.Code, "expected secret doc to not be pushed with invalid run_as user")
+}
+
+// TestActiveReplicatorPullTombstoneWithDeletedInBody pulls a tombstone whose stored body carries an internal _deleted
+// property, which the active peer's body validation rejects. Each case changes the doc on the passive peer as the
+// tombstone is fetched for sending, so it is no longer the winning revision and its body comes from storage.
+// Both peers are fixed: the sender covers an older receiver, and TestBlipDeletedRevBody covers an older sender.
+func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeySync, base.KeyCRUD, base.KeyReplicate)
+
+	const docID = "doc1"
+	testCases := []struct {
+		name string
+		// demoteTombstone runs on the passive peer's blip goroutine, so it reports failures as errors.
+		demoteTombstone func(rt *rest.RestTester, tombstone rest.DocVersion) error
+	}{
+		{
+			// A pre-4.0 backup body keeps _deleted in the body.
+			name: "legacy backup",
+			demoteTombstone: func(rt *rest.RestTester, tombstone rest.DocVersion) error {
+				resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, tombstone.RevID), `{"foo":"resurrected"}`)
+				if resp.Code != http.StatusCreated {
+					return fmt.Errorf("resurrecting %s: %d %s", docID, resp.Code, resp.Body.String())
+				}
+				backupKey := fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docID, len(tombstone.RevID), tombstone.RevID)
+				legacyBody := append([]byte{1}, []byte(`{"_deleted":true}`)...)
+				return rt.GetSingleDataStore().SetRaw(backupKey, 0, nil, legacyBody)
+			},
+		},
+		{
+			// A winning tombstone that loses to a longer branch has _deleted stamped into its rev tree body.
+			name: "non-winning tombstone",
+			demoteTombstone: func(rt *rest.RestTester, _ rest.DocVersion) error {
+				resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/%s?new_edits=false", docID), `{"foo":"branch","_revisions":{"start":3,"ids":["c","b"]}}`)
+				if resp.Code != http.StatusCreated {
+					return fmt.Errorf("adding branch to %s: %d %s", docID, resp.Code, resp.Body.String())
+				}
+				return nil
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			activeRT := rest.NewRestTester(t, nil)
+			t.Cleanup(activeRT.Close)
+
+			// Bypass the rev cache so the tombstone is loaded from the bucket rather than the cached copy from its write.
+			passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
+				LeakyBucketConfig: &base.LeakyBucketConfig{},
+				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+					CacheConfig: &rest.CacheConfig{
+						RevCacheConfig: &rest.RevCacheConfig{MaxItemCount: new(uint32)},
+					},
+				}},
+			})
+			t.Cleanup(passiveRT.Close)
+
+			const username = "alice"
+			passiveRT.CreateUser(username, []string{"*"})
+
+			version := passiveRT.PutDoc(docID, `{"foo":"bar"}`)
+			tombstoneVersion := passiveRT.DeleteDoc(docID, version)
+			passiveRT.WaitForPendingChanges()
+
+			// Demote the tombstone mid-fetch, after the changes feed announced it, so its body is read from storage.
+			// demoted is set after the demote write so that doc2, the checkpoint target, gets the highest sequence.
+			var demoteStarted, demoted atomic.Bool
+			demoteOnFetch := func(key string) error {
+				if key != docID || !demoteStarted.CompareAndSwap(false, true) {
+					return nil
+				}
+				defer demoted.Store(true)
+				err := tc.demoteTombstone(passiveRT, tombstoneVersion)
+				assert.NoError(t, err, "demoting tombstone")
+				return err
+			}
+			// The doc is read with GetWithXattrs in xattr mode and with GetRaw otherwise.
+			passiveRT.LeakyBucket().SetGetWithXattrCallback(demoteOnFetch)
+			passiveRT.LeakyBucket().SetGetRawCallback(demoteOnFetch)
+
+			ar, err := db.NewActiveReplicator(activeRT.Context(), &db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePull,
+				RemoteDBURL: userDBURL(passiveRT, username),
+				ActiveDB: &db.Database{
+					DatabaseContext: activeRT.GetDatabase(),
+				},
+				ChangesBatchSize:    200,
+				Continuous:          true,
+				ReplicationStatsMap: dbReplicatorStats(t),
+				CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, ar.Stop()) })
+			require.NoError(t, ar.Start(activeRT.Context()))
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.True(c, demoted.Load(), "passive peer has not fetched the tombstone yet")
+			}, 10*time.Second, 10*time.Millisecond)
+
+			// A later write on the passive peer is pulled, and the checkpoint must reach it.
+			const doc2ID = "doc2"
+			doc2Version := passiveRT.PutDoc(doc2ID, `{"foo":"bar"}`)
+			passiveRT.WaitForPendingChanges()
+			passiveCollection, passiveCtx := passiveRT.GetSingleTestDatabaseCollection()
+			doc2, err := passiveCollection.GetDocument(passiveCtx, doc2ID, db.DocUnmarshalSync)
+			require.NoError(t, err)
+
+			activeRT.WaitForVersion(doc2ID, doc2Version)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Equal(c, strconv.FormatUint(doc2.Sequence, 10), ar.GetStatus(activeRT.Context()).LastSeqPull)
+			}, 10*time.Second, 50*time.Millisecond)
+
+			activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollection()
+			doc, err := activeCollection.GetDocument(activeCtx, docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			tombstoneRev, ok := doc.History[tombstoneVersion.RevID]
+			require.True(t, ok, "tombstone %s was not pulled", tombstoneVersion.RevID)
+			assert.True(t, tombstoneRev.Deleted)
+		})
+	}
 }
