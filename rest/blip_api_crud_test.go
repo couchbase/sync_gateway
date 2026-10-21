@@ -2602,6 +2602,7 @@ func TestBlipRevRejectionLogsDocID(t *testing.T) {
 // Import keeps the property, so a pull sends it to the client in the body of a live revision. When the client
 // pushes the doc back with the property still set, Sync Gateway stores it as a live doc with the property kept.
 func TestBlipSDKDocWithDeletedProperty(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
 	btcRunner := NewBlipTesterClientRunner(t)
 	btcRunner.Run(func(t *testing.T, SupportedBLIPProtocols []string) {
 		rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
