@@ -772,6 +772,7 @@ func AssertWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) (
 // RequireWaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
 func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64, msgAndArgs ...any) (val int64) {
 	t.Helper()
+	require.NotNil(t, getStatFunc, "Function for RequireWaitForStat cannot be nil")
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		val = getStatFunc()
 		assert.Equal(c, expected, val, msgAndArgs...)
