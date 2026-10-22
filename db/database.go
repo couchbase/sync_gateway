@@ -238,6 +238,7 @@ type DatabaseContextOptions struct {
 	DisablePublicAllDocs             bool              // Disable public access to the _all_docs endpoint for this database
 	StoreLegacyRevTreeData           *bool             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
 	UseSystemMetadataCollection      bool              // Whether to use a system collection for SG metadata storage
+	EnableChannelHistoryCompaction   bool              // Whether document writes compact the channel history of the document
 }
 
 type ConfigPrincipals struct {

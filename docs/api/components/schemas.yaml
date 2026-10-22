@@ -1257,6 +1257,12 @@ Database:
         Setting this to `false`, or leaving it as the default value is deprecated, and may default to `true` in a future release.
       type: boolean
       default: false
+    enable_channel_history_compaction:
+      description: |-
+        If `true`, Sync Gateway compacts the channel history of a document each time it writes that document.
+        Compaction removes channel history entries that are older than `client_partition_window_secs`.
+      type: boolean
+      default: false
     event_handlers:
       description: These are the settings for webhooks.
       type: object
