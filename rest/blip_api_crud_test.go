@@ -2747,6 +2747,7 @@ func TestBlipSDKDocWithDeletedProperty(t *testing.T) {
 		// GetDoc requires a 200, so the imported doc is live.
 		version, body := rt.GetDoc(docID)
 		assert.Equal(t, true, body[db.BodyDeleted])
+		rt.WaitForPendingChanges()
 
 		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
 		defer client.Close()
