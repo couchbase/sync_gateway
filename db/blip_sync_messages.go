@@ -276,8 +276,8 @@ func (s *SubChangesParams) String() string {
 
 	buffer := bytes.NewBufferString("")
 	// Append the client's unparsed since when it differs from the parsed value.  SequenceID.String()
-	// drops LowSeq or TriggeredBy when they are not below the sequence they qualify, so without the raw
-	// value a malformed client sequence is indistinguishable from a well-formed one.
+	// drops LowSeq when it is not below the sequence it qualifies, so without the raw value a malformed
+	// client sequence is indistinguishable from a well-formed one.
 	if rawSince := s.rq.Properties[SubChangesSince]; rawSince != "" && rawSince != s.Since().String() {
 		buffer.WriteString(fmt.Sprintf("Since:%v (raw: %s) ", s.Since(), rawSince))
 	} else {
