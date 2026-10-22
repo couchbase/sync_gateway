@@ -329,3 +329,88 @@ func TestRequestPlusFeedExitsOnListenerStop(t *testing.T) {
 		}
 	}
 }
+
+// TestPollingContinuousFeedSeesUserUpdate checks whether a continuous feed that is polling the cache, rather than
+// parked on its change waiter, notices its user losing a channel before sending a doc from that channel.
+func TestPollingContinuousFeedSeesUserUpdate(t *testing.T) {
+	testCases := []struct {
+		name           string
+		requestPlusSeq uint64
+	}{
+		{name: "parked on waiter (control)", requestPlusSeq: 0},
+		{name: "polling below request_plus target", requestPlusSeq: 1000}, // never reached
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+
+			database, ctx := db.SetupTestDBDefaultCollection(t)
+			defer database.Close(ctx)
+
+			authenticator := database.Authenticator(ctx)
+			user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "DEF"))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(user))
+			database.SetUser(user)
+
+			userCollection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+			adminCollection := &db.DatabaseCollectionWithUser{DatabaseCollection: userCollection.DatabaseCollection}
+
+			_, _, err = adminCollection.Put(ctx, "abc-1", db.Body{"channels": []string{"ABC"}})
+			require.NoError(t, err)
+			database.WaitForPendingChanges(t)
+
+			caughtUp := database.DbStats.CBLReplicationPull().NumPullReplCaughtUp
+			caughtUpStart := caughtUp.Value()
+
+			changesCtx, changesCtxCancel := context.WithCancelCause(ctx)
+			defer changesCtxCancel(errors.New("test teardown"))
+			options := db.ChangesOptions{
+				Since:          db.SequenceID{Seq: 0},
+				ChangesCtx:     changesCtx,
+				Continuous:     true,
+				Wait:           true,
+				RequestPlusSeq: tc.requestPlusSeq,
+			}
+			feed, err := userCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
+			require.NoError(t, err)
+
+			// Read the initial changes up to the first waiting marker.
+			for entry := range feed {
+				if entry == nil {
+					break
+				}
+			}
+			base.RequireStatGreaterThan(t, caughtUp, caughtUpStart)
+
+			// Revoke DEF, then write a doc to it.
+			userInfo, err := database.GetPrincipalForTest(t, "naomi", true)
+			require.NoError(t, err)
+			userInfo.ExplicitChannels = base.SetOf("ABC")
+			_, _, err = database.UpdatePrincipal(ctx, userInfo, true, true)
+			require.NoError(t, err)
+			database.WaitForPendingChanges(t)
+
+			_, _, err = adminCollection.Put(ctx, "def-1", db.Body{"channels": []string{"DEF"}})
+			require.NoError(t, err)
+			database.WaitForPendingChanges(t)
+
+			// Collect what the feed sends over the next couple of seconds: several 100ms polls, and well past the
+			// 50ms broadcast tick that would wake a parked feed.
+			var sent []string
+			deadline := time.After(2 * time.Second)
+			for done := false; !done; {
+				select {
+				case entry, ok := <-feed:
+					require.True(t, ok, "feed closed unexpectedly")
+					if entry != nil {
+						sent = append(sent, entry.ID)
+					}
+				case <-deadline:
+					done = true
+				}
+			}
+			require.NotContains(t, sent, "def-1", "feed sent a doc from a channel the user lost access to")
+		})
+	}
+}

@@ -1234,14 +1234,17 @@ func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx conte
 		if !col.waitForCacheUpdate(changesCtx, changeWaiter, currentCachedSequence) {
 			return WaiterClosed
 		}
+		// Wait() usually refreshes user counts and here we are bypassing that. Without this a continuous feed doesn't
+		// reload its user after a grant or revocation keeping stale channel access on the feed.
+		changeWaiter.RefreshUserCount()
 		return WaiterHasChanges
 	}
 	return changeWaiter.Wait(ctx)
 }
 
-// waitForCacheUpdate polls until the cached sequence moves past currentCachedSequence, ctx is done, or about
-// five seconds pass. It doesn't report which: the caller re-runs its changes loop either way, and is
-// responsible for checking ctx for cancellation.
+// waitForCacheUpdate polls until the cached sequence moves past currentCachedSequence, ctx is done, the change
+// listener stops, or about five seconds pass. It returns false only when the listener has stopped, so the feed
+// should end. Otherwise the caller re-runs its changes loop, and is responsible for checking ctx for cancellation.
 func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, changeWaiter *ChangeWaiter, currentCachedSequence uint64) bool {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
