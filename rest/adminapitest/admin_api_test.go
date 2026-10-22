@@ -2890,10 +2890,6 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 }
 
 func TestDbConfigCredentials(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	rt := rest.NewRestTesterPersistentConfig(t)
 	defer rt.Close()
 

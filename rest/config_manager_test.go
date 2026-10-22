@@ -50,11 +50,6 @@ func TestBootstrapConfig(t *testing.T) {
 }
 
 func TestComputeMetadataID(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
-
 	base.TestRequiresCollections(t)
 	// Start SG with no databases
 	config := BootstrapStartupConfigForTest(t)
@@ -154,9 +149,6 @@ func TestComputeMetadataID(t *testing.T) {
 // computeMetadataID, plus the corrupt-doc fallback. Existing TestComputeMetadataID covers
 // the legacy JSON, no-doc, and short-circuit cases
 func TestComputeMetadataIDBinaryFormat(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server - requires bootstrap support")
-	}
 	base.TestRequiresCollections(t)
 
 	config := BootstrapStartupConfigForTest(t)

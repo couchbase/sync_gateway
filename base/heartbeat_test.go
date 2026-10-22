@@ -94,10 +94,6 @@ func (th *TestHeartbeatListener) Stop() {
 // and validates the node triggers heartbeat-based removal on one of the remaining nodes.
 func TestCouchbaseHeartbeaters(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")
-	}
-
 	if testing.Short() {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
@@ -170,10 +166,6 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 // TestNewCouchbaseHeartbeater simulates three nodes, with two services (listeners).
 func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")
-	}
 
 	if testing.Short() {
 		t.Skip("Skipping heartbeattest in short mode")
