@@ -269,14 +269,14 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 
 			recorder := httptest.NewRecorder()
-			_, err = auth.AuthenticateCookie(request, recorder)
+			_, _, err = auth.AuthenticateCookie(request, recorder)
 			require.NoError(t, err)
 
 			require.NoError(t, user.SetPassword("someotherpassword"))
 			require.NoError(t, auth.Save(user))
 
 			recorder = httptest.NewRecorder()
-			_, err = auth.AuthenticateCookie(request, recorder)
+			_, _, err = auth.AuthenticateCookie(request, recorder)
 			require.Error(t, err)
 			require.Equal(t, err.(*base.HTTPError).Status, http.StatusUnauthorized)
 		})
@@ -325,7 +325,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 
 	recorder := httptest.NewRecorder()
-	_, err = auth.AuthenticateCookie(request, recorder)
+	_, _, err = auth.AuthenticateCookie(request, recorder)
 	require.NoError(t, err)
 
 }
@@ -355,7 +355,7 @@ func TestUserDeleteAllSessions(t *testing.T) {
 	request.AddCookie(auth.MakeSessionCookie(session, true, true, http.SameSiteDefaultMode))
 	recorder := httptest.NewRecorder()
 
-	_, err = auth.AuthenticateCookie(request, recorder)
+	_, _, err = auth.AuthenticateCookie(request, recorder)
 	require.NoError(t, err)
 
 	// h.deleteUserSessions() equivalent
@@ -363,7 +363,7 @@ func TestUserDeleteAllSessions(t *testing.T) {
 	err = auth.Save(user)
 	require.NoError(t, err)
 
-	_, err = auth.AuthenticateCookie(request, recorder)
+	_, _, err = auth.AuthenticateCookie(request, recorder)
 	require.EqualError(t, err, "401 Session no longer valid for user")
 }
 
@@ -391,12 +391,12 @@ func TestAuthenticateCookieOneTimeSession(t *testing.T) {
 		require.NoError(t, err)
 		req.AddCookie(a.MakeSessionCookie(session, false, false, http.SameSiteDefaultMode))
 
-		authedUser, err := a.AuthenticateCookie(req, httptest.NewRecorder())
+		authedUser, _, err := a.AuthenticateCookie(req, httptest.NewRecorder())
 		require.NoError(t, err)
 		require.NotNil(t, authedUser)
 		assert.Equal(t, username, authedUser.Name())
 
-		_, err = a.AuthenticateCookie(req, httptest.NewRecorder())
+		_, _, err = a.AuthenticateCookie(req, httptest.NewRecorder())
 		require.Error(t, err)
 		assert.Equal(t, http.StatusUnauthorized, err.(*base.HTTPError).Status)
 	})
@@ -421,7 +421,7 @@ func TestAuthenticateCookieOneTimeSession(t *testing.T) {
 		require.NoError(t, err)
 		req.AddCookie(&http.Cookie{Name: a.SessionCookieName, Value: sessionID})
 		recorder := httptest.NewRecorder()
-		authedUser, err := a.AuthenticateCookie(req, recorder)
+		authedUser, _, err := a.AuthenticateCookie(req, recorder)
 		require.NoError(t, err)
 		require.NotNil(t, authedUser)
 		assert.Empty(t, recorder.Header().Get("Set-Cookie"), "one-time session must not set a cookie even when TTL refresh would trigger")
@@ -444,7 +444,7 @@ func TestAuthenticateCookieOneTimeSession(t *testing.T) {
 		require.NoError(t, err)
 		req.AddCookie(&http.Cookie{Name: a.SessionCookieName, Value: sessionID})
 		recorder := httptest.NewRecorder()
-		authedUser, err := a.AuthenticateCookie(req, recorder)
+		authedUser, _, err := a.AuthenticateCookie(req, recorder)
 		require.NoError(t, err)
 		require.NotNil(t, authedUser)
 		assert.NotEmpty(t, recorder.Header().Get("Set-Cookie"), "regular session should refresh cookie when TTL threshold is met")
@@ -478,7 +478,7 @@ func TestCreateOneTimeSession(t *testing.T) {
 	require.Equal(t, username, user.Name())
 
 	// now test AuthenticateOneTimeSession deletes it
-	user, err = auth.AuthenticateOneTimeSession(ctx, session.ID)
+	user, _, err = auth.AuthenticateOneTimeSession(ctx, session.ID)
 	require.NoError(t, err)
 	require.Equal(t, username, user.Name())
 
@@ -486,4 +486,59 @@ func TestCreateOneTimeSession(t *testing.T) {
 	session, _, err = auth.GetSession(session.ID)
 	require.Nil(t, session)
 	base.RequireDocNotFoundError(t, err)
+}
+
+// TestAuthenticateOneTimeSessionErrors ensures that only a missing or revoked session is reported as an invalid token,
+// while other lookup failures are returned as they are so that the client can retry with the same token.
+func TestAuthenticateOneTimeSessionErrors(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewTestAuthenticator(t, dataStore, nil, DefaultAuthenticatorOptions(ctx))
+	const username = "alice"
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NoError(t, auth.Save(user))
+
+	requireStatus := func(t *testing.T, err error, expectedStatus int) {
+		require.Error(t, err)
+		status, _ := base.ErrorAsHTTPStatus(err)
+		require.Equal(t, expectedStatus, status, "unexpected status for error %v", err)
+	}
+
+	t.Run("not found", func(t *testing.T) {
+		authedUser, sessionUsername, err := auth.AuthenticateOneTimeSession(ctx, "doesnotexist")
+		requireStatus(t, err, http.StatusUnauthorized)
+		require.Nil(t, authedUser)
+		require.Empty(t, sessionUsername)
+	})
+
+	t.Run("revoked", func(t *testing.T) {
+		session, err := auth.CreateSession(ctx, user, time.Hour, true)
+		require.NoError(t, err)
+		user.UpdateSessionUUID()
+		require.NoError(t, auth.Save(user))
+
+		authedUser, sessionUsername, err := auth.AuthenticateOneTimeSession(ctx, session.ID)
+		requireStatus(t, err, http.StatusUnauthorized)
+		require.Nil(t, authedUser)
+		require.Equal(t, username, sessionUsername)
+	})
+
+	t.Run("unreadable session", func(t *testing.T) {
+		const sessionID = "unreadable"
+		require.NoError(t, dataStore.SetRaw(ctx, auth.DocIDForSession(sessionID), 0, nil, []byte("not json")))
+
+		authedUser, sessionUsername, err := auth.AuthenticateOneTimeSession(ctx, sessionID)
+		require.Error(t, err)
+		status, _ := base.ErrorAsHTTPStatus(err)
+		require.NotEqual(t, http.StatusUnauthorized, status, "a lookup failure must not be reported as an invalid token: %v", err)
+		require.Nil(t, authedUser)
+		require.Empty(t, sessionUsername)
+
+		// the token is not used up by a failed lookup
+		_, _, err = dataStore.GetRaw(ctx, auth.DocIDForSession(sessionID))
+		require.NoError(t, err)
+	})
 }

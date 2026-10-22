@@ -485,3 +485,53 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 		assert.Greater(t, user.JWTLastUpdated(), reqTime)
 	}
 }
+
+// TestLocalJWTDisabledUser ensures that a valid bearer token is rejected while its user is disabled, and accepted again
+// once the user is re-enabled.
+func TestLocalJWTDisabledUser(t *testing.T) {
+	const (
+		testProviderName = "test"
+		testIssuer       = "test_issuer"
+		testClientID     = "test_aud"
+		testSubject      = "bilbo"
+		username         = testProviderName + "_" + testSubject
+	)
+
+	testRSAKeypair, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	testRSAJWK := jose.JSONWebKey{
+		Key:       testRSAKeypair.Public(),
+		Use:       "sig",
+		Algorithm: "RS256",
+		KeyID:     "rsa",
+	}
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
+		testProviderName: auth.LocalJWTAuthConfig{
+			JWTConfigCommon: auth.JWTConfigCommon{
+				Issuer:   testIssuer,
+				ClientID: new(testClientID),
+			},
+			Algorithms:      []string{"RS256"},
+			Keys:            []jose.JSONWebKey{testRSAJWK},
+			SkipExpiryCheck: new(true),
+		},
+	}}}})
+	defer rt.Close()
+
+	rt.CreateUser(username, []string{"*"})
+
+	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{"kid": testRSAJWK.KeyID}, map[string]any{
+		"iss": testIssuer,
+		"sub": testSubject,
+		"aud": []string{testClientID},
+	})
+	headers := map[string]string{"Authorization": BearerToken + " " + token}
+
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers), http.StatusOK)
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`), http.StatusOK)
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers), http.StatusUnauthorized)
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":false}`), http.StatusOK)
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers), http.StatusOK)
+}
