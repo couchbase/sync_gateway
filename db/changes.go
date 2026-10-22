@@ -768,7 +768,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				previousRoles := col.user.RoleNames()
 				if err := col.ReloadUser(ctx); err != nil {
 					base.WarnfCtx(ctx, "Error reloading user during changes initialization %q: %v", base.UD(col.user.Name()), err)
-					change := makeErrorEntry("Unable to reload user - terminating changes feed")
+					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
 					return
 				}
@@ -1182,8 +1182,8 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			var err error
 			userChanged, userCounter, changedChannels, err = col.checkForUserUpdates(ctx, userCounter, changeWaiter, options.Continuous)
 			if err != nil {
-				change := makeErrorEntry("Unable to reload user - terminating changes feed")
-				base.DebugfCtx(ctx, base.KeyChanges, "Unable to reload user - terminating changes feed with entry %+v", base.UD(change))
+				change := makeErrorEntry("User not found during reload - terminating changes feed")
+				base.DebugfCtx(ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
 				select {
 				case <-options.ChangesCtx.Done():
 				case output <- &change:

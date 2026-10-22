@@ -132,22 +132,13 @@ func (bh *blipHandler) refreshUser() error {
 		// Check whether user needs to be refreshed
 		bc.dbUserLock.Lock()
 		defer bc.dbUserLock.Unlock()
-		// The user count has already moved past the change that disabled the user, so later messages wouldn't reload
-		// the user again and must be rejected here.
-		if bc.userDisabled {
-			return ErrUserDisabled
-		}
 		userChanged := bc.userChangeWaiter.RefreshUserCount()
 
 		// If changed, refresh the user and db while holding the lock
 		if userChanged {
 			// Refresh the BlipSyncContext database
 			err := bc.blipContextDb.ReloadUser(bh.loggingCtx)
-			if errors.Is(err, ErrUserDisabled) {
-				// asking the client to reconnect would only lead to a failed login, so reject outright
-				bc.userDisabled = true
-				return err
-			} else if err != nil {
+			if err != nil {
 				return base.NewHTTPError(CBLReconnectErrorCode, err.Error())
 			}
 			newUser := bc.blipContextDb.User()

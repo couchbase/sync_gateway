@@ -1075,11 +1075,6 @@ func (db *Database) SetUser(user auth.User) {
 	db.user = user
 }
 
-// ErrUserDisabled is returned when reloading a user that was disabled after it authenticated. Long-lived connections
-// such as continuous changes feeds and BLIP replications only authenticate once, so they rely on this to stop serving
-// a disabled user.
-var ErrUserDisabled = base.HTTPErrorf(http.StatusUnauthorized, "User is disabled")
-
 // Reloads the database's User object, in case its persistent properties have been changed.
 func (db *Database) ReloadUser(ctx context.Context) error {
 	if db.user == nil {
@@ -1091,12 +1086,10 @@ func (db *Database) ReloadUser(ctx context.Context) error {
 	}
 	if user == nil {
 		return errors.New("User not found during reload")
+	} else {
+		db.user = user
+		return nil
 	}
-	if user.Disabled() {
-		return ErrUserDisabled
-	}
-	db.user = user
-	return nil
 }
 
 // NextSequence returns the new sequence number.

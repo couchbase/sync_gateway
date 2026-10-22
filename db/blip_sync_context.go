@@ -104,7 +104,6 @@ type BlipSyncContext struct {
 	blipContextDb               *Database                  // 'master' database instance for the replication, used as source when creating handler-specific databases
 	loggingCtx                  context.Context            // logging context for connection
 	dbUserLock                  sync.RWMutex               // Must be held when refreshing the db user
-	userDisabled                bool                       // Set once a user reload finds the user disabled, protected by dbUserLock
 	allowedAttachments          map[string]AllowedAttachment
 	allowedAttachmentsLock      sync.Mutex
 	handlerSerialNumber         uint64            // Each handler within a context gets a unique serial number for logging

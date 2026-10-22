@@ -3444,66 +3444,6 @@ func TestBlipDatabaseClose(t *testing.T) {
 	})
 }
 
-// TestBlipDisabledUserClosesConnection verifies that disabling a user closes a continuous pull replication that the user
-// started while still enabled.
-func TestBlipDisabledUserClosesConnection(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges)
-	btcRunner := NewBlipTesterClientRunner(t)
-	btcRunner.Run(func(t *testing.T) {
-		rt := NewRestTester(t, nil)
-		defer rt.Close()
-		const alice = "alice"
-		rt.CreateUser(alice, []string{"*"})
-		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt,
-			&BlipTesterClientOpts{
-				Username: alice,
-			})
-		defer btc.Close()
-		var blipContextClosed atomic.Bool
-		btcRunner.clients[btc.id].pullReplication.bt.blipContext.OnExitCallback = func() {
-			blipContextClosed.Store(true)
-		}
-
-		markerDoc := "markerDoc"
-		markerDocVersion := rt.PutDoc(markerDoc, `{"mark": "doc"}`)
-		rt.WaitForPendingChanges()
-		btcRunner.StartPull(btc.id)
-		btcRunner.WaitForVersion(btc.id, markerDoc, markerDocVersion)
-
-		RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+alice, `{"disabled":true}`), http.StatusOK)
-
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			assert.True(c, blipContextClosed.Load())
-		}, time.Second*10, time.Millisecond*100)
-	})
-}
-
-// TestBlipDisabledUserPushRejected verifies that every write on a push-only connection is rejected once the user is
-// disabled, not just the first one to notice the change.
-func TestBlipDisabledUserPushRejected(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-	const alice = "alice"
-	rt.CreateUser(alice, []string{"*"})
-	bt := NewBlipTesterFromSpecWithRT(rt, &BlipTesterSpec{connectingUsername: alice})
-	defer bt.Close()
-
-	bt.SendRev("beforeDisable", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-
-	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+alice, `{"disabled":true}`), http.StatusOK)
-	rt.WaitForPendingChanges()
-
-	for _, docID := range []string{"afterDisable1", "afterDisable2"} {
-		revRequest := bt.newRevMessage(docID, "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-		bt.Send(revRequest)
-		revResponse := revRequest.Response()
-		_, err := revResponse.Body()
-		require.NoError(t, err)
-		assert.Equal(t, "401", revResponse.Properties["Error-Code"], "write of %s by disabled user was not rejected", docID)
-		RequireStatus(t, rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, ""), http.StatusNotFound)
-	}
-}
-
 func TestBlipDisconnectOnDbOffline(t *testing.T) {
 	base.LongRunningTest(t)
 
