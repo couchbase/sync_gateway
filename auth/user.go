@@ -168,7 +168,12 @@ func (user *userImpl) Disabled() bool {
 	return user.Disabled_
 }
 
+// SetDisabled enables or disables the user. Disabling invalidates all of the user's existing sessions, so they stay
+// invalid if the user is later re-enabled.
 func (user *userImpl) SetDisabled(disabled bool) {
+	if disabled && !user.Disabled_ {
+		user.UpdateSessionUUID()
+	}
 	user.Disabled_ = disabled
 }
 

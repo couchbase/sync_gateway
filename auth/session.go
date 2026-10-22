@@ -10,6 +10,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -30,22 +31,34 @@ type LoginSession struct {
 
 const DefaultCookieName = "SyncGatewaySession"
 
-func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
+// errSessionRevoked is returned by getValidSession when the session exists but no longer matches its user.
+var errSessionRevoked = errors.New("session no longer valid for user")
+
+// AuthenticateCookie authenticates the request using its session cookie, returning a nil user if there is no cookie.
+// The session's username is returned whenever the session was found, including when it is rejected, so that callers
+// can attribute failed logins.
+func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (user User, sessionUsername string, err error) {
 
 	cookie, _ := rq.Cookie(auth.SessionCookieName)
 	if cookie == nil {
-		return nil, nil
+		return nil, "", nil
 	}
 
-	var session LoginSession
-	_, err := auth.datastore.Get(auth.DocIDForSession(cookie.Value), &session)
+	// Validate the session before refreshing its expiry, so that requests rejected here can't keep extending a session
+	// that is no longer usable.
+	session, user, err := auth.getValidSession(cookie.Value)
 	if err != nil {
+		if errors.Is(err, errSessionRevoked) {
+			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
+			return nil, session.Username, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
+		}
 		if base.IsDocNotFoundError(err) {
 			base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session not found: %s", base.UD(cookie.Value))
-			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+			return nil, "", base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 		}
-		return nil, err
+		return nil, "", err
 	}
+
 	// Don't need to check session.Expiration, because Couchbase will have nuked the document.
 	// update the session Expiration if 10% or more of the current expiration time has elapsed
 	// if the session does not contain a Ttl (probably created prior to upgrading SG), use
@@ -62,42 +75,43 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	if sessionTimeElapsed > tenPercentOfTtl && (session.OneTime == nil || !*session.OneTime) {
 		session.Expiration = time.Now().Add(duration)
 		if err = auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
-			return nil, err
+			return nil, session.Username, err
 		}
 		base.AddDbPathToCookie(rq, cookie)
 		cookie.Expires = session.Expiration
 		http.SetCookie(response, cookie)
 	}
 
-	user, err := auth.GetUser(session.Username)
+	err = auth.deleteOneTimeSession(auth.LogCtx, session)
 	if err != nil {
-		return nil, err
-	}
-	if user == nil || session.SessionUUID != user.GetSessionUUID() {
-		base.InfofCtx(auth.LogCtx, base.KeyAuth, "Session no longer valid for user %s", base.UD(session.Username))
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
-	}
-	err = auth.deleteOneTimeSession(auth.LogCtx, &session)
-	if err != nil {
-		return nil, err
+		return nil, session.Username, err
 	}
 
-	return user, err
+	return user, session.Username, nil
 }
 
 // AuthenticateOneTimeSession authenticates a session and deletes it upon successful authentication if it was marked as
-// a one time sesssion. If it is a one time session, delete the session.
-func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessionID string) (User, error) {
-	session, user, err := auth.GetSession(sessionID)
+// a one time sesssion. If it is a one time session, delete the session. As with AuthenticateCookie, the session's
+// username is returned whenever the session was found.
+func (auth *Authenticator) AuthenticateOneTimeSession(ctx context.Context, sessionID string) (user User, sessionUsername string, err error) {
+	session, user, err := auth.getValidSession(sessionID)
 	if err != nil {
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+		if errors.Is(err, errSessionRevoked) {
+			return nil, session.Username, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+		}
+		if base.IsDocNotFoundError(err) {
+			return nil, "", base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
+		}
+		// Other errors (e.g. a temporary KV failure) don't mean the token is bad, and it hasn't been used up, so they
+		// are returned as they are to let the client retry with the same token.
+		return nil, "", err
 	}
 
 	err = auth.deleteOneTimeSession(ctx, session)
 	if err != nil {
-		return nil, err
+		return nil, session.Username, err
 	}
-	return user, nil
+	return user, session.Username, nil
 }
 
 // deleteOneTimeSession deletes the session if it is marked as a one-time session. If the session can be not deleted, or
@@ -162,6 +176,20 @@ func (auth *Authenticator) CreateSession(ctx context.Context, user User, ttl tim
 
 // GetSession returns a session by ID. Return a not found error if the session is not found, or is invalid.
 func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, User, error) {
+	session, user, err := auth.getValidSession(sessionID)
+	if errors.Is(err, errSessionRevoked) {
+		return nil, nil, base.ErrNotFound
+	} else if err != nil {
+		return nil, nil, err
+	}
+	return session, user, nil
+}
+
+// getValidSession returns a session by ID along with its user. If the session exists but its user has been deleted, is
+// disabled, or its session UUID has changed (on password change, disable, or deleting all sessions), the session is
+// returned along with errSessionRevoked so that callers can still identify whose session it was. The disabled check
+// covers users disabled without a session UUID change, such as by an older node.
+func (auth *Authenticator) getValidSession(sessionID string) (*LoginSession, User, error) {
 	var session LoginSession
 	_, err := auth.datastore.Get(auth.DocIDForSession(sessionID), &session)
 	if err != nil {
@@ -171,13 +199,9 @@ func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, User, er
 	if err != nil {
 		return nil, nil, err
 	}
-	if user == nil {
-		return nil, nil, base.ErrNotFound
+	if user == nil || user.Disabled() || session.SessionUUID != user.GetSessionUUID() {
+		return &session, nil, errSessionRevoked
 	}
-	if session.SessionUUID != user.GetSessionUUID() {
-		return nil, nil, base.ErrNotFound
-	}
-
 	return &session, user, nil
 }
 
