@@ -259,18 +259,20 @@ func TestRequestPlusLongpollParksAfterTarget(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"XYZ"}, 2)
 	database.WaitForSequence(t, 2)
 	require.Nil(t, <-feed, "expected the waiting marker after reaching the request_plus sequence")
-	requireFeedQuiet := func(msg string) {
-		for quiet := false; !quiet; {
-			select {
-			case entry, ok := <-feed:
-				require.True(t, ok, "feed closed while parked")
-				require.Nil(t, entry, msg)
-			case <-time.After(500 * time.Millisecond):
-				quiet = true
-			}
+	// The overall deadline catches a feed that never parks and keeps sending waiting markers, which would otherwise
+	// restart the quiet timer forever.
+	drainDeadline := time.After(5 * time.Second)
+	for quiet := false; !quiet; {
+		select {
+		case entry, ok := <-feed:
+			require.True(t, ok, "feed closed while parked")
+			require.Nil(t, entry, "expected only waiting markers after reaching the request_plus sequence")
+		case <-time.After(500 * time.Millisecond):
+			quiet = true
+		case <-drainDeadline:
+			require.FailNow(t, "feed kept sending waiting markers instead of parking after reaching the request_plus sequence")
 		}
 	}
-	requireFeedQuiet("expected only waiting markers after reaching the request_plus sequence")
 	parkedTotal := totalCaughtUp.Value()
 
 	// Move the cache again in a channel the feed doesn't watch. A feed still polling would see this within one
