@@ -1527,9 +1527,9 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		userXattrKey = *config.UserXattrKey
 	}
 
-	clientPartitionWindow := base.DefaultClientPartitionWindow
+	var clientPartitionWindow *time.Duration
 	if config.ClientPartitionWindowSecs != nil {
-		clientPartitionWindow = time.Duration(*config.ClientPartitionWindowSecs) * time.Second
+		clientPartitionWindow = new(time.Duration(*config.ClientPartitionWindowSecs) * time.Second)
 	}
 
 	bcryptCost := sc.Config.Auth.BcryptCost

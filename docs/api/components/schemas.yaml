@@ -1208,9 +1208,8 @@ Database:
       description: |-
         How long (in seconds) clients can remain offline for without losing replication metadata.
 
-        Defaults to 30 days (in seconds)
+        If this is not set, Sync Gateway uses the metadata purge interval of the bucket. If the bucket has no purge interval of its own, Sync Gateway uses the cluster-wide value.
       type: integer
-      default: 2592000
     compact_interval_days:
       description: |-
         The interval between scheduled tombstone compaction runs (in days). This can be a floating point number.

@@ -3790,7 +3790,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 		{
 			name:                              "Default purge interval updated after db creation",
 			newServerInterval:                 "1",
-			dbPurgeInterval:                   db.DefaultPurgeInterval,
+			dbPurgeInterval:                   base.DefaultClientPartitionWindow,
 			expectedPurgeIntervalAfterCompact: time.Hour * 24,
 		},
 		{

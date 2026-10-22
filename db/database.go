@@ -66,11 +66,7 @@ const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 
-	// DefaultPurgeInterval represents a time duration of 30 days to be
-	// used as default metadata purge interval when the server’s purge
-	// interval (either bucket specific or cluster wide) is not available.
-	DefaultPurgeInterval                    = 30 * 24 * time.Hour
-	DefaultVersionPruningWindow             = DefaultPurgeInterval
+	DefaultVersionPruningWindow             = base.DefaultClientPartitionWindow
 	DefaultSGReplicateEnabled               = true
 	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 	DefaultCompactInterval                  = 24 * time.Hour
@@ -220,7 +216,7 @@ type DatabaseContextOptions struct {
 	SlowQueryWarningThreshold        time.Duration
 	QueryPaginationLimit             int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
 	UserXattrKey                     string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
-	ClientPartitionWindow            time.Duration
+	ClientPartitionWindow            *time.Duration
 	BcryptCost                       int
 	GroupID                          string
 	JavascriptTimeout                time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
@@ -644,6 +640,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	dbContext.DBStateManager = NewDatabaseStateMgr(metadataStore, metaKeys.DatabaseStateKey(), joinResync)
 
+	// Fill the purge interval cache before any request can run, so that later callers do not read Bucket during Close.
+	dbContext.GetMetadataPurgeInterval(ctx, true)
+
 	return dbContext, nil
 }
 
@@ -1032,7 +1031,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
-		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
+		ClientPartitionWindow:    context.ClientPartitionWindow(),
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
 		BcryptCost:               context.Options.BcryptCost,
@@ -1757,14 +1756,15 @@ func (db *DatabaseContext) GetMetadataPurgeInterval(ctx context.Context, forceRe
 	// fetch from server
 	cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
 	if !ok {
-		return DefaultPurgeInterval
+		db.CachedPurgeInterval.Store(new(base.DefaultClientPartitionWindow))
+		return base.DefaultClientPartitionWindow
 	}
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval(ctx)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", DefaultPurgeInterval.Hours()/24, err)
+		base.WarnfCtx(ctx, "Unable to retrieve server's metadata purge interval - using default purge interval %.2f days. %s", base.DefaultClientPartitionWindow.Hours()/24, err)
 	}
 
-	mpi := DefaultPurgeInterval
+	mpi := base.DefaultClientPartitionWindow
 	if serverPurgeInterval > 0 {
 		mpi = serverPurgeInterval
 	}
@@ -2799,4 +2799,19 @@ func (db *DatabaseContext) collections(names base.CollectionNames) (DatabaseColl
 		}
 	}
 	return collections, nil
+}
+
+// ClientPartitionWindow returns client_partition_window_secs if set, otherwise the cached metadata purge
+// interval. It never fetches from the bucket, so request paths can call it at any time.
+func (db *DatabaseContext) ClientPartitionWindow() time.Duration {
+	if w := db.Options.ClientPartitionWindow; w != nil {
+		return *w
+	}
+	if o := db.Options.TestPurgeIntervalOverride; o != nil {
+		return *o
+	}
+	if mpi := db.CachedPurgeInterval.Load(); mpi != nil {
+		return *mpi
+	}
+	return base.DefaultClientPartitionWindow
 }
