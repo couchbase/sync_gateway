@@ -1231,7 +1231,9 @@ func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx conte
 	defer pullStats.NumPullReplCaughtUp.Add(-1)
 
 	if pollCache {
-		col.waitForCacheUpdate(changesCtx, currentCachedSequence)
+		if !col.waitForCacheUpdate(changesCtx, changeWaiter, currentCachedSequence) {
+			return WaiterClosed
+		}
 		return WaiterHasChanges
 	}
 	return changeWaiter.Wait(ctx)
@@ -1240,19 +1242,22 @@ func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx conte
 // waitForCacheUpdate polls until the cached sequence moves past currentCachedSequence, ctx is done, or about
 // five seconds pass. It doesn't report which: the caller re-runs its changes loop either way, and is
 // responsible for checking ctx for cancellation.
-func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, currentCachedSequence uint64) {
+func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, changeWaiter *ChangeWaiter, currentCachedSequence uint64) bool {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for retry := 0; retry <= 50; retry++ {
 		select {
 		case <-ctx.Done():
-			return
+			return true
+		case <-changeWaiter.listener.terminator:
+			return false
 		case <-ticker.C:
 			if col.changeCache().getChannelCache().GetHighCacheSequence() != currentCachedSequence {
-				return
+				return true
 			}
 		}
 	}
+	return true
 }
 
 // Returns the set of cached log entries for a given channel

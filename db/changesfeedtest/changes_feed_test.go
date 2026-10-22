@@ -292,3 +292,38 @@ func TestRequestPlusLongpollParksAfterTarget(t *testing.T) {
 	base.RequireChanClosed(t, feed, "longpoll feed did not complete after sending a change")
 	require.Equal(t, parkedTotal, totalCaughtUp.Value())
 }
+
+func TestRequestPlusFeedExitsOnListenerStop(t *testing.T) {
+	database, ctx := db.SetupTestDBWithCacheOptions(t, db.ShortWaitCache())
+	defer database.Close(ctx)
+	authenticator := database.Authenticator(ctx)
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+	database.SetUser(user)
+	dbCollection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	db.WriteDirect(t, dbCollection.DatabaseCollection, []string{"ABC"}, 1)
+	database.WaitForSequence(t, 1)
+	caughtUp := database.DbStats.CBLReplicationPull().NumPullReplCaughtUp
+	caughtUpStart := caughtUp.Value()
+	changesCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errors.New("teardown"))
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), db.ChangesOptions{
+		Since: db.SequenceID{Seq: 0}, ChangesCtx: changesCtx, RequestPlusSeq: 2,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, <-feed)
+	require.Nil(t, <-feed)
+	base.RequireStatGreaterThan(t, caughtUp, caughtUpStart)
+
+	database.GetMutationListener(t).Stop(ctx)
+	deadline := time.After(15 * time.Second)
+	for closed := false; !closed; {
+		select {
+		case _, ok := <-feed:
+			closed = !ok
+		case <-deadline:
+			require.FailNow(t, "request_plus feed still running 15s after the change listener stopped")
+		}
+	}
+}
