@@ -58,6 +58,7 @@ const (
 	MetaKeyResyncHeartBeaterPrefix                             // "resync_hb:"
 	MetaKeyResyncCfgPrefix                                     // "resync_cfg:"
 	MetaKeyDatabaseState                                       // "state"
+	MetaKeyTimestampsSeq                                       // "timestamps_seq"
 )
 
 var metadataKeyNames = []string{
@@ -77,6 +78,7 @@ var metadataKeyNames = []string{
 	"resync_hb:",                    // document prefix used to store resync data
 	"resync_cfg:",                   // document prefix used to store resync cfg data
 	"state",                         // stores the database state
+	"timestamps_seq",                // stores the timestamps sequence array
 }
 
 func (m metadataKey) String() string {
@@ -132,6 +134,7 @@ type MetadataKeys struct {
 	resyncHeartbeaterPrefix   string
 	resyncCfgPrefix           string
 	databaseState             string
+	timestampsSeq             string
 }
 
 // sha1HashLength is the number of characters in a sha1
@@ -157,6 +160,7 @@ var DefaultMetadataKeys = &MetadataKeys{
 	resyncHeartbeaterPrefix:   formatDefaultMetadataKey(MetaKeyResyncHeartBeaterPrefix),
 	resyncCfgPrefix:           formatDefaultMetadataKey(MetaKeyResyncCfgPrefix),
 	databaseState:             formatDefaultMetadataKey(MetaKeyDatabaseState),
+	timestampsSeq:             formatDefaultMetadataKey(MetaKeyTimestampsSeq),
 }
 
 // NewMetadataKeys returns MetadataKeys for the specified MetadataID. If metadataID is empty string or DefaultMetadataID,
@@ -184,6 +188,7 @@ func NewMetadataKeys(metadataID string) *MetadataKeys {
 			resyncHeartbeaterPrefix:   formatMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
 			resyncCfgPrefix:           formatMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
 			databaseState:             formatMetadataKey(metadataID, MetaKeyDatabaseState),
+			timestampsSeq:             formatMetadataKey(metadataID, MetaKeyTimestampsSeq),
 		}
 	}
 }
@@ -451,6 +456,14 @@ func (m *MetadataKeys) BackgroundProcessStatusPrefix(processSuffix string) strin
 //	format: _sync:state       (default)
 func (m *MetadataKeys) DatabaseStateKey() string {
 	return m.databaseState
+}
+
+// TimestampsSeqKey returns the key used to store the timestamps sequence pair array.
+//
+//	format: _sync:{m_$}:timestamps_seq (collections aware)
+//	format: _sync:timestamps_seq       (default)
+func (m *MetadataKeys) TimestampsSeqKey() string {
+	return m.timestampsSeq
 }
 
 // formatMetadataKey formats key into the form _sync:m_[metadataID]:[metaKey]
