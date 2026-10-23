@@ -105,6 +105,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	rt.CreateUser("user1", []string{"alpha"})
+	rt.WaitForPendingChanges()
 
 	// Create 100 docs
 	for i := 0; i < 100; i++ {
@@ -411,7 +412,7 @@ func TestCVPopulationOnChangesViaAPI(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(t.Context()))
+	rt.WaitForPendingChanges()
 
 	changes := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?version_type=cv", "", true)
 
@@ -440,7 +441,7 @@ func TestCVPopulationOnDocIDChanges(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+DocID, `{"channels": ["ABC"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+	rt.WaitForPendingChanges()
 
 	changes := rt.WaitForChanges(1, fmt.Sprintf(`/{{.keyspace}}/_changes?version_type=cv&filter=_doc_ids&doc_ids=%s`, DocID), "", true)
 
@@ -776,7 +777,7 @@ func TestContinuousChangesRolePurge(t *testing.T) {
 	// notification alone and is still holding the stale channel set.
 	userWaiter := rt.NewUserWaiter(username)
 	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// The feed sends in sequence order, so a feed still serving the revoked channel would send
 	// afterPurgeRevoked first.
