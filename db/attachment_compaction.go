@@ -31,18 +31,27 @@ const (
 	CleanupPhase    attachmentCompactionPhase = "cleanup"
 )
 
-func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *DatabaseContext, compactionID string, terminator *base.SafeTerminator, markedAttachmentCount *base.AtomicInt) (count int64, dcpClient base.DCPClient, err error) {
+func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *DatabaseContext, compactionID string, terminator base.ReadOnlyTerminator, markedAttachmentCount *base.AtomicInt) (count int64, dcpClient base.DCPClient, err error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting first phase of attachment compaction (mark phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Mark: " + compactionID
 
-	var markProcessFailureErr error
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	// failProcess used when a failure is deemed as 'un-recoverable' and we need to abort the compaction process.
 	failProcess := func(err error, format string, args ...any) bool {
-		markProcessFailureErr = err
-		terminator.Close()
+		cancel(err)
+		_ = dcpClient.Close()
 		base.WarnfCtx(ctx, format, args...)
 		return false
+	}
+
+	// a callback failure closes the DCP client, so report its cause over any resulting shutdown error
+	getError := func(err error) error {
+		if cause := context.Cause(ctx); cause != nil {
+			return cause
+		}
+		return err
 	}
 
 	callback := func(event sgbucket.FeedEvent) bool {
@@ -50,7 +59,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", compactionLoggingID, event.Opcode, base.UD(docID))
 
 		// We've had an error previously so no point doing work for any remaining items
-		if markProcessFailureErr != nil {
+		if ctx.Err() != nil {
 			return false
 		}
 
@@ -152,7 +161,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start attachment compaction DCP feed! %v", compactionLoggingID, err)
 		_ = dcpClient.Close()
-		return 0, dcpClient, err
+		return markedAttachmentCount.Value(), dcpClient, getError(err)
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
 
@@ -160,28 +169,16 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	case <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 		err = dcpClient.Close()
-		if markProcessFailureErr != nil {
-			return markedAttachmentCount.Value(), dcpClient, markProcessFailureErr
-		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Stopping mark phase.", compactionLoggingID)
 		err = dcpClient.Close()
-		if markProcessFailureErr != nil {
-			return markedAttachmentCount.Value(), dcpClient, markProcessFailureErr
+		if err == nil {
+			// wait for in-flight callbacks, which can still fail the phase
+			err = <-doneChan
 		}
-		if err != nil {
-			return markedAttachmentCount.Value(), dcpClient, err
-		}
-
-		err = <-doneChan
-		if err != nil {
-			return markedAttachmentCount.Value(), dcpClient, err
-		}
-
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction was terminated. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 	}
-
-	return markedAttachmentCount.Value(), dcpClient, err
+	return markedAttachmentCount.Value(), dcpClient, getError(err)
 }
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
@@ -304,7 +301,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 
 // attachmentCompactSweepPhase will process all v1 attachments and purge any which are marked with the supplied xattr.
 // Returns the number of purged documents, the dcp checkpoint prefix, and any error.
-func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *DatabaseContext, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, base.DCPClient, error) {
+func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *DatabaseContext, compactionID string, vbUUIDs []uint64, dryRun bool, terminator base.ReadOnlyTerminator, purgedAttachmentCount *base.AtomicInt) (int64, base.DCPClient, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting second phase of attachment compaction (sweep phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Sweep: " + compactionID
 
@@ -424,7 +421,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 // attachmentCompactCleanupPhase runs a DCP feed to clean up all documents with an attachment compaction xattr. Returns
 // the DCP checkpoint prefix and any error encountered.
-func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *DatabaseContext, compactionID string, vbUUIDs []uint64, terminator *base.SafeTerminator) (string, error) {
+func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *DatabaseContext, compactionID string, vbUUIDs []uint64, terminator base.ReadOnlyTerminator) (string, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Starting third phase of attachment compaction (cleanup phase) with compactionID: %q", compactionID)
 	compactionLoggingID := "Compaction Cleanup: " + compactionID
 

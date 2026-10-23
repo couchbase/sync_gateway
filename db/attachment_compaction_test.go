@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"strconv"
@@ -389,7 +390,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	var err error
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	cb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb1)
@@ -419,7 +420,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	cb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&cb2)
@@ -431,7 +432,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateStopped)
 
 	// Kick off another run with an attempted start from the other node, checks for error on other node
-	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, _ *base.SafeTerminator) {
+	cb3 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, _ base.ReadOnlyTerminator) {
 		err := testDB2.AttachmentCompactionManager.Start(ctx2, AttachmentCompactionOptions{})
 		assert.ErrorContains(t, err, "Process already running")
 	})
@@ -473,7 +474,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	var err error
 
 	// Trigger start with immediate abort. Then resume, ensure that dry run is resumed
-	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	stopCb1 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB2.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb1)
@@ -503,7 +504,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 	assert.True(t, testStatus.DryRun)
 
 	// Trigger start with immediate stop (stopped from db2)
-	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) {
+	stopCb2 := runFunctionStartedCallbackFunc(func(_ context.Context, _ AttachmentCompactionOptions, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) {
 		<-terminator.Done()
 	})
 	testDB1.AttachmentCompactionManager.Process.(*AttachmentCompactionManager).runFunctionStartedCallback.Store(&stopCb2)
@@ -524,9 +525,10 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 }
 
 func TestAttachmentProcessError(t *testing.T) {
+	errMark := errors.New("injected mark error")
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
-			return fmt.Errorf("some error")
+			return errMark
 		},
 	})
 	defer b.Close(base.TestCtx(t))
@@ -540,7 +542,8 @@ func TestAttachmentProcessError(t *testing.T) {
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, AttachmentCompactionOptions{})
 	assert.NoError(t, err)
 
-	RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
+	status := RequireBackgroundManagerState(t, testDB1.AttachmentCompactionManager, BackgroundProcessStateError)
+	require.Equal(t, errMark.Error(), status.LastErrorMessage)
 }
 
 func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {

@@ -4479,7 +4479,7 @@ func (i *testBackgroundProcess[O]) Init(_ context.Context, _ O, _ []byte) (backg
 	return backgroundManagerInitReset, nil
 }
 
-func (i *testBackgroundProcess[O]) Run(_ context.Context, _ O, _ updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (i *testBackgroundProcess[O]) Run(_ context.Context, _ O, _ updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	<-terminator.Done()
 	if i.isStoppable {
 		return nil

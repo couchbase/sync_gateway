@@ -41,7 +41,7 @@ func (t *TombstoneCompactionManager) Init(ctx context.Context, _ NoOptions, clus
 	return backgroundManagerInitReset, nil
 }
 
-func (t *TombstoneCompactionManager) Run(ctx context.Context, _ NoOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (t *TombstoneCompactionManager) Run(ctx context.Context, _ NoOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	defer atomic.CompareAndSwapUint32(&t.database.CompactState, DBCompactRunning, DBCompactNotRunning)
 	updateStatusCallback := func(docsPurged *int) {
 		atomic.StoreInt64(&t.PurgedDocCount, int64(*docsPurged))

@@ -65,7 +65,7 @@ func (a *AsyncIndexInitManager) Init(ctx context.Context, options AsyncIndexInit
 }
 
 // Run is called inside a goroutine to perform the job of the job. This function should block until the job is complete.
-func (a *AsyncIndexInitManager) Run(ctx context.Context, options AsyncIndexInitOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AsyncIndexInitManager) Run(ctx context.Context, options AsyncIndexInitOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	if err := options.validate(); err != nil {
 		return err
 	}

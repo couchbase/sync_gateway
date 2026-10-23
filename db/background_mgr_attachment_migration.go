@@ -104,7 +104,7 @@ func (a *AttachmentMigrationManager) Init(ctx context.Context, options Attachmen
 	return backgroundManagerInitReset, newRunInit()
 }
 
-func (a *AttachmentMigrationManager) Run(ctx context.Context, options AttachmentMigrationOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
+func (a *AttachmentMigrationManager) Run(ctx context.Context, options AttachmentMigrationOptions, persistClusterStatusCallback updateStatusCallbackFunc, terminator base.ReadOnlyTerminator) error {
 	db := a.databaseCtx
 	migrationLoggingID := "Migration: " + a.MigrationID
 
