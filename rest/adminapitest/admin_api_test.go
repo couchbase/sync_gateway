@@ -17,7 +17,6 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
-	"os"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -168,7 +167,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 }
 
 func TestLoggingKeys(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	base.RestoreGlobalLoggersAfterTest(t)
 	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
@@ -292,7 +291,7 @@ func TestChangesEndpointDuringConcurrentReplicationLimit(t *testing.T) {
 }
 
 func TestLoggingLevels(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	base.RestoreGlobalLoggersAfterTest(t)
 	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
@@ -326,7 +325,7 @@ func TestLoggingLevels(t *testing.T) {
 }
 
 func TestLoggingCombined(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	base.RestoreGlobalLoggersAfterTest(t)
 	// Force explicit logging via SetUpTestLogging
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
@@ -2663,10 +2662,9 @@ func TestConfigEndpoint(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			base.ResetGlobalTestLogging(t)
+			tempDir := base.TempLogDirWithLoggerRestore(t)
 
 			base.InitializeMemoryLoggers()
-			tempDir := os.TempDir()
 			test := rest.DefaultStartupConfig(tempDir)
 			err := test.SetupAndValidateLogging(base.TestCtx(t))
 			assert.NoError(t, err)
@@ -2703,7 +2701,7 @@ func TestConfigEndpoint(t *testing.T) {
 }
 
 func TestLoggingDeprecationWarning(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	base.RestoreGlobalLoggersAfterTest(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2764,10 +2762,9 @@ func TestInitialStartupConfig(t *testing.T) {
 }
 
 func TestIncludeRuntimeStartupConfig(t *testing.T) {
-	rest.ClearServerContextLoggingGlobals(t)
+	tempDir := rest.ClearServerContextLoggingGlobals(t)
 
 	base.InitializeMemoryLoggers()
-	tempDir := os.TempDir()
 	test := rest.DefaultStartupConfig(tempDir)
 	err := test.SetupAndValidateLogging(base.TestCtx(t))
 	assert.NoError(t, err)

@@ -264,7 +264,7 @@ func TestLastComponent(t *testing.T) {
 }
 
 func TestLogSyncGatewayVersion(t *testing.T) {
-	ResetGlobalTestLogging(t)
+	RestoreGlobalLoggersAfterTest(t)
 	SetUpTestLogging(t, LevelInfo, KeyAll) // force logging to be set
 	for i := range levelCount {
 		t.Run("level="+i.String(), func(t *testing.T) {

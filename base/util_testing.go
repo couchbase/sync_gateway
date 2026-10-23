@@ -647,8 +647,10 @@ func SetUpTestLogging(tb testing.TB, logLevel LogLevel, logKeys ...LogKey) {
 	tb.Cleanup(cleanup)
 }
 
-// ResetGlobalTestLogging will ensure that the loggers are replaced at the end of the the test.
-func ResetGlobalTestLogging(t *testing.T) {
+// RestoreGlobalLoggersAfterTest closes any file loggers and puts the default test loggers back at the end of the test.
+//
+// If the test writes log files, use TempLogDirWithLoggerRestore instead.
+func RestoreGlobalLoggersAfterTest(t *testing.T) {
 	t.Cleanup(func() {
 		for _, logger := range getFileLoggers() {
 			assert.NoError(t, logger.Close())
@@ -658,6 +660,16 @@ func ResetGlobalTestLogging(t *testing.T) {
 		SetUpGlobalTestLogging(ctx)
 
 	})
+}
+
+// TempLogDirWithLoggerRestore returns a temp directory for log files, and calls RestoreGlobalLoggersAfterTest.
+//
+// Write file logs there and not to a later t.TempDir(): cleanups run in reverse order, so a later t.TempDir() is
+// removed while the loggers still hold its files open, which fails on Windows.
+func TempLogDirWithLoggerRestore(t *testing.T) (logDir string) {
+	logDir = t.TempDir()
+	RestoreGlobalLoggersAfterTest(t)
+	return logDir
 }
 
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
@@ -707,7 +719,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 		panic(fmt.Sprintf("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?, LogLevel=%s, expected=%s; LogKeyMask=%s, expected=%s", logger.LogLevel, initialLogLevel, logger.LogKeyMask, initialLogKey))
 	}
 	if errorLogger.Load() != nil {
-		panic("Logging is in an expected state, an earlier test possibly needed to call ResetGlobalTestLogging")
+		panic("Logging is in an expected state, an earlier test possibly needed to call RestoreGlobalLoggersAfterTest")
 	}
 	logger.LogLevel.Set(logLevel)
 	logger.LogKeyMask.Set(logKeyMask(logKeys...))
