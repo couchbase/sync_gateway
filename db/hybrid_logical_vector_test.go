@@ -697,7 +697,7 @@ func TestRestampVersionCASMou(t *testing.T) {
 			// A second metadata-only write, from a different path - channel history compaction, which unlike
 			// resync applies to a tombstone as well as a live document. Both previous values have to be
 			// carried forward, or they stop naming the last write to the body.
-			compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100)
+			compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100, []string{})
 			require.NoError(t, err)
 			require.NotEmpty(t, compacted, "compaction should have pruned channel history, or no write happens")
 
