@@ -2101,6 +2101,343 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 }
 
+// TestActiveReplicatorCheckpointFailedRev covers a revision that the receiving peer fails to write. A failure known to
+// be permanent, such as a sync function rejection or a 500, is recorded as processed, so the checkpoint moves past it and
+// the revision is never stored. Any other failure, such as a transient 503, holds the checkpoint before it until the
+// replication restarts, and the revision is retried.
+func TestActiveReplicatorCheckpointFailedRev(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeySync, base.KeySyncMsg)
+
+	const failingSyncFn = `function(doc) {
+		switch (doc.fail) {
+		case "forbidden": throw({forbidden: "rejected by the receiving peer"});
+		case "unauthorized": throw({unauthorized: "rejected by the receiving peer"});
+		case "exception": throw({other: "not a forbidden or unauthorized rejection"});
+		case "invalidChannel": channel("a,b"); break;
+		case "invalidRole": role("alice", "noprefix"); break;
+		case "invalidAccess": access("invalid:name", "chan"); break;
+		}
+		channel(doc.channels);
+	}`
+	directions := []struct {
+		direction    db.ActiveReplicatorDirection
+		peerOpts     rest.TestISGRPeerOpts
+		waitForSeq   func(rt *rest.RestTester, replicationID string, seq uint64)
+		failedCount  func(*base.DbReplicatorStats) *base.SgwIntStat
+		checkpointer func(testing.TB, *db.ActiveReplicator) *db.Checkpointer
+	}{
+		{
+			direction: db.ActiveReplicatorTypePull,
+			// the user only sees alice, so a doc that leaves alice is a removal
+			peerOpts:    rest.TestISGRPeerOpts{ActiveSyncFn: failingSyncFn, UserChannelAccess: []string{"alice"}},
+			waitForSeq:  rest.WaitForISGRPullSequence,
+			failedCount: func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.FailedToPullCount },
+			checkpointer: func(t testing.TB, ar *db.ActiveReplicator) *db.Checkpointer {
+				return ar.Pull.GetSingleCollection(t).Checkpointer
+			},
+		},
+		{
+			direction:   db.ActiveReplicatorTypePush,
+			peerOpts:    rest.TestISGRPeerOpts{PassiveSyncFn: failingSyncFn},
+			waitForSeq:  rest.WaitForISGRPushSequence,
+			failedCount: func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.NumDocsFailedToPush },
+			checkpointer: func(t testing.TB, ar *db.ActiveReplicator) *db.Checkpointer {
+				return ar.Push.GetSingleCollection(t).Checkpointer
+			},
+		},
+	}
+	failures := []struct {
+		name         string
+		blockingBody string
+		// transient makes the receiving peer reject every write with a 503 while the blocking doc replicates
+		transient bool
+		// updateExisting replicates the blocking doc before breakTarget runs, and the failing write is an update
+		updateExisting bool
+		// breakTarget prepares the receiving peer so that the blocking write fails
+		breakTarget func(t testing.TB, target *rest.RestTester, docID string)
+		// requireNotStored checks that the failed rev is not on the receiving peer, defaulting to the doc not existing
+		requireNotStored func(t testing.TB, target *rest.RestTester, docID string, version rest.DocVersion)
+		// onlyDirection limits the case to one direction when set
+		onlyDirection    db.ActiveReplicatorDirection
+		eeOnly           bool
+		conflictResolver string
+		purgeOnRemoval   bool
+		// failedStat overrides the direction's count of failed revs, for a failure that does not fail a rev
+		failedStat func(*base.DbReplicatorStats) *base.SgwIntStat
+	}{
+		// TODO: CBG-6046 add a temporary KV error, such as gocb.ErrOverload, which returns 500 and moves the checkpoint past the rev
+		{
+			name:         "transient503",
+			blockingBody: `{"channels":["alice"]}`,
+			transient:    true,
+		},
+		{
+			name:         "syncFnForbidden403",
+			blockingBody: `{"channels":["alice"],"fail":"forbidden"}`,
+		},
+		{
+			name:         "syncFnUnauthorized401",
+			blockingBody: `{"channels":["alice"],"fail":"unauthorized"}`,
+		},
+		{
+			// the receiving peer has no conflict resolver, so it rejects the conflicting rev
+			name:         "conflict409",
+			blockingBody: `{"channels":["alice"],"remote":true}`,
+			breakTarget: func(_ testing.TB, target *rest.RestTester, docID string) {
+				_ = target.PutDoc(docID, `{"channels":["alice"],"local":true}`)
+			},
+			requireNotStored: requireRevNotStored,
+			onlyDirection:    db.ActiveReplicatorTypePush,
+		},
+		{
+			// a v3+ peer purges on a removal in changes, and only logs the failed purge of a doc it does not have
+			name:           "purgeOnRemovalMissingDoc",
+			blockingBody:   `{"channels":[]}`,
+			updateExisting: true,
+			breakTarget:    func(_ testing.TB, target *rest.RestTester, docID string) { target.PurgeDoc(docID) },
+			onlyDirection:  db.ActiveReplicatorTypePull,
+			purgeOnRemoval: true,
+			failedStat:     func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.PurgedCount },
+		},
+		{
+			name:         "syncFnException500",
+			blockingBody: `{"channels":["alice"],"fail":"exception"}`,
+		},
+		{
+			name:         "syncFnInvalidChannel500",
+			blockingBody: `{"channels":["alice"],"fail":"invalidChannel"}`,
+		},
+		{
+			name:         "syncFnInvalidRole500",
+			blockingBody: `{"channels":["alice"],"fail":"invalidRole"}`,
+		},
+		{
+			name:         "syncFnInvalidAccess500",
+			blockingBody: `{"channels":["alice"],"fail":"invalidAccess"}`,
+		},
+		{
+			name:         "corruptSyncXattr500",
+			blockingBody: `{"channels":["alice"]}`,
+			breakTarget: func(t testing.TB, target *rest.RestTester, docID string) {
+				_, err := target.GetSingleDataStore().WriteWithXattrs(target.Context(), docID, 0, 0, []byte(`{}`),
+					map[string][]byte{base.SyncXattrName: []byte(`"invalid sync data"`)}, nil, nil)
+				require.NoError(t, err)
+			},
+			// the corrupt doc can't be read through Sync Gateway, so check the raw body is unchanged
+			requireNotStored: func(t testing.TB, target *rest.RestTester, docID string, _ rest.DocVersion) {
+				body, _, err := target.GetSingleDataStore().GetRaw(target.Context(), docID)
+				require.NoError(t, err)
+				require.JSONEq(t, `{}`, string(body))
+			},
+		},
+		{
+			name:           "sequenceTooFarAhead500",
+			blockingBody:   `{"channels":["alice"],"update":true}`,
+			updateExisting: true,
+			breakTarget: func(_ testing.TB, target *rest.RestTester, docID string) {
+				target.SetDocumentSequence(docID, 2*db.MaxSequencesToRelease)
+			},
+			requireNotStored: requireRevNotStored,
+		},
+		{
+			name:         "conflictResolverThrows500",
+			blockingBody: `{"channels":["alice"],"remote":true}`,
+			breakTarget: func(_ testing.TB, target *rest.RestTester, docID string) {
+				_ = target.PutDoc(docID, `{"channels":["alice"],"local":true}`)
+			},
+			requireNotStored: requireRevNotStored,
+			onlyDirection:    db.ActiveReplicatorTypePull,
+			eeOnly:           true,
+			conflictResolver: `function(conflict) { throw("conflict resolver failed"); }`,
+		},
+	}
+	for _, direction := range directions {
+		for _, failure := range failures {
+			t.Run(string(direction.direction)+"/"+failure.name, func(t *testing.T) {
+				if failure.onlyDirection != "" && failure.onlyDirection != direction.direction {
+					t.Skipf("only runs for %s", failure.onlyDirection)
+				}
+				if failure.eeOnly && !base.IsEnterpriseEdition() {
+					t.Skip("custom conflict resolvers are EE only")
+				}
+				sgrRunner := rest.NewSGRTestRunner(t)
+				sgrRunner.Run(func(t *testing.T) {
+					activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeersWithOptions(t, direction.peerOpts)
+					rt1 := activeRT
+
+					// revisions always flow towards the peer running the failing sync function
+					source, target := passiveRT, activeRT
+					if direction.direction == db.ActiveReplicatorTypePush {
+						source, target = activeRT, passiveRT
+					}
+					targetDB := target.GetDatabase()
+					// set before the replication starts, and only takes effect while BroadcastSlowMode is set
+					targetDB.Options.UnsupportedOptions.RejectWritesWithSkippedSequences = failure.transient
+
+					const docBody = `{"channels":["alice"]}`
+					docIDPrefix := rest.SafeDocumentName(t, t.Name())
+					firstDocID := docIDPrefix + "first"
+					blockingDocID := docIDPrefix + "blocking"
+					laterDocID := docIDPrefix + "later"
+
+					firstVersion := source.PutDoc(firstDocID, docBody)
+					var blockingVersion rest.DocVersion
+					if failure.updateExisting {
+						blockingVersion = source.PutDoc(blockingDocID, docBody)
+					}
+					conflictResolverType := db.ConflictResolverDefault
+					if failure.conflictResolver != "" {
+						conflictResolverType = db.ConflictResolverCustom
+					}
+					replicationID := rest.SafeDocumentName(t, t.Name())
+					resp := rt1.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", rest.MarshalConfig(t, db.ReplicationConfig{
+						ID:                     replicationID,
+						Direction:              direction.direction,
+						Remote:                 passiveDBURL,
+						Continuous:             true,
+						ConflictResolutionType: conflictResolverType,
+						ConflictResolutionFn:   failure.conflictResolver,
+						PurgeOnRemoval:         failure.purgeOnRemoval,
+						CollectionsEnabled:     base.TestsUseNamedCollections(),
+					}))
+					rest.RequireStatus(t, resp, http.StatusCreated)
+					rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+					sgrRunner.WaitForVersion(firstDocID, target, firstVersion)
+					if failure.updateExisting {
+						sgrRunner.WaitForVersion(blockingDocID, target, blockingVersion)
+					}
+					checkpointer := direction.checkpointer(t, rt1.GetDatabase().SGReplicateMgr.GetActiveReplicator(replicationID))
+					failedCount := direction.failedCount(rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID))
+					if failure.failedStat != nil {
+						failedCount = failure.failedStat(rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID))
+					}
+
+					if failure.breakTarget != nil {
+						failure.breakTarget(t, target, blockingDocID)
+					}
+					targetDB.BroadcastSlowMode.Store(failure.transient)
+					if failure.updateExisting {
+						blockingVersion = source.UpdateDoc(blockingDocID, blockingVersion, failure.blockingBody)
+					} else {
+						blockingVersion = source.PutDoc(blockingDocID, failure.blockingBody)
+					}
+					base.RequireWaitForStat(t, failedCount.Value, 1)
+					targetDB.BroadcastSlowMode.Store(false)
+
+					laterVersion := source.PutDoc(laterDocID, docBody)
+					sgrRunner.WaitForVersion(laterDocID, target, laterVersion)
+
+					if !failure.transient {
+						// the failed sequence does not hold the checkpoint back, and the failed rev is never stored
+						direction.waitForSeq(rt1, replicationID, source.SequenceForDoc(laterDocID))
+						if failure.requireNotStored != nil {
+							failure.requireNotStored(t, target, blockingDocID, blockingVersion)
+						} else {
+							target.RequireDocNotFound(blockingDocID)
+						}
+						return
+					}
+
+					// once the later rev is processed, the checkpoint is still held before the failed rev
+					base.RequireWaitForStat(t, func() int64 { return checkpointer.Stats().ProcessedSequenceCount }, 2)
+					direction.waitForSeq(rt1, replicationID, source.SequenceForDoc(firstDocID))
+
+					// a restart resumes from the held checkpoint, so the failed rev is retried
+					rt1.StopReplication(replicationID)
+					rt1.StartReplication(replicationID)
+					sgrRunner.WaitForVersion(blockingDocID, target, blockingVersion)
+					direction.waitForSeq(rt1, replicationID, source.SequenceForDoc(laterDocID))
+				})
+			})
+		}
+	}
+}
+
+// TestActiveReplicatorCheckpointFailedDelta covers a delta that the receiving peer can't apply. The 422 does not mark the
+// rev processed, and the full rev that the sender resends with the same sequence moves the checkpoint past it.
+func TestActiveReplicatorCheckpointFailedDelta(t *testing.T) {
+	if !base.IsEnterpriseEdition() {
+		t.Skip("delta sync is EE only")
+	}
+	if base.TestDisableRevCache() {
+		t.Skip("test corrupts the delta source in the rev cache")
+	}
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeySync, base.KeySyncMsg)
+
+	directions := []struct {
+		direction   db.ActiveReplicatorDirection
+		waitForSeq  func(rt *rest.RestTester, replicationID string, seq uint64)
+		deltaCount  func(*base.DbReplicatorStats) *base.SgwIntStat
+		failedCount func(*base.DbReplicatorStats) *base.SgwIntStat
+	}{
+		{
+			direction:  db.ActiveReplicatorTypePull,
+			waitForSeq: rest.WaitForISGRPullSequence,
+			// the received count only covers a delta that applies, so count the deltas that the active peer asked for
+			deltaCount:  func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.DeltaRequestedCount },
+			failedCount: func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.FailedToPullCount },
+		},
+		{
+			direction:   db.ActiveReplicatorTypePush,
+			waitForSeq:  rest.WaitForISGRPushSequence,
+			deltaCount:  func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.PushDeltaSentCount },
+			failedCount: func(s *base.DbReplicatorStats) *base.SgwIntStat { return s.NumDocsFailedToPush },
+		},
+	}
+	for _, direction := range directions {
+		t.Run(string(direction.direction), func(t *testing.T) {
+			sgrRunner := rest.NewSGRTestRunner(t)
+			sgrRunner.Run(func(t *testing.T) {
+				activeRT, passiveRT, passiveDBURL := sgrRunner.SetupSGRPeersWithOptions(t, rest.TestISGRPeerOpts{UseDeltas: true})
+				rt1 := activeRT
+				source, target := passiveRT, activeRT
+				if direction.direction == db.ActiveReplicatorTypePush {
+					source, target = activeRT, passiveRT
+				}
+
+				docID := rest.SafeDocumentName(t, t.Name())
+				version1 := source.PutDoc(docID, `{"field1":"f1_1","field2":"f2_1"}`)
+				replicationID := rest.SafeDocumentName(t, t.Name())
+				resp := rt1.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", rest.MarshalConfig(t, db.ReplicationConfig{
+					ID:                     replicationID,
+					Direction:              direction.direction,
+					Remote:                 passiveDBURL,
+					Continuous:             true,
+					ConflictResolutionType: db.ConflictResolverDefault,
+					DeltaSyncEnabled:       true,
+					CollectionsEnabled:     base.TestsUseNamedCollections(),
+				}))
+				rest.RequireStatus(t, resp, http.StatusCreated)
+				rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+				sgrRunner.WaitForVersion(docID, target, version1)
+				stats := rest.DbReplicatorStats(t, rt1.GetDatabase(), replicationID)
+
+				// an invalid delta source body makes the receiving peer reject the delta with a 422
+				collection, ctx := target.GetSingleTestDatabaseCollection()
+				revCache := collection.GetRevisionCacheForTest()
+				rev, err := revCache.GetActive(ctx, docID)
+				require.NoError(t, err)
+				rev.BodyBytes = []byte("{invalid}")
+				require.NoError(t, revCache.Upsert(ctx, rev))
+				revCache.PutRevEntry(t, ctx, rev)
+
+				version2 := source.UpdateDoc(docID, version1, `{"field1":"f1_2","field2":"f2_2"}`)
+				base.RequireWaitForStat(t, direction.failedCount(stats).Value, 1)
+				sgrRunner.WaitForVersion(docID, target, version2)
+				direction.waitForSeq(rt1, replicationID, source.SequenceForDoc(docID))
+				require.Positive(t, direction.deltaCount(stats).Value())
+			})
+		})
+	}
+}
+
+// requireRevNotStored requires that the doc on rt is not at the given version.
+func requireRevNotStored(t testing.TB, rt *rest.RestTester, docID string, version rest.DocVersion) {
+	require.NotEqual(t, version.RevTreeID, rt.GetDocument(docID).GetRevTreeID())
+}
+
 // TestActiveReplicatorPullSkippedSequence ensures that ISGR and the checkpointer are able to handle the compound sequence format appropriately.
 // - Creates several documents on rt2, separated by a skipped sequence, and rt1 pulls them.
 //   - rt2 seq 1 _user    rt1 seq n/a
