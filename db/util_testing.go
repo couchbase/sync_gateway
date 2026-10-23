@@ -800,6 +800,12 @@ func rewriteSyncDataForTest(t *testing.T, ctx context.Context, collection *Datab
 
 // WriteDirect will write a document named doc-{sequence} with a given set of channels. This is used to simulate out of order sequence writes by bypassing typical Sync Gateway CRUD functions.
 func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []string, sequence uint64) {
+	WriteDirectWithUnusedSequences(t, collection, channelArray, sequence, nil)
+}
+
+// WriteDirectWithUnusedSequences is WriteDirect for a document whose sync data also carries unusedSequences, as
+// left by an update that allocated sequences it then didn't use.
+func WriteDirectWithUnusedSequences(t *testing.T, collection *DatabaseCollection, channelArray []string, sequence uint64, unusedSequences []uint64) {
 	key := fmt.Sprintf("doc-%v", sequence)
 
 	rev := "1-a"
@@ -823,10 +829,11 @@ func WriteDirect(t *testing.T, collection *DatabaseCollection, channelArray []st
 		RevAndVersion: channels.RevAndVersion{
 			RevTreeID: rev,
 		},
-		Sequence:  sequence,
-		Channels:  chanMap,
-		TimeSaved: time.Now(),
-		History:   revTree,
+		Sequence:        sequence,
+		UnusedSequences: unusedSequences,
+		Channels:        chanMap,
+		TimeSaved:       time.Now(),
+		History:         revTree,
 	}
 	body := fmt.Sprintf(`{"key": "%s"}`, key)
 	opts := &sgbucket.MutateInOptions{

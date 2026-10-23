@@ -1151,21 +1151,12 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 		waitForChanges:
 			for {
-				col.dbStats().CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
-				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
-				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
-				// Similar handling for when we see sequences later than the stable sequence.
-				if deferredBackfill || postStableSeqsFound {
-					cancelled := col.waitForCacheUpdate(options.ChangesCtx, currentCachedSequence)
-					if cancelled {
-						return
-					}
-					break waitForChanges
-				}
-
-				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(1)
-				waitResponse := changeWaiter.Wait(ctx)
-				col.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
+				// If we're in a deferred backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
+				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Poll the cache instead.
+				// Similar handling for when we see sequences later than the stable sequence, and for request_plus feeds below their target, whose
+				// target sequence may be in a channel the user can't see.
+				pollCache := deferredBackfill || postStableSeqsFound || options.RequestPlusSeq > currentCachedSequence
+				waitResponse := col.waitForFeedProgress(ctx, options.ChangesCtx, changeWaiter, pollCache, currentCachedSequence)
 
 				if options.ChangesCtx.Err() != nil {
 					return
@@ -1224,21 +1215,52 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 	return output, nil
 }
 
-func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, currentCachedSequence uint64) (cancelled bool) {
+// waitForFeedProgress parks a caught-up feed until there may be something new to send. The feed counts as
+// caught up for the whole wait, whichever way it waits.
+//
+// pollCache is for feeds whose waiter keys can't see the event they're waiting for: a deferred backfill whose
+// granting doc isn't visible to the user, sequences later than the stable sequence, or a request_plus target
+// that may land in a channel the feed doesn't watch. Those poll the cached sequence instead of parking on the
+// waiter, which would block until the next user-visible change.
+//
+// Cancellation of changesCtx is left for the caller to check.
+func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx context.Context, changeWaiter *ChangeWaiter, pollCache bool, currentCachedSequence uint64) uint32 {
+	pullStats := col.dbStats().CBLReplicationPull()
+	pullStats.NumPullReplTotalCaughtUp.Add(1)
+	pullStats.NumPullReplCaughtUp.Add(1)
+	defer pullStats.NumPullReplCaughtUp.Add(-1)
+
+	if pollCache {
+		if !col.waitForCacheUpdate(changesCtx, changeWaiter, currentCachedSequence) {
+			return WaiterClosed
+		}
+		// Wait() usually refreshes user counts and here we are bypassing that. Without this a continuous feed doesn't
+		// reload its user after a grant or revocation keeping stale channel access on the feed.
+		changeWaiter.RefreshUserCount()
+		return WaiterHasChanges
+	}
+	return changeWaiter.Wait(ctx)
+}
+
+// waitForCacheUpdate polls until the cached sequence moves past currentCachedSequence, ctx is done, the change
+// listener stops, or about five seconds pass. It returns false only when the listener has stopped, so the feed
+// should end. Otherwise the caller re-runs its changes loop, and is responsible for checking ctx for cancellation.
+func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, changeWaiter *ChangeWaiter, currentCachedSequence uint64) bool {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for retry := 0; retry <= 50; retry++ {
 		select {
-		// Check if feed has been terminated regardless of if any changes have happened
 		case <-ctx.Done():
 			return true
+		case <-changeWaiter.listener.terminator:
+			return false
 		case <-ticker.C:
 			if col.changeCache().getChannelCache().GetHighCacheSequence() != currentCachedSequence {
-				return false
+				return true
 			}
 		}
 	}
-	return false
+	return true
 }
 
 // Returns the set of cached log entries for a given channel

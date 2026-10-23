@@ -3195,6 +3195,53 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 	})
 }
 
+// TestRequestPlusPullTargetInUnwatchedChannel tests that a one-shot request_plus pull completes once the cache
+// reaches its request_plus sequence, when the document at that sequence is in a channel the user can't see.
+func TestRequestPlusPullTargetInUnwatchedChannel(t *testing.T) {
+	ctx := base.TestCtx(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+	defer db.SuspendSequenceBatching()() // so the allocated sequence below is the request_plus sequence
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
+		})
+		defer rt.Close()
+		database := rt.GetDatabase()
+		pullStats := database.DbStats.CBLReplicationPull()
+
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"ABC"})
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username: alice,
+		})
+		defer client.Close()
+
+		rt.PutDoc("abc-1", `{"channels":["ABC"]}`)
+		rt.WaitForPendingChanges()
+
+		// Allocate the request_plus sequence but don't write it yet, so the pull's target is ahead of the cache.
+		targetSeq, err := db.AllocateTestSequence(ctx, database)
+		require.NoError(t, err)
+
+		caughtUpStart := pullStats.NumPullReplCaughtUp.Value()
+		btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Since: "0", RequestPlus: true})
+		btcRunner.WaitForDoc(client.id, "abc-1")
+
+		// The feed has sent everything it can and is waiting for the cache to reach its target.
+		base.RequireStatGreaterThan(t, pullStats.NumPullReplCaughtUp, caughtUpStart)
+		require.Equal(t, int64(1), pullStats.NumPullReplActiveOneShot.Value())
+
+		// The target arrives as a document in a channel alice can't see, so nothing the feed watches changes.
+		collection, _ := rt.GetSingleTestDatabaseCollection()
+		db.WriteDirect(t, collection, []string{"XYZ"}, targetSeq)
+		rt.WaitForPendingChanges()
+
+		base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0, "one-shot request_plus pull did not complete after the cache reached its target")
+	})
+}
+
 // TestBlipMessageAfterUserDelete ensures a blip message on a connection whose user has since been
 // deleted fails with CBLReconnectErrorCode, CBL's cue to reconnect and re-authenticate.  Uses a
 // one-shot pull so no continuous changes feed is running, which would tear down the connection and
