@@ -49,7 +49,7 @@ func TestUserWaiter(t *testing.T) {
 	require.NoError(t, err, "Error saving user")
 
 	// Wait for notify from initial save
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the user to grant new channel
 	updatedUser := auth.PrincipalConfig{
@@ -60,8 +60,7 @@ func TestUserWaiter(t *testing.T) {
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notification from grant
-	require.True(t, WaitForUserWaiterChange(userWaiter))
-
+	WaitForUserWaiterChange(t, userWaiter)
 }
 
 func TestUserWaiterForRoleChange(t *testing.T) {
@@ -99,7 +98,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error saving user")
 
 	// Wait for notify from initial save
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the user to grant role
 	updatedUser := auth.PrincipalConfig{
@@ -110,14 +109,14 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error updating user")
 
 	// Wait for notify from updated user
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Retrieve the user.  This will trigger a user update to move ExplicitRoles->roles
 	userRefresh, err := authenticator.GetUser(username)
 	require.NoError(t, err, "Error retrieving user")
 
 	// Wait for notify from retrieval
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Update the waiter with the current user (adds role to waiter.UserKeys)
 	userWaiter.RefreshUserKeys(userRefresh, db.MetadataKeys)
@@ -131,7 +130,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NoError(t, err, "Error updating role")
 
 	// Wait for user notification of updated role
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 }
 
 // TestUserWaiterForUserDelete ensures that deleting a user notifies the change listener.  A deletion
@@ -154,10 +153,10 @@ func TestUserWaiterForUserDelete(t *testing.T) {
 	require.NoError(t, authenticator.Save(user), "Error saving user")
 
 	// Wait for notify from the save, so the next wait can only be satisfied by the delete
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	require.NoError(t, authenticator.DeleteUser(user), "Error deleting user")
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 }
 
 // TestUserWaiterForRolePurge ensures that a purged role notifies the change listener.  A non-purge
@@ -184,18 +183,18 @@ func TestUserWaiterForRolePurge(t *testing.T) {
 	userWaiter := userDb.NewUserWaiter()
 
 	require.NoError(t, authenticator.Save(user), "Error saving user")
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Retrieving the user moves ExplicitRoles->roles, which is another user write to wait out
 	user, err = authenticator.GetUser(username)
 	require.NoError(t, err, "Error retrieving user")
 	require.True(t, user.RoleNames().Contains(roleName))
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 
 	// Add the role to the waiter's keys.  RefreshUserKeys re-baselines the count, so the next wait
 	// can only be satisfied by the purge.
 	userWaiter.RefreshUserKeys(user, db.MetadataKeys)
 
 	require.NoError(t, db.DeleteRole(ctx, roleName, true), "Error purging role")
-	require.True(t, WaitForUserWaiterChange(userWaiter))
+	WaitForUserWaiterChange(t, userWaiter)
 }
