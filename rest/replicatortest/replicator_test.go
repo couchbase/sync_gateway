@@ -864,6 +864,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	docDEF1 := t.Name() + "DEF1"
 	_ = remoteRT.PutDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
 	_ = remoteRT.PutDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
+	remoteRT.WaitForPendingChanges()
 
 	// Create pull replications, verify running
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -3244,6 +3245,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+	rt1.WaitForPendingChanges()
 
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -3730,6 +3732,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+	rt1.WaitForPendingChanges()
 
 	rt1collection, rt1ctx := rt1.GetSingleTestDatabaseCollection()
 	localDoc, err := rt1collection.GetDocument(rt1ctx, docID, db.DocUnmarshalAll)
@@ -4421,6 +4424,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 
 	docID := t.Name() + "rt1doc1"
 	version := rt1.PutDoc(docID, `{"source":"rt1","channels":["alice"]}`)
+	rt1.WaitForPendingChanges()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -6109,8 +6113,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				version := remotePassiveRT.UpdateDoc(doc2ID, rest.DocVersion{RevID: "3-abc"}, `{"foo":"bar"}`)
 				remotePassiveRT.DeleteDoc(doc2ID, version)
 
+				remotePassiveRT.WaitForPendingChanges()
 				// Validate local is CBS tombstone, expect not found error
-				// Expect KeyNotFound error retrieving remote tombstone pre-replication
+				// Expect KeyNotPendtFound error retrieving remote tombstone pre-replication
 				requireTombstone(t, remotePassiveRT.GetSingleDataStore(), doc2ID)
 			}
 
@@ -8062,6 +8067,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	docID := "doc1"
 	_ = activeRT.CreateTestDoc(docID)
 
+	activeRT.WaitForPendingChanges()
 	shouldChannelQueryError.Store(true)
 	require.NoError(t, ar.Start(activeRT.Context()))
 
