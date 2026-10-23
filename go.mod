@@ -19,7 +19,7 @@ require (
 	github.com/couchbaselabs/rosmar v0.0.0-20261009154319-27bd760ee233
 	github.com/elastic/gosigar v0.14.4
 	github.com/felixge/fgprof v0.9.5
-	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/grafana-foundation-sdk/go v0.0.20
