@@ -576,6 +576,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	//   2. Update abc-3 to remove from channel ABC
 	rt.DeleteDoc(abc2ID, abc2Version)
 	_ = rt.UpdateDoc(abc3ID, abc3Version, `{}`)
+	rt.WaitForPendingChanges()
 
 	// Issue changes request and check the results
 	expectedResults := []string{
@@ -953,7 +954,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("bernard", []string{"PBS"})
 
@@ -961,7 +962,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 2)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
 	db.WriteDirect(t, collection, []string{"PBS"}, 6)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 6))
+	rt.WaitForSequenceNotSkipped(6)
 
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
@@ -981,17 +982,15 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	rt.WaitForSequence(3)
 
-	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
+	// WaitForSequence doesn't wait for low sequence to be updated on each channel - retry to ensure
 	// low is updated before making the next changes request.
-	time.Sleep(50 * time.Millisecond)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
-	changes = rt.PostChanges("/{{.keyspace}}/_changes", changesJSON, "bernard")
-	require.Len(t, changes.Results, 3)
+	changes = rt.WaitForChanges(3, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard", false)
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	db.WriteDirect(t, collection, []string{"PBS"}, 7)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 7))
+	rt.WaitForSequenceNotSkipped(7)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1027,7 +1026,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("bernard", []string{"PBS"})
 
@@ -1036,7 +1035,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	db.WriteDirect(t, collection, []string{"PBS"}, 4)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
+	rt.WaitForSequenceNotSkipped(5)
 
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
@@ -1051,7 +1050,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 8)
 	db.WriteDirect(t, collection, []string{"PBS"}, 9)
 	db.WriteDirect(t, collection, []string{"PBS"}, 10)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1063,7 +1062,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
 	db.WriteDirect(t, collection, []string{"PBS"}, 12)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
+	rt.WaitForSequenceNotSkipped(12)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1147,7 +1146,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 
 	const user = "alice"
 	rt.CreateUser(user, []string{"PBS"})
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	db.WriteDirect(t, collection, []string{"PBS"}, 1)
@@ -1155,7 +1154,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	db.WriteDirect(t, collection, []string{"PBS"}, 4)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
+	rt.WaitForSequenceNotSkipped(5)
+
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
 	changes := rt.GetChanges("/{{.keyspace}}/_changes", user)
@@ -1169,7 +1169,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 8)
 	db.WriteDirect(t, collection, []string{"PBS"}, 9)
 	db.WriteDirect(t, collection, []string{"PBS"}, 10)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1181,7 +1181,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
 	db.WriteDirect(t, collection, []string{"PBS"}, 12)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
+	rt.WaitForSequenceNotSkipped(12)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1265,7 +1265,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
+	collection, _ := rt.GetSingleTestDatabaseCollection()
 
 	rt.CreateUser("bernard", []string{"PBS"})
 
@@ -1274,7 +1274,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 3)
 	db.WriteDirect(t, collection, []string{"PBS"}, 4)
 	db.WriteDirect(t, collection, []string{"PBS"}, 5)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
+	rt.WaitForSequenceNotSkipped(5)
 
 	// Check the _changes feed:
 	rt.WaitForPendingChanges()
@@ -1289,7 +1289,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"PBS"}, 8)
 	db.WriteDirect(t, collection, []string{"PBS"}, 9)
 	db.WriteDirect(t, collection, []string{"PBS"}, 10)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
+	rt.WaitForSequenceNotSkipped(10)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1301,7 +1301,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	db.WriteDirect(t, collection, []string{"PBS"}, 11)
 	db.WriteDirect(t, collection, []string{"PBS"}, 12)
-	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
+	rt.WaitForSequenceNotSkipped(12)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1576,6 +1576,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	// Partially removed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	rest.RequireStatus(t, response, 201)
+	rt.WaitForPendingChanges()
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
@@ -1846,6 +1847,8 @@ func TestChangesIncludeDocs(t *testing.T) {
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc_resolved_conflict?new_edits=false", newEdits_conflict)
 	rest.RequireStatus(t, response, 201)
+	// WaitForPendingChanges is required here to set LowSeq on the sequence of the changes
+	rt.WaitForPendingChanges()
 	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc_resolved_conflict?rev=2-conflicting_rev", "")
 	rest.RequireStatus(t, response, 200)
 

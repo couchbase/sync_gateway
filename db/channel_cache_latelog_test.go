@@ -725,7 +725,7 @@ func TestLateLogsHealthyFeedsNoRollback(t *testing.T) {
 
 	writeSeq := func(seq uint64) {
 		WriteDirect(t, collection, []string{"ABC"}, seq)
-		require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, seq))
+		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
 		drainBoth()
 	}
 
@@ -1259,7 +1259,7 @@ func TestLateLogsSpikeForcePrunedBoundsLateLogsAndForcesRollback(t *testing.T) {
 	// references, since only the length cap can reclaim a referenced entry.
 	for seq := firstSkipped; seq <= lastSkipped; seq++ {
 		WriteDirect(t, collection, []string{"ABC"}, seq)
-		require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, seq))
+		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
 		// force a listener on each so compaction won't evict pass max length
 		abcCache.lateLogLock.Lock()
 		abcCache.lateLogs[len(abcCache.lateLogs)-1].addListener()
@@ -1390,7 +1390,7 @@ func TestEvictAllLateWhenFirstIteOnlyItemWithListener(t *testing.T) {
 	// will also clean all those items leaving only the sentinel item.
 	for seq := firstSkipped; seq <= lastSkipped; seq++ {
 		WriteDirect(t, collection, []string{"ABC"}, seq)
-		require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, seq))
+		require.NoError(t, db.WaitForSequenceNotSkipped(ctx, seq))
 	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, uint64(0), cCache.getOldestSkippedSequence(ctx),
