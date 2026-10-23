@@ -1111,15 +1111,6 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			}
 
 			stats.docsPurgedCount.Add(1)
-			if bh.collectionCtx.sgr2PullProcessedSeqCallback != nil {
-				seqStr := rq.Properties[RevMessageSequence]
-				seq, err := ParseJSONSequenceID(seqStr)
-				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
-				} else {
-					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: rev})
-				}
-			}
 			return nil
 		}
 	}
@@ -1412,21 +1403,45 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 		_, _, err = bh.collection.PutExistingRevWithConflictResolution(bh.loggingCtx, opts)
 	}
+	return err
+}
+
+// markPullSeqProcessed records the sequence of a rev received by an SGR2 pull replication with its checkpointer.
+func (bh *blipHandler) markPullSeqProcessed(rq *blip.Message) {
+	if bh.collectionCtx.sgr2PullProcessedSeqCallback == nil {
+		return
+	}
+	seqStr := rq.Properties[RevMessageSequence]
+	seq, err := ParseJSONSequenceID(seqStr)
 	if err != nil {
-		return err
+		base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
+		return
 	}
+	bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: rq.Properties[RevMessageID], RevID: rq.Properties[RevMessageRev]})
+}
 
-	if bh.collectionCtx.sgr2PullProcessedSeqCallback != nil {
-		seqProperty := rq.Properties[RevMessageSequence]
-		seq, err := ParseJSONSequenceID(seqProperty)
-		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
-		} else {
-			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: rev})
-		}
+// isPermanentRevStatus reports whether a rev that failed with this HTTP status fails the same way on retry, so the
+// checkpoint can move past it. Any other status, such as a 503, holds the checkpoint so the rev is retried. A 422 is not
+// permanent, because the sender resends a failed delta in full with the same sequence.
+func isPermanentRevStatus(status int) bool {
+	switch status {
+	case
+		// malformed rev properties, body or attachment metadata
+		http.StatusBadRequest,
+		// sync function throw({unauthorized}) or throw({forbidden}), or a read-only replication
+		http.StatusUnauthorized, http.StatusForbidden,
+		// reserved property such as _sync in the body, or a purge of a doc the receiver doesn't have
+		http.StatusNotFound,
+		// conflicting rev with no conflict resolver
+		http.StatusConflict,
+		// doc or attachment over the size limit
+		http.StatusRequestEntityTooLarge,
+		// sync function or conflict resolver error, malformed history or corrupt stored metadata. Some transient KV
+		// failures also return 500, and are skipped.
+		http.StatusInternalServerError:
+		return true
 	}
-
-	return nil
+	return false
 }
 
 // Handler for when a rev is received from the client
@@ -1441,7 +1456,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		throttledRevs:    bh.replicationStats.HandleRevThrottledCount,
 		throttledRevTime: bh.replicationStats.HandleRevThrottledTime,
 	}
-	return bh.processRev(rq, &stats)
+	err = bh.processRev(rq, &stats)
+	// Only a failure known to be permanent marks the rev processed. Any other failure, or a panic, holds the checkpoint
+	// before it, so the rev is retried after a reconnect rather than skipped.
+	// TODO: CBG-6048 drop the connection after a non-permanent failure, so the rev is retried without waiting for a reconnect
+	if status, _ := base.ErrorAsHTTPStatus(err); err == nil || isPermanentRevStatus(status) {
+		bh.markPullSeqProcessed(rq)
+	}
+	return err
 }
 
 // ////// ATTACHMENTS:
