@@ -145,6 +145,7 @@ func TestMetadataKeys(t *testing.T) {
 		resyncHeartbeatPrefix            string
 		resyncCfgPrefix                  string
 		databaseStateKey                 string
+		timestampsSeqKey                 string
 	}{
 		{
 			metadataID:                       "",
@@ -170,6 +171,7 @@ func TestMetadataKeys(t *testing.T) {
 			resyncHeartbeatPrefix:            "_sync:resync_hb:",
 			resyncCfgPrefix:                  "_sync:resync_cfg:",
 			databaseStateKey:                 "_sync:state",
+			timestampsSeqKey:                 "_sync:timestamps_seq",
 		},
 		{
 			metadataID:                       "",
@@ -195,6 +197,7 @@ func TestMetadataKeys(t *testing.T) {
 			resyncHeartbeatPrefix:            "_sync:resync_hb:",
 			resyncCfgPrefix:                  "_sync:resync_cfg:",
 			databaseStateKey:                 "_sync:state",
+			timestampsSeqKey:                 "_sync:timestamps_seq",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -220,6 +223,7 @@ func TestMetadataKeys(t *testing.T) {
 			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:",
 			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
 			databaseStateKey:                 "_sync:m_aMetadataID:state",
+			timestampsSeqKey:                 "_sync:m_aMetadataID:timestamps_seq",
 		},
 		{
 			metadataID:                       "aMetadataID",
@@ -245,6 +249,7 @@ func TestMetadataKeys(t *testing.T) {
 			resyncHeartbeatPrefix:            "_sync:m_aMetadataID:resync_hb:",
 			resyncCfgPrefix:                  "_sync:m_aMetadataID:resync_cfg:",
 			databaseStateKey:                 "_sync:m_aMetadataID:state",
+			timestampsSeqKey:                 "_sync:m_aMetadataID:timestamps_seq",
 		},
 	}
 
