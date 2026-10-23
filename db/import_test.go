@@ -1544,7 +1544,7 @@ func TestGetDocSyncDataOnImportCancelled(t *testing.T) {
 	// Create doc via SG to establish a _sync xattr with a RevTreeID and a recorded CAS.
 	_, _, err := collection.Put(ctx, docID, Body{"foo": "bar"})
 	require.NoError(t, err)
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// SDK-style Delete triggering isSgWrite=false inside GetDocSyncData
 	// which will trigger on-demand import with isDelete=true (rawDoc==nil).

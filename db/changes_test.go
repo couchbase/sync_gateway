@@ -71,8 +71,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 				_, _, err = collection.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
-			err = collection.WaitForPendingChanges(base.TestCtx(t))
-			require.NoError(t, err)
+			db.WaitForPendingChanges(t)
 
 			collection.user, err = auth.GetUser("test")
 			require.NoError(t, err)
@@ -124,8 +123,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	_, _, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
-	err = collection.WaitForPendingChanges(base.TestCtx(t))
-	assert.NoError(t, err)
+	db.WaitForPendingChanges(t)
 
 	// Check the _changes feed:
 	collection.user, err = authenticator.GetUser("naomi")
@@ -311,7 +309,7 @@ func TestCVPopulationOnChangeEntry(t *testing.T) {
 	_, doc, err := collection.Put(ctx, "doc1", Body{"channels": []string{"A"}})
 	require.NoError(t, err)
 
-	require.NoError(t, collection.WaitForPendingChanges(base.TestCtx(t)))
+	db.WaitForPendingChanges(t)
 
 	changes := getChanges(t, collection, base.SetOf("A"), changesOpts)
 	require.NoError(t, err)
@@ -426,8 +424,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
-	waitErr := collection.WaitForPendingChanges(base.TestCtx(t))
-	assert.NoError(t, waitErr)
+	db.WaitForPendingChanges(t)
 
 	changesOptions := ChangesOptions{
 		Since:      SequenceID{Seq: 0},
@@ -594,8 +591,7 @@ func TestCurrentVersionPopulationOnChannelCache(t *testing.T) {
 	// Put a doc that gets assigned a CV to populate the channel cache with
 	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err)
-	err = collection.WaitForPendingChanges(base.TestCtx(t))
-	require.NoError(t, err)
+	db.WaitForPendingChanges(t)
 
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	require.NoError(t, err)
@@ -650,7 +646,7 @@ func TestActiveOnlyWithLimit(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, collection.WaitForPendingChanges(ctx))
+	db.WaitForPendingChanges(t)
 
 	// Get changes with active_only=true and Limit=3
 	changesOptions := ChangesOptions{
@@ -1036,7 +1032,7 @@ func TestChangesQueryLimitBoundaries(t *testing.T) {
 				entries = append(entries, channelFeedEntry{docID: fmt.Sprintf("doc%d", i+1), removed: r})
 			}
 			seedChannelFeed(t, ctx, collection, targetChannel, otherChannel, entries)
-			require.NoError(t, collection.WaitForPendingChanges(ctx))
+			collection.dbCtx.WaitForPendingChanges(t)
 
 			changesOptions := ChangesOptions{
 				Since:      SequenceID{Seq: 0},
@@ -1146,7 +1142,7 @@ func TestChangesQueryCacheConcatenationBoundaries(t *testing.T) {
 				entries = append(entries, channelFeedEntry{docID: fmt.Sprintf("doc%d", i+1), removed: r})
 			}
 			seedChannelFeed(t, ctx, collection, targetChannel, otherChannel, entries)
-			require.NoError(t, collection.WaitForPendingChanges(ctx))
+			collection.dbCtx.WaitForPendingChanges(t)
 
 			changesOptions := ChangesOptions{
 				Since:      SequenceID{Seq: 0},
@@ -1374,7 +1370,7 @@ func TestChangesMultiChannelActiveOnlyLimit(t *testing.T) {
 
 			entries := entriesFromMultiChannelMutations(t, tc.mutations, ch1, ch2)
 			seedMultiChannelFeed(t, ctx, collection, otherChannel, entries)
-			require.NoError(t, collection.WaitForPendingChanges(ctx))
+			collection.dbCtx.WaitForPendingChanges(t)
 
 			changesOptions := ChangesOptions{
 				Since:      SequenceID{Seq: 0},
