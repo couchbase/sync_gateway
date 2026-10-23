@@ -2778,13 +2778,15 @@ func RequireStrictlyIncreasingRevTreeGenerations(t *testing.T, ctx context.Conte
 }
 
 // ClearServerContextLoggingGlobals clears the global variables related to logging in ServerContext and allows testing initialization of a server context's logging parameters.
-func ClearServerContextLoggingGlobals(t *testing.T) {
+// It returns a temp directory that is safe to write log files to, see base.TempLogDirWithLoggerRestore.
+func ClearServerContextLoggingGlobals(t *testing.T) (logDir string) {
 	// the end of the test must clean up global logging
-	base.ResetGlobalTestLogging(t)
+	logDir = base.TempLogDirWithLoggerRestore(t)
 	serverContextGlobalsInitialized.Store(false)
 	t.Cleanup(func() {
 		serverContextGlobalsInitialized.Store(true)
 	})
+	return logDir
 }
 
 // deleteBackupRevisionBodies removes the _sync:rev: backup document for every revision currently in the

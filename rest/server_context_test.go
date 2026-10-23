@@ -793,20 +793,22 @@ func TestLogFlush(t *testing.T) {
 	ClearServerContextLoggingGlobals(t)
 
 	testCases := []struct {
-		Name                 string
-		ExpectedLogFileCount int
-		EnableFunc           func(config StartupConfig) StartupConfig
+		Name string
+		// EnabledLevels are the file loggers that must get the lines buffered in the memory loggers.
+		// Every log file is created on startup, even for disabled loggers, so the file contents are checked, not which files exist.
+		EnabledLevels []base.LogLevel
+		EnableFunc    func(config StartupConfig) StartupConfig
 	}{
 		{
 			"Default",
-			4,
+			[]base.LogLevel{base.LevelError, base.LevelWarn, base.LevelInfo},
 			func(config StartupConfig) StartupConfig {
 				return config
 			},
 		},
 		{
 			"Add trace",
-			5,
+			[]base.LogLevel{base.LevelError, base.LevelWarn, base.LevelInfo, base.LevelTrace},
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Trace = &base.FileLoggerConfig{
 					Enabled: new(true),
@@ -816,7 +818,7 @@ func TestLogFlush(t *testing.T) {
 		},
 		{
 			"Add debug and trace",
-			6,
+			[]base.LogLevel{base.LevelError, base.LevelWarn, base.LevelInfo, base.LevelDebug, base.LevelTrace},
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Debug = &base.FileLoggerConfig{
 					Enabled: new(true),
@@ -829,7 +831,7 @@ func TestLogFlush(t *testing.T) {
 		},
 		{
 			"Disable error",
-			3,
+			[]base.LogLevel{base.LevelWarn, base.LevelInfo},
 			func(config StartupConfig) StartupConfig {
 				config.Logging.Error = &base.FileLoggerConfig{
 					Enabled: new(false),
@@ -839,6 +841,8 @@ func TestLogFlush(t *testing.T) {
 		},
 	}
 
+	fileLevels := []base.LogLevel{base.LevelError, base.LevelWarn, base.LevelInfo, base.LevelDebug, base.LevelTrace}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
@@ -847,7 +851,7 @@ func TestLogFlush(t *testing.T) {
 			base.InitializeMemoryLoggers()
 
 			// Add temp dir to save log files to
-			tempPath := t.TempDir()
+			tempPath := base.TempLogDirWithLoggerRestore(t)
 			testDirName := filepath.Base(tempPath)
 
 			// Log some stuff (which will go into the memory loggers)
@@ -881,33 +885,28 @@ func TestLogFlush(t *testing.T) {
 			}
 			flushCallsWg.Wait()
 
-			// Check that the expected number of log files are created
-			listFiles := func() (files []string, err error) {
-				err = filepath.Walk(tempPath, func(path string, info os.FileInfo, err error) error {
-					if tempPath != path {
-						files = append(files, filepath.Base(path))
-					}
-					return nil
-				})
-				return files, err
-			}
-			filesCreated := assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				files, err := listFiles()
+			readLogFile := func(c *assert.CollectT, name string) string {
+				content, err := os.ReadFile(filepath.Join(tempPath, "sg_"+name+".log"))
 				assert.NoError(c, err)
-				assert.Len(c, files, testCase.ExpectedLogFileCount)
-			}, 20*time.Second, 100*time.Millisecond, "Wait for log files")
-			if !filesCreated {
-				// Try to figure who is writing to the files
-				files, err := listFiles()
-				require.NoError(t, err)
-				for _, filename := range files {
-					if content, err := os.ReadFile(filepath.Join(tempPath, filename)); err != nil {
-						t.Log("error reading file: ", filename, ": ", err)
-					} else {
-						t.Log(filename, ": ", string(content))
+				return string(content)
+			}
+			// A file logger gets lines at its own level and every more severe level. Other goroutines can also log
+			// while the test runs, so only this test's lines are checked.
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				for _, fileLevel := range fileLevels {
+					content := readLogFile(c, fileLevel.String())
+					enabled := slices.Contains(testCase.EnabledLevels, fileLevel)
+					for _, lineLevel := range fileLevels {
+						line := lineLevel.String() + ": " + testDirName
+						if enabled && lineLevel <= fileLevel {
+							assert.Contains(c, content, line, "sg_%s.log", fileLevel)
+						} else {
+							assert.NotContains(c, content, line, "sg_%s.log", fileLevel)
+						}
 					}
 				}
-			}
+				assert.Contains(c, readLogFile(c, "stats"), "{}")
+			}, 20*time.Second, 100*time.Millisecond, "Wait for log files")
 		})
 	}
 

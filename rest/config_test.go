@@ -727,11 +727,11 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 }
 
 func TestAuditLogConfigDatabaseEventInGlobal(t *testing.T) {
-	base.ResetGlobalTestLogging(t)
+	logDir := base.TempLogDirWithLoggerRestore(t)
 	base.InitializeMemoryLoggers()
 
 	sc := NewEmptyStartupConfig()
-	sc.Logging.LogFilePath = t.TempDir()
+	sc.Logging.LogFilePath = logDir
 	sc.Logging.Audit.Enabled = new(true)
 	sc.Logging.Audit.EnabledEvents = []uint{
 		uint(base.AuditIDSyncGatewayStartup),          // global, non-filterable
@@ -1479,7 +1479,7 @@ func deleteTempFile(t *testing.T, file *os.File) {
 
 func TestDefaultLogging(t *testing.T) {
 	ctx := base.TestCtx(t)
-	base.ResetGlobalTestLogging(t)
+	base.RestoreGlobalLoggersAfterTest(t)
 	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)

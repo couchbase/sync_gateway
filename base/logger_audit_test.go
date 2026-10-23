@@ -24,9 +24,7 @@ import (
 )
 
 func TestAuditLoggerGlobalFields(t *testing.T) {
-	ResetGlobalTestLogging(t)
-
-	tmpdir := t.TempDir()
+	tmpdir := TempLogDirWithLoggerRestore(t)
 
 	testCases := []struct {
 		name           string
@@ -136,7 +134,7 @@ func TestAuditLoggerGlobalFields(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ResetGlobalTestLogging(t)
+			RestoreGlobalLoggersAfterTest(t)
 			ctx := TestCtx(t)
 			if testCase.contextFields != nil {
 				ctx = AuditLogCtx(ctx, testCase.contextFields)

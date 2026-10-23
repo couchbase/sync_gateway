@@ -33,9 +33,7 @@ func TestAuditLoggingFields(t *testing.T) {
 		t.Skip("Audit logging only works in EE")
 	}
 
-	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
-	tempdir := t.TempDir()
-	base.ResetGlobalTestLogging(t)
+	tempdir := base.TempLogDirWithLoggerRestore(t)
 	base.InitializeMemoryLoggers()
 
 	const (
@@ -827,8 +825,7 @@ func TestRedactConfigAsStr(t *testing.T) {
 }
 
 func TestEffectiveUserID(t *testing.T) {
-	tempdir := t.TempDir()
-	base.ResetGlobalTestLogging(t)
+	tempdir := base.TempLogDirWithLoggerRestore(t)
 	base.InitializeMemoryLoggers()
 	const (
 		headerUser   = "user"
@@ -1651,9 +1648,7 @@ func createAuditLoggingRestTester(t *testing.T) *RestTester {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Audit logging only works in EE")
 	}
-	// get tempdir before resetting global loggers, since the logger cleanup needs to happen before deletion
-	tempdir := t.TempDir()
-	base.ResetGlobalTestLogging(t)
+	tempdir := base.TempLogDirWithLoggerRestore(t)
 	base.InitializeMemoryLoggers()
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled:     true, // for blip testing
@@ -1816,7 +1811,7 @@ func TestAuditLoggingGlobals(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			base.ResetGlobalTestLogging(t)
+			logDir := base.TempLogDirWithLoggerRestore(t)
 			base.InitializeMemoryLoggers()
 			if testCase.globalAuditEvents != nil {
 				require.NoError(t, os.Setenv(globalEnvVarName, *testCase.globalAuditEvents))
@@ -1827,7 +1822,7 @@ func TestAuditLoggingGlobals(t *testing.T) {
 				require.NoError(t, os.Unsetenv(globalEnvVarName))
 			}
 			startupConfig := DefaultStartupConfig("")
-			startupConfig.Logging = getAuditLoggingTestConfig(t.TempDir())
+			startupConfig.Logging = getAuditLoggingTestConfig(logDir)
 			if testCase.globalAuditEvents != nil {
 				startupConfig.Unsupported.AuditInfoProvider = &AuditInfoProviderConfig{
 					GlobalInfoEnvVarName: new(globalEnvVarName),
