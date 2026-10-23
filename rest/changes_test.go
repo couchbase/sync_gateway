@@ -104,6 +104,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	rt.CreateUser("user1", []string{"alpha"})
+	rt.WaitForPendingChanges()
 
 	// Create 100 docs
 	for i := 0; i < 100; i++ {
@@ -494,7 +495,7 @@ func TestContinuousChangesRolePurge(t *testing.T) {
 	// notification alone and is still holding the stale channel set.
 	userWaiter := rt.NewUserWaiter(username)
 	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// The feed sends in sequence order, so a feed still serving the revoked channel would send
 	// afterPurgeRevoked first.
