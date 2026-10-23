@@ -456,9 +456,9 @@ func TestSessionAPI(t *testing.T) {
 	user3sessions := make([]string, 5)
 
 	for i := 0; i < 5; i++ {
-		user1sessions[i] = createSession(t, rt, "user1")
-		user2sessions[i] = createSession(t, rt, "user2")
-		user3sessions[i] = createSession(t, rt, "user3")
+		user1sessions[i] = rt.CreateSession("user1")
+		user2sessions[i] = rt.CreateSession("user2")
+		user3sessions[i] = rt.CreateSession("user3")
 	}
 
 	// GET Tests
@@ -712,18 +712,6 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.Contains(t, response.Body.String(), "Session no longer valid")
 }
 
-func createSession(t *testing.T, rt *RestTester, username string) string {
-
-	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
-	RequireStatus(t, response, 200)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	sessionId := body["session_id"].(string)
-
-	return sessionId
-}
-
 func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -836,7 +824,7 @@ func TestDisabledUserSessionRejected(t *testing.T) {
 
 	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"channels":["alicechan"]}`), http.StatusCreated)
 
-	sessionID := createSession(t, rt, username)
+	sessionID := rt.CreateSession(username)
 	cookieHeaders := map[string]string{
 		"Cookie": auth.DefaultCookieName + "=" + sessionID,
 	}
