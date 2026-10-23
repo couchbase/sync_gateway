@@ -96,14 +96,9 @@ func TestAuditLoggingFields(t *testing.T) {
 
 	// sessions revoked before the audited actions run, so that only the failed login is audited
 	rt.CreateUser(revokedSessionUser, nil)
-	revokedCookieSessionID := createSession(t, rt, revokedSessionUser)
-	resp := rt.SendUserRequest(http.MethodPost, "/db/_session?one_time=true", "", revokedSessionUser)
-	RequireStatus(t, resp, http.StatusOK)
-	var revokedOneTimeSession struct {
-		SessionID string `json:"one_time_session_id"`
-	}
-	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &revokedOneTimeSession))
-	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/_user/"+revokedSessionUser+"/_session", ""), http.StatusOK)
+	revokedCookieSessionID := rt.CreateSession(revokedSessionUser)
+	revokedOneTimeSessionID := rt.CreateOneTimeSession(revokedSessionUser)
+	rt.DeleteUserSession(revokedSessionUser)
 	rt.CreateUser(filteredPublicUsername, nil)
 	rt.CreateRole(filteredPublicRoleName, []string{channels.AllChannelWildcard})
 	rt.CreateUser(filteredPublicRoleUsername, nil, filteredPublicRoleName)
@@ -297,7 +292,7 @@ func TestAuditLoggingFields(t *testing.T) {
 		{
 			name: "rejected websocket token",
 			auditableAction: func(t testing.TB) {
-				headers := map[string]string{secWebSocketProtocolHeader: blipSessionIDPrefix + revokedOneTimeSession.SessionID}
+				headers := map[string]string{secWebSocketProtocolHeader: blipSessionIDPrefix + revokedOneTimeSessionID}
 				RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/db/_blipsync", "", headers), http.StatusUnauthorized)
 			},
 			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
