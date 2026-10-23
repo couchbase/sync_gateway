@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -75,6 +76,7 @@ func (rtc *RestTesterCluster) Close(ctx context.Context) {
 type RestTesterClusterConfig struct {
 	NumNodes            uint8                // Number of RestTester objects to create
 	MutateStartupConfig func(*StartupConfig) // Passes this option to the RestTesterConfig for each RestTester
+	ConnectToBucketFn   db.OpenBucketFn      // Passes this option to the RestTesterConfig for each RestTester
 }
 
 func defaultRestTesterClusterConfig() *RestTesterClusterConfig {
@@ -105,6 +107,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 				PersistentConfig:    true,
 				CustomTestBucket:    tb.NoCloseClone(),
 				MutateStartupConfig: config.MutateStartupConfig,
+				ConnectToBucketFn:   config.ConnectToBucketFn,
 			}
 			rt := NewRestTester(t, rtConfig)
 			// initialize the RestTester before we attempt to use it
