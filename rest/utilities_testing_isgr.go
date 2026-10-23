@@ -38,6 +38,10 @@ type TestISGRPeerOpts struct {
 	UserChannelAccess []string
 	// AvoidUserCreation if true, don't create the user on the passive peer
 	AvoidUserCreation bool
+	// ActiveSyncFn overrides the active peer's sync function. Empty means the default.
+	ActiveSyncFn string
+	// PassiveSyncFn overrides the passive peer's sync function. Empty means the default.
+	PassiveSyncFn string
 }
 
 // TestISGRPeers contains two RestTesters to be used for ISGR testing.
@@ -205,12 +209,17 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	if opts.PassiveRestTesterConfig != nil {
 		passiveRTConfig = opts.PassiveRestTesterConfig
 	} else {
+		passiveSyncFn := channels.DocChannelsSyncFunction
+		if opts.PassiveSyncFn != "" {
+			passiveSyncFn = opts.PassiveSyncFn
+		}
 		passiveRTConfig = &RestTesterConfig{
 			CustomTestBucket: passiveTestBucket.NoCloseClone(),
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				Name: "passivedb",
+				Name:      "passivedb",
+				DeltaSync: deltaSyncConfig(opts.UseDeltas),
 			}},
-			SyncFn: channels.DocChannelsSyncFunction,
+			SyncFn: passiveSyncFn,
 		}
 	}
 	passiveRT := NewRestTester(t, passiveRTConfig)
@@ -240,13 +249,18 @@ func SetupISGRPeersWithOpts(t *testing.T, opts TestISGRPeerOpts) TestISGRPeers {
 	if opts.ActiveRestTesterConfig != nil {
 		activeRTConfig = opts.ActiveRestTesterConfig
 	} else {
+		activeSyncFn := channels.DocChannelsSyncFunction
+		if opts.ActiveSyncFn != "" {
+			activeSyncFn = opts.ActiveSyncFn
+		}
 		activeRTConfig = &RestTesterConfig{
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				Name: "activedb",
+				Name:      "activedb",
+				DeltaSync: deltaSyncConfig(opts.UseDeltas),
 			}},
 			CustomTestBucket:   activeTestBucket.NoCloseClone(),
 			SgReplicateEnabled: true,
-			SyncFn:             channels.DocChannelsSyncFunction,
+			SyncFn:             activeSyncFn,
 		}
 	}
 	activeRT := NewRestTester(t, activeRTConfig)
@@ -317,13 +331,42 @@ func RequireRevTreeConvergence(t *testing.T, docID string, peers ...*RestTester)
 	return convergedRev, perPeer
 }
 
+// deltaSyncConfig returns a delta sync config when enabled, and nil - the database default - when not.
+func deltaSyncConfig(enabled bool) *DeltaSyncConfig {
+	if !enabled {
+		return nil
+	}
+	return &DeltaSyncConfig{Enabled: base.Ptr(true)}
+}
+
 // WaitForISGRPullSequence waits for the pull replication on rt to have checkpointed the given remote sequence.
-// A pulled document is written before its sequence reaches the checkpointer, so it can be readable on rt while the
-// replication is still unable to checkpoint it - stopping in that window rewinds the replication on the next start.
 func WaitForISGRPullSequence(rt *RestTester, replicationID string, seq uint64) {
 	rt.TB().Helper()
+	waitForISGRSequence(rt, replicationID, seq, func(s *db.ReplicationStatus) string { return s.LastSeqPull })
+}
+
+// WaitForISGRPushSequence waits for the push replication on rt to have checkpointed the given local sequence.
+func WaitForISGRPushSequence(rt *RestTester, replicationID string, seq uint64) {
+	rt.TB().Helper()
+	waitForISGRSequence(rt, replicationID, seq, func(s *db.ReplicationStatus) string { return s.LastSeqPush })
+}
+
+// waitForISGRSequence reads the status in-process, since a poll still running after a timeout must not make HTTP
+// requests to a RestTester that is being torn down.
+func waitForISGRSequence(rt *RestTester, replicationID string, seq uint64, lastSeq func(*db.ReplicationStatus) string) {
+	rt.TB().Helper()
+	ar := rt.GetDatabase().SGReplicateMgr.GetActiveReplicator(replicationID)
+	require.NotNil(rt.TB(), ar, "replication %q is not running on this node", replicationID)
+	ctx := rt.Context()
 	expectedSeq := strconv.FormatUint(seq, 10)
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		assert.Equal(c, expectedSeq, rt.GetReplicationStatus(replicationID).LastSeqPull)
+		assert.Equal(c, expectedSeq, lastSeq(ar.GetStatus(ctx)))
 	}, 20*time.Second, 10*time.Millisecond)
+}
+
+// DbReplicatorStats returns the stats for the replication with the given ID on database.
+func DbReplicatorStats(t testing.TB, database *db.DatabaseContext, replicationID string) *base.DbReplicatorStats {
+	dbstats, err := database.DbStats.DBReplicatorStats(replicationID)
+	require.NoError(t, err)
+	return dbstats
 }

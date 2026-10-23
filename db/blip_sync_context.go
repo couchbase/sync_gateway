@@ -32,7 +32,8 @@ const (
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 )
 
-var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
+// ErrClosedBLIPSender is a 503 so that a rev that fails with it is retried after a reconnect, rather than skipped.
+var ErrClosedBLIPSender = base.HTTPErrorf(http.StatusServiceUnavailable, "use of closed BLIP sender")
 
 // NewBlipSyncContext creates a new BlipSyncContext for a given database and register the handlers. This does not make a connection.
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, replicationStats *BlipSyncStats, ctxCancelFunc context.CancelFunc) (*BlipSyncContext, error) {
@@ -497,11 +498,14 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 
 			base.TracefCtx(ctx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
 
+			processed := resp.Type() != blip.ErrorType
 			if resp.Type() == blip.ErrorType {
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
 				base.InfofCtx(ctx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
 				if errorDomainIsHTTP(resp) {
+					status, _ := strconv.Atoi(resp.Properties["Error-Code"])
+					processed = isPermanentRevStatus(status)
 					switch resp.Properties["Error-Code"] {
 					case "409":
 						bsc.replicationStats.SendRevErrorConflictCount.Add(1)
@@ -510,6 +514,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 					case "422", "404":
 						// unprocessable entity, CBL has not been able to use the delta we sent, so we should re-send the revision in full
 						if resendFullRevisionFunc != nil {
+							// the resent rev has the same sequence, and its own response decides the checkpoint
+							processed = false
 							base.DebugfCtx(ctx, base.KeySync, "sending full body replication for doc %s/%s due to unprocessable entity", base.UD(docID), revID)
 							if err := resendFullRevisionFunc(); err != nil {
 								base.WarnfCtx(ctx, "unable to resend revision: %v", err)
@@ -519,8 +525,6 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 						// runtime exceptions return 500 status codes, but we have no other way to determine if this 500 error was caused by the sync-function than matching on the error message.
 						if bytes.Contains(respBody, []byte("JS sync function")) {
 							bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-						} else {
-							bsc.replicationStats.SendRevErrorOtherCount.Add(1)
 						}
 					}
 				}
@@ -530,7 +534,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 
 			bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 
-			if collectionCtx.sgr2PushProcessedSeqCallback != nil {
+			// TODO: CBG-6048 drop the connection after a non-permanent failure, so the rev is retried without waiting for a reconnect
+			if collectionCtx.sgr2PushProcessedSeqCallback != nil && processed {
 				collectionCtx.sgr2PushProcessedSeqCallback(seq)
 			}
 		}(activeSubprotocol)
