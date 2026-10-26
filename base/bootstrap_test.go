@@ -657,10 +657,12 @@ func TestBootstrapKVOpStat(t *testing.T) {
 			require.True(t, IsCasMismatch(err), "expected CAS mismatch, got %v", err)
 		}), "a CAS mismatch on the primary does not go to the fallback")
 
+		idleKVOpsBefore := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
 		require.Equal(t, 0, kvOps(func() {
 			_, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
 			require.NoError(t, err)
 		}), "the connection WithKVOpStat was called on does not add to the stat")
+		require.Equal(t, idleKVOpsBefore, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value(), "a read for a client request must not count as idle")
 
 		require.Equal(t, probeOps+2, kvOps(func() {
 			_, err := counted.GetMetadataDocument(ctx, f.BucketName, missingDocID, &loaded)

@@ -689,7 +689,6 @@ func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, d
 		}
 		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
-	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	return cas, err
 }
 
