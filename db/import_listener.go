@@ -68,14 +68,15 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 
 	if !dbContext.useShardedDCP() {
 		feedArgs := base.DCPClientOptions{
-			FeedID:            base.DCPImportFeedID,
-			Terminator:        il.terminator,
-			CheckpointPrefix:  il.checkpointPrefix,
-			MetadataStoreType: base.DCPMetadataStoreCS,
-			CollectionNames:   dbContext.collectionNameSet(),
-			Callback:          il.ProcessFeedEvent,
-			DBStats:           dbContext.DbStats.Database().ImportFeedMapStats.Map,
-			MetadataStore:     dbContext.MetadataStore,
+			FeedID:               base.DCPImportFeedID,
+			Terminator:           il.terminator,
+			CheckpointPrefix:     il.checkpointPrefix,
+			MetadataStoreType:    base.DCPMetadataStoreCS,
+			CollectionNames:      dbContext.collectionNameSet(),
+			Callback:             il.ProcessFeedEvent,
+			DBStats:              dbContext.DbStats.Database().ImportFeedMapStats.Map,
+			MetadataStore:        dbContext.MetadataStore,
+			CountIdleCheckpoints: true,
 		}
 
 		_, err := base.StartDCPFeed(ctx, dbContext.Bucket, feedArgs)

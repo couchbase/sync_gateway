@@ -26,19 +26,21 @@ import (
 // DCPWorker queues incoming mutations in a buffered channel (eventFeed).  The main worker goroutine
 // works this channel and synchronously invokes the mutationCallback for mutations or deletions.
 type DCPWorker struct {
-	ID                    int
-	endSeqNos             []uint64
-	eventFeed             chan streamEvent
-	terminator            chan bool
-	checkpointPrefixBytes []byte
-	mutationCallback      sgbucket.FeedEventCallbackFunc
-	endStreamCallback     endStreamCallbackFunc
-	ignoreDeletes         bool
-	metadata              DCPMetadataStore
-	pendingSnapshot       map[uint16]snapshotEvent
-	lastMetaPersistTime   time.Time
-	metaPersistFrequency  time.Duration
-	assignedVbs           []uint16
+	ID                     int
+	endSeqNos              []uint64
+	eventFeed              chan streamEvent
+	terminator             chan bool
+	checkpointPrefixBytes  []byte
+	mutationCallback       sgbucket.FeedEventCallbackFunc
+	endStreamCallback      endStreamCallbackFunc
+	ignoreDeletes          bool
+	metadata               DCPMetadataStore
+	pendingSnapshot        map[uint16]snapshotEvent
+	lastMetaPersistTime    time.Time
+	metaPersistFrequency   time.Duration
+	assignedVbs            []uint16
+	countIdleCheckpoints   bool // Whether a checkpoint write made only for _sync: doc events is counted as an idle KV op
+	nonSyncDocSincePersist bool // Whether an event that was not for a _sync: doc has been seen since the last persist
 }
 
 const defaultQueueLength = 10
@@ -48,6 +50,7 @@ type DCPWorkerOptions struct {
 	eventQueueLength     int
 	ignoreDeletes        bool
 	metaPersistFrequency *time.Duration
+	countIdleCheckpoints bool
 }
 
 func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc,
@@ -80,6 +83,7 @@ func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbu
 		pendingSnapshot:       make(map[uint16]snapshotEvent),
 		metaPersistFrequency:  metadataPersistFrequency,
 		assignedVbs:           assignedVbs,
+		countIdleCheckpoints:  options != nil && options.countIdleCheckpoints,
 	}
 }
 
@@ -153,9 +157,18 @@ func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq 
 	// TODO: update snapshot and seq in a single atomic update
 	w.checkPendingSnapshot(vbID)
 	w.metadata.UpdateSeq(vbID, seq)
+	if !bytes.HasPrefix(key, []byte(SyncDocPrefix)) {
+		w.nonSyncDocSincePersist = true
+	}
 
 	if time.Since(w.lastMetaPersistTime) > w.metaPersistFrequency {
 		w.metadata.Persist(ctx, w.ID, w.assignedVbs)
+		// Background work such as heartbeats writes _sync: docs even on a node with no clients. When only those were
+		// seen, the checkpoint write is idle work too.
+		if w.countIdleCheckpoints && !w.nonSyncDocSincePersist {
+			AddIdleKVOps(1)
+		}
+		w.nonSyncDocSincePersist = false
 	}
 
 }

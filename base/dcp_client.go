@@ -36,19 +36,20 @@ type DCPClient interface {
 
 // DCPClientOptions are options for creating a DCPClient.
 type DCPClientOptions struct {
-	FeedID             string                         // Optional feed ID to distinguish the feed from others in logging
-	Callback           sgbucket.FeedEventCallbackFunc // callback function for DCP events
-	DBStats            *expvar.Map                    // these options are used only for gocbcore implementation, these stats are not shared by prometheus stats
-	CheckpointPrefix   string                         // start of the checkpoint documents
-	CollectionNames    CollectionNameSet              // scopes and collections to monitor
-	InitialMetadata    []DCPMetadata                  // initial metadata to seed the DCP client with
-	MetadataStoreType  DCPMetadataStoreType           // persistent or in memory storage
-	OneShot            bool                           // if true, the feed runs to latest document found when the client is started
-	FailOnRollback     bool                           // if true, fail Start if the current DCP checkpoints encounter a rollback condition
-	Terminator         chan bool                      // optional channel that can be closed to terminate the DCP feed, this will be replaced with a context option.
-	FromLatestSequence bool                           // If true, start at latest sequence.
-	FeedContent        sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
-	MetadataStore      DataStore
+	FeedID               string                         // Optional feed ID to distinguish the feed from others in logging
+	Callback             sgbucket.FeedEventCallbackFunc // callback function for DCP events
+	DBStats              *expvar.Map                    // these options are used only for gocbcore implementation, these stats are not shared by prometheus stats
+	CheckpointPrefix     string                         // start of the checkpoint documents
+	CollectionNames      CollectionNameSet              // scopes and collections to monitor
+	InitialMetadata      []DCPMetadata                  // initial metadata to seed the DCP client with
+	MetadataStoreType    DCPMetadataStoreType           // persistent or in memory storage
+	OneShot              bool                           // if true, the feed runs to latest document found when the client is started
+	FailOnRollback       bool                           // if true, fail Start if the current DCP checkpoints encounter a rollback condition
+	Terminator           chan bool                      // optional channel that can be closed to terminate the DCP feed, this will be replaced with a context option.
+	FromLatestSequence   bool                           // If true, start at latest sequence.
+	FeedContent          sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
+	MetadataStore        DataStore
+	CountIdleCheckpoints bool // if true, checkpoint writes made only for _sync: docs count as idle KV ops. Ignored by rosmar
 }
 
 // NewDCPClient creates a new DCPClient to receive events from a bucket.
@@ -115,17 +116,18 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		}
 	}
 	options := GoCBDCPClientOptions{
-		FeedID:            opts.FeedID,
-		MetadataStoreType: opts.MetadataStoreType,
-		DbStats:           opts.DBStats,
-		CollectionIDs:     collectionIDs,
-		AgentPriority:     gocbcore.DcpAgentPriorityMed,
-		CheckpointPrefix:  opts.CheckpointPrefix,
-		OneShot:           opts.OneShot,
-		FailOnRollback:    opts.FailOnRollback,
-		InitialMetadata:   opts.InitialMetadata,
-		FeedContent:       opts.FeedContent,
-		MetadataStore:     opts.MetadataStore,
+		FeedID:               opts.FeedID,
+		MetadataStoreType:    opts.MetadataStoreType,
+		DbStats:              opts.DBStats,
+		CollectionIDs:        collectionIDs,
+		AgentPriority:        gocbcore.DcpAgentPriorityMed,
+		CheckpointPrefix:     opts.CheckpointPrefix,
+		OneShot:              opts.OneShot,
+		FailOnRollback:       opts.FailOnRollback,
+		InitialMetadata:      opts.InitialMetadata,
+		FeedContent:          opts.FeedContent,
+		MetadataStore:        opts.MetadataStore,
+		CountIdleCheckpoints: opts.CountIdleCheckpoints,
 	}
 
 	if opts.FromLatestSequence {

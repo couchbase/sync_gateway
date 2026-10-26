@@ -627,6 +627,10 @@ func TestBootstrapMetadataDocumentKVOps(t *testing.T) {
 		require.Error(t, err)
 		probeOps := primaryReadOps - 2 // primary and fallback both miss
 		require.GreaterOrEqual(t, probeOps, 0)
+		if UnitTestUrlIsWalrus() {
+			// A Rosmar test bucket starts with no registry, so both collections are probed for it.
+			require.Equal(t, 2, probeOps, "registry probe of _system._mobile and _default._default")
+		}
 
 		_, insertOps, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, primaryDocID, bootstrapTestCfg{Foo: "primary"})
 		require.NoError(t, err)

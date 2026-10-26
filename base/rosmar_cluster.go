@@ -129,11 +129,12 @@ func (c *RosmarCluster) getDefaultDataStore(ctx context.Context, bucketName stri
 //     the cache is corrected before the next op.
 //
 // Both are returned as *rosmar.Collection so callers can use rosmar-specific subdoc primitives
-// (e.g. TouchXattrWithCas).
-func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName string) (primary, fallback *rosmar.Collection, closer func(ctx context.Context), err error) {
+// (e.g. TouchXattrWithCas). kvOps is the number of KV operations made to find where the bucket's
+// bootstrap docs live.
+func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName string) (primary, fallback *rosmar.Collection, closer func(ctx context.Context), kvOps int, err error) {
 	bucket, err := rosmar.OpenBucketIn(c.serverURL, bucketName, rosmar.CreateOrOpen)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	closer = func(ctx context.Context) { bucket.Close(ctx) }
 
@@ -141,24 +142,24 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 	if err != nil {
 		AssertfCtx(ctx, "Unexpected error getting default collection for bucket %q: %v", bucketName, err)
 		closer(ctx)
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	defaultCol, ok := defaultDS.(*rosmar.Collection)
 	if !ok {
 		AssertfCtx(ctx, "Unexpected type for default collection for bucket %q: %T", bucketName, defaultDS)
 		closer(ctx)
-		return nil, nil, nil, fmt.Errorf("unexpected type for default collection for bucket %q: %T", bucketName, defaultDS)
+		return nil, nil, nil, 0, fmt.Errorf("unexpected type for default collection for bucket %q: %T", bucketName, defaultDS)
 	}
 	systemDS, err := bucket.NamedDataStore(ctx, MobileSystemScopeAndCollectionName())
 	if err != nil {
 		closer(ctx)
-		return nil, nil, nil, fmt.Errorf("unable to access %s.%s on bucket %q: %w", SystemScope, SystemCollectionMobile, bucketName, err)
+		return nil, nil, nil, 0, fmt.Errorf("unable to access %s.%s on bucket %q: %w", SystemScope, SystemCollectionMobile, bucketName, err)
 	}
 	systemCol, ok := systemDS.(*rosmar.Collection)
 	if !ok {
 		AssertfCtx(ctx, "Unexpected type for system collection for bucket %q: %T", bucketName, systemDS)
 		closer(ctx)
-		return nil, nil, nil, fmt.Errorf("unexpected type for system collection for bucket %q: %T", bucketName, systemDS)
+		return nil, nil, nil, 0, fmt.Errorf("unexpected type for system collection for bucket %q: %T", bucketName, systemDS)
 	}
 
 	// Mirror CouchbaseCluster.ensureBucketBootstrapTargetCached: probe for an existing registry on
@@ -168,7 +169,10 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 	// later SetBucketBootstrapTargetHint(optIn=true) can still claim _system._mobile. Will only run
 	// if not already cached.
 	if _, alreadyCached := c.bucketBootstrapTargets.Load(bucketName); !alreadyCached {
-		if target, found := c.probeRegistryLocation(ctx, systemCol, defaultCol); found {
+		var target bucketBootstrapTarget
+		var found bool
+		target, found, kvOps = c.probeRegistryLocation(ctx, systemCol, defaultCol)
+		if found {
 			c.bucketBootstrapTargets.LoadOrStore(bucketName, target)
 		}
 	}
@@ -185,14 +189,14 @@ func (c *RosmarCluster) metadataDataStores(ctx context.Context, bucketName strin
 		// stale-cached perspective. A registry-less bucket with the flag off stays uncached and skips
 		// the fallback — there is nothing to self-heal to.
 		if hasCachedTarget || c.useSystemMetadataCollection {
-			return defaultCol, systemCol, closer, nil
+			return defaultCol, systemCol, closer, kvOps, nil
 		}
-		return defaultCol, nil, closer, nil
+		return defaultCol, nil, closer, kvOps, nil
 	}
 	if c.bucketBootstrapMigrationComplete(bucketName) {
-		return systemCol, nil, closer, nil
+		return systemCol, nil, closer, kvOps, nil
 	}
-	return systemCol, defaultCol, closer, nil
+	return systemCol, defaultCol, closer, kvOps, nil
 }
 
 // noteBucketFallbackHit updates the per-bucket cache to _system._mobile after a successful read
@@ -238,7 +242,7 @@ func (c *RosmarCluster) SetBucketBootstrapTargetHint(ctx context.Context, bucket
 	if !ok {
 		return fmt.Errorf("unexpected type for system collection on bucket %q: %T", bucketName, systemDS)
 	}
-	target, found := c.probeRegistryLocation(ctx, systemCol, defaultCol)
+	target, found, _ := c.probeRegistryLocation(ctx, systemCol, defaultCol)
 	if !found {
 		if optInHint || c.useSystemMetadataCollection {
 			target = bucketTargetSystemMobile
@@ -263,15 +267,15 @@ func (c *RosmarCluster) BucketBootstrapTargetIsSystemMobile(ctx context.Context,
 }
 
 // probeRegistryLocation reports where _sync:registry already lives, or that it doesn't exist yet.
-// Mirrors CouchbaseCluster.probeRegistryLocation.
-func (c *RosmarCluster) probeRegistryLocation(ctx context.Context, systemCol, defaultCol *rosmar.Collection) (target bucketBootstrapTarget, found bool) {
+// Mirrors CouchbaseCluster.probeRegistryLocation. kvOps is the number of KV operations made.
+func (c *RosmarCluster) probeRegistryLocation(ctx context.Context, systemCol, defaultCol *rosmar.Collection) (target bucketBootstrapTarget, found bool, kvOps int) {
 	if exists, err := systemCol.Exists(ctx, SGRegistryKey); err == nil && exists {
-		return bucketTargetSystemMobile, true
+		return bucketTargetSystemMobile, true, 1
 	}
 	if exists, err := defaultCol.Exists(ctx, SGRegistryKey); err == nil && exists {
-		return bucketTargetDefault, true
+		return bucketTargetDefault, true, 2
 	}
-	return 0, false
+	return 0, false, 2
 }
 
 // shouldFallback returns true when a primary error indicates not-found and a fallback collection
@@ -339,9 +343,9 @@ func (c *RosmarCluster) loadConfigWithFallback(ctx context.Context, bucketName s
 // pre-migration metadata. Returns the underlying rosmar not-found error when the doc is absent
 // from both collections; callers should use IsDocNotFoundError to test for not-found.
 func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, kvOps int, err error) {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, kvOps, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, 0, err
+		return 0, kvOps, err
 	}
 	defer closer(ctx)
 
@@ -361,9 +365,9 @@ func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID
 // useSystemMetadataCollection is enabled and the doc already lives in the fallback collection,
 // returns ErrAlreadyExists rather than creating a divergent primary copy.
 func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, kvOps int, err error) {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, kvOps, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, 0, err
+		return 0, kvOps, err
 	}
 	defer closer(ctx)
 
@@ -389,9 +393,9 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 // CAS came from a fallback read (i.e. the document still lives in _default._default), the write is
 // replayed against the fallback collection so the CAS stays valid.
 func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, kvOps int, err error) {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, kvOps, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, 0, err
+		return 0, kvOps, err
 	}
 	defer closer(ctx)
 
@@ -413,9 +417,9 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 // retried against the fallback collection so legacy metadata in _default._default can still be
 // touched without migration.
 func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, kvOps int, err error) {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, kvOps, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, 0, err
+		return 0, kvOps, err
 	}
 	defer closer(ctx)
 
@@ -433,7 +437,7 @@ func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, doc
 
 // DeleteMetadataDocument deletes an existing bootstrap metadata document.
 func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, key string, cas uint64) error {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, _, err := c.metadataDataStores(ctx, location)
 	if err != nil {
 		return err
 	}
@@ -453,7 +457,7 @@ func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, ke
 // datastore (primary or fallback) is re-resolved on every CAS retry so a doc that migrates between
 // collections concurrently with this Update is picked up on the next iteration rather than vanishing.
 func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, docID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, _, err := c.metadataDataStores(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -505,7 +509,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 // KeyExists checks whether a key exists for the specified bucket. When useSystemMetadataCollection
 // is enabled, checks primary then fallback, mirroring CouchbaseCluster.KeyExists.
 func (c *RosmarCluster) KeyExists(ctx context.Context, location, docID string) (exists bool, err error) {
-	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
+	primary, fallback, closer, _, err := c.metadataDataStores(ctx, location)
 	if err != nil {
 		return false, err
 	}
