@@ -1639,6 +1639,14 @@ func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bo
 		ctx := c.AddCollectionContext(ctx)
 
 		collection := c.getAdminDatabaseCollection()
+		// The tombstone query stays on collection, because queries need the collection's own DataStore.
+		purgeCollection := collection
+		if isScheduledBackgroundTask {
+			// A scheduled run happens on a node with no clients, so every KV operation of a purge is idle.
+			idleCollection := *c
+			idleCollection.dataStore = base.NewIdleKVOpDataStore(c.dataStore)
+			purgeCollection = idleCollection.getAdminDatabaseCollection()
+		}
 
 		for {
 			purgedDocs := make([]string, 0)
@@ -1665,18 +1673,12 @@ func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bo
 				resultCount++
 				base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 				// First, attempt to purge.
-				purgeErr := collection.Purge(ctx, tombstonesRow.Id, false)
-				if isScheduledBackgroundTask {
-					base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
-				}
+				purgeErr := purgeCollection.Purge(ctx, tombstonesRow.Id, false)
 				if purgeErr == nil {
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 				} else if base.IsDocNotFoundError(purgeErr) {
 					// If key no longer exists, need to add and remove to trigger removal from view
-					_, addErr := collection.dataStore.Add(ctx, tombstonesRow.Id, 0, purgeBody)
-					if isScheduledBackgroundTask {
-						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
-					}
+					_, addErr := purgeCollection.dataStore.Add(ctx, tombstonesRow.Id, 0, purgeBody)
 					if addErr != nil {
 						addErrorCount++
 						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (add): %v", base.UD(tombstonesRow.Id), addErr)
@@ -1687,10 +1689,7 @@ func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bo
 					// so mark it to be removed from cache, even if the subsequent delete fails
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
-					delErr := collection.dataStore.Delete(ctx, tombstonesRow.Id)
-					if isScheduledBackgroundTask {
-						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
-					}
+					delErr := purgeCollection.dataStore.Delete(ctx, tombstonesRow.Id)
 					if delErr != nil {
 						deleteErrorCount++
 						base.InfofCtx(ctx, base.KeyAll, "Couldn't compact key %s (delete): %v", base.UD(tombstonesRow.Id), delErr)
