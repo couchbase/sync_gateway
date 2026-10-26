@@ -15,7 +15,6 @@ post:
 
     With `seq`, this endpoint removes all channel entries where the document left the channel at or before the specified sequence number.
     With `channels`, this endpoint removes the channel history entries for the named channels, whatever sequence the document left them at.
-    Channels that the document is still in are not removed.
 
     Compaction cleans up historical channel membership information while preserving active channels and recent changes.
     This can be useful for reducing metadata size for documents that frequently gain and lose access to channels.
