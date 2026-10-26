@@ -43,6 +43,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestReadServerConfig(t *testing.T) {
@@ -2383,7 +2384,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			dbConfig := DbConfig{
-				Name: SafeDatabaseName(t, testCase.Name),
+				Name: sgtest.SafeDatabaseName(testCase.Name),
 			}
 
 			if testCase.SyncFunction != nil {

@@ -11,8 +11,10 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -245,26 +247,37 @@ func TestHandlerRecoverLog(t *testing.T) {
 
 			ctx := base.TestCtx(t)
 			require.NoError(t, sc.WaitForRESTAPIs(ctx))
-			startWarnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
 			handler := makeHandlerWithOptions(sc, regularPrivs, nil, nil, func(_ *handler) error {
 				panic(tc.panicArg)
 			}, handlerOptions{})
 			r := mux.NewRouter()
 			r.Use(withServerType(publicServer))
 			r.Handle("/", handler)
-			server := httptest.NewServer(r)
+			server := httptest.NewUnstartedServer(r)
+			// give requests the test log context so that the panic log can be attributed to this test
+			server.Config.BaseContext = func(net.Listener) context.Context { return ctx }
+			server.Start()
 			defer server.Close()
 
-			client := server.Client()
-			resp, err := client.Get(server.URL)
+			expectedCount := 0
 			if tc.shouldWarn {
-				require.ErrorIs(t, err, io.EOF)
-				require.Equal(t, startWarnCount+1, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-			} else {
-				require.NoError(t, err)
-				require.NoError(t, resp.Body.Close())
-				require.Equal(t, startWarnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+				expectedCount = 1
 			}
+			// devmode panics on recovery, logging an error instead of a warning
+			assertLogCount := base.AssertWarningCount
+			if base.IsDevMode() {
+				assertLogCount = base.AssertErrorCount
+			}
+			client := server.Client()
+			assertLogCount(t, "t:"+t.Name(), expectedCount, func() {
+				resp, err := client.Get(server.URL)
+				if tc.shouldWarn {
+					require.ErrorIs(t, err, io.EOF)
+				} else {
+					require.NoError(t, err)
+					require.NoError(t, resp.Body.Close())
+				}
+			})
 		})
 	}
 }

@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // TestSyncFnBodyProperties puts a document into channels based on which properties are present on the document.
@@ -260,7 +260,8 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 		}
 	}`
 
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	dbName := sgtest.SafeDatabaseName(t.Name())
+	rtConfig := RestTesterConfig{SyncFn: syncFn, DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Name: dbName}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	rt.GetDatabase().EnableAllowConflicts(rt.TB())
@@ -278,15 +279,10 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	// tombstone at 4-a
 	rt.DeleteDoc(testDocID, version3a)
 
-	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-	// tombstone at 3-b
-	rt.DeleteDoc(testDocID, *version2b)
-
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
+	base.AssertErrorCount(t, "db:"+dbName, 1, func() {
+		// tombstone at 3-b
+		rt.DeleteDoc(testDocID, *version2b)
+	})
 }
 
 // setUpPromotedLiveBranch builds a conflicted document whose losing branch is live and holds a body
@@ -967,12 +963,16 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyJavascript)
 
-	rtConfig := RestTesterConfig{SyncFn: `
+	dbName := sgtest.SafeDatabaseName(t.Name())
+	rtConfig := RestTesterConfig{
+		SyncFn: `
 		function(doc) {
 			console.error("Error");
 			console.log("Log");
 			channel(doc.channel);
-		}`}
+		}`,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Name: dbName}},
+	}
 
 	rt := NewRestTester(t, &rtConfig)
 
@@ -981,16 +981,10 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	// Wait for the DB to be ready before attempting to get initial error count
 	rt.WaitForDBOnline()
 
-	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
-	assert.Equal(t, http.StatusCreated, response.Code)
-
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	assert.Equal(t, numErrors+1, numErrorsAfter)
+	base.AssertErrorCount(t, "db:"+dbName, 1, func() {
+		response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
+		assert.Equal(t, http.StatusCreated, response.Code)
+	})
 }
 
 func TestSyncFunctionException(t *testing.T) {

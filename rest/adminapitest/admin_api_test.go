@@ -2710,20 +2710,17 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+	// server-level requests have no test or db log context to count by
+	const deprecationWarning = "Using deprecated /_logging endpoint"
+	base.AssertLogContains(t, deprecationWarning, func() {
+		resp = rt.SendAdminRequest("GET", "/_logging", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	})
 
-	resp = rt.SendAdminRequest("GET", "/_logging", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	warnCountAfter := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-	assert.Equal(t, int64(1), warnCountAfter-warnCountBefore)
-
-	resp = rt.SendAdminRequest("PUT", "/_logging", "{}")
-	rest.RequireStatus(t, resp, http.StatusOK)
-
-	warnCountAfter2 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
-	assert.Equal(t, int64(1), warnCountAfter2-warnCountAfter)
-
+	base.AssertLogContains(t, deprecationWarning, func() {
+		resp = rt.SendAdminRequest("PUT", "/_logging", "{}")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	})
 }
 
 func TestInitialStartupConfig(t *testing.T) {

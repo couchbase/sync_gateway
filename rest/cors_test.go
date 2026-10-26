@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 const accessControlAllowOrigin = "Access-Control-Allow-Origin"
@@ -463,7 +464,7 @@ func TestCORSLoginOriginPerDatabase(t *testing.T) {
 				LoginOrigin: []string{"http://couchbase.com"},
 				Headers:     []string{},
 			}
-			RequireStatus(t, rt.CreateDatabase(SafeDatabaseName(t, dbTestCases.name), dbConfig), http.StatusCreated)
+			RequireStatus(t, rt.CreateDatabase(sgtest.SafeDatabaseName(dbTestCases.name), dbConfig), http.StatusCreated)
 			const username = "alice"
 			rt.CreateUser(username, nil)
 

@@ -2053,7 +2053,8 @@ func TestImportTouch(t *testing.T) {
 func TestImportingPurgedDocument(t *testing.T) {
 	ctx := base.TestCtx(t)
 
-	rt := rest.NewRestTester(t, nil)
+	dbName := sgtest.SafeDatabaseName(t.Name())
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{Name: dbName}}})
 	defer rt.Close()
 
 	body := `{"_purged": true, "foo": "bar"}`
@@ -2061,16 +2062,10 @@ func TestImportingPurgedDocument(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	response := rt.SendRequest("GET", "/{{.keyspace}}/key", "")
-	fmt.Println(response.Body)
-
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	assert.Equal(t, numErrors, numErrorsAfter)
+	base.AssertErrorCount(t, "db:"+dbName, 0, func() {
+		response := rt.SendRequest("GET", "/{{.keyspace}}/key", "")
+		fmt.Println(response.Body)
+	})
 }
 
 func TestNonImportedDuplicateID(t *testing.T) {

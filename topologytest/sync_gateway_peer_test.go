@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 type SyncGatewayPeer struct {
@@ -36,7 +37,7 @@ func newSyncGatewayPeer(t *testing.T, name string, bucket *base.TestBucket, symm
 	})
 	config := rt.NewDbConfig()
 	config.AutoImport = new(true)
-	rest.RequireStatus(t, rt.CreateDatabase(rest.SafeDatabaseName(t, name), config), http.StatusCreated)
+	rest.RequireStatus(t, rt.CreateDatabase(sgtest.SafeDatabaseName(name), config), http.StatusCreated)
 	return &SyncGatewayPeer{
 		name:               name,
 		rt:                 rt,

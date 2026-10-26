@@ -2695,15 +2695,6 @@ func RequireGocbDCPResync(t *testing.T) {
 	}
 }
 
-// SafeDatabaseName returns a database name free of any special characters for use in tests.
-func SafeDatabaseName(t *testing.T, name string) string {
-	dbName := strings.ToLower(name)
-	for _, c := range []string{" ", "<", ">", "/", "="} {
-		dbName = strings.ReplaceAll(dbName, c, "_")
-	}
-	return dbName
-}
-
 func JsonToMap(t *testing.T, jsonStr string) map[string]any {
 	result := make(map[string]any)
 	err := json.Unmarshal([]byte(jsonStr), &result)

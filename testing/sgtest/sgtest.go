@@ -71,3 +71,12 @@ func SafeDocumentName(t *testing.T, name string) string {
 	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
 	return docName
 }
+
+// SafeDatabaseName returns a database name free of any special characters for use in tests.
+func SafeDatabaseName(name string) string {
+	dbName := strings.ToLower(name)
+	for _, c := range []string{" ", "<", ">", "/", "="} {
+		dbName = strings.ReplaceAll(dbName, c, "_")
+	}
+	return dbName
+}

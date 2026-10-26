@@ -6813,8 +6813,6 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
-
 	// Passive
 	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
@@ -6845,16 +6843,17 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	defer func() {
 		require.NoError(t, ar.Stop())
 	}()
-	require.NoError(t, ar.Start(ctx1))
+	base.AssertErrorCount(t, "t:"+t.Name(), 0, func() {
+		require.NoError(t, ar.Start(ctx1))
+	})
 
-	assert.Equal(t, errorCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
-
-	response := rt1.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	base.RequireWaitForStat(t, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value, errorCountBefore+1)
-
-	assert.Equal(t, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+	base.AssertErrorCount(t, "t:"+t.Name(), 1, func() {
+		response := rt1.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
+		rest.RequireStatus(t, response, http.StatusCreated)
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, db.ReplicationStateStopped, ar.GetStatus(ctx1).Status)
+		}, 10*time.Second, 50*time.Millisecond)
+	})
 	assert.Equal(t, db.PreHydrogenTargetAllowConflictsError.Error(), ar.GetStatus(ctx1).ErrorMessage)
 }
 func TestReplicatorConflictAttachment(t *testing.T) {

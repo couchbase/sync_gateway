@@ -10,21 +10,23 @@ package importtest
 
 import (
 	"net/http"
-	"strconv"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 func TestImportFilterLogging(t *testing.T) {
 	ctx := base.TestCtx(t)
 	const errorMessage = `ImportFilterError`
 	importFilter := `function (doc) { console.error("` + errorMessage + `"); return doc.type == "mobile"; }`
+	dbName := sgtest.SafeDatabaseName(t.Name())
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Name:         dbName,
 			ImportFilter: &importFilter,
 			AutoImport:   false,
 		}},
@@ -41,21 +43,11 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	// Get number of errors before
-	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
 	// Attempt to get doc will trigger import
-	base.AssertLogContains(t, errorMessage, func() {
-		response := rt.SendAdminRequest("GET", "/db/"+key, "")
-		assert.Equal(t, http.StatusOK, response.Code)
+	base.AssertErrorCount(t, "db:"+dbName, 1, func() {
+		base.AssertLogContains(t, errorMessage, func() {
+			response := rt.SendAdminRequest("GET", "/"+dbName+"/"+key, "")
+			assert.Equal(t, http.StatusOK, response.Code)
+		})
 	})
-
-	// Get number of errors after
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	assert.NoError(t, err)
-
-	// Make sure at least one error was logged
-	assert.GreaterOrEqual(t, numErrors+1, numErrorsAfter)
-
 }

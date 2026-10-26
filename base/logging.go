@@ -17,11 +17,13 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // GetLogKeys returns log keys in a map
@@ -131,10 +133,6 @@ type logFn func(ctx context.Context, format string, args ...any)
 
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
 func PanicfCtx(ctx context.Context, format string, args ...any) {
-	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-	if errorLogger.Load() == nil {
-		log.Panicf(format, args...)
-	}
 	// ensure the log message always reaches console
 	ConsolefCtx(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
@@ -146,10 +144,6 @@ func FatalfCtx(ctx context.Context, format string, args ...any) {
 	// no-op call to enable golang.org/x/tools/go/analysis/passes/printf checking in go vet
 	if false {
 		_ = fmt.Sprintf(format, args...)
-	}
-	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
-	if errorLogger.Load() == nil {
-		log.Fatalf(format, args...)
 	}
 	// ensure the log message always reaches console
 	ConsolefCtx(ctx, LevelError, KeyAll, format, args...)
@@ -419,50 +413,136 @@ func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
 // AssertLogContains asserts that the logs produced by function f contain string s.
 func AssertLogContains(t *testing.T, s string, f func()) {
 	t.Helper()
-	// Temporarily override logger output
-	b := &bytes.Buffer{}
-	mw := io.MultiWriter(b, os.Stderr)
-	consoleLogger.Load().logger.SetOutput(mw)
-	// Call the given function
-	f()
-
-	FlushLogBuffers()
-	consoleLogger.Load().FlushBufferToLog()
-	// do not reset output in defer, since we are accessing b.String() after
-	consoleLogger.Load().logger.SetOutput(os.Stderr)
-	assert.Contains(t, b.String(), s)
+	assert.Contains(t, consoleLogOutput(f), s)
 }
 
 // AssertLogNotContains asserts that the logs produced by function f do not contain string s.
 func AssertLogNotContains(t *testing.T, s string, f func()) {
 	t.Helper()
-	// Temporarily override logger output
-	b := &bytes.Buffer{}
-	mw := io.MultiWriter(b, os.Stderr)
-	consoleLogger.Load().logger.SetOutput(mw)
-	// Call the given function
-	f()
+	assert.NotContains(t, consoleLogOutput(f), s)
+}
 
-	FlushLogBuffers()
-	consoleLogger.Load().FlushBufferToLog()
-	// do not reset output in defer, since we are accessing b.String() after
-	consoleLogger.Load().logger.SetOutput(os.Stderr)
-	assert.NotContains(t, b.String(), s)
+// AssertWarningCount asserts that function f logs the expected number of warnings containing logContextField, such as
+// "t:"+t.Name() or "db:"+dbName. Unlike the global WarnCount stat, this ignores warnings logged by other tests.
+func AssertWarningCount(t testing.TB, logContextField string, expected int, f func()) {
+	t.Helper()
+	assertLogLevelCount(t, LevelWarn, logContextField, expected, f)
+}
+
+// AssertErrorCount asserts that function f logs the expected number of errors containing logContextField, such as
+// "t:"+t.Name() or "db:"+dbName. Unlike the global ErrorCount stat, this ignores errors logged by other tests.
+func AssertErrorCount(t testing.TB, logContextField string, expected int, f func()) {
+	t.Helper()
+	assertLogLevelCount(t, LevelError, logContextField, expected, f)
+}
+
+// assertLogLevelCount counts console lines, so it does not see lines hidden by a database's own console logging config.
+func assertLogLevelCount(t testing.TB, logLevel LogLevel, logContextField string, expected int, f func()) {
+	t.Helper()
+	// a disabled console logger would make any expected count of 0 pass
+	logger := consoleLogger.Load()
+	require.Truef(t, shouldLog(logger.LogLevel, logger.LogKeyMask, logLevel, KeyAll), "console logging must be enabled at %s to count log lines", logLevel)
+	levelPrefix := "[" + logLevel.StringShort() + "] "
+	// trailing space stops "t:TestFoo" matching subtest "t:TestFoo/bar"
+	fieldPrefix := logContextField + " "
+	var lines []string
+	for line := range strings.Lines(consoleLogOutput(f)) {
+		if strings.Contains(line, levelPrefix) && strings.Contains(line, fieldPrefix) {
+			lines = append(lines, line)
+		}
+	}
+	assert.Len(t, lines, expected)
+}
+
+// consoleLogOutput returns the console logs produced by function f. If f replaces the console logger, lines written
+// to the new logger are not captured.
+func consoleLogOutput(f func()) string {
+	logger := consoleLogger.Load().logger
+	b := consoleLogCapture.start(logger)
+	func() {
+		// stop in a defer so that a require failure in f does not leave the capture running
+		defer consoleLogCapture.stop(logger, b)
+		f()
+		FlushLogBuffers()
+	}()
+	return b.String()
+}
+
+var consoleLogCapture = &logCapture{buffers: make(map[*bytes.Buffer]struct{})}
+
+// logCapture copies console log output to every active consoleLogOutput buffer, so that nested captures and
+// overlapping captures from parallel tests each see every line.
+type logCapture struct {
+	startStopLock sync.Mutex // serializes start and stop, never held by Write to avoid lock inversion with log.Logger
+	bufferLock    sync.Mutex
+	buffers       map[*bytes.Buffer]struct{}
+	output        io.Writer // logger output before the first active capture
+}
+
+func (c *logCapture) Write(p []byte) (int, error) {
+	c.bufferLock.Lock()
+	defer c.bufferLock.Unlock()
+	for b := range c.buffers {
+		_, _ = b.Write(p)
+	}
+	return c.output.Write(p)
+}
+
+// start returns a buffer that receives all output from logger until stop is called.
+func (c *logCapture) start(logger *log.Logger) *bytes.Buffer {
+	c.startStopLock.Lock()
+	defer c.startStopLock.Unlock()
+	b := &bytes.Buffer{}
+	if c.addBuffer(b, logger.Writer()) {
+		logger.SetOutput(c)
+	}
+	return b
+}
+
+// stop removes b from the capture, and restores the original logger output when no captures remain.
+func (c *logCapture) stop(logger *log.Logger, b *bytes.Buffer) {
+	c.startStopLock.Lock()
+	defer c.startStopLock.Unlock()
+	if output := c.removeBuffer(b); output != nil {
+		logger.SetOutput(output)
+	}
+}
+
+// addBuffer adds b, and returns true if it is the first active capture, in which case output is stored for restore.
+func (c *logCapture) addBuffer(b *bytes.Buffer, output io.Writer) (first bool) {
+	c.bufferLock.Lock()
+	defer c.bufferLock.Unlock()
+	first = len(c.buffers) == 0
+	if first {
+		c.output = output
+	}
+	c.buffers[b] = struct{}{}
+	return first
+}
+
+// removeBuffer removes b, and returns the original output if no captures remain.
+func (c *logCapture) removeBuffer(b *bytes.Buffer) io.Writer {
+	c.bufferLock.Lock()
+	defer c.bufferLock.Unlock()
+	delete(c.buffers, b)
+	if len(c.buffers) > 0 {
+		return nil
+	}
+	return c.output
 }
 
 // AuditLogContents returns that the audit logs produced by function f.
 func AuditLogContents(t testing.TB, f func(t testing.TB)) []byte {
-	// Temporarily override logger output
+	logger := auditLogger.Load()
+	prevOutput := logger.logger.Writer()
 	b := &bytes.Buffer{}
-	mw := io.MultiWriter(b, os.Stderr)
-	auditLogger.Load().logger.SetOutput(mw)
-
-	// Call the given function
-	f(t)
-
-	FlushLogBuffers()
-	auditLogger.Load().FlushBufferToLog()
-	// do not reset output in defer, since we are accessing b.bytes()
-	auditLogger.Load().logger.SetOutput(os.Stderr)
+	func() {
+		logger.logger.SetOutput(io.MultiWriter(b, prevOutput))
+		// restore in a defer so that a require failure in f does not leave the output redirected
+		defer logger.logger.SetOutput(prevOutput)
+		f(t)
+		FlushLogBuffers()
+		logger.FlushBufferToLog()
+	}()
 	return b.Bytes()
 }
