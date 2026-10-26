@@ -3483,8 +3483,9 @@ func TestTombstoneCompaction(t *testing.T) {
 					numIdleKvOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value())
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
 
-					// cannot do equal here because there are other idle kv ops unrelated to compaction
-					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, expectedCompactions)
+					// cannot do equal here because there are other idle kv ops unrelated to compaction. Each purge reads the
+					// doc and then deletes it.
+					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, 2*expectedCompactions)
 					assert.Equal(t, numIdleQueryOpsAfter-numIdleQueryOpsBefore, expectedBatches)
 				} else {
 					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")

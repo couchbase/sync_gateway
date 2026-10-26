@@ -238,7 +238,7 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	// forever. The HWM ratchet happens later via the periodic Refresh, gated per-bucket on
 	// at least one database having reached DBOnline (see ratchetEligibleBuckets) — so the
 	// observation is stable when the ratchet actually runs.
-	preCCVAwarePeers := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket)
+	preCCVAwarePeers := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket, nil)
 	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:       bucket,
 		NodeUID:          m.sc.NodeUID,
@@ -462,6 +462,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 		return nil, nil, nil, nil, nil
 	}
 
+	idleKVOps := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps
 	nodeVersion := m.sc.BootstrapContext.clusterCompatVersion
 	expiry := m.heartbeatExpiry()
 	// Gate HWM ratchet on per-bucket online state — see ratchetEligibleBuckets. Heartbeat
@@ -479,7 +480,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	vanished := 0
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
-		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
+		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket, idleKVOps)
 		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 			BucketName:       bucket,
 			NodeUID:          m.sc.NodeUID,
@@ -561,10 +562,12 @@ const (
 // Best-effort: enumeration errors from cbgt cfg / SGRCluster cfg on individual databases are
 // logged by the per-database observer and do not abort the sweep. The caller's CCV cap still
 // works correctly off whichever observations did succeed.
-func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
+//
+// The KV operations made reading the side-channels are added to kvOpStat, if set.
+func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, bucket string, kvOpStat *base.SgwIntStat) map[string]base.RegistryPreCCVAwareNode {
 	sc._databasesLock.RLock()
 	defer sc._databasesLock.RUnlock()
-	return sc._observePreCCVAwarePeersForBucket(ctx, bucket)
+	return sc._observePreCCVAwarePeersForBucket(ctx, bucket, kvOpStat)
 }
 
 // _observePreCCVAwarePeersForBucket is the lock-free body of observePreCCVAwarePeersForBucket.
@@ -572,7 +575,7 @@ func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, b
 // When the same UUID is observed by multiple databases (e.g. two databases on the same
 // bucket both seeing a 3.x peer), entries are merged with the lower-versioned observation
 // winning, matching the per-database merge inside ObservePreCCVAwarePeers.
-func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
+func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, bucket string, kvOpStat *base.SgwIntStat) map[string]base.RegistryPreCCVAwareNode {
 	databases := make([]*db.DatabaseContext, 0, len(sc._databases))
 	for _, dbCtx := range sc._databases {
 		if dbCtx == nil || dbCtx.Bucket == nil || dbCtx.Bucket.GetName() != bucket {
@@ -582,7 +585,7 @@ func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, 
 	}
 	var out map[string]base.RegistryPreCCVAwareNode
 	for _, dbCtx := range databases {
-		for uuid, entry := range dbCtx.ObservePreCCVAwarePeers(ctx, ccvAwareMajorVersion, ccvAwareMinorVersion) {
+		for uuid, entry := range dbCtx.ObservePreCCVAwarePeers(ctx, ccvAwareMajorVersion, ccvAwareMinorVersion, kvOpStat) {
 			if out == nil {
 				out = make(map[string]base.RegistryPreCCVAwareNode)
 			}
