@@ -2120,3 +2120,13 @@ func (c *channelCacheImpl) AdvancePublishCursorForTest(_ testing.TB, seq uint64)
 func (c *channelCacheImpl) PublishCursorForTest(_ testing.TB) uint64 {
 	return c.publishCursor.Load()
 }
+
+// CreateTSDocForTest writes tsArray to the timestamps document, replacing any existing content.
+func (tm *TimestampsManager) CreateTSDocForTest(t *testing.T, tsArray TimestampsSeqArray) {
+	t.Helper()
+	_, err := tm.metadataStore.Update(tm.ctx, tm.metaKeys.TimestampsSeqKey(), 0, func(current []byte) ([]byte, *uint32, bool, error) {
+		valBytes, err := base.JSONMarshal(tsArray)
+		return valBytes, nil, false, err
+	})
+	require.NoError(t, err)
+}

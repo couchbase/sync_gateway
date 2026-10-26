@@ -11,6 +11,7 @@ package db
 import (
 	"context"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,34 +192,44 @@ func TestTimestampsSeqArrayTrim(t *testing.T) {
 		entries        []TimestampsSeqPair
 		purgeTimestamp int64
 		expected       []TimestampsSeqPair
+		purge          bool
 	}{
 		{
 			// a single 12 hour gap: entries older than day -30 are trimmed
 			name: "timespan=1month;duration:12hours;duration_change=false",
 			entries: func() []TimestampsSeqPair {
-				return GenerateTimestampsSeqPairs(now.Add(-31*24*time.Hour), now, time.Hour*12)
+				return GenerateTimestampsSeqPairs(now.Add(-31*24*time.Hour), now, time.Hour*12, 0)
 			}(),
 			purgeTimestamp: now.Add(-30 * 24 * time.Hour).Unix(),
 			expected: func() []TimestampsSeqPair {
-				return GenerateTimestampsSeqPairs(now.Add(-30*24*time.Hour), now, time.Hour*12)
+				return GenerateTimestampsSeqPairs(now.Add(-30*24*time.Hour), now, time.Hour*12, 0)
 			}(),
+			purge: true,
 		},
 		{
 			// the gap changes from 12 hours to 24 hours at day -30: the purge timestamp falls before the change
 			name: "timespan=1.5month;duration:12hours/24hours;duration_change=true",
 			entries: func() []TimestampsSeqPair {
-				tsPair := GenerateTimestampsSeqPairs(now.Add(-60.5*24*time.Hour), now.Add(-30*24*time.Hour), time.Hour*12)
-				tsPair2 := GenerateTimestampsSeqPairs(now.Add(-30*24*time.Hour-time.Hour-12), now, time.Hour*24)
+				tsPair := GenerateTimestampsSeqPairs(now.Add(-60.5*24*time.Hour), now.Add(-30*24*time.Hour), time.Hour*12, 0)
+				tsPair2 := GenerateTimestampsSeqPairs(now.Add(-30*24*time.Hour-time.Hour-12), now, time.Hour*24, 0)
 				tsPair = append(tsPair, tsPair2...)
 				return tsPair
 			}(),
 			purgeTimestamp: now.Add(-60 * 24 * time.Hour).Unix(),
 			expected: func() []TimestampsSeqPair {
-				tsPair := GenerateTimestampsSeqPairs(now.Add(-60*24*time.Hour), now.Add(-30*24*time.Hour), time.Hour*12)
-				tsPair2 := GenerateTimestampsSeqPairs(now.Add(-30*24*time.Hour-time.Hour-12), now, time.Hour*24)
+				tsPair := GenerateTimestampsSeqPairs(now.Add(-60*24*time.Hour), now.Add(-30*24*time.Hour), time.Hour*12, 0)
+				tsPair2 := GenerateTimestampsSeqPairs(now.Add(-30*24*time.Hour-time.Hour-12), now, time.Hour*24, 0)
 				tsPair = append(tsPair, tsPair2...)
 				return tsPair
 			}(),
+			purge: true,
+		},
+		{
+			name:           "purge_timestamp older and no trim",
+			entries:        GenerateTimestampsSeqPairs(now.Add(-25*24*time.Hour), now, time.Hour*12, 0),
+			purgeTimestamp: now.Add(-30 * 24 * time.Hour).Unix(),
+			expected:       GenerateTimestampsSeqPairs(now.Add(-25*24*time.Hour), now, time.Hour*12, 0),
+			purge:          false,
 		},
 	}
 	for _, test := range tests {
@@ -227,7 +238,9 @@ func TestTimestampsSeqArrayTrim(t *testing.T) {
 			array.trim(test.purgeTimestamp)
 			assert.Equal(t, len(test.expected), len(array.Timestamps), "expected %d, got %d", len(test.expected), len(array.Timestamps))
 			assert.Equal(t, test.expected, array.Timestamps)
-			assert.LessOrEqual(t, array.oldestTimestamp(), test.purgeTimestamp, "expected %d, got %d", time.Unix(test.purgeTimestamp, 0).UTC().Format(time.RFC3339), time.Unix(array.oldestTimestamp(), 0).UTC().Format(time.RFC3339))
+			if test.purge {
+				assert.LessOrEqual(t, array.oldestTimestamp(), test.purgeTimestamp, "expected %d, got %d", time.Unix(test.purgeTimestamp, 0).UTC().Format(time.RFC3339), time.Unix(array.oldestTimestamp(), 0).UTC().Format(time.RFC3339))
+			}
 		})
 	}
 }
@@ -328,7 +341,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		// Entries are an hour apart and the newest is older than the update frequency, so an entry is due.
 		// The two oldest entries are at or before the purge timestamp, so adding one entry trims one.
 		now := time.Now()
-		pairs := GenerateTimestampsSeqPairs(now.Add(-61*time.Hour), now.Add(-2*time.Hour), time.Hour)
+		pairs := GenerateTimestampsSeqPairs(now.Add(-61*time.Hour), now.Add(-2*time.Hour), time.Hour, 0)
 		require.Len(t, pairs, NumTimestampsEntries)
 
 		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
@@ -357,8 +370,8 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		})
 
 		now := time.Now()
-		pairs := GenerateTimestampsSeqPairs(now.Add(-59*day), now.Add(-30*day), 12*time.Hour)
-		pairs = append(pairs, GenerateTimestampsSeqPairs(now.Add(-29*day), now.Add(-1*day), day)...)
+		pairs := GenerateTimestampsSeqPairs(now.Add(-59*day), now.Add(-30*day), 12*time.Hour, 0)
+		pairs = append(pairs, GenerateTimestampsSeqPairs(now.Add(-29*day), now.Add(-1*day), day, 0)...)
 
 		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
 
@@ -371,14 +384,130 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		assert.Equal(t, pairs, tsDoc.Timestamps[:len(pairs)], "existing entries must not be trimmed")
 		assert.GreaterOrEqual(t, tsDoc.newestTimestamp(), now.Unix(), "new entry must be added at the end")
 	})
+
+	t.Run("multiple calls within update frequency", func(t *testing.T) {
+		defer cleanupFunc(metaKeys.TimestampsSeqKey())
+		// The first call adds an entry to the empty array. The newest entry is then within the update frequency,
+		// so later calls cancel the update and add nothing.
+		require.NoError(t, tm.addEntry())
+		for i := range 4 {
+			require.NoError(t, tm.addEntry(), "call %d", i+2)
+		}
+
+		var tsDoc TimestampsSeqArray
+		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
+		require.NoError(t, err)
+		assert.Len(t, tsDoc.Timestamps, 1)
+		assert.Len(t, tm.timestampsSeqArray.Load().Timestamps, 1)
+	})
+
+	t.Run("remove invalid entries", func(t *testing.T) {
+		defer cleanupFunc(metaKeys.TimestampsSeqKey())
+
+		now := time.Now()
+		pairs := GenerateTimestampsSeqPairs(now.Add(-4*24*time.Hour), now.Add(-24*time.Hour), time.Hour*24, 50)
+		require.Len(t, pairs, 4)
+		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+
+		tm.getSequenceFunc = func(_ context.Context) (uint64, error) {
+			return 51, nil
+		}
+		require.NoError(t, tm.addEntry())
+		timestampsArray := tm.timestampsSeqArray.Load()
+		assert.Len(t, timestampsArray.Timestamps, 2)
+	})
+}
+
+// TestConcurrentAddEntry makes sure that concurrent addEntry calls on an empty document add exactly one entry, and none of them fail.
+func TestConcurrentAddEntry(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.GetMetadataStore()
+	metaKeys := base.NewMetadataKeys(t.Name())
+
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		ctx:           ctx,
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		purgeIntervalFunc: func() time.Duration {
+			return NumTimestampsEntries * time.Hour
+		},
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return 0, nil
+		},
+	})
+	require.NoError(t, tm.Start())
+
+	const numGoroutines = 20
+	errs := make(chan error, numGoroutines)
+	// start is closed once every goroutine exists, so that the calls overlap as much as possible
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range numGoroutines {
+		wg.Go(func() {
+			<-start
+			errs <- tm.addEntry()
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		assert.NoError(t, err)
+	}
+
+	// Whichever call wins the write adds the entry. The rest see it within the update frequency and add nothing.
+	var tsDoc TimestampsSeqArray
+	_, err := metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
+	require.NoError(t, err)
+	assert.Len(t, tsDoc.Timestamps, 1)
+	assert.Len(t, tm.timestampsSeqArray.Load().Timestamps, 1)
+}
+
+func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.GetMetadataStore()
+	metaKeys := base.NewMetadataKeys(t.Name())
+
+	mgrOpts := TimestampsMgrOpts{
+		ctx:           ctx,
+		metadataStore: metadataStore,
+		metaKeys:      metaKeys,
+		purgeIntervalFunc: func() time.Duration {
+			return NumTimestampsEntries * time.Hour
+		},
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return 0, nil
+		},
+	}
+
+	tm1 := NewTimestampsManager(mgrOpts)
+	require.NotNil(t, tm1)
+
+	err := tm1.Start()
+	require.NoError(t, err)
+	require.NoError(t, tm1.addEntry())
+
+	tm2 := NewTimestampsManager(mgrOpts)
+	require.NotNil(t, tm2)
+	err = tm2.Start()
+	assert.NoError(t, err)
 }
 
 // GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end, each with sequence 0.
 // It returns nil if duration is not positive.
-func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration) []TimestampsSeqPair {
+func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration, startSeq uint64) []TimestampsSeqPair {
 	var pairs []TimestampsSeqPair
+	seq := startSeq
 	for ts := start; duration > 0 && !ts.After(end); ts = ts.Add(duration) {
-		pairs = append(pairs, TimestampsSeqPair{Seq: 0, Timestamp: ts.Unix()})
+		pairs = append(pairs, TimestampsSeqPair{Seq: seq, Timestamp: ts.Unix()})
+		if startSeq != 0 {
+			seq++
+		}
 	}
 	return pairs
 }
