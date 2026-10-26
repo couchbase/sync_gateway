@@ -10,13 +10,13 @@ package db
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"sync/atomic"
-	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // NumTimestampsEntries is the number of entries that the timestamps document holds across one purge interval.
@@ -70,8 +70,9 @@ func (ts *TimestampsSeqArray) removeInvalidEntries(ctx context.Context, seq uint
 	})
 }
 
-// trim drops the entries older than purgeTimestamp (epoch seconds). It keeps the newest entry at or before
-// purgeTimestamp, so the oldest retained entry still covers the start of the purge interval.
+// trim drops the entries older than purgeTimestamp (epoch seconds), but keeps the newest entry at or before it
+// so that the oldest retained entry still covers the start of the purge interval. If no entry is newer than
+// purgeTimestamp, trim leaves the array unchanged.
 func (ts *TimestampsSeqArray) trim(purgeTimestamp int64) {
 	// idx is the first entry newer than purgeTimestamp
 	idx := slices.IndexFunc(ts.Timestamps, func(pair TimestampsSeqPair) bool {
@@ -129,30 +130,13 @@ func (tm *TimestampsManager) updateFrequency() time.Duration {
 	return max(purgeInterval/NumTimestampsEntries, time.Minute*10)
 }
 
-// getNewestTimestamp returns the newest entry of the in-memory array in epoch seconds, or 0 if there is none.
-func (tm *TimestampsManager) getNewestTimestamp() int64 {
-	tsArray := tm.timestampsSeqArray.Load()
-	if tsArray == nil {
-		return 0
-	}
-	return tsArray.newestTimestamp()
-}
-
-// isTimestampsArrayEmpty returns true if the in-memory array has no entries.
-func (tm *TimestampsManager) isTimestampsArrayEmpty() bool {
-	tsArray := tm.timestampsSeqArray.Load()
-	if tsArray == nil {
-		return true
-	}
-	return tsArray.isEmpty()
-}
-
 // entryDue returns true if the in-memory array is empty, or if its newest entry is older than the update frequency.
 func (tm *TimestampsManager) entryDue() bool {
 	now := time.Now().Unix()
-	newestEntry := tm.getNewestTimestamp()
+	tsArray := tm.timestampsSeqArray.Load()
+	newestEntry := tsArray.newestTimestamp()
 	updateFrequency := tm.updateFrequency()
-	entryDue := tm.isTimestampsArrayEmpty() || now > newestEntry+int64(updateFrequency/time.Second)
+	entryDue := tsArray.isEmpty() || now > newestEntry+int64(updateFrequency/time.Second)
 	return entryDue
 }
 
@@ -174,6 +158,9 @@ func (tm *TimestampsManager) Start() error {
 		return newBytes, nil, false, marshalErr
 	})
 	// TODO: Add BackgroundTask here
+	if errors.Is(err, base.ErrUpdateCancel) {
+		return nil
+	}
 	return err
 }
 
@@ -188,8 +175,9 @@ func (tm *TimestampsManager) addEntry() error {
 	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		var timestampsSeqArray TimestampsSeqArray
 		if current == nil {
-			base.WarnfCtx(tm.ctx, "TimestampsSeqArray is nil. Returning nil")
-			return nil, nil, false, base.ErrUpdateCancel
+			err := fmt.Errorf("timestamps_seq id missing")
+			base.ErrorfCtx(tm.ctx, "could not add entry, %v", err)
+			return nil, nil, false, err
 		}
 		if err := base.JSONUnmarshal(current, &timestampsSeqArray); err != nil {
 			return nil, nil, false, err
@@ -199,6 +187,7 @@ func (tm *TimestampsManager) addEntry() error {
 			(now < timestampsSeqArray.newestTimestamp()+int64(updateFrequency/time.Second))
 		if withinUpdateFrequency {
 			// not due, or another node added an entry first
+			newValBytes = current
 			return nil, nil, false, base.ErrUpdateCancel
 		}
 		lastSeq, err := tm.getSequenceFunc(tm.ctx)
@@ -220,7 +209,7 @@ func (tm *TimestampsManager) addEntry() error {
 
 		return newValBytes, nil, false, nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, base.ErrUpdateCancel) {
 		return err
 	}
 
@@ -231,14 +220,4 @@ func (tm *TimestampsManager) addEntry() error {
 	}
 	tm.updateTimestampsArray(updatedTimestampsSeqArray)
 	return nil
-}
-
-// CreateTSDocForTest writes tsArray to the timestamps document, replacing any existing content.
-func (tm *TimestampsManager) CreateTSDocForTest(t *testing.T, tsArray TimestampsSeqArray) {
-	t.Helper()
-	_, err := tm.metadataStore.Update(tm.ctx, tm.metaKeys.TimestampsSeqKey(), 0, func(current []byte) ([]byte, *uint32, bool, error) {
-		valBytes, err := base.JSONMarshal(tsArray)
-		return valBytes, nil, false, err
-	})
-	require.NoError(t, err)
 }
