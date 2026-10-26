@@ -447,7 +447,9 @@ func assertLogLevelCount(t testing.TB, logLevel LogLevel, logContextField string
 	fieldPrefix := logContextField + " "
 	var lines []string
 	for line := range strings.Lines(consoleLogOutput(f)) {
-		if strings.Contains(line, levelPrefix) && strings.Contains(line, fieldPrefix) {
+		// match the level only after the timestamp, so message text such as "[ERR] " is not counted
+		_, afterTimestamp, _ := strings.Cut(line, " ")
+		if strings.HasPrefix(afterTimestamp, levelPrefix) && strings.Contains(line, fieldPrefix) {
 			lines = append(lines, line)
 		}
 	}
