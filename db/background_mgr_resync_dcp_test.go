@@ -437,6 +437,7 @@ func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 		return status.State == BackgroundProcessStateStopped
 	}, 2000, 10)
 	require.NoError(t, err)
+	WaitForBackgroundManagerHeartbeatDocRemoval(t, resyncMgr)
 
 	stats := getResyncStats(resyncMgr.Process)
 	require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
@@ -549,6 +550,7 @@ func TestResyncManagerDCPResumeStoppedProcessChangeCollections(t *testing.T) {
 		return status.State == BackgroundProcessStateStopped
 	}, 2000, 10)
 	require.NoError(t, err)
+	WaitForBackgroundManagerHeartbeatDocRemoval(t, resyncMgr)
 
 	stats := getResyncStats(resyncMgr.Process)
 	require.Less(t, stats.DocsProcessed, int64(docsPerCollection), "DocsProcessed is equal to docs created. Consider setting docsPerCollection > %d.", docsPerCollection)
