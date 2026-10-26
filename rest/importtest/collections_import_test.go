@@ -512,7 +512,7 @@ func TestImportVersionWriteVariations(t *testing.T) {
 
 func GetImportVersion(t *testing.T, rt *rest.RestTester, dbName string) uint64 {
 	var databaseConfig rest.DatabaseConfig
-	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbName, &databaseConfig)
+	_, _, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, dbName, &databaseConfig)
 	require.NoError(t, err)
 	return databaseConfig.ImportVersion
 }

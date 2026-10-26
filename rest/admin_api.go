@@ -2595,7 +2595,7 @@ func (h *handler) handleGetClusterInfo() error {
 		}
 
 		for _, bucketName := range bucketNames {
-			registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+			registry, _, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
 			if err != nil {
 				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
 				continue
@@ -2607,7 +2607,7 @@ func (h *handler) handleGetClusterInfo() error {
 			}
 
 			// Grab metadata migration status for bucket, if it exists, and add to response
-			migrationStatus, _, err := h.server.BootstrapContext.Connection.GetMetadataMigrationStatus(h.ctx(), bucketName)
+			migrationStatus, _, _, err := h.server.BootstrapContext.Connection.GetMetadataMigrationStatus(h.ctx(), bucketName)
 			if err != nil && !base.IsDocNotFoundError(err) {
 				base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve metadata migration status for bucket %s during /_cluster_info: %v. Returning response without this information.", base.MD(bucketName), err)
 			} else {

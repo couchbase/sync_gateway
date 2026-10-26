@@ -372,6 +372,13 @@ func (g *GlobalStat) ResourceUtilizationStats() *ResourceUtilization {
 	return g.ResourceUtilization
 }
 
+// AddIdleKVOps records KV operations made by background work that runs even on a node with no clients. Only background
+// code calls it. A helper that client requests also use returns its op count to the background caller instead, so that
+// the same KV work done for a client request is not counted as idle.
+func AddIdleKVOps(n int) {
+	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(int64(n))
+}
+
 func (s *SgwStats) initReplicationStats() error {
 	s.ReplicatorStats = &ReplicatorStats{
 		new(expvar.Map).Init(),

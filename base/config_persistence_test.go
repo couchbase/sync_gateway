@@ -66,7 +66,7 @@ func TestConfigPersistence(t *testing.T) {
 
 			ctx := TestCtx(t)
 			var loadedConfig map[string]any
-			loadCas, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
+			loadCas, _, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 			require.NoError(t, loadErr)
 			assert.Equal(t, insertCas, loadCas)
 			assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
@@ -89,7 +89,7 @@ func TestConfigPersistence(t *testing.T) {
 
 			// retrieve config, validate updated value
 			var updatedConfig map[string]any
-			loadCas, loadErr = cp.loadConfig(ctx, c, configKey, &updatedConfig)
+			loadCas, _, loadErr = cp.loadConfig(ctx, c, configKey, &updatedConfig)
 			require.NoError(t, loadErr)
 			assert.Equal(t, updateCas, gocb.Cas(loadCas))
 			assert.Equal(t, configBody["updated"], updatedConfig["updated"])
@@ -110,7 +110,7 @@ func TestConfigPersistence(t *testing.T) {
 
 			// attempt to retrieve config, validate not found
 			var deletedConfig map[string]any
-			_, loadErr = cp.loadConfig(ctx, c, configKey, &deletedConfig)
+			_, _, loadErr = cp.loadConfig(ctx, c, configKey, &deletedConfig)
 			assert.Equal[error](t, ErrNotFound, loadErr)
 
 			// attempt to retrieve raw config, validate updated value
@@ -160,7 +160,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 
 	// Retrieve the config
 	var loadedConfig map[string]any
-	_, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, _, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
@@ -169,7 +169,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Retrieve the config
-	_, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, _, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
@@ -184,7 +184,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.NoError(t, deleteErr)
 
 	// Retrieve the config
-	_, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, _, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
@@ -194,7 +194,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.True(t, docBody != nil)
 
 	// Retrieve the config
-	_, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, _, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 

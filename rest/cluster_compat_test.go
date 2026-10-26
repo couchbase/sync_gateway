@@ -121,7 +121,7 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	var eg errgroup.Group
 	for i := 0; i < n; i++ {
 		eg.Go(func() error {
-			_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+			_, _, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 				BucketName:      bucketName,
 				NodeUID:         fmt.Sprintf("node-%d", i),
 				Version:         version,
@@ -133,7 +133,7 @@ func TestRegisterNodeVersionCASRetry(t *testing.T) {
 	}
 	assert.NoError(t, eg.Wait())
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	for i := 0; i < n; i++ {
 		uuid := fmt.Sprintf("node-%d", i)
@@ -154,7 +154,7 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	const n = 10
 	version := base.NodeClusterCompatVersion
 	for i := 0; i < n; i++ {
-		_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+		_, _, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 			BucketName:      bucketName,
 			NodeUID:         fmt.Sprintf("node-%d", i),
 			Version:         version,
@@ -173,7 +173,7 @@ func TestDeregisterNodeVersionCASRetry(t *testing.T) {
 	}
 	require.NoError(t, eg.Wait())
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	for i := 0; i < n; i++ {
 		uuid := fmt.Sprintf("node-%d", i)
@@ -216,12 +216,13 @@ func TestClusterCompatMinVersionAcrossNodes(t *testing.T) {
 func setNodeHeartbeatAt(t *testing.T, rt *RestTester, bucketName, nodeUID string, hb time.Time) {
 	ctx := base.TestCtx(t)
 	bc := rt.ServerContext().BootstrapContext
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	node, ok := registry.Nodes[nodeUID]
 	require.True(t, ok, "node %s must exist before mutating its heartbeat", nodeUID)
 	node.HeartbeatAt = hb
-	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+	_, setErr := bc.setGatewayRegistry(ctx, bucketName, registry)
+	require.NoError(t, setErr)
 }
 
 // TestClusterCompatPruneStaleOnRefresh seeds a peer with an expired heartbeat and verifies
@@ -246,7 +247,7 @@ func TestClusterCompatPruneStaleOnRefresh(t *testing.T) {
 	ccm.lastRefreshAt = time.Time{}
 	ccm.Refresh(ctx)
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.NotContains(t, maps.Keys(registry.Nodes), stalePeer, "stale peer should have been pruned by Refresh")
 	assert.Contains(t, maps.Keys(registry.Nodes), rt.ServerContext().NodeUID, "self should remain after Refresh")
@@ -276,7 +277,7 @@ func TestClusterCompatPruneStaleOnRegisterBucket(t *testing.T) {
 	ccm.mu.Unlock()
 	require.NoError(t, ccm.RegisterBucket(ctx, bucketName))
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.NotContains(t, maps.Keys(registry.Nodes), stalePeer, "stale peer should have been pruned by RegisterBucket")
 	assert.Contains(t, maps.Keys(registry.Nodes), rt.ServerContext().NodeUID, "self should be present after RegisterBucket")
@@ -298,7 +299,7 @@ func TestClusterCompatPruneSelfNotPruned(t *testing.T) {
 	require.NotNil(t, ccm)
 
 	// Make sure self is registered, then make its heartbeat ancient.
-	_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	_, _, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:      bucketName,
 		NodeUID:         selfUID,
 		Version:         base.NodeClusterCompatVersion,
@@ -310,7 +311,7 @@ func TestClusterCompatPruneSelfNotPruned(t *testing.T) {
 	setNodeHeartbeatAt(t, rt, bucketName, selfUID, staleTime)
 
 	// Re-register with a non-zero expiry. Self must survive and have a fresh heartbeat.
-	registry, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	registry, _, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:      bucketName,
 		NodeUID:         selfUID,
 		Version:         base.NodeClusterCompatVersion,
@@ -341,7 +342,7 @@ func TestClusterCompatPruneFreshPeerNotPruned(t *testing.T) {
 	ccm.lastRefreshAt = time.Time{}
 	ccm.Refresh(ctx)
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.Contains(t, maps.Keys(registry.Nodes), freshPeer, "fresh peer should not be pruned")
 }
@@ -375,7 +376,7 @@ func TestClusterCompatHeartbeatExpiryConfigurable(t *testing.T) {
 func seedRegistryNode(t *testing.T, rt *RestTester, bucketName, nodeUID string, version base.ClusterCompatVersion) {
 	ctx := base.TestCtx(t)
 	bc := rt.ServerContext().BootstrapContext
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	if registry.Nodes == nil {
 		registry.Nodes = make(map[string]*base.RegistryNode)
@@ -388,7 +389,8 @@ func seedRegistryNode(t *testing.T, rt *RestTester, bucketName, nodeUID string, 
 	if ccv.GreaterThan(registry.ClusterCompatVersionHWM) {
 		registry.ClusterCompatVersionHWM = ccv
 	}
-	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+	_, setErr := bc.setGatewayRegistry(ctx, bucketName, registry)
+	require.NoError(t, setErr)
 }
 
 // TestClusterCompatDowngradeBlockedByLiveNewerPeer verifies that a node refuses to load a
@@ -448,7 +450,7 @@ func TestClusterCompatDowngradeEmptyRegistry(t *testing.T) {
 	require.NotNil(t, ccm)
 	ccm.Refresh(ctx)
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM should be ratcheted to node version after first refresh")
 }
@@ -467,10 +469,11 @@ func TestClusterCompatDowngradeBlockedByPersistentHWM(t *testing.T) {
 	ctx := base.TestCtx(t)
 	bc := rt.ServerContext().BootstrapContext
 	bucketName := rt.Bucket().GetName()
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	registry.ClusterCompatVersionHWM = base.NewClusterCompatVersion(99, 9)
-	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+	_, setErr := bc.setGatewayRegistry(ctx, bucketName, registry)
+	require.NoError(t, setErr)
 
 	cfg := rt.NewDbConfig()
 	cfg.StartOffline = new(true)
@@ -503,15 +506,16 @@ func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
 	require.NotNil(t, ccm)
 	ccm.Refresh(ctx)
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
 
 	preserved := base.NewClusterCompatVersion(base.NodeClusterCompatVersion.Major+1, 0)
 	registry.ClusterCompatVersionHWM = preserved
-	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+	_, setErr := bc.setGatewayRegistry(ctx, bucketName, registry)
+	require.NoError(t, setErr)
 
-	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	_, _, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:      bucketName,
 		NodeUID:         "lower-peer",
 		Version:         base.NewClusterCompatVersion(0, 1),
@@ -521,7 +525,7 @@ func TestClusterCompatDowngradeHWMRatchets(t *testing.T) {
 	require.Error(t, err, "lower-version registration must be rejected when HWM is higher")
 	require.Contains(t, err.Error(), "newer Sync Gateway cluster compat version")
 
-	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err = bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.Equal(t, preserved, registry.ClusterCompatVersionHWM, "HWM must not be lowered by a rejected registration")
 }
@@ -543,14 +547,14 @@ func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
 	ccm.Refresh(ctx)
 
 	// After auto-create db + first refresh, HWM == self version (only node).
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM)
 
 	// Add a higher-version peer. Cluster compat is still min(self, higher) == self, so HWM
 	// must not budge.
 	higher := base.NewClusterCompatVersion(base.NodeClusterCompatVersion.Major+1, 0)
-	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	_, _, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:      bucketName,
 		NodeUID:         "higher-peer",
 		Version:         higher,
@@ -558,7 +562,7 @@ func TestClusterCompatDowngradeHWMTracksMinAcrossNodes(t *testing.T) {
 		RatchetHWM:      true,
 	})
 	require.NoError(t, err)
-	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err = bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.Equal(t, base.NodeClusterCompatVersion, registry.ClusterCompatVersionHWM, "HWM must follow min cluster compat, not max node version")
 }
@@ -586,7 +590,7 @@ func TestClusterCompatAppliedDBVersionTracked(t *testing.T) {
 	ccm.mu.Unlock()
 	ccm.Refresh(ctx)
 
-	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	node, ok := registry.Nodes[sc.NodeUID]
 	require.True(t, ok, "self should be in registry")
@@ -655,7 +659,7 @@ func TestUpdateDbConfigWithConcurrentPeerHeartbeats(t *testing.T) {
 		PersistentConfig: true,
 		ConnectToBucketFn: func(ctx context.Context, spec base.BucketSpec, failFast bool) (base.Bucket, error) {
 			reloads.Add(1)
-			_, err := rt.ServerContext().BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+			_, _, err := rt.ServerContext().BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 				BucketName:      spec.BucketName,
 				NodeUID:         "peer",
 				Version:         base.NodeClusterCompatVersion,
@@ -676,7 +680,7 @@ func TestUpdateDbConfigWithConcurrentPeerHeartbeats(t *testing.T) {
 	assert.Equal(t, int32(1), reloads.Load())
 
 	var bucketConfig DatabaseConfig
-	bucketCas, err := sc.BootstrapContext.GetConfig(rt.Context(), rt.Bucket().GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", &bucketConfig)
+	bucketCas, _, err := sc.BootstrapContext.GetConfig(rt.Context(), rt.Bucket().GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", &bucketConfig)
 	require.NoError(t, err)
 	require.Equal(t, uint32(123), *bucketConfig.RevsLimit)
 	loadedConfig := sc.GetDatabaseConfig("db")
@@ -789,7 +793,7 @@ func refreshAndGetRegistry(t *testing.T, rt *RestTester, bucketName string) *Gat
 	ccm.mu.Unlock()
 	ccm.Refresh(ctx)
 
-	registry, err := rt.ServerContext().BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := rt.ServerContext().BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	return registry
 }
@@ -1268,7 +1272,7 @@ func TestClusterCompatFreezeAndUnfreeze(t *testing.T) {
 	assert.Equal(t, base.NodeClusterCompatVersion, freeze.Version)
 	assert.False(t, freeze.FrozenAt.IsZero())
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.NotNil(t, registry.Frozen, "freeze should be persisted to bucket registry")
 	assert.Equal(t, freeze.Version, registry.Frozen.Version)
@@ -1279,7 +1283,7 @@ func TestClusterCompatFreezeAndUnfreeze(t *testing.T) {
 	require.NotNil(t, cleared, "Unfreeze should return the freeze record that was cleared")
 	assert.Equal(t, base.NodeClusterCompatVersion, cleared.Version)
 
-	registry, err = bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err = bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.Nil(t, registry.Frozen, "freeze should be cleared from bucket registry")
 	assert.Nil(t, ccm.getCachedFreeze())
@@ -1369,7 +1373,7 @@ func TestClusterCompatFreezePreventsHWMAdvance(t *testing.T) {
 	// Simulate a node upgrade by re-registering self at a higher version. Without the
 	// freeze ceiling, RegisterNodeVersion would ratchet HWM up to this higher value.
 	higher := base.NewClusterCompatVersion(2, 0)
-	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	_, _, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:      bucketName,
 		NodeUID:         rt.ServerContext().NodeUID,
 		Version:         higher,
@@ -1378,7 +1382,7 @@ func TestClusterCompatFreezePreventsHWMAdvance(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	assert.Equal(t, lowVersion, registry.ClusterCompatVersionHWM, "HWM must not advance past the frozen version")
 }
@@ -1484,9 +1488,9 @@ func corruptGatewayRegistry(t *testing.T, rt *RestTester, bucketName string) {
 	ctx := base.TestCtx(t)
 	conn := rt.ServerContext().BootstrapContext.Connection
 	var existing map[string]any
-	cas, err := conn.GetMetadataDocument(ctx, bucketName, base.SGRegistryKey, &existing)
+	cas, _, err := conn.GetMetadataDocument(ctx, bucketName, base.SGRegistryKey, &existing)
 	require.NoError(t, err)
-	_, err = conn.WriteMetadataDocument(ctx, bucketName, base.SGRegistryKey, cas, "corrupted-registry-for-test")
+	_, _, err = conn.WriteMetadataDocument(ctx, bucketName, base.SGRegistryKey, cas, "corrupted-registry-for-test")
 	require.NoError(t, err)
 }
 
@@ -1646,15 +1650,16 @@ func TestRegisterNodeVersion_PreCCVAwarePeerCapsHWM(t *testing.T) {
 	selfUID := rt.ServerContext().NodeUID
 
 	// Reset HWM and Nodes so the upcoming RegisterNodeVersion is the first one to ratchet.
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	registry.ClusterCompatVersionHWM = base.ClusterCompatVersion{}
 	registry.Nodes = nil
-	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+	_, setErr := bc.setGatewayRegistry(ctx, bucketName, registry)
+	require.NoError(t, setErr)
 
 	const peerUUID = "observed-db-uuid"
 	peers := map[string]base.RegistryPreCCVAwareNode{peerUUID: {Version: base.PreSGNodeVersionFallback}}
-	registry, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	registry, _, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:       bucketName,
 		NodeUID:          selfUID,
 		Version:          base.NodeClusterCompatVersion,
@@ -1702,7 +1707,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerIdempotentRefresh(t *testing.T) {
 		PreCCVAwarePeers: peers,
 		RatchetHWM:       true,
 	}
-	registry, err := bc.RegisterNodeVersion(ctx, opts)
+	registry, _, err := bc.RegisterNodeVersion(ctx, opts)
 	require.NoError(t, err)
 	require.Contains(t, maps.Keys(registry.PreCCVAwareNodes), peerUUID)
 	firstObserved := registry.PreCCVAwareNodes[peerUUID].LastObservedAt
@@ -1711,7 +1716,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerIdempotentRefresh(t *testing.T) {
 	// would otherwise produce identical instants.
 	time.Sleep(2 * time.Millisecond)
 
-	registry, err = bc.RegisterNodeVersion(ctx, opts)
+	registry, _, err = bc.RegisterNodeVersion(ctx, opts)
 	require.NoError(t, err)
 	assert.Len(t, registry.PreCCVAwareNodes, 1, "duplicate observation must not create a second entry")
 	assert.True(t, registry.PreCCVAwareNodes[peerUUID].LastObservedAt.After(firstObserved), "LastObservedAt must be refreshed on re-observation")
@@ -1732,7 +1737,7 @@ func TestRegisterNodeVersion_PreCCVAwarePeerExpires(t *testing.T) {
 	// Seed via initial observation, then mutate LastObservedAt into the past.
 	const peerUUID = "aging-peer"
 	peers := map[string]base.RegistryPreCCVAwareNode{peerUUID: {Version: base.PreSGNodeVersionFallback}}
-	_, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	_, _, err := bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:       bucketName,
 		NodeUID:          selfUID,
 		Version:          base.NodeClusterCompatVersion,
@@ -1742,15 +1747,16 @@ func TestRegisterNodeVersion_PreCCVAwarePeerExpires(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	registry, err := bc.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bc.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	require.Contains(t, maps.Keys(registry.PreCCVAwareNodes), peerUUID)
 	registry.PreCCVAwareNodes[peerUUID].LastObservedAt = time.Now().Add(-2 * time.Hour)
-	require.NoError(t, bc.setGatewayRegistry(ctx, bucketName, registry))
+	_, setErr := bc.setGatewayRegistry(ctx, bucketName, registry)
+	require.NoError(t, setErr)
 
 	// Re-register with no pre-CCV-aware peers and a short expiry. The aged entry should be pruned and
 	// HWM should now advance to self's version.
-	registry, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	registry, _, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:      bucketName,
 		NodeUID:         selfUID,
 		Version:         base.NodeClusterCompatVersion,
@@ -1863,7 +1869,7 @@ func TestFreezeAndPreCCVAwareInteraction(t *testing.T) {
 	// is persisted in the registry and surfaced via PreCCVAwareNodeVersions, but must not drag
 	// reported CCV back below HWM.
 	peers := map[string]base.RegistryPreCCVAwareNode{"frozen-era-peer": {Version: base.PreSGNodeVersionFallback}}
-	_, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	_, _, err = bc.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:       bucketName,
 		NodeUID:          selfUID,
 		Version:          base.NodeClusterCompatVersion,
@@ -1975,7 +1981,7 @@ func TestClusterCompatRefreshAndStopUntrackVanishedBucket(t *testing.T) {
 	clusterCompat.mu.Unlock()
 	require.Contains(t, clusterCompat.trackedBucketList(), fakeBucket, "fake bucket should be tracked")
 
-	_, _, _, _, err = clusterCompat.refreshNodeRegistrations(ctx)
+	_, _, _, _, _, err = clusterCompat.refreshNodeRegistrations(ctx)
 	require.NoError(t, err)
 	require.Contains(t, clusterCompat.trackedBucketList(), bucketName, "real bucket should remain tracked")
 
@@ -1999,8 +2005,8 @@ func (f *fakeVanishingBootstrapConnection) GetConfigBuckets(_ context.Context) (
 	return f.knownBuckets, nil
 }
 
-func (f *fakeVanishingBootstrapConnection) GetMetadataDocument(_ context.Context, _, _ string, _ any) (uint64, error) {
-	return 0, errors.New("simulated: unable to read metadata document")
+func (f *fakeVanishingBootstrapConnection) GetMetadataDocument(_ context.Context, _, _ string, _ any) (uint64, int, error) {
+	return 0, 1, errors.New("simulated: unable to read metadata document")
 }
 
 // newTestClusterCompatManager builds a clusterCompatManager backed by a fake bootstrap
@@ -2029,7 +2035,7 @@ func TestClusterCompatRefreshNodeRegistrationsAllBucketsVanished(t *testing.T) {
 	ctx := base.TestCtx(t)
 	m := newTestClusterCompatManager(nil, "vanished-bucket-1", "vanished-bucket-2")
 
-	nodes, freeze, preCCVAwareNodes, hwm, err := m.refreshNodeRegistrations(ctx)
+	nodes, freeze, preCCVAwareNodes, hwm, _, err := m.refreshNodeRegistrations(ctx)
 	require.NoError(t, err, "all-vanished tracked buckets must not be reported as a failure")
 	assert.Empty(t, nodes)
 	assert.Nil(t, freeze)
@@ -2065,7 +2071,7 @@ func TestClusterCompatRefreshNodeRegistrationsPartialVanishKeepsError(t *testing
 	// real, non-vanished failure. vanished-bucket doesn't exist, so it's classified as vanished.
 	m := newTestClusterCompatManager([]string{"flaky-bucket"}, "vanished-bucket", "flaky-bucket")
 
-	_, _, _, _, err := m.refreshNodeRegistrations(ctx)
+	_, _, _, _, _, err := m.refreshNodeRegistrations(ctx)
 	require.Error(t, err, "a mix of vanished and non-vanished failures must still be reported as an error")
 
 	tracked := m.trackedBucketList()

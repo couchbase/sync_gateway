@@ -166,6 +166,10 @@ type LeakyBucketConfig struct {
 	// TouchCallback issues a callback during touch.
 	TouchCallback func(key string) error
 
+	// KVOpCallback is called at the start of every KV operation on the bucket's data stores, so tests can see
+	// which KV work a node does.
+	KVOpCallback func(op, key string)
+
 	// GetAndTouchRawCallback issues a callback prior to running GetAndTouchRaw. Useful for injecting
 	// transient errors, e.g. to simulate a heartbeat write failure.
 	GetAndTouchRawCallback func(key string) error
@@ -238,6 +242,12 @@ func (b *LeakyBucket) getTouchCallback() func(string) error {
 	b.configLock.RLock()
 	defer b.configLock.RUnlock()
 	return b._config.TouchCallback
+}
+
+func (b *LeakyBucket) getKVOpCallback() func(op, key string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b._config.KVOpCallback
 }
 
 func (b *LeakyBucket) getAddCallback() func(string) (bool, error) {

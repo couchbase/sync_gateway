@@ -1092,7 +1092,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		bucketName := spec.BucketName
 		cfgVersion := config.Version
 		dbcontext.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
-			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			registry, _, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 			if err != nil {
 				return false, nil, err
 			}
@@ -1116,10 +1116,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return sc.isPerDBMigrationComplete(ctx, bucketName, metadataID)
 		}
 		dbcontext.PostMetadataMigrationCompleteFunc = func(ctx context.Context) error {
-			return sc.maybeCompleteBucketMetadataMigration(ctx, bucketName)
+			_, err := sc.maybeCompleteBucketMetadataMigration(ctx, bucketName)
+			return err
 		}
 		dbcontext.SiblingMetadataIDFunc = func(ctx context.Context) ([]string, error) {
-			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+			registry, _, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 			if err != nil {
 				return nil, err
 			}
@@ -2319,7 +2320,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	sc.ClusterCompat = &clusterCompatManager{sc: sc}
 	sc.ClusterCompat.Start(ctx)
 
-	count, err := sc.fetchAndLoadConfigs(ctx, true)
+	count, _, err := sc.fetchAndLoadConfigs(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -2345,17 +2346,8 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					t.Stop()
 					return
 				case <-t.C:
-					base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
-					count, err := sc.fetchAndLoadConfigs(ctx, false)
-					if err != nil {
-						base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
-					}
-					if count > 0 {
-						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
-					}
-					sc.ClusterCompat.Refresh(ctx)
-					sc.refreshBucketBootstrapTargets(ctx)
-					sc.RecheckPendingBucketMetadataMigrations(ctx)
+					// This loop runs even when the node has no clients, so all of its KV work is idle KV work.
+					base.AddIdleKVOps(sc.pollBootstrapConfig(ctx))
 				}
 			}
 		}()
@@ -2367,11 +2359,28 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	return nil
 }
 
+// pollBootstrapConfig is one tick of the background config polling loop. It loads changed database configs and
+// refreshes the per-bucket state kept in the bootstrap metadata. Returns the number of KV operations made.
+func (sc *ServerContext) pollBootstrapConfig(ctx context.Context) (kvOps int) {
+	base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
+	count, kvOps, err := sc.fetchAndLoadConfigs(ctx, false)
+	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
+	}
+	if count > 0 {
+		base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
+	}
+	kvOps += sc.ClusterCompat.Refresh(ctx)
+	kvOps += sc.refreshBucketBootstrapTargets(ctx)
+	kvOps += sc.RecheckPendingBucketMetadataMigrations(ctx)
+	return kvOps
+}
+
 // RecheckPendingBucketMetadataMigrations iterates through all config buckets and re-evaluates
-// whether bucket-level metadata migration can now be completed.
-func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) {
+// whether bucket-level metadata migration can now be completed. Returns the number of KV operations made.
+func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) (kvOps int) {
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
-		return
+		return 0
 	}
 	buckets := sc.ClusterCompat.trackedBucketList()
 	for _, bucket := range buckets {
@@ -2379,7 +2388,9 @@ func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Cont
 			// migration done for this bucket, fast path skip to next bucket
 			continue
 		}
-		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+		bucketOps, err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket)
+		kvOps += bucketOps
+		if err != nil {
 			if base.IsDocNotFoundError(err) {
 				// no migration status doc for this bucket means no metadata migration has ever
 				// been run for any of its databases — not an error worth warning about
@@ -2388,6 +2399,7 @@ func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Cont
 			base.WarnfCtx(ctx, "Re-check of bucket %q metadata migration failed: %v", base.MD(bucket), err)
 		}
 	}
+	return kvOps
 }
 
 // resolveUseSystemMetadataCollection returns the effective use_system_metadata_collection
@@ -2460,7 +2472,7 @@ func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketN
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return false
 	}
-	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	status, _, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// only treat not found as "no migration" if the bucket-level status doc is missing — if the doc is present
@@ -2493,7 +2505,7 @@ func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, bucketNam
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return false
 	}
-	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	status, _, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Unable to read %s on bucket %q while checking per-DB migration completion: %v — treating as not complete", base.MD(base.MetadataMigrationStatusDocID), base.MD(bucketName), err)
@@ -2516,24 +2528,28 @@ func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, bucketNam
 // Insert tolerates ErrDocumentExists, fallback Remove uses observed-CAS) and the final state
 // transition is CAS-guarded so the first writer wins and later peers no-op. This avoids the
 // crash-wedge problem an in_progress claim without a lease would introduce.
-func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Context, bucketName string) error {
-	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+//
+// Returns the number of KV operations made by the reads that decide whether the migration can complete. The
+// one-off migration writes are not counted.
+func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Context, bucketName string) (kvOps int, err error) {
+	registry, kvOps, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	if err != nil {
-		return fmt.Errorf("read registry for bucket %q: %w", bucketName, err)
+		return kvOps, fmt.Errorf("read registry for bucket %q: %w", bucketName, err)
 	}
 	expected := registryMetadataIDs(registry)
 
-	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	status, _, statusOps, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	kvOps += statusOps
 	if err != nil {
-		return fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
+		return kvOps, fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
 	}
 	if status.Bootstrap.State == base.MigrationStateComplete {
 		sc.BootstrapContext.Connection.SetMigrationComplete(bucketName)
-		return nil
+		return kvOps, nil
 	}
 	if !status.AllDatabasesComplete(expected) {
 		base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: per-DB completion still pending", base.MD(bucketName))
-		return nil
+		return kvOps, nil
 	}
 
 	base.InfofCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: all per-DB entries complete, starting bootstrap copy", base.MD(bucketName))
@@ -2551,12 +2567,12 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		s.Bootstrap.Attempts++
 		return nil
 	}); err != nil {
-		return fmt.Errorf("record bootstrap-migration attempt on bucket %q: %w", bucketName, err)
+		return kvOps, fmt.Errorf("record bootstrap-migration attempt on bucket %q: %w", bucketName, err)
 	}
 
 	docIDs := bootstrapDocKeysToMigrate(ctx, registry)
 	if err := sc.BootstrapContext.Connection.MigrateBootstrapDocs(ctx, bucketName, docIDs); err != nil {
-		return fmt.Errorf("migrate bootstrap docs on bucket %q: %w", bucketName, err)
+		return kvOps, fmt.Errorf("migrate bootstrap docs on bucket %q: %w", bucketName, err)
 	}
 
 	completedAt := time.Now().UTC()
@@ -2571,7 +2587,7 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 		wonRace = true
 		return nil
 	}); err != nil {
-		return fmt.Errorf("record bootstrap-migration completion on bucket %q: %w", bucketName, err)
+		return kvOps, fmt.Errorf("record bootstrap-migration completion on bucket %q: %w", bucketName, err)
 	}
 
 	sc.BootstrapContext.Connection.SetMigrationComplete(bucketName)
@@ -2580,7 +2596,7 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 	} else {
 		base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q metadata migration: peer already recorded completion, fallback reads disabled locally", base.MD(bucketName))
 	}
-	return nil
+	return kvOps, nil
 }
 
 // refreshBucketBootstrapTargets converges this node's per-bucket bootstrap-target cache with the
@@ -2590,16 +2606,19 @@ func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Contex
 // either a failed read self-heals (see noteBucketFallbackHit) or this routine runs — proactively
 // invoking it on the config-polling cadence shortens the window during which reads pay the extra
 // fallback cost. Errors per bucket are logged at Debug and never escalated; this is best-effort
-// cache convergence, not a correctness path.
-func (sc *ServerContext) refreshBucketBootstrapTargets(ctx context.Context) {
+// cache convergence, not a correctness path. Returns the number of KV operations made.
+func (sc *ServerContext) refreshBucketBootstrapTargets(ctx context.Context) (kvOps int) {
 	if sc.ClusterCompat == nil || sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
-		return
+		return 0
 	}
 	for _, bucket := range sc.ClusterCompat.trackedBucketList() {
-		if err := sc.BootstrapContext.Connection.RefreshBucketBootstrapTarget(ctx, bucket); err != nil {
+		bucketOps, err := sc.BootstrapContext.Connection.RefreshBucketBootstrapTarget(ctx, bucket)
+		kvOps += bucketOps
+		if err != nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q bootstrap-target refresh: %v", base.MD(bucket), err)
 		}
 	}
+	return kvOps
 }
 
 // registryMetadataIDs flattens the registry into the metadataIDs we expect to find in the status
@@ -2685,12 +2704,12 @@ func (sc *ServerContext) stampMetadataMigrationStatusDocs(ctx context.Context) e
 		// complete on this process's connection so its bootstrap reads skip the _default fallback
 		// from the first KV op. Per-bucket: completing one bucket never disables another's fallback.
 		// Skip buckets with no SG registry presence — they don't participate in migration.
-		registry, regErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
+		registry, _, regErr := sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
 		if regErr != nil || len(registryMetadataIDs(registry)) == 0 {
 			continue
 		}
 
-		status, _, statusErr := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucket)
+		status, _, _, statusErr := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucket)
 		if statusErr != nil {
 			base.WarnfCtx(ctx, "Failed to read %s on bucket %q after stamp: %v", base.MD(base.MetadataMigrationStatusDocID), base.MD(bucket), statusErr)
 			continue

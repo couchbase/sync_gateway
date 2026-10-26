@@ -223,3 +223,27 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.Equal(t, int32(1), callCount.Load(), "expected exactly one callback after stopping (no additional calls)")
 	})
 }
+
+// TestDatabaseStatePollCountsIdleKVOps checks that each poll of the state document, which runs while a database is
+// offline even with no clients, counts its KV operations as idle KV ops.
+func TestDatabaseStatePollCountsIdleKVOps(t *testing.T) {
+	ctx := base.TestCtx(t)
+	var recorder base.KVOpRecorder
+	tBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{KVOpCallback: recorder.DataStoreOp})
+	defer tBucket.Close(ctx)
+	mgr := NewDatabaseStateMgr(tBucket.GetMetadataStore(), base.NewMetadataKeys(t.Name()).DatabaseStateKey(), nil)
+
+	for _, name := range []string{"state doc missing", "state doc present"} {
+		t.Run(name, func(t *testing.T) {
+			idleKVOpsBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
+			recorder.Arm()
+			mgr.poll(ctx)
+			ops := recorder.Disarm()
+			idleKVOps := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value() - idleKVOpsBefore
+
+			require.NotEmpty(t, ops)
+			require.GreaterOrEqual(t, int(idleKVOps), base.SumKVOps(ops), "KV operations made: %v", ops)
+		})
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(false)}))
+	}
+}

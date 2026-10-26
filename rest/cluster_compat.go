@@ -238,8 +238,8 @@ func (m *clusterCompatManager) RegisterBucket(ctx context.Context, bucket string
 	// forever. The HWM ratchet happens later via the periodic Refresh, gated per-bucket on
 	// at least one database having reached DBOnline (see ratchetEligibleBuckets) — so the
 	// observation is stable when the ratchet actually runs.
-	preCCVAwarePeers := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket)
-	registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+	preCCVAwarePeers, _ := m.sc._observePreCCVAwarePeersForBucket(ctx, bucket)
+	registry, _, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 		BucketName:       bucket,
 		NodeUID:          m.sc.NodeUID,
 		GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,
@@ -410,22 +410,24 @@ func (m *clusterCompatManager) PreCCVAwareNodeVersions() map[string]base.Cluster
 // (eventual) expiry window if rewritten once per poll cycle, and skipping when the previous
 // write is still fresh avoids piling extra CAS contention onto a registry doc that's also
 // touched by db config writes.
-func (m *clusterCompatManager) Refresh(ctx context.Context) {
+//
+// Returns the number of KV operations made.
+func (m *clusterCompatManager) Refresh(ctx context.Context) (kvOps int) {
 	m.mu.RLock()
 	hasTrackedBuckets := len(m.trackedBuckets) > 0
 	lastRefresh := m.lastRefreshAt
 	m.mu.RUnlock()
 	if !hasTrackedBuckets {
-		return
+		return 0
 	}
 	if !lastRefresh.IsZero() && time.Since(lastRefresh) < m.refreshInterval() {
-		return
+		return 0
 	}
 
-	nodes, freeze, preCCVAwareNodes, hwm, err := m.refreshNodeRegistrations(ctx)
+	nodes, freeze, preCCVAwareNodes, hwm, kvOps, err := m.refreshNodeRegistrations(ctx)
 	if err != nil {
 		base.WarnfCtx(ctx, "Failed to refresh cluster compat version: %v", err)
-		return
+		return kvOps
 	}
 	newVersion := computeCCV(nodes, freeze, preCCVAwareNodes, hwm)
 
@@ -448,6 +450,7 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 	if !clusterCompatVersionEqual(oldVersion, newVersion) {
 		base.InfofCtx(ctx, base.KeyConfig, "Cluster compatibility version changed from %v to %v", oldVersion, newVersion)
 	}
+	return kvOps
 }
 
 // refreshNodeRegistrations iterates the tracked buckets, registers this node, and returns
@@ -455,11 +458,11 @@ func (m *clusterCompatManager) Refresh(ctx context.Context) {
 // an error only if every tracked bucket failed for a reason other than vanishing — stale cache
 // is preferable to flipping the cluster compat version to nil on a transient bucket outage. If
 // every tracked bucket vanished instead, that's reported as success with empty results, so the
-// caller updates the cache to reflect that no buckets remain tracked.
-func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (map[string]base.ClusterCompatVersion, *base.RegistryFreeze, map[string]*base.RegistryPreCCVAwareNode, *base.ClusterCompatVersion, error) {
+// caller updates the cache to reflect that no buckets remain tracked. Also returns the number of KV operations made.
+func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (map[string]base.ClusterCompatVersion, *base.RegistryFreeze, map[string]*base.RegistryPreCCVAwareNode, *base.ClusterCompatVersion, int, error) {
 	buckets := m.trackedBucketList()
 	if len(buckets) == 0 {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, 0, nil
 	}
 
 	nodeVersion := m.sc.BootstrapContext.clusterCompatVersion
@@ -477,10 +480,12 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	var aggregateHWM *base.ClusterCompatVersion
 	succeeded := 0
 	vanished := 0
+	kvOps := 0
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
-		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+		preCCVAwarePeers, observeOps := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket)
+		kvOps += observeOps
+		registry, registerOps, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 			BucketName:       bucket,
 			NodeUID:          m.sc.NodeUID,
 			GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,
@@ -490,6 +495,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 			PreCCVAwarePeers: preCCVAwarePeers,
 			RatchetHWM:       ratchet,
 		})
+		kvOps += registerOps
 		if err != nil {
 			if errors.Is(err, errBucketDoesNotExist) {
 				base.InfofCtx(ctx, base.KeyConfig, "Bucket %s no longer exists in cluster; removing from cluster compatibility manager: %v", base.MD(bucket), err)
@@ -534,11 +540,11 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 		}
 	}
 	if succeeded == 0 && vanished < len(buckets) {
-		return nil, nil, nil, nil, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
+		return nil, nil, nil, nil, kvOps, fmt.Errorf("no tracked bucket registries could be updated (%d tracked)", len(buckets))
 	}
 	// If every bucket vanished, the aggregates below are still empty/nil — correctly
 	// representing "no buckets tracked" for the cache.
-	return nodeMap, aggregateFreeze, preCCVAwareMap, aggregateHWM, nil
+	return nodeMap, aggregateFreeze, preCCVAwareMap, aggregateHWM, kvOps, nil
 }
 
 // ccvAwareMajorVersion / ccvAwareMinorVersion is the major.minor threshold used to
@@ -561,7 +567,9 @@ const (
 // Best-effort: enumeration errors from cbgt cfg / SGRCluster cfg on individual databases are
 // logged by the per-database observer and do not abort the sweep. The caller's CCV cap still
 // works correctly off whichever observations did succeed.
-func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
+//
+// Also returns the number of KV operations made.
+func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) (peers map[string]base.RegistryPreCCVAwareNode, kvOps int) {
 	sc._databasesLock.RLock()
 	defer sc._databasesLock.RUnlock()
 	return sc._observePreCCVAwarePeersForBucket(ctx, bucket)
@@ -572,7 +580,7 @@ func (sc *ServerContext) observePreCCVAwarePeersForBucket(ctx context.Context, b
 // When the same UUID is observed by multiple databases (e.g. two databases on the same
 // bucket both seeing a 3.x peer), entries are merged with the lower-versioned observation
 // winning, matching the per-database merge inside ObservePreCCVAwarePeers.
-func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) map[string]base.RegistryPreCCVAwareNode {
+func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, bucket string) (peers map[string]base.RegistryPreCCVAwareNode, kvOps int) {
 	databases := make([]*db.DatabaseContext, 0, len(sc._databases))
 	for _, dbCtx := range sc._databases {
 		if dbCtx == nil || dbCtx.Bucket == nil || dbCtx.Bucket.GetName() != bucket {
@@ -582,7 +590,9 @@ func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, 
 	}
 	var out map[string]base.RegistryPreCCVAwareNode
 	for _, dbCtx := range databases {
-		for uuid, entry := range dbCtx.ObservePreCCVAwarePeers(ctx, ccvAwareMajorVersion, ccvAwareMinorVersion) {
+		dbPeers, dbOps := dbCtx.ObservePreCCVAwarePeers(ctx, ccvAwareMajorVersion, ccvAwareMinorVersion)
+		kvOps += dbOps
+		for uuid, entry := range dbPeers {
 			if out == nil {
 				out = make(map[string]base.RegistryPreCCVAwareNode)
 			}
@@ -592,7 +602,7 @@ func (sc *ServerContext) _observePreCCVAwarePeersForBucket(ctx context.Context, 
 			out[uuid] = entry
 		}
 	}
-	return out
+	return out, kvOps
 }
 
 // computeCCV returns the reported cluster compat version: the minimum across the live-node
@@ -777,7 +787,7 @@ func (m *clusterCompatManager) Unfreeze(ctx context.Context) (previousFreeze, re
 			clearFailed++
 			base.WarnfCtx(ctx, "Failed to clear cluster compat version freeze in bucket %s: %v", base.MD(bucket), err)
 			// Re-read to discover the freeze still in effect on this bucket.
-			registry, getErr := m.sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
+			registry, _, getErr := m.sc.BootstrapContext.getGatewayRegistry(ctx, bucket)
 			if getErr != nil {
 				base.WarnfCtx(ctx, "Failed to re-read registry for bucket %s after clear failure: %v", base.MD(bucket), getErr)
 				continue

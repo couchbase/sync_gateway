@@ -756,7 +756,7 @@ func TestMetadataMigrationConcurrentDefaultAndNamedDB(t *testing.T) {
 	conn := rt.ServerContext().BootstrapContext.Connection
 	bucketName := rt.Bucket().GetName()
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, _, statusErr := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		status, _, _, statusErr := conn.GetMetadataMigrationStatus(ctx, bucketName)
 		require.NoError(c, statusErr)
 		require.NotNil(c, status)
 		for _, id := range []string{base.DefaultMetadataID, dbNamedCtx.Options.MetadataID} {
@@ -1099,7 +1099,7 @@ func TestMetadataMigrationEndToEndBucketComplete(t *testing.T) {
 			// also completed.
 			conn := rt.ServerContext().BootstrapContext.Connection
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+				status, _, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
 				require.NoError(c, err)
 				require.NotNil(c, status)
 				entry, ok := status.Databases[metadataID]
@@ -1198,7 +1198,7 @@ func TestMetadataMigrationEndToEndBucketBootstrapDocsContent(t *testing.T) {
 			conn := rt.ServerContext().BootstrapContext.Connection
 			// wait for db migration and bootstrap migration to complete
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+				status, _, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
 				require.NoError(c, err)
 				require.NotNil(c, status)
 				assert.Equal(c, base.MigrationStateComplete, status.Bootstrap.State, "bucket bootstrap migration should complete")
@@ -1656,7 +1656,7 @@ func TestDeleteNonMigratedDbUnblocksBootstrapMigration(t *testing.T) {
 
 	conn := rt.ServerContext().BootstrapContext.Connection
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+		status, _, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
 		if !assert.NoError(c, err) {
 			return
 		}
@@ -1786,7 +1786,7 @@ func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
 	conn := rt.ServerContext().BootstrapContext.Connection
 
 	// Sanity check: with db2 still present and un-migrated, the bucket bootstrap migration is pending.
-	status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+	status, _, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	require.Equal(t, base.MigrationStatePending, status.Bootstrap.State, "precondition: bucket migration should be pending while db2 is un-migrated")
@@ -1801,7 +1801,7 @@ func TestDeleteAllDbsCompletesPendingBootstrapMigration(t *testing.T) {
 	// fails on the current code because maybeComplete bails at its len(expected) == 0 guard.
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
-		status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+		status, _, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
 		if !assert.NoError(c, err) {
 			return
 		}
@@ -1848,7 +1848,7 @@ func TestBootstrapMigrationDoneAndCreateDbWithoutMobileSystemCollectionOptIn(t *
 	conn := rt.ServerContext().BootstrapContext.Connection
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		rt.ServerContext().RecheckPendingBucketMetadataMigrations(ctx)
-		status, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
+		status, _, _, err := conn.GetMetadataMigrationStatus(ctx, tb.GetName())
 		if !assert.NoError(c, err) {
 			return
 		}

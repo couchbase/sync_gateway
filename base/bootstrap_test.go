@@ -113,7 +113,7 @@ func TestBootstrapRefCounting(t *testing.T) {
 	makeConnection := make(chan struct{})
 	go func() {
 		defer wg.Done()
-		b, teardown, err := cluster.getBucket(ctx, buckets[0])
+		b, teardown, _, err := cluster.getBucket(ctx, buckets[0])
 		defer teardown()
 		require.NoError(t, err)
 		require.NotNil(t, b)
@@ -230,22 +230,22 @@ func TestTouchMetadataDocument(t *testing.T) {
 	docID := t.Name()
 	body := map[string]any{"name": "original"}
 
-	originalCAS, err := cluster.InsertMetadataDocument(ctx, bucketName, docID, body)
+	originalCAS, _, err := cluster.InsertMetadataDocument(ctx, bucketName, docID, body)
 	require.NoError(t, err)
 	defer func() { _ = cluster.DeleteMetadataDocument(ctx, bucketName, docID, 0) }()
 
 	// Stale CAS must be rejected with CasMismatch (mirrors CBS subdoc Touch with Cas option).
-	_, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db1", originalCAS+1)
+	_, _, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db1", originalCAS+1)
 	require.Error(t, err)
 	require.True(t, IsCasMismatch(err), "expected CasMismatch, got %T: %v", err, err)
 
 	// Correct CAS succeeds and returns a new (different) CAS.
-	newCAS, err := cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db1", originalCAS)
+	newCAS, _, err := cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db1", originalCAS)
 	require.NoError(t, err)
 	require.NotEqual(t, originalCAS, newCAS, "TouchMetadataDocument should bump CAS")
 
 	// The previously-valid CAS is now stale.
-	_, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db2", originalCAS)
+	_, _, err = cluster.TouchMetadataDocument(ctx, bucketName, docID, "name", "db2", originalCAS)
 	require.Error(t, err)
 	require.True(t, IsCasMismatch(err), "expected CasMismatch on stale CAS retry, got %T: %v", err, err)
 }
@@ -371,7 +371,7 @@ func newCouchbaseBootstrapDualFixture(t *testing.T, useXattrs bool) bootstrapDua
 	require.NotEmpty(t, buckets)
 	bucketName := buckets[0]
 
-	bucket, teardown, err := cluster.getBucket(ctx, bucketName)
+	bucket, teardown, _, err := cluster.getBucket(ctx, bucketName)
 	require.NoError(t, err)
 	t.Cleanup(teardown)
 
@@ -489,7 +489,7 @@ func newCouchbaseBootstrapTwoBucketDualFixture(t *testing.T, useXattrs bool) boo
 	gocbBuckets := make(map[string]*gocb.Bucket, 2)
 	for _, tb := range []*TestBucket{tbA, tbB} {
 		name := tb.GetName()
-		b, teardown, err := cluster.getBucket(ctx, name)
+		b, teardown, _, err := cluster.getBucket(ctx, name)
 		require.NoError(t, err)
 		t.Cleanup(teardown)
 		gocbBuckets[name] = b
@@ -530,10 +530,10 @@ func TestBootstrapMigrationCompleteIsPerBucket(t *testing.T) {
 
 		// Sanity: both buckets resolve their doc via the fallback before any completion.
 		var loaded bootstrapTestCfg
-		_, err := f.Cluster.GetMetadataDocument(ctx, f.BucketA, docID, &loaded)
+		_, _, err := f.Cluster.GetMetadataDocument(ctx, f.BucketA, docID, &loaded)
 		require.NoError(t, err)
 		require.Equal(t, "bucketA", loaded.Foo)
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
 		require.NoError(t, err)
 		require.Equal(t, "bucketB", loaded.Foo)
 
@@ -542,21 +542,21 @@ func TestBootstrapMigrationCompleteIsPerBucket(t *testing.T) {
 
 		// Bucket A's fallback is now disabled: its fallback-only doc is no longer visible. This
 		// confirms the completion flag actually took effect for A.
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketA, docID, &loaded)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketA, docID, &loaded)
 		require.Error(t, err)
 		require.True(t, IsDocNotFoundError(err), "bucket A fallback must be disabled after its migration completes, got: %v", err)
 
 		// THE REGRESSION CHECK: bucket B has NOT migrated, so its fallback must still be active and
 		// its doc still readable. With the old connection-wide flag this read returned not-found.
 		loaded = bootstrapTestCfg{}
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
 		require.NoError(t, err, "completing bucket A's migration must not disable bucket B's fallback")
 		require.Equal(t, "bucketB", loaded.Foo)
 
 		// Completing bucket B disables its fallback too — confirming the flag is genuinely per-bucket
 		// in both directions, not a one-off.
 		f.Cluster.SetMigrationComplete(f.BucketB)
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketB, docID, &loaded)
 		require.Error(t, err)
 		require.True(t, IsDocNotFoundError(err), "bucket B fallback must be disabled after its own migration completes, got: %v", err)
 	})
@@ -591,16 +591,75 @@ func TestBootstrapInsertMetadataDocumentWritesPrimary(t *testing.T) {
 		docID := SyncDocPrefix + "metadata-insert-primary"
 		t.Cleanup(func() { f.CleanupDoc(t, docID) })
 
-		_, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, docID, bootstrapTestCfg{Foo: "primary"})
+		_, _, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, docID, bootstrapTestCfg{Foo: "primary"})
 		require.NoError(t, err)
 
 		require.True(t, f.PrimaryExists(t, docID))
 		require.False(t, f.FallbackExists(t, docID))
 
 		var loaded bootstrapTestCfg
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &loaded)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &loaded)
 		require.NoError(t, err)
 		require.Equal(t, "primary", loaded.Foo)
+	})
+}
+
+// TestBootstrapMetadataDocumentKVOps checks the KV operation counts returned by the bootstrap connection, which the
+// config polling loop reports as idle KV ops. An operation that misses the primary collection and goes to the fallback
+// costs one more KV operation.
+func TestBootstrapMetadataDocumentKVOps(t *testing.T) {
+	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
+		f := newBootstrapDualTestFixture(t, useXattrs)
+		ctx := TestCtx(t)
+		primaryDocID := SyncDocPrefix + "kvops-primary"
+		legacyDocID := SyncDocPrefix + "kvops-legacy"
+		missingDocID := SyncDocPrefix + "kvops-missing"
+		t.Cleanup(func() {
+			f.CleanupDoc(t, primaryDocID)
+			f.CleanupDoc(t, legacyDocID)
+		})
+		f.SeedLegacy(t, legacyDocID, bootstrapTestCfg{Foo: "legacy"})
+
+		// The bucket's bootstrap target may not be cached yet, in which case every call first probes for the
+		// registry. These calls all leave the cache as it was, so each pays the same probe cost.
+		var loaded bootstrapTestCfg
+		_, primaryReadOps, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
+		require.Error(t, err)
+		probeOps := primaryReadOps - 2 // primary and fallback both miss
+		require.GreaterOrEqual(t, probeOps, 0)
+
+		_, insertOps, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, primaryDocID, bootstrapTestCfg{Foo: "primary"})
+		require.NoError(t, err)
+		require.Equal(t, probeOps+2, insertOps, "fallback existence check and insert")
+
+		cas, readOps, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
+		require.NoError(t, err)
+		require.Equal(t, probeOps+1, readOps, "primary read")
+
+		_, touchOps, err := f.Cluster.TouchMetadataDocument(ctx, f.BucketName, primaryDocID, "name", "touched", cas+1)
+		require.True(t, IsCasMismatch(err), "expected CAS mismatch, got %v", err)
+		require.Equal(t, probeOps+1, touchOps, "a CAS mismatch on the primary does not go to the fallback")
+
+		_, missingOps, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, missingDocID, &loaded)
+		require.Error(t, err)
+		require.Equal(t, probeOps+2, missingOps, "primary and fallback reads")
+
+		// A fallback hit points this bucket's cache at the primary collection, so the calls after it make no probe.
+		legacyCAS, legacyReadOps, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, legacyDocID, &loaded)
+		require.NoError(t, err)
+		require.Equal(t, probeOps+2, legacyReadOps, "primary miss and fallback read")
+
+		_, writeOps, err := f.Cluster.WriteMetadataDocument(ctx, f.BucketName, legacyDocID, legacyCAS, bootstrapTestCfg{Foo: "updated"})
+		require.NoError(t, err)
+		require.Equal(t, 2, writeOps, "primary miss and fallback write")
+
+		_, _, statusOps, err := f.Cluster.GetMetadataMigrationStatus(ctx, f.BucketName)
+		require.True(t, err == nil || IsDocNotFoundError(err), "unexpected error: %v", err)
+		require.Equal(t, 1, statusOps)
+
+		refreshOps, err := f.Cluster.RefreshBucketBootstrapTarget(ctx, f.BucketName)
+		require.True(t, err == nil || IsDocNotFoundError(err), "unexpected error: %v", err)
+		require.Equal(t, 1, refreshOps)
 	})
 }
 
@@ -616,17 +675,17 @@ func TestBootstrapWriteMetadataDocumentFallbackCAS(t *testing.T) {
 		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "legacy"})
 
 		var initial bootstrapTestCfg
-		cas, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &initial)
+		cas, _, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &initial)
 		require.NoError(t, err)
 		require.Equal(t, "legacy", initial.Foo)
 		require.NotZero(t, cas)
 
-		newCAS, err := f.Cluster.WriteMetadataDocument(ctx, f.BucketName, docID, cas, bootstrapTestCfg{Foo: "updated"})
+		newCAS, _, err := f.Cluster.WriteMetadataDocument(ctx, f.BucketName, docID, cas, bootstrapTestCfg{Foo: "updated"})
 		require.NoError(t, err)
 		require.NotEqual(t, cas, newCAS)
 
 		var reloaded bootstrapTestCfg
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &reloaded)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &reloaded)
 		require.NoError(t, err)
 		require.Equal(t, "updated", reloaded.Foo)
 
@@ -646,7 +705,7 @@ func TestBootstrapInsertMetadataDocumentFallbackDuplicate(t *testing.T) {
 		t.Cleanup(func() { f.CleanupDoc(t, docID) })
 		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "legacy"})
 
-		_, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, docID, bootstrapTestCfg{Foo: "primary"})
+		_, _, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, docID, bootstrapTestCfg{Foo: "primary"})
 		require.ErrorIs(t, err, ErrAlreadyExists)
 		require.False(t, f.PrimaryExists(t, docID), "InsertMetadataDocument must not have created a primary copy")
 	})
@@ -664,11 +723,11 @@ func TestBootstrapTouchMetadataDocumentFallback(t *testing.T) {
 		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "legacy"})
 
 		var initial bootstrapTestCfg
-		cas, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &initial)
+		cas, _, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &initial)
 		require.NoError(t, err)
 		require.NotZero(t, cas)
 
-		newCAS, err := f.Cluster.TouchMetadataDocument(ctx, f.BucketName, docID, "version", "v2", cas)
+		newCAS, _, err := f.Cluster.TouchMetadataDocument(ctx, f.BucketName, docID, "version", "v2", cas)
 		require.NoError(t, err)
 		require.NotEqual(t, cas, newCAS, "Touch must bump CAS")
 		require.False(t, f.PrimaryExists(t, docID))
@@ -687,7 +746,7 @@ func TestBootstrapDeleteMetadataDocumentFallback(t *testing.T) {
 		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "legacy"})
 
 		var initial bootstrapTestCfg
-		cas, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &initial)
+		cas, _, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &initial)
 		require.NoError(t, err)
 		require.NotZero(t, cas)
 
@@ -695,7 +754,7 @@ func TestBootstrapDeleteMetadataDocumentFallback(t *testing.T) {
 		require.False(t, f.FallbackExists(t, docID))
 
 		var afterDelete bootstrapTestCfg
-		_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &afterDelete)
+		_, _, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &afterDelete)
 		require.True(t, IsDocNotFoundError(err), "expected not-found after delete, got %T: %v", err, err)
 	})
 }

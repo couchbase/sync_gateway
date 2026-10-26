@@ -311,7 +311,7 @@ func TestBootstrapRosmarServer(t *testing.T) {
 			require.NoError(t, err)
 
 			// manually bootstrap poll
-			count, err := sc.fetchAndLoadConfigs(ctx, false)
+			count, _, err := sc.fetchAndLoadConfigs(ctx, false)
 			require.NoError(t, err)
 			require.Equal(t, 0, count, "expected 0 databases to be loaded on config polling")
 

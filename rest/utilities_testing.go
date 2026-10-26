@@ -1089,7 +1089,7 @@ func (rt *RestTester) WaitForBucketMetadataMigrationComplete(bucketName string) 
 	ctx := base.TestCtx(rt.TB())
 	conn := rt.ServerContext().BootstrapContext.Connection
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
-		status, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
+		status, _, _, err := conn.GetMetadataMigrationStatus(ctx, bucketName)
 		if !assert.NoError(c, err) {
 			return
 		}
@@ -2635,7 +2635,7 @@ func (sc *ServerContext) RequireInvalidDatabaseConfigNames(t *testing.T, expecte
 // ForceDbConfigsReload forces the reload db config from bucket process (like the ConfigUpdate background process)
 func (sc *ServerContext) ForceDbConfigsReload(t *testing.T, ctx context.Context) {
 	t.Helper()
-	_, err := sc.fetchAndLoadConfigs(ctx, false)
+	_, _, err := sc.fetchAndLoadConfigs(ctx, false)
 	require.NoError(t, err)
 }
 
@@ -2655,7 +2655,7 @@ func (sc *ServerContext) ForceClusterCompatRefresh(t *testing.T, ctx context.Con
 // moves from _default._default to _system._mobile for the given bucket.
 func (sc *ServerContext) BootstrapDocKeysToMigrate(t *testing.T, ctx context.Context, bucketName string) []string {
 	t.Helper()
-	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 	return bootstrapDocKeysToMigrate(ctx, registry)
 }

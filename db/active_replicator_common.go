@@ -497,13 +497,15 @@ func (arc *activeReplicatorCommon) publishStatus() {
 	arc._publishStatus()
 }
 
-// _publishStatus updates the replication status document in the metadata store. Requires holding activeReplicatorCommon.lock before calling.
-func (arc *activeReplicatorCommon) _publishStatus() {
+// _publishStatus updates the replication status document in the metadata store, and returns the number of KV
+// operations made. Requires holding activeReplicatorCommon.lock before calling.
+func (arc *activeReplicatorCommon) _publishStatus() (kvOps int) {
 	status := arc._getStatusCallback()
-	err := setLocalStatus(arc.ctx, arc.config.ActiveDB.MetadataStore, arc.statusKey, status, int(arc.config.ActiveDB.Options.LocalDocExpirySecs))
+	kvOps, err := setLocalStatus(arc.ctx, arc.config.ActiveDB.MetadataStore, arc.statusKey, status, int(arc.config.ActiveDB.Options.LocalDocExpirySecs))
 	if err != nil {
 		base.WarnfCtx(arc.ctx, "Couldn't set status for replication: %v", err)
 	}
+	return kvOps
 }
 
 func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) {
@@ -516,7 +518,8 @@ func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) {
 				func() {
 					arc.lock.RLock()
 					defer arc.lock.RUnlock()
-					arc._publishStatus()
+					// The status is written on every tick, even when the replication has nothing to do.
+					base.AddIdleKVOps(arc._publishStatus())
 				}()
 			case <-ctx.Done():
 				base.DebugfCtx(ctx, base.KeyReplicate, "stats reporter goroutine stopped")
@@ -553,15 +556,17 @@ func getLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 	return nil, nil
 }
 
-// setLocalStatus updates replication status.
-func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string, status *ReplicationStatus, localDocExpirySecs int) (err error) {
+// setLocalStatus updates replication status. Returns the number of KV operations made, counting the update as a read and
+// a write.
+func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string, status *ReplicationStatus, localDocExpirySecs int) (kvOps int, err error) {
 	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%#+v)", statusKey, status)
 
 	// obtain current rev
 	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, statusKey)
+	kvOps++
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", statusKey)
-		return nil
+		return kvOps, nil
 	}
 
 	var revID string
@@ -574,7 +579,8 @@ func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 	}
 
 	_, _, err = putDocWithRevision(ctx, metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
-	return err
+	kvOps += 2
+	return kvOps, err
 }
 
 // removeLocalStatus removes a replication status from the given metadataStore. This is done when a replication is reset.

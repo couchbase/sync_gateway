@@ -1679,10 +1679,13 @@ func (sc *ServerContext) StartupAuditFields() base.AuditFields {
 
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
-func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStartup bool) (count int, err error) {
-	fetchedConfigs, err := sc.FetchConfigs(ctx, isInitialStartup)
+//
+// kvOps is the number of KV operations made on the bootstrap connection to find the configs. Loading a database is
+// not counted.
+func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStartup bool) (count int, kvOps int, err error) {
+	fetchedConfigs, kvOps, err := sc.FetchConfigs(ctx, isInitialStartup)
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
 
 	// Check if we need to update the set of databases before we have to acquire the write lock to do so
@@ -1708,7 +1711,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		// nothing to do, we can bail out without needing the write lock
 		if len(deletedDatabases) == 0 && len(fetchedConfigs) == 0 {
 			base.TracefCtx(ctx, base.KeyConfig, "No persistent config changes to make")
-			return 0, nil
+			return 0, kvOps, nil
 		}
 	}
 
@@ -1723,7 +1726,8 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, getConfigErr := sc._fetchDatabaseFromBucket(ctx, dbc.Bucket.GetName(), dbName)
+		found, _, fetchOps, getConfigErr := sc._fetchDatabaseFromBucket(ctx, dbc.Bucket.GetName(), dbName)
+		kvOps += fetchOps
 		if found && getConfigErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 			continue
@@ -1739,7 +1743,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 	}
 
-	return sc._applyConfigs(ctx, fetchedConfigs, true), nil
+	return sc._applyConfigs(ctx, fetchedConfigs, true), kvOps, nil
 }
 
 func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string, forceReload bool) (found bool, err error) {
@@ -1774,7 +1778,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 
 	for _, bucketName := range buckets {
 		var dbConfig DatabaseConfig
-		legacyCas, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), &dbConfig)
+		legacyCas, _, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bucketName, PersistentConfigKey30(ctx, groupID), &dbConfig)
 		if getErr == base.ErrNotFound {
 			continue
 		} else if getErr != nil {
@@ -1826,16 +1830,17 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return sc._fetchDatabase(ctx, dbName)
 }
 
-func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket string, dbName string) (found bool, cnf DatabaseConfig, err error) {
+// _fetchDatabaseFromBucket also returns the number of KV operations made.
+func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket string, dbName string) (found bool, cnf DatabaseConfig, kvOps int, err error) {
 
-	cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
+	cas, kvOps, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
 	if errors.Is(err, base.ErrNotFound) {
 		base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
-		return false, cnf, err
+		return false, cnf, kvOps, err
 	}
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
-		return false, cnf, err
+		return false, cnf, kvOps, err
 	}
 
 	if cnf.Name == "" {
@@ -1844,7 +1849,7 @@ func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket st
 
 	if cnf.Name != dbName {
 		base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
-		return false, cnf, err
+		return false, cnf, kvOps, err
 	}
 
 	cnf.cfgCas = cas
@@ -1857,7 +1862,7 @@ func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket st
 	// in memory representation on the server context.
 	if bucket != cnf.GetBucketName() {
 		sc._handleInvalidDatabaseConfig(ctx, bucket, cnf, nil)
-		return true, cnf, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
+		return true, cnf, kvOps, fmt.Errorf("mismatch in persisted database bucket name %q vs the actual bucket name %q. Please correct db %q's config, groupID %q.", base.MD(cnf.Bucket), base.MD(bucket), base.MD(cnf.Name), base.MD(sc.Config.Bootstrap.ConfigGroupID))
 	}
 	bucketCopy := bucket
 	// no corruption detected carry on as usual
@@ -1871,14 +1876,14 @@ func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket st
 		cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 	}
 	base.TracefCtx(ctx, base.KeyConfig, "Got database config %s for bucket %q with cas %d and groupID %q", base.MD(dbName), base.MD(bucket), cas, base.MD(sc.Config.Bootstrap.ConfigGroupID))
-	return true, cnf, nil
+	return true, cnf, kvOps, nil
 }
 
 func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	var cnf DatabaseConfig
 	callback := func(bucket string) (exit bool, callbackErr error) {
 		var foundInBucket bool
-		foundInBucket, cnf, callbackErr = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
+		foundInBucket, cnf, _, callbackErr = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
 		return foundInBucket, callbackErr
 	}
 
@@ -1953,12 +1958,13 @@ func (sc *ServerContext) GetBucketNames(ctx context.Context) (buckets []string, 
 	return buckets, nil
 }
 
-// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and the number of KV
+// operations made.
+func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, kvOps int, err error) {
 
 	buckets, err := sc.GetBucketNames(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	allConfigsFound := make(map[string]bool)
@@ -1966,7 +1972,8 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 	for _, bucket := range buckets {
 		ctx := base.BucketNameCtx(ctx, bucket)
 		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q", sc.Config.Bootstrap.ConfigGroupID)
-		configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
+		configs, bucketOps, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
+		kvOps += bucketOps
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a registry removal
 			// this could be due to invalid JSON or some other non-recoverable error.
@@ -2020,7 +2027,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 	// pick up that configs from the bucket. This means the config is no longer present in the bucket.
 	sc.invalidDatabaseConfigTracking.removeNonExistingConfigs(allConfigsFound)
 
-	return fetchedConfigs, nil
+	return fetchedConfigs, kvOps, nil
 }
 
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.

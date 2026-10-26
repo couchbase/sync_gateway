@@ -305,16 +305,16 @@ func (c *RosmarCluster) bucketBootstrapMigrationComplete(bucketName string) bool
 // the bucket migration-complete so reads stop falling back to _default._default. ErrNotFound
 // (no migration ever started here) and any other transient error are returned to the caller for
 // telemetry but never escalate — this is best-effort cache convergence, not a correctness path.
-func (c *RosmarCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) error {
-	status, _, err := c.GetMetadataMigrationStatus(ctx, bucket)
+func (c *RosmarCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) (kvOps int, err error) {
+	status, _, kvOps, err := c.GetMetadataMigrationStatus(ctx, bucket)
 	if err != nil {
-		return err
+		return kvOps, err
 	}
 	if status.Bootstrap.State == MigrationStateComplete {
 		c.noteBucketFallbackHit(bucket)
 		c.SetMigrationComplete(bucket)
 	}
-	return nil
+	return kvOps, nil
 }
 
 // loadConfigWithFallback resolves which of primary/fallback currently holds docID and returns its
@@ -338,30 +338,32 @@ func (c *RosmarCluster) loadConfigWithFallback(ctx context.Context, bucketName s
 // reads consult _system._mobile first and transparently fall back to _default._default for any
 // pre-migration metadata. Returns the underlying rosmar not-found error when the doc is absent
 // from both collections; callers should use IsDocNotFoundError to test for not-found.
-func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, err error) {
+func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, kvOps int, err error) {
 	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer closer(ctx)
 
 	cas, err = primary.Get(ctx, docID, valuePtr)
+	kvOps++
 	if c.shouldFallback(err, fallback) {
 		cas, err = fallback.Get(ctx, docID, valuePtr)
+		kvOps++
 		if err == nil {
 			c.noteBucketFallbackHit(location)
 		}
 	}
-	return cas, err
+	return cas, kvOps, err
 }
 
 // InsertMetadataDocument inserts a metadata document into the primary collection. When
 // useSystemMetadataCollection is enabled and the doc already lives in the fallback collection,
 // returns ErrAlreadyExists rather than creating a divergent primary copy.
-func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, err error) {
+func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, kvOps int, err error) {
 	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer closer(ctx)
 
@@ -369,35 +371,40 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 	// swallowed error here could let a divergent legacy copy survive in fallback.
 	if fallback != nil {
 		exists, existsErr := fallback.Exists(ctx, key)
+		kvOps++
 		if existsErr != nil {
-			return 0, existsErr
+			return 0, kvOps, existsErr
 		}
 		if exists {
 			c.noteBucketFallbackHit(location)
-			return 0, ErrAlreadyExists
+			return 0, kvOps, ErrAlreadyExists
 		}
 	}
-	return primary.WriteCas(ctx, key, 0, 0, value, 0)
+	newCAS, err = primary.WriteCas(ctx, key, 0, 0, value, 0)
+	kvOps++
+	return newCAS, kvOps, err
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch. When the supplied
 // CAS came from a fallback read (i.e. the document still lives in _default._default), the write is
 // replayed against the fallback collection so the CAS stays valid.
-func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, err error) {
+func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, kvOps int, err error) {
 	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer closer(ctx)
 
 	newCAS, err = primary.WriteCas(ctx, docID, 0, cas, value, 0)
+	kvOps++
 	if c.shouldFallback(err, fallback) {
 		newCAS, err = fallback.WriteCas(ctx, docID, 0, cas, value, 0)
+		kvOps++
 		if err == nil {
 			c.noteBucketFallbackHit(location)
 		}
 	}
-	return newCAS, err
+	return newCAS, kvOps, err
 }
 
 // TouchMetadataDocument sets the specified property in the _sync xattr of a bootstrap metadata
@@ -405,21 +412,23 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 // useSystemMetadataCollection is enabled and the primary returns ErrNotFound, the operation is
 // retried against the fallback collection so legacy metadata in _default._default can still be
 // touched without migration.
-func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
+func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, kvOps int, err error) {
 	primary, fallback, closer, err := c.metadataDataStores(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer closer(ctx)
 
 	newCAS, err = primary.TouchXattrWithCas(ctx, docID, cfgXattrKey, property, value, cas)
+	kvOps++
 	if c.shouldFallback(err, fallback) {
 		newCAS, err = fallback.TouchXattrWithCas(ctx, docID, cfgXattrKey, property, value, cas)
+		kvOps++
 		if err == nil {
 			c.noteBucketFallbackHit(location)
 		}
 	}
-	return newCAS, err
+	return newCAS, kvOps, err
 }
 
 // DeleteMetadataDocument deletes an existing bootstrap metadata document.
@@ -568,22 +577,22 @@ func (c *RosmarCluster) systemMobileDataStore(ctx context.Context, bucketName st
 }
 
 // GetMetadataMigrationStatus reads the status doc directly from _system._mobile.
-func (c *RosmarCluster) GetMetadataMigrationStatus(ctx context.Context, bucket string) (*MetadataMigrationStatus, uint64, error) {
+func (c *RosmarCluster) GetMetadataMigrationStatus(ctx context.Context, bucket string) (status *MetadataMigrationStatus, cas uint64, kvOps int, err error) {
 	col, closer, err := c.systemMobileDataStore(ctx, bucket)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	defer closer(ctx)
 
-	status := &MetadataMigrationStatus{}
-	cas, err := col.Get(ctx, MetadataMigrationStatusDocID, status)
+	status = &MetadataMigrationStatus{}
+	cas, err = col.Get(ctx, MetadataMigrationStatusDocID, status)
 	if err != nil {
 		if IsDocNotFoundError(err) {
-			return nil, 0, ErrNotFound
+			return nil, 0, 1, ErrNotFound
 		}
-		return nil, 0, err
+		return nil, 0, 1, err
 	}
-	return status, cas, nil
+	return status, cas, 1, nil
 }
 
 // InsertMetadataMigrationStatus stamps the initial status doc. Returns ErrAlreadyExists if another

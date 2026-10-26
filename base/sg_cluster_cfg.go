@@ -213,6 +213,52 @@ func (c *CfgSG) Refresh() error {
 	return nil
 }
 
+// CfgKVOpCounter wraps a cbgt.Cfg and counts the KV operations made through it. cbgt and SG Replicate read their
+// config through the cbgt.Cfg interface, which has no way to report KV operations, so a caller that needs the
+// count wraps the Cfg for the duration of that work. Not safe for concurrent use.
+type CfgKVOpCounter struct {
+	cbgt.Cfg
+	kvBacked bool // false for a Cfg held in memory, which makes no KV operations
+	kvOps    int
+}
+
+// NewCfgKVOpCounter returns a CfgKVOpCounter that wraps cfg.
+func NewCfgKVOpCounter(cfg cbgt.Cfg) *CfgKVOpCounter {
+	kvBacked := false
+	if sgCfg, ok := cfg.(*CfgSG); ok {
+		_, inMemory := sgCfg.datastore.(*cfgMemoryStorage)
+		kvBacked = !inMemory
+	}
+	return &CfgKVOpCounter{Cfg: cfg, kvBacked: kvBacked}
+}
+
+// KVOps returns the number of KV operations made through this Cfg.
+func (c *CfgKVOpCounter) KVOps() int {
+	return c.kvOps
+}
+
+func (c *CfgKVOpCounter) Get(cfgKey string, cas uint64) ([]byte, uint64, error) {
+	// CfgSG answers the version key without a KV read.
+	if c.kvBacked && cfgKey != cbgt.VERSION_KEY {
+		c.kvOps++
+	}
+	return c.Cfg.Get(cfgKey, cas)
+}
+
+func (c *CfgKVOpCounter) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
+	if c.kvBacked {
+		c.kvOps++
+	}
+	return c.Cfg.Set(cfgKey, val, cas)
+}
+
+func (c *CfgKVOpCounter) Del(cfgKey string, cas uint64) error {
+	if c.kvBacked {
+		c.kvOps++
+	}
+	return c.Cfg.Del(cfgKey, cas)
+}
+
 // cfgMemoryStorageEntry is a single stored value and its CAS, as tracked by cfgMemoryStorage.
 type cfgMemoryStorageEntry struct {
 	cas uint64

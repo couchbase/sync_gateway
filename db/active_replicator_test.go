@@ -21,6 +21,30 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
+// TestSetLocalStatusKVOps checks that setLocalStatus, which the ISGR status reporter calls on every tick even when a
+// replication has nothing to do, reports the KV operations it makes. Update counts as a read and a write, so the count
+// can be higher than the number of calls the Leaky wrapper sees.
+func TestSetLocalStatusKVOps(t *testing.T) {
+	ctx := base.TestCtx(t)
+	var recorder base.KVOpRecorder
+	tBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{KVOpCallback: recorder.DataStoreOp})
+	defer tBucket.Close(ctx)
+	metadataStore := tBucket.GetMetadataStore()
+	statusKey := base.NewMetadataKeys(t.Name()).ReplicationStatusKey("repl1")
+
+	for _, name := range []string{"new status doc", "existing status doc"} {
+		t.Run(name, func(t *testing.T) {
+			recorder.Arm()
+			kvOps, err := setLocalStatus(ctx, metadataStore, statusKey, &ReplicationStatus{ID: "repl1", Status: ReplicationStateRunning}, 0)
+			ops := recorder.Disarm()
+			require.NoError(t, err)
+
+			require.Equal(t, 3, kvOps)
+			require.GreaterOrEqual(t, kvOps, base.SumKVOps(ops), "KV operations made: %v", ops)
+		})
+	}
+}
+
 // TestBlipSyncErrorUserinfo ensures the websocket errors returned by blipSync contain no basic auth component.
 func TestBlipSyncErrorUserinfo(t *testing.T) {
 	tests := []struct {

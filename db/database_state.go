@@ -118,6 +118,8 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 // functions return any errors, do not update the CAS so the next time poll runs, the callback function will rerun.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 	newCAS, state, ok := dbMgr.isUpdated(ctx)
+	// The state document is read on every tick while the database is offline, whether or not anything changed.
+	base.AddIdleKVOps(1)
 	if !ok {
 		return
 	}

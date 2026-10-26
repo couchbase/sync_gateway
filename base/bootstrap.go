@@ -28,18 +28,20 @@ type BootstrapConnection interface {
 	// GetConfigBuckets returns a list of bucket names where a bootstrap metadata documents could reside.
 	GetConfigBuckets(context.Context) ([]string, error)
 	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
-	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr any) (cas uint64, err error)
-	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key.
-	InsertMetadataDocument(ctx context.Context, bucket, key string, value any) (newCAS uint64, err error)
+	// kvOps is the number of KV operations made, so that background callers can report them as idle KV ops.
+	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr any) (cas uint64, kvOps int, err error)
+	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key. Returns the number of KV operations made.
+	InsertMetadataDocument(ctx context.Context, bucket, key string, value any) (newCAS uint64, kvOps int, err error)
 	// DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
 	DeleteMetadataDocument(ctx context.Context, bucket, key string, cas uint64) (err error)
 	// UpdateMetadataDocument updates an existing bootstrap metadata document for a given bucket and key. updateCallback can return nil to remove the config.  Retries on CAS failure.
 	UpdateMetadataDocument(ctx context.Context, bucket, key string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// WriteMetadataDocument writes a bootstrap metadata document for a given bucket and key.  Does not retry on CAS failure.
-	WriteMetadataDocument(ctx context.Context, bucket, key string, cas uint64, valuePtr any) (casOut uint64, err error)
+	// Returns the number of KV operations made.
+	WriteMetadataDocument(ctx context.Context, bucket, key string, cas uint64, valuePtr any) (casOut uint64, kvOps int, err error)
 	// TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
-	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
-	TouchMetadataDocument(ctx context.Context, bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
+	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure. Returns the number of KV operations made.
+	TouchMetadataDocument(ctx context.Context, bucket, key string, property string, value string, cas uint64) (casOut uint64, kvOps int, err error)
 	// KeyExists checks whether the specified key exists in the bucket's default collection
 	KeyExists(ctx context.Context, bucket, key string) (exists bool, err error)
 	// GetDocument retrieves the document with the specified key from the bucket's default collection.
@@ -56,8 +58,8 @@ type BootstrapConnection interface {
 	IsMigrationComplete(bucketName string) bool
 	// GetMetadataMigrationStatus reads the bucket-level metadata-migration status doc directly from
 	// _system._mobile (never via the dual-collection wrapper). Returns ErrNotFound when the doc has
-	// not yet been stamped on this bucket.
-	GetMetadataMigrationStatus(ctx context.Context, bucket string) (status *MetadataMigrationStatus, cas uint64, err error)
+	// not yet been stamped on this bucket. Returns the number of KV operations made.
+	GetMetadataMigrationStatus(ctx context.Context, bucket string) (status *MetadataMigrationStatus, cas uint64, kvOps int, err error)
 	// InsertMetadataMigrationStatus stamps the initial status doc in _system._mobile. Returns
 	// ErrAlreadyExists if another SG node won the race.
 	InsertMetadataMigrationStatus(ctx context.Context, bucket string, status *MetadataMigrationStatus) (cas uint64, err error)
@@ -77,8 +79,8 @@ type BootstrapConnection interface {
 	// reads/writes route there directly without paying the self-heal fallback cost. No-op when the
 	// status doc is absent or bootstrap.state is anything other than complete. Intended to be called
 	// periodically from the config-polling loop so peer nodes converge on the post-migration cache
-	// state proactively rather than only on a failed read.
-	RefreshBucketBootstrapTarget(ctx context.Context, bucket string) error
+	// state proactively rather than only on a failed read. Returns the number of KV operations made.
+	RefreshBucketBootstrapTarget(ctx context.Context, bucket string) (kvOps int, err error)
 	// SetBucketBootstrapTargetHint resolves and caches where bootstrap docs land for a given bucket.
 	// The decision: (1) registry already in _system._mobile → that collection; (2) registry in
 	// _default._default → that collection (legacy registry stays put); (3) no registry anywhere →
@@ -449,12 +451,12 @@ func (cc *CouchbaseCluster) SetBucketBootstrapTargetHint(ctx context.Context, bu
 	if _, cached := cc.bucketBootstrapTargets.Load(bucketName); cached {
 		return nil
 	}
-	b, teardown, err := cc.getBucket(ctx, bucketName)
+	b, teardown, _, err := cc.getBucket(ctx, bucketName)
 	if err != nil {
 		return err
 	}
 	defer teardown()
-	target, found, err := cc.probeRegistryLocation(ctx, b)
+	target, found, _, err := cc.probeRegistryLocation(ctx, b)
 	if err != nil {
 		return err
 	}
@@ -501,34 +503,37 @@ func (cc *CouchbaseCluster) CachedBootstrapTargets() map[string]string {
 // (target, found): when found, target identifies the collection; when not found, target is
 // undefined and the caller picks based on its own policy (cluster flag or per-DB hint).
 // A "collection not found" probe error on _system._mobile is treated as "not present".
-func (cc *CouchbaseCluster) probeRegistryLocation(ctx context.Context, b *gocb.Bucket) (target bucketBootstrapTarget, found bool, err error) {
+// kvOps is the number of KV operations made.
+func (cc *CouchbaseCluster) probeRegistryLocation(ctx context.Context, b *gocb.Bucket) (target bucketBootstrapTarget, found bool, kvOps int, err error) {
 	systemCol := b.Scope(SystemScope).Collection(SystemCollectionMobile)
 	existsInSystem, sysErr := cc.configPersistence.keyExists(systemCol, SGRegistryKey)
+	kvOps++
 	if sysErr == nil && existsInSystem {
-		return bucketTargetSystemMobile, true, nil
+		return bucketTargetSystemMobile, true, kvOps, nil
 	}
 	// A bucket with the fallback disabled has no legacy registry in _default._default to find — the
 	// migration finished, or the collection was dropped (system-collection-only deployment /
 	// post-migration cleanup). Skip the _default probe so we never issue a KV op against a missing
 	// collection, which would retry KV_COLLECTION_OUTDATED to the op timeout.
 	if cc.bootstrapFallbackDisabled(b.Name()) {
-		return 0, false, nil
+		return 0, false, kvOps, nil
 	}
 	defaultCol := b.DefaultCollection()
 	existsInDefault, defErr := cc.configPersistence.keyExists(defaultCol, SGRegistryKey)
+	kvOps++
 	if defErr != nil {
 		// A dropped _default is latched and treated as "not present", mirroring the _system._mobile
 		// handling above, so later probes skip it instead of paying the KV deadline again.
 		cc.disableBootstrapFallbackIfUnrecoverable(ctx, b.Name(), defaultCol, defErr)
 		if IsCollectionOutdatedError(defErr) {
-			return 0, false, nil
+			return 0, false, kvOps, nil
 		}
-		return 0, false, defErr
+		return 0, false, kvOps, defErr
 	}
 	if existsInDefault {
-		return bucketTargetDefault, true, nil
+		return bucketTargetDefault, true, kvOps, nil
 	}
-	return 0, false, nil
+	return 0, false, kvOps, nil
 }
 
 // bootstrapFallbackDisabled reports whether this bucket's bootstrap reads should skip
@@ -606,19 +611,19 @@ func (cc *CouchbaseCluster) bucketBootstrapMigrationComplete(bucketName string) 
 // the bucket migration-complete so reads stop falling back to _default._default. ErrNotFound
 // (no migration ever started here) and any other transient error are returned to the caller for
 // telemetry but never escalate — this is best-effort cache convergence, not a correctness path.
-func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) error {
+func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket string) (kvOps int, err error) {
 	if cc == nil {
-		return errors.New("nil CouchbaseCluster")
+		return 0, errors.New("nil CouchbaseCluster")
 	}
-	status, _, err := cc.GetMetadataMigrationStatus(ctx, bucket)
+	status, _, kvOps, err := cc.GetMetadataMigrationStatus(ctx, bucket)
 	if err != nil {
-		return err
+		return kvOps, err
 	}
 	if status.Bootstrap.State == MigrationStateComplete {
 		cc.noteBucketFallbackHit(bucket)
 		cc.SetMigrationComplete(bucket)
 	}
-	return nil
+	return kvOps, nil
 }
 
 // loadConfigWithFallback resolves which of primary/fallback currently holds docID and returns its
@@ -639,40 +644,41 @@ func (cc *CouchbaseCluster) loadConfigWithFallback(ctx context.Context, bucketNa
 	return primary, value, cas, err
 }
 
-func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, err error) {
+func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, docID string, valuePtr any) (cas uint64, kvOps int, err error) {
 	if cc == nil {
-		return 0, errors.New("nil CouchbaseCluster")
+		return 0, 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, kvOps, err := cc.getBucket(ctx, location)
 
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
 
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
-	cas, err = cc.configPersistence.loadConfig(ctx, primary, docID, valuePtr)
+	cas, loadOps, err := cc.configPersistence.loadConfig(ctx, primary, docID, valuePtr)
+	kvOps += loadOps
 	if cc.shouldFallback(err, fallback) {
-		cas, err = cc.configPersistence.loadConfig(ctx, fallback, docID, valuePtr)
+		cas, loadOps, err = cc.configPersistence.loadConfig(ctx, fallback, docID, valuePtr)
+		kvOps += loadOps
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
 		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
-	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
-	return cas, err
+	return cas, kvOps, err
 }
 
-func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location, key string, value any) (newCAS uint64, kvOps int, err error) {
 	if cc == nil {
-		return 0, errors.New("nil CouchbaseCluster")
+		return 0, 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, kvOps, err := cc.getBucket(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
 	defer teardown()
 
@@ -683,16 +689,19 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 	// hide an existing legacy copy and we'd create exactly the divergence we're guarding against.
 	if fallback != nil {
 		exists, existsErr := cc.configPersistence.keyExists(fallback, key)
+		kvOps++
 		if existsErr != nil {
 			cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, existsErr)
-			return 0, existsErr
+			return 0, kvOps, existsErr
 		}
 		if exists {
 			cc.noteBucketFallbackHit(location)
-			return 0, ErrAlreadyExists
+			return 0, kvOps, ErrAlreadyExists
 		}
 	}
-	return cc.configPersistence.insertConfig(primary, key, value)
+	newCAS, err = cc.configPersistence.insertConfig(primary, key, value)
+	kvOps++
+	return newCAS, kvOps, err
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch.
@@ -700,61 +709,65 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 // (i.e. the document still lives in _default._default), the write is applied against the
 // fallback collection so the CAS stays valid. Migration to the primary collection is left to a
 // future explicit migration step.
-func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location, docID string, cas uint64, value any) (newCAS uint64, kvOps int, err error) {
 	if cc == nil {
-		return 0, errors.New("nil CouchbaseCluster")
+		return 0, 0, errors.New("nil CouchbaseCluster")
 	}
 	if cas == 0 {
-		return 0, RedactErrorf("CAS for %q in bucket %q must be non-zero to call WriteMetadataDocument, to add a new document use InsertMetadataDocument", MD(docID), MD(location))
+		return 0, 0, RedactErrorf("CAS for %q in bucket %q must be non-zero to call WriteMetadataDocument, to add a new document use InsertMetadataDocument", MD(docID), MD(location))
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, kvOps, err := cc.getBucket(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
 	defer teardown()
 
 	rawDocument, err := JSONMarshal(value)
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
 
 	primary, fallback := cc.metadataCollections(b)
 	casOut, err := cc.configPersistence.replaceRawConfig(primary, docID, rawDocument, gocb.Cas(cas))
+	kvOps++
 	if cc.shouldFallback(err, fallback) {
 		// Doc is not in primary. Caller's CAS must be from a previous fallback read; replay the
 		// write against the fallback collection so CAS semantics line up.
 		casOut, err = cc.configPersistence.replaceRawConfig(fallback, docID, rawDocument, gocb.Cas(cas))
+		kvOps++
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
 		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
-	return uint64(casOut), err
+	return uint64(casOut), kvOps, err
 }
 
-func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location, docID string, property, value string, cas uint64) (newCAS uint64, kvOps int, err error) {
 
 	if cc == nil {
-		return 0, errors.New("nil CouchbaseCluster")
+		return 0, 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, kvOps, err := cc.getBucket(ctx, location)
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
 	casOut, err := cc.configPersistence.touchConfigRollback(primary, docID, property, value, gocb.Cas(cas))
+	kvOps++
 	if cc.shouldFallback(err, fallback) {
 		casOut, err = cc.configPersistence.touchConfigRollback(fallback, docID, property, value, gocb.Cas(cas))
+		kvOps++
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
 		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
-	return uint64(casOut), err
+	return uint64(casOut), kvOps, err
 
 }
 
@@ -763,7 +776,7 @@ func (cc *CouchbaseCluster) DeleteMetadataDocument(ctx context.Context, location
 		return errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, _, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return err
 	}
@@ -790,7 +803,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, _, err := cc.getBucket(ctx, location)
 	if err != nil {
 		return 0, err
 	}
@@ -850,7 +863,7 @@ func (cc *CouchbaseCluster) KeyExists(ctx context.Context, location, docID strin
 		return false, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, location)
+	b, teardown, _, err := cc.getBucket(ctx, location)
 
 	if err != nil {
 		return false, err
@@ -878,7 +891,7 @@ func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID s
 		return false, errors.New("nil CouchbaseCluster")
 	}
 
-	b, teardown, err := cc.getBucket(ctx, bucketName)
+	b, teardown, _, err := cc.getBucket(ctx, bucketName)
 	if err != nil {
 		return false, err
 	}
@@ -905,7 +918,7 @@ func (cc *CouchbaseCluster) GetRawDocument(ctx context.Context, bucketName, docI
 	if cc == nil {
 		return nil, false, errors.New("nil CouchbaseCluster")
 	}
-	b, teardown, err := cc.getBucket(ctx, bucketName)
+	b, teardown, _, err := cc.getBucket(ctx, bucketName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -932,28 +945,29 @@ func (cc *CouchbaseCluster) systemMobileCollection(b *gocb.Bucket) *gocb.Collect
 }
 
 // GetMetadataMigrationStatus reads the status doc directly from _system._mobile.
-func (cc *CouchbaseCluster) GetMetadataMigrationStatus(ctx context.Context, bucket string) (*MetadataMigrationStatus, uint64, error) {
+func (cc *CouchbaseCluster) GetMetadataMigrationStatus(ctx context.Context, bucket string) (status *MetadataMigrationStatus, cas uint64, kvOps int, err error) {
 	if cc == nil {
-		return nil, 0, errors.New("nil CouchbaseCluster")
+		return nil, 0, 0, errors.New("nil CouchbaseCluster")
 	}
-	b, teardown, err := cc.getBucket(ctx, bucket)
+	b, teardown, kvOps, err := cc.getBucket(ctx, bucket)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, kvOps, err
 	}
 	defer teardown()
 
 	res, err := cc.systemMobileCollection(b).Get(MetadataMigrationStatusDocID, &gocb.GetOptions{Transcoder: NewSGJSONTranscoder()})
+	kvOps++
 	if err != nil {
 		if IsDocNotFoundError(err) {
-			return nil, 0, ErrNotFound
+			return nil, 0, kvOps, ErrNotFound
 		}
-		return nil, 0, err
+		return nil, 0, kvOps, err
 	}
-	status := &MetadataMigrationStatus{}
+	status = &MetadataMigrationStatus{}
 	if err := res.Content(status); err != nil {
-		return nil, 0, err
+		return nil, 0, kvOps, err
 	}
-	return status, uint64(res.Cas()), nil
+	return status, uint64(res.Cas()), kvOps, nil
 }
 
 // InsertMetadataMigrationStatus stamps the initial status doc in _system._mobile. Concurrent
@@ -965,7 +979,7 @@ func (cc *CouchbaseCluster) InsertMetadataMigrationStatus(ctx context.Context, b
 	if status == nil {
 		return 0, errors.New("nil MetadataMigrationStatus")
 	}
-	b, teardown, err := cc.getBucket(ctx, bucket)
+	b, teardown, _, err := cc.getBucket(ctx, bucket)
 	if err != nil {
 		return 0, err
 	}
@@ -988,7 +1002,7 @@ func (cc *CouchbaseCluster) UpdateMetadataMigrationStatus(ctx context.Context, b
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
-	b, teardown, err := cc.getBucket(ctx, bucket)
+	b, teardown, _, err := cc.getBucket(ctx, bucket)
 	if err != nil {
 		return 0, err
 	}
@@ -1048,7 +1062,7 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 	if cc == nil {
 		return errors.New("nil CouchbaseCluster")
 	}
-	b, teardown, err := cc.getBucket(ctx, bucket)
+	b, teardown, _, err := cc.getBucket(ctx, bucket)
 	if err != nil {
 		return err
 	}
@@ -1059,7 +1073,7 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 
 	for _, docID := range docIDs {
 		var value map[string]interface{}
-		cas, err := cc.configPersistence.loadConfig(ctx, fallback, docID, &value)
+		cas, _, err := cc.configPersistence.loadConfig(ctx, fallback, docID, &value)
 		if err != nil {
 			if IsDocNotFoundError(err) {
 				continue
@@ -1107,15 +1121,17 @@ func (cc *CouchbaseCluster) Close() {
 	}
 }
 
-func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+// getBucket returns a connection to the bucket. kvOps is the number of KV operations made to find where the
+// bucket's bootstrap docs live.
+func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b *gocb.Bucket, teardownFn func(), kvOps int, err error) {
 
 	if cc.bucketConnectionMode != CachedClusterConnections {
 		b, teardownFn, err = cc.connectToBucket(ctx, bucketName)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
-		cc.ensureBucketBootstrapTargetCached(ctx, b)
-		return b, teardownFn, nil
+		kvOps = cc.ensureBucketBootstrapTargetCached(ctx, b)
+		return b, teardownFn, kvOps, nil
 	}
 
 	teardownFn = func() {
@@ -1125,22 +1141,22 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 	defer cc.cachedBucketConnections.lock.Unlock()
 	bucket := cc.cachedBucketConnections._get(bucketName)
 	if bucket != nil {
-		cc.ensureBucketBootstrapTargetCached(ctx, bucket.bucket)
-		return bucket.bucket, teardownFn, nil
+		kvOps = cc.ensureBucketBootstrapTargetCached(ctx, bucket.bucket)
+		return bucket.bucket, teardownFn, kvOps, nil
 	}
 
 	// cached bucket not found, connect and add
 	newBucket, bucketCloseFn, err := cc.connectToBucket(ctx, bucketName)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	cc.cachedBucketConnections._set(bucketName, &cachedBucket{
 		bucket:        newBucket,
 		bucketCloseFn: bucketCloseFn,
 		refcount:      1,
 	})
-	cc.ensureBucketBootstrapTargetCached(ctx, newBucket)
-	return newBucket, teardownFn, nil
+	kvOps = cc.ensureBucketBootstrapTargetCached(ctx, newBucket)
+	return newBucket, teardownFn, kvOps, nil
 }
 
 // ensureBucketBootstrapTargetCached freezes the bucket's bootstrap target IF an existing
@@ -1157,22 +1173,26 @@ func (cc *CouchbaseCluster) getBucket(ctx context.Context, bucketName string) (b
 // missing collection (which would retry KV_COLLECTION_OUTDATED to the op timeout). Marking complete
 // also makes probeRegistryLocation skip its own _default keyExists for callers that invoke it
 // directly (SetBucketBootstrapTargetHint).
-func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(ctx context.Context, b *gocb.Bucket) {
+//
+// Returns the number of KV operations made. A bucket with no registry is probed again on every call, so these
+// ops recur on every config poll for each bucket in the cluster that Sync Gateway does not use.
+func (cc *CouchbaseCluster) ensureBucketBootstrapTargetCached(ctx context.Context, b *gocb.Bucket) (kvOps int) {
 	if _, cached := cc.bucketBootstrapTargets.Load(b.Name()); cached {
-		return
+		return 0
 	}
 	// Manifest check (not a KV op) so an absent _default is reported promptly instead of hanging.
 	// On any error, fall through to the normal probe — no worse than prior behaviour.
 	if exists, existsErr := defaultCollectionExists(b); existsErr == nil && !exists {
 		cc.bucketBootstrapTargets.LoadOrStore(b.Name(), bucketTargetSystemMobile)
 		cc.SetMigrationComplete(b.Name())
-		return
+		return 0
 	}
-	target, found, err := cc.probeRegistryLocation(ctx, b)
+	target, found, kvOps, err := cc.probeRegistryLocation(ctx, b)
 	if err != nil || !found {
-		return
+		return kvOps
 	}
 	cc.bucketBootstrapTargets.LoadOrStore(b.Name(), target)
+	return kvOps
 }
 
 // defaultCollectionExists reports whether _default._default is present in the bucket's collection

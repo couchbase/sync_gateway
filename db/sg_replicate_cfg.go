@@ -842,13 +842,13 @@ func (m *sgReplicateManager) saveInitializationError(config *ReplicationCfg, ini
 	expirySecs := int(m.dbContext.Options.LocalDocExpirySecs)
 	if config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull {
 		pushKey := m.dbContext.MetadataKeys.ReplicationStatusKey(PushCheckpointID(config.ID))
-		if err := setLocalStatus(m.loggingCtx, m.dbContext.MetadataStore, pushKey, status, expirySecs); err != nil {
+		if _, err := setLocalStatus(m.loggingCtx, m.dbContext.MetadataStore, pushKey, status, expirySecs); err != nil {
 			base.WarnfCtx(m.loggingCtx, "Unable to persist error status for replication %s: %v", base.UD(config.ID), err)
 		}
 	}
 	if config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull {
 		pullKey := m.dbContext.MetadataKeys.ReplicationStatusKey(PullCheckpointID(config.ID))
-		if err := setLocalStatus(m.loggingCtx, m.dbContext.MetadataStore, pullKey, status, expirySecs); err != nil {
+		if _, err := setLocalStatus(m.loggingCtx, m.dbContext.MetadataStore, pullKey, status, expirySecs); err != nil {
 			base.WarnfCtx(m.loggingCtx, "Unable to persist error status for replication %s: %v", base.UD(config.ID), err)
 		}
 	}
@@ -1036,8 +1036,13 @@ func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 
 // Loads the SGReplicate config from the config store
 func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint64, err error) {
+	return m.loadSGRClusterFromCfg(m.cfg)
+}
+
+// loadSGRClusterFromCfg loads the SGReplicate config from the given config store.
+func (m *sgReplicateManager) loadSGRClusterFromCfg(cfg cbgt.Cfg) (sgrCluster *SGRCluster, cas uint64, err error) {
 	var cfgBytes []byte
-	cfgBytes, cas, err = m.cfg.Get(cfgKeySGRCluster, 0)
+	cfgBytes, cas, err = cfg.Get(cfgKeySGRCluster, 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1158,11 +1163,18 @@ func (m *sgReplicateManager) RemoveNode(nodeUUID string) error {
 }
 
 func (m *sgReplicateManager) getNodes() (nodes map[string]*SGNode, err error) {
-	sgrCluster, _, err := m.loadSGRCluster()
+	nodes, _, err = m.getNodesWithKVOps()
+	return nodes, err
+}
+
+// getNodesWithKVOps is getNodes, also returning the number of KV operations made.
+func (m *sgReplicateManager) getNodesWithKVOps() (nodes map[string]*SGNode, kvOps int, err error) {
+	cfg := base.NewCfgKVOpCounter(m.cfg)
+	sgrCluster, _, err := m.loadSGRClusterFromCfg(cfg)
 	if err != nil {
-		return nil, err
+		return nil, cfg.KVOps(), err
 	}
-	return sgrCluster.Nodes, nil
+	return sgrCluster.Nodes, cfg.KVOps(), nil
 }
 
 // GetSGRCluster returns SGReplicate configuration including nodes participating in

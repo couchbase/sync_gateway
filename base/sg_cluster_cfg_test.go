@@ -344,3 +344,42 @@ func TestCfgMemoryStorageCasSemantics(t *testing.T) {
 		})
 	}
 }
+
+// TestCfgKVOpCounter checks that CfgKVOpCounter counts the KV operations a bucket-backed CfgSG makes, and none for an
+// in-memory CfgSG.
+func TestCfgKVOpCounter(t *testing.T) {
+	ctx := t.Context()
+	var recorder KVOpRecorder
+	bucket := GetTestBucket(t).LeakyBucketClone(LeakyBucketConfig{KVOpCallback: recorder.DataStoreOp})
+	t.Cleanup(func() { bucket.Close(ctx) })
+
+	bucketCfg, err := NewCfgSG(ctx, bucket.GetSingleDataStore(), t.Name()+":", false)
+	require.NoError(t, err)
+	memoryCfg, err := NewCbgtCfgMem(ctx)
+	require.NoError(t, err)
+
+	for name, tc := range map[string]struct {
+		cfg           *CfgSG
+		expectedKVOps int
+	}{
+		"bucket": {cfg: bucketCfg, expectedKVOps: 3},
+		"memory": {cfg: memoryCfg, expectedKVOps: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			counter := NewCfgKVOpCounter(tc.cfg)
+			recorder.Arm()
+			cas, err := counter.Set("key1", []byte("val1"), 0)
+			require.NoError(t, err)
+			_, _, err = counter.Get("key1", 0)
+			require.NoError(t, err)
+			// Answered without a KV read.
+			_, _, err = counter.Get(cbgt.VERSION_KEY, 0)
+			require.NoError(t, err)
+			require.NoError(t, counter.Del("key1", cas))
+			ops := recorder.Disarm()
+
+			assert.Equal(t, tc.expectedKVOps, counter.KVOps())
+			assert.Equal(t, SumKVOps(ops), counter.KVOps(), "KV operations made: %v", ops)
+		})
+	}
+}

@@ -119,7 +119,7 @@ func TestDbConfigUpdatedAtField(t *testing.T) {
 
 	registry := &GatewayRegistry{}
 	bName := b.GetName()
-	_, err := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bName, base.SGRegistryKey, registry)
+	_, _, err := sc.BootstrapContext.Connection.GetMetadataDocument(ctx, bName, base.SGRegistryKey, registry)
 	require.NoError(t, err)
 
 	// Check that the config has an updatedAt field
@@ -143,7 +143,7 @@ func TestDbConfigUpdatedAtField(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.BodyBytes(), &unmarshaledConfig))
 
 	registry = &GatewayRegistry{}
-	_, err = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, b.GetName(), base.SGRegistryKey, registry)
+	_, _, err = sc.BootstrapContext.Connection.GetMetadataDocument(ctx, b.GetName(), base.SGRegistryKey, registry)
 	require.NoError(t, err)
 
 	// asser that the db config timestamps are as expected

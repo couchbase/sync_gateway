@@ -1003,7 +1003,7 @@ func TestCorruptDbConfigHandling(t *testing.T) {
 
 	// grab the persisted db config from the bucket
 	databaseConfig := rest.DatabaseConfig{}
-	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
+	_, _, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), rt.CustomTestBucket.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
 	require.NoError(t, err)
 
 	// update the persisted config to a fake bucket name
@@ -3884,7 +3884,7 @@ func TestPerDBCredsOverride(t *testing.T) {
 					Password: "invalidPassword",
 				},
 			}
-			configs, err := sc.FetchConfigs(ctx, false)
+			configs, _, err := sc.FetchConfigs(ctx, false)
 			require.NoError(t, err)
 			require.NotNil(t, configs["db"])
 			assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)

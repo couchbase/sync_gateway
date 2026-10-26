@@ -1667,7 +1667,7 @@ func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bo
 				// First, attempt to purge.
 				purgeErr := collection.Purge(ctx, tombstonesRow.Id, false)
 				if isScheduledBackgroundTask {
-					base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+					base.AddIdleKVOps(1)
 				}
 				if purgeErr == nil {
 					purgedDocs = append(purgedDocs, tombstonesRow.Id)
@@ -1675,7 +1675,7 @@ func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bo
 					// If key no longer exists, need to add and remove to trigger removal from view
 					_, addErr := collection.dataStore.Add(ctx, tombstonesRow.Id, 0, purgeBody)
 					if isScheduledBackgroundTask {
-						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+						base.AddIdleKVOps(1)
 					}
 					if addErr != nil {
 						addErrorCount++
@@ -1689,7 +1689,7 @@ func (db *DatabaseContext) Compact(ctx context.Context, skipRunningStateCheck bo
 
 					delErr := collection.dataStore.Delete(ctx, tombstonesRow.Id)
 					if isScheduledBackgroundTask {
-						base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+						base.AddIdleKVOps(1)
 					}
 					if delErr != nil {
 						deleteErrorCount++

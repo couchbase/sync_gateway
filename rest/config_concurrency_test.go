@@ -183,11 +183,11 @@ func TestConcurrentDbConfigOperationsAcrossNodes(t *testing.T) {
 	groupID := rtA.ServerContext().Config.Bootstrap.ConfigGroupID
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var bucketConfig DatabaseConfig
-		_, err := bootstrap.GetConfig(ctx, bucketName, groupID, "db", &bucketConfig)
+		_, _, err := bootstrap.GetConfig(ctx, bucketName, groupID, "db", &bucketConfig)
 		if !assert.NoError(c, err) {
 			return
 		}
-		registry, err := bootstrap.getGatewayRegistry(ctx, bucketName)
+		registry, _, err := bootstrap.getGatewayRegistry(ctx, bucketName)
 		if !assert.NoError(c, err) {
 			return
 		}

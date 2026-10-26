@@ -335,7 +335,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 		Connection: cluster,
 	}
 	var dbConfig DatabaseConfig
-	_, err = bootstrap.GetConfig(base.TestCtx(t), tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
+	_, _, err = bootstrap.GetConfig(base.TestCtx(t), tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)

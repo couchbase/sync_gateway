@@ -3062,7 +3062,7 @@ func TestInvalidDbConfigNoLongerPresentInBucket(t *testing.T) {
 
 	// grab the persisted db config from the bucket
 	databaseConfig := DatabaseConfig{}
-	_, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), realBucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
+	_, _, err := rt.ServerContext().BootstrapContext.GetConfig(rt.Context(), realBucketName, rt.ServerContext().Config.Bootstrap.ConfigGroupID, "db1", &databaseConfig)
 	require.NoError(t, err)
 
 	// update the persisted config to a fake bucket name
@@ -3139,7 +3139,7 @@ func TestNotFoundOnInvalidDatabase(t *testing.T) {
 	rt.InsertDbConfigToBucket(&persistedConfig, rt.CustomTestBucket.GetName())
 
 	// manually fetch and load db configs from bucket
-	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
+	_, _, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
 	require.NoError(t, err)
 
 	// assert the config is picked as invalid db config

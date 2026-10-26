@@ -41,7 +41,7 @@ func (rtc *RestTesterCluster) nodes() []*RestTester {
 // RefreshClusterDbConfigs will synchronously fetch the latest db configs from each bucket for each RestTester.
 func (rtc *RestTesterCluster) RefreshClusterDbConfigs() (count int, err error) {
 	for _, rt := range rtc.nodes() {
-		c, err := rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
+		c, _, err := rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
 		if err != nil {
 			return 0, err
 		}
@@ -92,7 +92,7 @@ func (rtc *RestTesterCluster) AddNode() *RestTester {
 	rt := NewRestTester(rtc.t, rtConfig)
 	sc := rt.ServerContext()
 
-	_, err := sc.fetchAndLoadConfigs(rt.Context(), false)
+	_, _, err := sc.fetchAndLoadConfigs(rt.Context(), false)
 	require.NoError(rtc.t, err)
 	require.ElementsMatch(rtc.t, expectedDbNames, sc.AllDatabaseNames(), "new node did not discover the same databases as the rest of the cluster")
 

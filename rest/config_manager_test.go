@@ -45,7 +45,7 @@ func TestBootstrapConfig(t *testing.T) {
 
 	var dbConfig1 *DatabaseConfig
 
-	_, err = bootstrapContext.GetConfig(ctx, bucketName, configGroup1, db1Name, dbConfig1)
+	_, _, err = bootstrapContext.GetConfig(ctx, bucketName, configGroup1, db1Name, dbConfig1)
 	require.Error(t, err)
 }
 
@@ -70,7 +70,7 @@ func TestComputeMetadataID(t *testing.T) {
 	}()
 	bucketName := tb.GetName()
 
-	registry, err := bootstrapContext.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 
 	dbName := "dbName"
@@ -163,7 +163,7 @@ func TestComputeMetadataIDBinaryFormat(t *testing.T) {
 	defer tb.Close(ctx)
 	bucketName := tb.GetName()
 
-	registry, err := bootstrapContext.getGatewayRegistry(ctx, bucketName)
+	registry, _, err := bootstrapContext.getGatewayRegistry(ctx, bucketName)
 	require.NoError(t, err)
 
 	dbName := "dbName"
@@ -244,7 +244,7 @@ func TestGetDatabaseConfigNewerThanRegistry(t *testing.T) {
 	dbConfig.RevsLimit = new(uint32(123))
 	RequireStatus(t, rt.UpsertDbConfig("db", dbConfig), http.StatusCreated)
 
-	_, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
+	_, _, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
 	require.ErrorIs(t, err, base.ErrConfigRegistryReloadRequired)
 }
 
@@ -267,6 +267,6 @@ func TestGetDatabaseConfigDeletedAfterRegistryRead(t *testing.T) {
 
 	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
 
-	_, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
+	_, _, err = sc.BootstrapContext.getDatabaseConfig(ctx, bucketName, groupID, "db", staleConfig.Version, staleRegistry)
 	require.ErrorIs(t, err, base.ErrConfigRegistryReloadRequired)
 }
