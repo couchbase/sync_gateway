@@ -813,7 +813,9 @@ func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundMa
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(mgr.clusterAwareOptions.HeartbeatDocID())
-		require.NoError(t, ok)
+		if !assert.NoError(c, ok) {
+			return
+		}
 		assert.False(c, exists, "BackgroundManager heartbeat document was not removed in expected time")
 	}, 10*time.Second, 10*time.Millisecond)
 }
