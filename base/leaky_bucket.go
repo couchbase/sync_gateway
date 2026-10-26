@@ -150,6 +150,12 @@ type LeakyBucketConfig struct {
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
 
+	// UpdateXattrsCallback is called before UpdateXattrs. Useful for injecting delays or errors per-key.
+	UpdateXattrsCallback func(key string)
+
+	// WriteUpdateWithXattrsCallback is called before WriteUpdateWithXattrs. Useful for injecting delays per-key.
+	WriteUpdateWithXattrsCallback func(key string)
+
 	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
 	IncrCallback func()
 
