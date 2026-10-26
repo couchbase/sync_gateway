@@ -1680,7 +1680,13 @@ func (sc *ServerContext) StartupAuditFields() base.AuditFields {
 // fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
 // It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStartup bool) (count int, err error) {
-	fetchedConfigs, err := sc.FetchConfigs(ctx, isInitialStartup)
+	return sc.fetchAndLoadConfigsFrom(ctx, sc.BootstrapContext, isInitialStartup)
+}
+
+// fetchAndLoadConfigsFrom is fetchAndLoadConfigs, finding the configs through the given bootstrap context, which is
+// sc.BootstrapContext or a copy of it that counts its KV operations. Loading a database uses sc.BootstrapContext.
+func (sc *ServerContext) fetchAndLoadConfigsFrom(ctx context.Context, bootstrap *bootstrapContext, isInitialStartup bool) (count int, err error) {
+	fetchedConfigs, err := sc.fetchConfigsFrom(ctx, bootstrap, isInitialStartup)
 	if err != nil {
 		return 0, err
 	}
@@ -1723,7 +1729,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 		// It's possible that the "deleted" database was not written to the server until after sc.FetchConfigs had returned...
 		// we'll need to pay for the cost of getting the config again now that we've got the write lock to double-check this db is definitely ok to remove...
-		found, _, getConfigErr := sc._fetchDatabaseFromBucket(ctx, dbc.Bucket.GetName(), dbName)
+		found, _, getConfigErr := sc._fetchDatabaseFromBucket(ctx, bootstrap, dbc.Bucket.GetName(), dbName)
 		if found && getConfigErr == nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Found config for database %q after acquiring write lock - not removing database", base.MD(dbName))
 			continue
@@ -1826,9 +1832,11 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	return sc._fetchDatabase(ctx, dbName)
 }
 
-func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bucket string, dbName string) (found bool, cnf DatabaseConfig, err error) {
+// _fetchDatabaseFromBucket reads the config through the given bootstrap context, which is sc.BootstrapContext or a copy
+// of it that counts its KV operations.
+func (sc *ServerContext) _fetchDatabaseFromBucket(ctx context.Context, bootstrap *bootstrapContext, bucket string, dbName string) (found bool, cnf DatabaseConfig, err error) {
 
-	cas, err := sc.BootstrapContext.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
+	cas, err := bootstrap.GetConfig(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
 	if errors.Is(err, base.ErrNotFound) {
 		base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 		return false, cnf, err
@@ -1878,7 +1886,7 @@ func (sc *ServerContext) _fetchDatabase(ctx context.Context, dbName string) (fou
 	var cnf DatabaseConfig
 	callback := func(bucket string) (exit bool, callbackErr error) {
 		var foundInBucket bool
-		foundInBucket, cnf, callbackErr = sc._fetchDatabaseFromBucket(ctx, bucket, dbName)
+		foundInBucket, cnf, callbackErr = sc._fetchDatabaseFromBucket(ctx, sc.BootstrapContext, bucket, dbName)
 		return foundInBucket, callbackErr
 	}
 
@@ -1955,6 +1963,12 @@ func (sc *ServerContext) GetBucketNames(ctx context.Context) (buckets []string, 
 
 // FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+	return sc.fetchConfigsFrom(ctx, sc.BootstrapContext, isInitialStartup)
+}
+
+// fetchConfigsFrom is FetchConfigs through the given bootstrap context, which is sc.BootstrapContext or a copy of it
+// that counts its KV operations.
+func (sc *ServerContext) fetchConfigsFrom(ctx context.Context, bootstrap *bootstrapContext, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
 
 	buckets, err := sc.GetBucketNames(ctx)
 	if err != nil {
@@ -1966,7 +1980,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 	for _, bucket := range buckets {
 		ctx := base.BucketNameCtx(ctx, bucket)
 		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q", sc.Config.Bootstrap.ConfigGroupID)
-		configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
+		configs, err := bootstrap.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
 		if err != nil {
 			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a registry removal
 			// this could be due to invalid JSON or some other non-recoverable error.

@@ -29,8 +29,9 @@ type ConfigPersistence interface {
 	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, err error)
 
 	// Operations for interacting with marshalled config. cfgCas represents the cas value
-	// associated with the last config mutation, and may not match document CAS
-	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cfgCas uint64, err error)
+	// associated with the last config mutation, and may not match document CAS. loadConfig can
+	// write as well as read, so it returns the number of KV ops it made.
+	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cfgCas uint64, kvOps int, err error)
 	insertConfig(c *gocb.Collection, key string, value any) (cfgCas uint64, err error)
 
 	// touchConfigRollback sets the specific property to the specified string value via a subdoc operation.
@@ -42,6 +43,49 @@ type ConfigPersistence interface {
 }
 
 var _ ConfigPersistence = &XattrBootstrapPersistence{}
+
+// kvOpStatConfigPersistence wraps a ConfigPersistence and adds every KV operation made through it to stat.
+type kvOpStatConfigPersistence struct {
+	ConfigPersistence
+	stat *SgwIntStat
+}
+
+func (p *kvOpStatConfigPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
+	p.stat.Add(1)
+	return p.ConfigPersistence.loadRawConfig(ctx, c, key)
+}
+
+func (p *kvOpStatConfigPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {
+	p.stat.Add(1)
+	return p.ConfigPersistence.removeRawConfig(c, key, cas)
+}
+
+func (p *kvOpStatConfigPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
+	p.stat.Add(1)
+	return p.ConfigPersistence.replaceRawConfig(c, key, value, cas)
+}
+
+func (p *kvOpStatConfigPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (uint64, int, error) {
+	cfgCas, kvOps, err := p.ConfigPersistence.loadConfig(ctx, c, key, valuePtr)
+	p.stat.Add(int64(kvOps))
+	return cfgCas, kvOps, err
+}
+
+func (p *kvOpStatConfigPersistence) insertConfig(c *gocb.Collection, key string, value any) (uint64, error) {
+	p.stat.Add(1)
+	return p.ConfigPersistence.insertConfig(c, key, value)
+}
+
+func (p *kvOpStatConfigPersistence) touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (gocb.Cas, error) {
+	p.stat.Add(1)
+	return p.ConfigPersistence.touchConfigRollback(c, key, property, value, cas)
+}
+
+func (p *kvOpStatConfigPersistence) keyExists(c *gocb.Collection, key string) (bool, error) {
+	p.stat.Add(1)
+	return p.ConfigPersistence.keyExists(c, key)
+}
+
 var _ ConfigPersistence = &DocumentBootstrapPersistence{}
 
 // System xattr persistence
@@ -166,7 +210,7 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 
 // loadConfig returns the cas associated with the last cfg change (xattr._sync.cas).  If a deleted document body is
 // detected, recreates the document to avoid metadata purge
-func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, err error) {
+func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, kvOps int, err error) {
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(cfgXattrConfigPath, GetSpecXattr),
@@ -178,13 +222,14 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 	lookupOpts.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
 
 	res, lookupErr := c.LookupIn(key, ops, LookupOptsAccessDeleted)
+	kvOps = 1
 	if lookupErr == nil {
 		// config
 		xattrContErr := res.ContentAt(0, valuePtr)
 		if xattrContErr != nil {
 			SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Add(1)
 			DebugfCtx(ctx, KeyCRUD, "Found config document but No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
-			return 0, ErrNotFound
+			return 0, kvOps, ErrNotFound
 		}
 		casOut := res.Cas()
 
@@ -193,18 +238,19 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		bodyErr := res.ContentAt(1, &body)
 		if bodyErr != nil {
 			restoreCas, restoreErr := xbp.restoreDocumentBody(c, key, valuePtr)
+			kvOps++
 			if restoreErr != nil {
 				WarnfCtx(ctx, "Error attempting to restore unexpected deletion of config: %v", restoreErr)
 			} else {
 				casOut = restoreCas
 			}
 		}
-		return uint64(casOut), nil
+		return uint64(casOut), kvOps, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
 		DebugfCtx(ctx, KeyCRUD, "No config document found for key=%s", key)
-		return 0, ErrNotFound
+		return 0, kvOps, ErrNotFound
 	} else {
-		return 0, lookupErr
+		return 0, kvOps, lookupErr
 	}
 }
 
@@ -269,7 +315,7 @@ func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, ke
 	return replaceRes.Cas(), nil
 }
 
-func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, err error) {
+func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, kvOps int, err error) {
 
 	res, err := c.Get(key, &gocb.GetOptions{
 		Timeout:       time.Second * 10,
@@ -278,16 +324,16 @@ func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.C
 
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentNotFound) {
-			return 0, ErrNotFound
+			return 0, 1, ErrNotFound
 		}
-		return 0, err
+		return 0, 1, err
 	}
 	err = res.Content(valuePtr)
 	if err != nil {
-		return 0, err
+		return 0, 1, err
 	}
 
-	return uint64(res.Cas()), nil
+	return uint64(res.Cas()), 1, nil
 }
 
 func (dbp *DocumentBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, err error) {

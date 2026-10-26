@@ -25,6 +25,12 @@ var _ BootstrapConnection = &RosmarCluster{}
 
 // RosmarCluster implements BootstrapConnection and is used for connecting to a rosmar cluster
 type RosmarCluster struct {
+	*rosmarClusterState
+	kvOpStat *SgwIntStat // Every KV operation made is added to this, if set. See WithKVOpStat
+}
+
+// rosmarClusterState is the state of a RosmarCluster, shared with the copies WithKVOpStat makes.
+type rosmarClusterState struct {
 	serverURL                   string
 	bucketDirectory             string
 	useSystemMetadataCollection bool // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
@@ -41,10 +47,10 @@ type RosmarCluster struct {
 // transparent read-fallback to _default._default; when false, _default._default is used
 // unconditionally.
 func NewRosmarCluster(serverURL string, useSystemMetadataCollection bool) (*RosmarCluster, error) {
-	cluster := &RosmarCluster{
+	cluster := &RosmarCluster{rosmarClusterState: &rosmarClusterState{
 		serverURL:                   serverURL,
 		useSystemMetadataCollection: useSystemMetadataCollection,
-	}
+	}}
 	if serverURL != rosmar.InMemoryURL {
 		u, err := url.Parse(serverURL)
 		if err != nil {
@@ -61,6 +67,20 @@ func NewRosmarCluster(serverURL string, useSystemMetadataCollection bool) (*Rosm
 		cluster.bucketDirectory = directory
 	}
 	return cluster, nil
+}
+
+func (c *RosmarCluster) WithKVOpStat(stat *SgwIntStat) BootstrapConnection {
+	if stat == nil {
+		return c
+	}
+	return &RosmarCluster{rosmarClusterState: c.rosmarClusterState, kvOpStat: stat}
+}
+
+// countKVOps adds n to kvOpStat, if set. It is called before every KV operation on a rosmar collection.
+func (c *RosmarCluster) countKVOps(n int) {
+	if c.kvOpStat != nil {
+		c.kvOpStat.Add(int64(n))
+	}
 }
 
 // GetConfigBuckets returns all the buckets registered in rosmar.
@@ -265,9 +285,11 @@ func (c *RosmarCluster) BucketBootstrapTargetIsSystemMobile(ctx context.Context,
 // probeRegistryLocation reports where _sync:registry already lives, or that it doesn't exist yet.
 // Mirrors CouchbaseCluster.probeRegistryLocation.
 func (c *RosmarCluster) probeRegistryLocation(ctx context.Context, systemCol, defaultCol *rosmar.Collection) (target bucketBootstrapTarget, found bool) {
+	c.countKVOps(1)
 	if exists, err := systemCol.Exists(ctx, SGRegistryKey); err == nil && exists {
 		return bucketTargetSystemMobile, true
 	}
+	c.countKVOps(1)
 	if exists, err := defaultCol.Exists(ctx, SGRegistryKey); err == nil && exists {
 		return bucketTargetDefault, true
 	}
@@ -323,8 +345,10 @@ func (c *RosmarCluster) RefreshBucketBootstrapTarget(ctx context.Context, bucket
 // migrated between collections mid-operation. On a successful fallback hit the bucket's cached
 // bootstrap target is updated (via noteBucketFallbackHit) so subsequent ops route correctly.
 func (c *RosmarCluster) loadConfigWithFallback(ctx context.Context, bucketName string, primary, fallback *rosmar.Collection, docID string) (ds *rosmar.Collection, value []byte, cas uint64, err error) {
+	c.countKVOps(1)
 	cas, err = primary.Get(ctx, docID, &value)
 	if c.shouldFallback(err, fallback) {
+		c.countKVOps(1)
 		cas, err = fallback.Get(ctx, docID, &value)
 		if err == nil {
 			c.noteBucketFallbackHit(bucketName)
@@ -345,8 +369,10 @@ func (c *RosmarCluster) GetMetadataDocument(ctx context.Context, location, docID
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	cas, err = primary.Get(ctx, docID, valuePtr)
 	if c.shouldFallback(err, fallback) {
+		c.countKVOps(1)
 		cas, err = fallback.Get(ctx, docID, valuePtr)
 		if err == nil {
 			c.noteBucketFallbackHit(location)
@@ -368,6 +394,7 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 	// Surface a fallback existence-check error rather than silently writing to primary — a
 	// swallowed error here could let a divergent legacy copy survive in fallback.
 	if fallback != nil {
+		c.countKVOps(1)
 		exists, existsErr := fallback.Exists(ctx, key)
 		if existsErr != nil {
 			return 0, existsErr
@@ -377,6 +404,7 @@ func (c *RosmarCluster) InsertMetadataDocument(ctx context.Context, location, ke
 			return 0, ErrAlreadyExists
 		}
 	}
+	c.countKVOps(1)
 	return primary.WriteCas(ctx, key, 0, 0, value, 0)
 }
 
@@ -390,8 +418,10 @@ func (c *RosmarCluster) WriteMetadataDocument(ctx context.Context, location, doc
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	newCAS, err = primary.WriteCas(ctx, docID, 0, cas, value, 0)
 	if c.shouldFallback(err, fallback) {
+		c.countKVOps(1)
 		newCAS, err = fallback.WriteCas(ctx, docID, 0, cas, value, 0)
 		if err == nil {
 			c.noteBucketFallbackHit(location)
@@ -412,8 +442,10 @@ func (c *RosmarCluster) TouchMetadataDocument(ctx context.Context, location, doc
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	newCAS, err = primary.TouchXattrWithCas(ctx, docID, cfgXattrKey, property, value, cas)
 	if c.shouldFallback(err, fallback) {
+		c.countKVOps(1)
 		newCAS, err = fallback.TouchXattrWithCas(ctx, docID, cfgXattrKey, property, value, cas)
 		if err == nil {
 			c.noteBucketFallbackHit(location)
@@ -430,8 +462,10 @@ func (c *RosmarCluster) DeleteMetadataDocument(ctx context.Context, location, ke
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	_, removeErr := primary.Remove(ctx, key, cas)
 	if c.shouldFallback(removeErr, fallback) {
+		c.countKVOps(1)
 		_, removeErr = fallback.Remove(ctx, key, cas)
 		if removeErr == nil {
 			c.noteBucketFallbackHit(location)
@@ -462,6 +496,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 		}
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
+			c.countKVOps(1)
 			removeCasOut, err := ds.Remove(ctx, docID, cas)
 			if err != nil {
 				if errors.As(err, &sgbucket.CasMismatchErr{}) {
@@ -476,6 +511,7 @@ func (c *RosmarCluster) UpdateMetadataDocument(ctx context.Context, location, do
 			return removeCasOut, nil
 		}
 
+		c.countKVOps(1)
 		replaceCfgCasOut, err := ds.WriteCas(ctx, docID, 0, cas, newConfig, 0)
 		if err != nil {
 			if errors.As(err, &sgbucket.CasMismatchErr{}) {
@@ -502,10 +538,12 @@ func (c *RosmarCluster) KeyExists(ctx context.Context, location, docID string) (
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	exists, err = primary.Exists(ctx, docID)
 	if err != nil || exists || fallback == nil {
 		return exists, err
 	}
+	c.countKVOps(1)
 	exists, err = fallback.Exists(ctx, docID)
 	if err == nil && exists {
 		c.noteBucketFallbackHit(location)
@@ -522,6 +560,7 @@ func (c *RosmarCluster) GetDocument(ctx context.Context, bucketName, docID strin
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	_, err = ds.Get(ctx, docID, rv)
 	if IsDocNotFoundError(err) {
 		return false, nil
@@ -538,6 +577,7 @@ func (c *RosmarCluster) GetRawDocument(ctx context.Context, bucket, docID string
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	value, _, err = ds.GetRaw(ctx, docID)
 	if IsDocNotFoundError(err) {
 		return nil, false, nil
@@ -576,6 +616,7 @@ func (c *RosmarCluster) GetMetadataMigrationStatus(ctx context.Context, bucket s
 	defer closer(ctx)
 
 	status := &MetadataMigrationStatus{}
+	c.countKVOps(1)
 	cas, err := col.Get(ctx, MetadataMigrationStatusDocID, status)
 	if err != nil {
 		if IsDocNotFoundError(err) {
@@ -598,6 +639,7 @@ func (c *RosmarCluster) InsertMetadataMigrationStatus(ctx context.Context, bucke
 	}
 	defer closer(ctx)
 
+	c.countKVOps(1)
 	cas, err := col.WriteCas(ctx, MetadataMigrationStatusDocID, 0, 0, status, 0)
 	if err != nil {
 		if errors.Is(err, sgbucket.ErrKeyExists) {
@@ -621,6 +663,7 @@ func (c *RosmarCluster) UpdateMetadataMigrationStatus(ctx context.Context, bucke
 		var (
 			status = &MetadataMigrationStatus{}
 		)
+		c.countKVOps(1)
 		cas, getErr := col.Get(ctx, MetadataMigrationStatusDocID, status)
 		if getErr != nil {
 			if !IsDocNotFoundError(getErr) {
@@ -631,6 +674,7 @@ func (c *RosmarCluster) UpdateMetadataMigrationStatus(ctx context.Context, bucke
 		if err := callback(status); err != nil {
 			return 0, err
 		}
+		c.countKVOps(1)
 		newCAS, err := col.WriteCas(ctx, MetadataMigrationStatusDocID, 0, cas, status, 0)
 		if err != nil {
 			if errors.As(err, &sgbucket.CasMismatchErr{}) {
@@ -675,6 +719,7 @@ func (c *RosmarCluster) MigrateBootstrapDocs(ctx context.Context, bucket string,
 
 	for _, docID := range docIDs {
 		var body []byte
+		c.countKVOps(1)
 		fallbackCas, err := defaultCol.Get(ctx, docID, &body)
 		if err != nil {
 			if IsDocNotFoundError(err) {
@@ -682,10 +727,12 @@ func (c *RosmarCluster) MigrateBootstrapDocs(ctx context.Context, bucket string,
 			}
 			return fmt.Errorf("read fallback %q during bootstrap migration: %w", docID, err)
 		}
+		c.countKVOps(1)
 		_, insertErr := systemCol.WriteCas(ctx, docID, 0, 0, body, 0)
 		if insertErr != nil && !errors.Is(insertErr, sgbucket.ErrKeyExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
+		c.countKVOps(1)
 		if _, err := defaultCol.Remove(ctx, docID, fallbackCas); err != nil {
 			if errors.As(err, &sgbucket.CasMismatchErr{}) {
 				InfofCtx(ctx, KeyConfig, "Bootstrap migration: skipping fallback delete for %q on bucket %q (CAS mismatch — concurrent write), caller should re-run", MD(docID), MD(bucket))

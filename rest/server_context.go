@@ -131,6 +131,13 @@ type bootstrapContext struct {
 	clusterCompatVersion base.ClusterCompatVersion   // major.minor cluster compat version this node identifies as. Defaults to base.NodeClusterCompatVersion; tests may override.
 }
 
+// withKVOpStat returns a copy of b whose connection adds every KV operation it makes to stat.
+func (b *bootstrapContext) withKVOpStat(stat *base.SgwIntStat) *bootstrapContext {
+	withStat := *b
+	withStat.Connection = b.Connection.WithKVOpStat(stat)
+	return &withStat
+}
+
 type getOrAddDatabaseConfigOptions struct {
 	failFast       bool // if set, a failure to connect to a bucket of collection will immediately fail
 	useExisting    bool //  if true, return an existing DatabaseContext vs return an error
@@ -1116,7 +1123,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return sc.isPerDBMigrationComplete(ctx, bucketName, metadataID)
 		}
 		dbcontext.PostMetadataMigrationCompleteFunc = func(ctx context.Context) error {
-			return sc.maybeCompleteBucketMetadataMigration(ctx, bucketName)
+			return sc.maybeCompleteBucketMetadataMigration(ctx, sc.BootstrapContext, bucketName)
 		}
 		dbcontext.SiblingMetadataIDFunc = func(ctx context.Context) ([]string, error) {
 			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
@@ -2345,17 +2352,7 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 					t.Stop()
 					return
 				case <-t.C:
-					base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
-					count, err := sc.fetchAndLoadConfigs(ctx, false)
-					if err != nil {
-						base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
-					}
-					if count > 0 {
-						base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
-					}
-					sc.ClusterCompat.Refresh(ctx)
-					sc.refreshBucketBootstrapTargets(ctx)
-					sc.RecheckPendingBucketMetadataMigrations(ctx)
+					sc.pollBootstrapConfig(ctx)
 				}
 			}
 		}()
@@ -2367,19 +2364,39 @@ func (sc *ServerContext) initializeBootstrapConnection(ctx context.Context) erro
 	return nil
 }
 
+// pollBootstrapConfig is one tick of the background config polling loop. It loads changed database configs and
+// refreshes the per-bucket state kept in the bootstrap metadata. The loop runs even when the node has no clients, so
+// its KV operations are counted as idle. Loading a changed database is not counted.
+func (sc *ServerContext) pollBootstrapConfig(ctx context.Context) {
+	base.DebugfCtx(ctx, base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.Config.Bootstrap.ConfigGroupID)
+	bootstrap := sc.BootstrapContext.withKVOpStat(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps)
+	count, err := sc.fetchAndLoadConfigsFrom(ctx, bootstrap, false)
+	if err != nil {
+		base.WarnfCtx(ctx, "Couldn't load configs from bucket for group %q when polled: %v", sc.Config.Bootstrap.ConfigGroupID, err)
+	}
+	if count > 0 {
+		base.InfofCtx(ctx, base.KeyConfig, "Successfully fetched %d database configs for group %q from buckets in cluster", count, sc.Config.Bootstrap.ConfigGroupID)
+	}
+	sc.ClusterCompat.Refresh(ctx)
+	sc.refreshBucketBootstrapTargets(ctx)
+	sc.RecheckPendingBucketMetadataMigrations(ctx)
+}
+
 // RecheckPendingBucketMetadataMigrations iterates through all config buckets and re-evaluates
-// whether bucket-level metadata migration can now be completed.
+// whether bucket-level metadata migration can now be completed. Called from the config polling loop,
+// so the KV operations of the checks are counted as idle.
 func (sc *ServerContext) RecheckPendingBucketMetadataMigrations(ctx context.Context) {
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return
 	}
+	bootstrap := sc.BootstrapContext.withKVOpStat(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps)
 	buckets := sc.ClusterCompat.trackedBucketList()
 	for _, bucket := range buckets {
 		if sc.BootstrapContext.Connection.IsMigrationComplete(bucket) {
 			// migration done for this bucket, fast path skip to next bucket
 			continue
 		}
-		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bucket); err != nil {
+		if err := sc.maybeCompleteBucketMetadataMigration(ctx, bootstrap, bucket); err != nil {
 			if base.IsDocNotFoundError(err) {
 				// no migration status doc for this bucket means no metadata migration has ever
 				// been run for any of its databases — not an error worth warning about
@@ -2516,14 +2533,18 @@ func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, bucketNam
 // Insert tolerates ErrDocumentExists, fallback Remove uses observed-CAS) and the final state
 // transition is CAS-guarded so the first writer wins and later peers no-op. This avoids the
 // crash-wedge problem an in_progress claim without a lease would introduce.
-func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Context, bucketName string) error {
-	registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+//
+// The reads that decide whether the migration can complete go through bootstrap, which counts them when called from
+// the config polling loop. The migration writes use sc.BootstrapContext and are not counted as idle, on purpose: they
+// are one-off work that the cluster should stay awake for.
+func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Context, bootstrap *bootstrapContext, bucketName string) error {
+	registry, err := bootstrap.getGatewayRegistry(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("read registry for bucket %q: %w", bucketName, err)
 	}
 	expected := registryMetadataIDs(registry)
 
-	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	status, _, err := bootstrap.Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("read status doc for bucket %q: %w", bucketName, err)
 	}
@@ -2595,8 +2616,10 @@ func (sc *ServerContext) refreshBucketBootstrapTargets(ctx context.Context) {
 	if sc.ClusterCompat == nil || sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return
 	}
+	// Called from the config polling loop, so its KV operations are counted as idle.
+	connection := sc.BootstrapContext.Connection.WithKVOpStat(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps)
 	for _, bucket := range sc.ClusterCompat.trackedBucketList() {
-		if err := sc.BootstrapContext.Connection.RefreshBucketBootstrapTarget(ctx, bucket); err != nil {
+		if err := connection.RefreshBucketBootstrapTarget(ctx, bucket); err != nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q bootstrap-target refresh: %v", base.MD(bucket), err)
 		}
 	}
