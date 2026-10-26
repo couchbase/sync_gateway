@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -62,14 +63,11 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	dataStore := rt.GetSingleDataStore()
 	collection, ctx := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	// Create some legacy attachments to be marked but not compacted. Both doc keys and attachment
-	// bodies land on vBucket 0 so the mark phase stays serial on a single DCP worker — otherwise
-	// concurrent SetXattrs calls race to close the pauser channel.
-	docIDs := base.VBucket0DocIDs(t, rt.Bucket(), 3)
-	attBodies := base.VBucket0AttachmentBodies(t, rt.Bucket(), 3)
-	for i, attBody := range attBodies {
+	// Create some legacy attachments to be marked but not compacted.
+	for i := range 3 {
+		docID := fmt.Sprintf("%s-%d", t.Name(), i)
 		attID := fmt.Sprintf("testAtt-%d", i)
-		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docIDs[i], []byte("{}"), attID, attBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attID, fmt.Appendf(nil, "att body %d", i))
 	}
 
 	// Create some 'unmarked' attachments
@@ -502,12 +500,10 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 
 }
 
-// compactionPauser blocks the compaction mark phase at the first attachment it encounters. Can be
-// Paused and Released multiple times across a test.
-// With more than one legacy attachment doc, both the parent doc keys (base.VBucket0DocIDs) and the
-// attachment bodies (base.VBucket0AttachmentBodies) must land on vBucket 0: the mark phase's
-// SetXattrs calls run on whichever goroutine processes the parent doc's mutation, not one keyed
-// off the attachment's own vBucket, so constraining only the bodies still allows concurrent calls.
+// compactionPauser blocks the compaction mark phase at the attachments it encounters, until
+// Release is called. Can be Paused and Released multiple times across a test.
+// The mark phase runs one goroutine per DCP worker, so several attachments can be marked
+// concurrently and every blocked call is released together.
 type compactionPauser struct {
 	t           testing.TB
 	blocked     chan struct{}
@@ -525,21 +521,25 @@ func newCompactionPauser(rt *rest.RestTester) *compactionPauser {
 	}
 }
 
-// Pause arms the pauser to block the mark phase at the first attachment it encounters. Call
+// Pause arms the pauser to block the mark phase at every attachment it encounters. Call
 // Release before pausing again.
 func (p *compactionPauser) Pause() {
 	if !p.callbackSet.CompareAndSwap(false, true) {
 		require.FailNow(p.t, "compactionPauser.Pause called while already paused; call Release first")
 	}
-	p.blocked = make(chan struct{})
-	p.blockCh = make(chan struct{})
+	blocked := make(chan struct{})
+	blockCh := make(chan struct{})
+	p.blocked, p.blockCh = blocked, blockCh
+	// Callbacks read the channels they were created with, so a later Pause can't race with a
+	// mark-phase goroutine still inside the previous callback.
+	var blockedOnce sync.Once
 	p.ds.SetXattrCallback(func(key string) error {
 		if !strings.HasPrefix(key, base.AttPrefix) {
 			return nil
 		}
-		close(p.blocked)
+		blockedOnce.Do(func() { close(blocked) })
 		// Runs on the mark phase's goroutine, so use the goroutine-safe wait.
-		sgtest.RequireChanClosedFromCallback(p.t, p.blockCh)
+		sgtest.RequireChanClosedFromCallback(p.t, blockCh)
 		return nil
 	})
 }
@@ -550,7 +550,7 @@ func (p *compactionPauser) WaitUntilBlocked() {
 	base.RequireChanClosed(p.t, p.blocked)
 }
 
-// Release clears the callback and unblocks the paused doc. Fails the test if not currently paused.
+// Release clears the callback and unblocks the paused docs. Fails the test if not currently paused.
 func (p *compactionPauser) Release() {
 	if !p.release() {
 		require.FailNow(p.t, "compactionPauser.Release called while not paused")
@@ -562,7 +562,7 @@ func (p *compactionPauser) Close() {
 	p.release()
 }
 
-// release clears the callback and unblocks the paused doc if currently paused, reporting whether
+// release clears the callback and unblocks any paused docs if currently paused, reporting whether
 // it was paused.
 func (p *compactionPauser) release() bool {
 	if !p.callbackSet.CompareAndSwap(true, false) {
