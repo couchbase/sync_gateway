@@ -271,6 +271,9 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 	nodeListenerMap := h.getNodeListenerMap(ctx)
 	TracefCtx(ctx, KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
 
+	datastore := NewKVOpCountingDataStore(h.datastore)
+	defer func() { AddIdleKVOps(datastore.KVOps()) }()
+
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
 		if heartbeatNodeUUID == h.nodeUUID {
 			// that's us, and we don't care about ourselves
@@ -281,8 +284,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(ctx context.Context) error {
 		}
 
 		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix)
-		_, _, err := h.datastore.GetRaw(ctx, timeoutDocID)
-		AddIdleKVOps(1)
+		_, _, err := datastore.GetRaw(ctx, timeoutDocID)
 		if err != nil {
 			if !IsDocNotFoundError(err) {
 				// unexpected error
@@ -307,9 +309,10 @@ func heartbeatTimeoutDocID(nodeUuid, keyPrefix string) string {
 func (h *couchbaseHeartBeater) sendHeartbeat(ctx context.Context) error {
 
 	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
+	datastore := NewKVOpCountingDataStore(h.datastore)
+	defer func() { AddIdleKVOps(datastore.KVOps()) }()
 
-	_, touchErr := h.datastore.Touch(ctx, docID, h.heartbeatExpirySeconds)
-	AddIdleKVOps(1)
+	_, touchErr := datastore.Touch(ctx, docID, h.heartbeatExpirySeconds)
 	if touchErr == nil {
 		h.sendCount++
 		return nil
@@ -318,8 +321,7 @@ func (h *couchbaseHeartBeater) sendHeartbeat(ctx context.Context) error {
 	// On KeyNotFound, recreate heartbeat timeout doc
 	if IsDocNotFoundError(touchErr) {
 		heartbeatDocBody := []byte(h.nodeUUID)
-		setErr := h.datastore.SetRaw(ctx, docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
-		AddIdleKVOps(1)
+		setErr := datastore.SetRaw(ctx, docID, h.heartbeatExpirySeconds, nil, heartbeatDocBody)
 		if setErr != nil {
 			return setErr
 		}
@@ -467,8 +469,9 @@ func (dh *documentBackedListener) updateNodeList(ctx context.Context, nodeID str
 
 func (dh *documentBackedListener) loadNodeIDs(ctx context.Context) error {
 
-	docBytes, cas, err := dh.datastore.GetRaw(ctx, dh.nodeListKey)
-	AddIdleKVOps(1)
+	datastore := NewKVOpCountingDataStore(dh.datastore)
+	docBytes, cas, err := datastore.GetRaw(ctx, dh.nodeListKey)
+	AddIdleKVOps(datastore.KVOps())
 	if err != nil {
 		dh.cas = 0
 		dh.nodeIDs = []string{}

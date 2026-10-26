@@ -45,6 +45,28 @@ func TestSetLocalStatusKVOps(t *testing.T) {
 	}
 }
 
+// TestSetLocalStatusKVOpsFallback checks that setLocalStatus counts the extra KV operations a dual metadata store makes
+// for a status doc that is still in the fallback collection.
+func TestSetLocalStatusKVOpsFallback(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
+	primary := tBucket.GetSingleDataStore()
+	fallback := tBucket.DefaultDataStore(ctx)
+	if primary.GetName() == fallback.GetName() {
+		t.Skip("needs a named collection to use as the primary")
+	}
+	statusKey := base.NewMetadataKeys(t.Name()).ReplicationStatusKey("repl1")
+	_, err := setLocalStatus(ctx, fallback, statusKey, &ReplicationStatus{ID: "repl1", Status: ReplicationStateStopped}, 0)
+	require.NoError(t, err)
+
+	kvOps, err := setLocalStatus(ctx, base.NewMetadataStore(primary, fallback), statusKey, &ReplicationStatus{ID: "repl1", Status: ReplicationStateRunning}, 0)
+	require.NoError(t, err)
+	// The read misses the primary and hits the fallback. The update checks the primary, reads the fallback, and
+	// inserts into the primary.
+	require.Equal(t, 5, kvOps)
+}
+
 // TestBlipSyncErrorUserinfo ensures the websocket errors returned by blipSync contain no basic auth component.
 func TestBlipSyncErrorUserinfo(t *testing.T) {
 	tests := []struct {

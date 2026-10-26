@@ -85,8 +85,13 @@ func (dbMgr *DatabaseStateMgr) UpdateState(ctx context.Context, newState Databas
 // All errors, including doc-not-found, are returned to the caller; callers must check base.IsDocNotFoundError
 // to distinguish a missing document from a real store failure.
 func (dbMgr *DatabaseStateMgr) GetState(ctx context.Context) (*DatabaseState, uint64, error) {
+	return dbMgr.getState(ctx, dbMgr.metadataStore)
+}
+
+// getState is GetState against the given datastore, which is dbMgr.metadataStore or a wrapper around it.
+func (dbMgr *DatabaseStateMgr) getState(ctx context.Context, datastore base.DataStore) (*DatabaseState, uint64, error) {
 	var state DatabaseState
-	cas, err := dbMgr.metadataStore.Get(ctx, dbMgr.dbStateID, &state)
+	cas, err := datastore.Get(ctx, dbMgr.dbStateID, &state)
 	if err != nil {
 		return nil, cas, err
 	}
@@ -117,9 +122,10 @@ func (dbMgr *DatabaseStateMgr) StartPolling(ctx context.Context) {
 // poll checks whether the state document has been updated and calls appropriate callback functions. If the callback
 // functions return any errors, do not update the CAS so the next time poll runs, the callback function will rerun.
 func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
-	newCAS, state, ok := dbMgr.isUpdated(ctx)
 	// The state document is read on every tick while the database is offline, whether or not anything changed.
-	base.AddIdleKVOps(1)
+	datastore := base.NewKVOpCountingDataStore(dbMgr.metadataStore)
+	newCAS, state, ok := dbMgr.isUpdated(ctx, datastore)
+	base.AddIdleKVOps(datastore.KVOps())
 	if !ok {
 		return
 	}
@@ -142,8 +148,8 @@ func (dbMgr *DatabaseStateMgr) poll(ctx context.Context) {
 // held CAS, or (0, nil, false) when the CAS is unchanged, the document is not found, or a store
 // error occurs. The locally held CAS is never modified here; callers are responsible for advancing
 // it after they have successfully acted on the change.
-func (dbMgr *DatabaseStateMgr) isUpdated(ctx context.Context) (uint64, *DatabaseState, bool) {
-	state, cas, err := dbMgr.GetState(ctx)
+func (dbMgr *DatabaseStateMgr) isUpdated(ctx context.Context, datastore base.DataStore) (uint64, *DatabaseState, bool) {
+	state, cas, err := dbMgr.getState(ctx, datastore)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "error while polling for offline database state: %v", err)

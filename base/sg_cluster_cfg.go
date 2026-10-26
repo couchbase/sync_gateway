@@ -105,7 +105,11 @@ func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	[]byte, uint64, error) {
+	return c.get(c.datastore, cfgKey, cas)
+}
 
+// get is Get against the given datastore, which is c.datastore or a wrapper around it.
+func (c *CfgSG) get(datastore cfgSGDataStore, cfgKey string, cas uint64) ([]byte, uint64, error) {
 	if cfgKey == cbgt.VERSION_KEY {
 		return []byte(SGCbgtMetadataVersion), cas, nil
 	}
@@ -113,7 +117,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	DebugfCtx(c.ctx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
-	casOut, err := c.datastore.Get(c.ctx, bucketKey, &value)
+	casOut, err := datastore.Get(c.ctx, bucketKey, &value)
 	if err != nil && !IsDocNotFoundError(err) {
 		InfofCtx(c.ctx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
@@ -128,14 +132,18 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 }
 
 func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
+	return c.set(c.datastore, cfgKey, val, cas)
+}
 
+// set is Set against the given datastore, which is c.datastore or a wrapper around it.
+func (c *CfgSG) set(datastore cfgSGDataStore, cfgKey string, val []byte, cas uint64) (uint64, error) {
 	DebugfCtx(c.ctx, KeyCluster, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
 	if strings.HasPrefix(cfgKey, ":") {
 		return 0, fmt.Errorf("cfg_sg: key cannot start with a colon")
 	}
 
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	casOut, err := c.datastore.WriteCas(c.ctx, bucketKey, 0, cas, val, 0)
+	casOut, err := datastore.WriteCas(c.ctx, bucketKey, 0, cas, val, 0)
 
 	if IsCasMismatch(err) {
 		InfofCtx(c.ctx, KeyCluster, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
@@ -149,10 +157,14 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 }
 
 func (c *CfgSG) Del(cfgKey string, cas uint64) error {
+	return c.del(c.datastore, cfgKey, cas)
+}
 
+// del is Del against the given datastore, which is c.datastore or a wrapper around it.
+func (c *CfgSG) del(datastore cfgSGDataStore, cfgKey string, cas uint64) error {
 	DebugfCtx(c.ctx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	_, err := c.datastore.Remove(c.ctx, bucketKey, cas)
+	_, err := datastore.Remove(c.ctx, bucketKey, cas)
 	if IsCasMismatch(err) {
 		return ErrCfgCasError
 	} else if err != nil && !IsDocNotFoundError(err) {
@@ -215,48 +227,52 @@ func (c *CfgSG) Refresh() error {
 
 // CfgKVOpCounter wraps a cbgt.Cfg and counts the KV operations made through it. cbgt and SG Replicate read their
 // config through the cbgt.Cfg interface, which has no way to report KV operations, so a caller that needs the
-// count wraps the Cfg for the duration of that work. Not safe for concurrent use.
+// count wraps the Cfg for the duration of that work.
 type CfgKVOpCounter struct {
 	cbgt.Cfg
-	kvBacked bool // false for a Cfg held in memory, which makes no KV operations
-	kvOps    int
+	sgCfg     *CfgSG                 // nil unless cfg is a CfgSG backed by a DataStore
+	datastore *KVOpCountingDataStore // counts sgCfg's KV operations, nil when sgCfg is nil
 }
 
-// NewCfgKVOpCounter returns a CfgKVOpCounter that wraps cfg.
+// NewCfgKVOpCounter returns a CfgKVOpCounter that wraps cfg. A Cfg held in memory makes no KV operations, so counts 0.
 func NewCfgKVOpCounter(cfg cbgt.Cfg) *CfgKVOpCounter {
-	kvBacked := false
+	counter := &CfgKVOpCounter{Cfg: cfg}
 	if sgCfg, ok := cfg.(*CfgSG); ok {
-		_, inMemory := sgCfg.datastore.(*cfgMemoryStorage)
-		kvBacked = !inMemory
+		if datastore, ok := sgCfg.datastore.(DataStore); ok {
+			counter.sgCfg = sgCfg
+			counter.datastore = NewKVOpCountingDataStore(datastore)
+		}
 	}
-	return &CfgKVOpCounter{Cfg: cfg, kvBacked: kvBacked}
+	return counter
 }
 
 // KVOps returns the number of KV operations made through this Cfg.
 func (c *CfgKVOpCounter) KVOps() int {
-	return c.kvOps
+	if c.datastore == nil {
+		return 0
+	}
+	return c.datastore.KVOps()
 }
 
 func (c *CfgKVOpCounter) Get(cfgKey string, cas uint64) ([]byte, uint64, error) {
-	// CfgSG answers the version key without a KV read.
-	if c.kvBacked && cfgKey != cbgt.VERSION_KEY {
-		c.kvOps++
+	if c.sgCfg == nil {
+		return c.Cfg.Get(cfgKey, cas)
 	}
-	return c.Cfg.Get(cfgKey, cas)
+	return c.sgCfg.get(c.datastore, cfgKey, cas)
 }
 
 func (c *CfgKVOpCounter) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
-	if c.kvBacked {
-		c.kvOps++
+	if c.sgCfg == nil {
+		return c.Cfg.Set(cfgKey, val, cas)
 	}
-	return c.Cfg.Set(cfgKey, val, cas)
+	return c.sgCfg.set(c.datastore, cfgKey, val, cas)
 }
 
 func (c *CfgKVOpCounter) Del(cfgKey string, cas uint64) error {
-	if c.kvBacked {
-		c.kvOps++
+	if c.sgCfg == nil {
+		return c.Cfg.Del(cfgKey, cas)
 	}
-	return c.Cfg.Del(cfgKey, cas)
+	return c.sgCfg.del(c.datastore, cfgKey, cas)
 }
 
 // cfgMemoryStorageEntry is a single stored value and its CAS, as tracked by cfgMemoryStorage.

@@ -2530,7 +2530,7 @@ func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, bucketNam
 // crash-wedge problem an in_progress claim without a lease would introduce.
 //
 // Returns the number of KV operations made by the reads that decide whether the migration can complete. The
-// one-off migration writes are not counted.
+// migration writes are left out on purpose: they are one-off work that the cluster should stay awake for.
 func (sc *ServerContext) maybeCompleteBucketMetadataMigration(ctx context.Context, bucketName string) (kvOps int, err error) {
 	registry, kvOps, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
 	if err != nil {

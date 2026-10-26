@@ -556,17 +556,16 @@ func getLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 	return nil, nil
 }
 
-// setLocalStatus updates replication status. Returns the number of KV operations made, counting the update as a read and
-// a write.
+// setLocalStatus updates replication status. Returns the number of KV operations made.
 func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string, status *ReplicationStatus, localDocExpirySecs int) (kvOps int, err error) {
 	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%#+v)", statusKey, status)
+	datastore := base.NewKVOpCountingDataStore(metadataStore)
 
 	// obtain current rev
-	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, statusKey)
-	kvOps++
+	currentStatus, err := getLocalStatusDoc(ctx, datastore, statusKey)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", statusKey)
-		return kvOps, nil
+		return datastore.KVOps(), nil
 	}
 
 	var revID string
@@ -578,9 +577,8 @@ func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 		Status: status,
 	}
 
-	_, _, err = putDocWithRevision(ctx, metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
-	kvOps += 2
-	return kvOps, err
+	_, _, err = putDocWithRevision(ctx, datastore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
+	return datastore.KVOps(), err
 }
 
 // removeLocalStatus removes a replication status from the given metadataStore. This is done when a replication is reset.
