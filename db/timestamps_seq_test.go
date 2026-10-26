@@ -182,9 +182,10 @@ func TestTimestampsSeqArrayAppend(t *testing.T) {
 	}
 }
 
-// TestTimestampsSeqArrayTrim makes sure that trim keeps the first entry and every entry newer than the purge timestamp.
+// TestTimestampsSeqArrayTrim makes sure that trim keeps the newest entry at or before the purge timestamp, and every entry after it.
 func TestTimestampsSeqArrayTrim(t *testing.T) {
 	now := time.Now()
+	// Entries are generated with constant gaps, so the expected array is the same generator started at the purge timestamp.
 	tests := []struct {
 		name           string
 		entries        []TimestampsSeqPair
@@ -192,6 +193,7 @@ func TestTimestampsSeqArrayTrim(t *testing.T) {
 		expected       []TimestampsSeqPair
 	}{
 		{
+			// a single 12 hour gap: entries older than day -30 are trimmed
 			name: "timespan=1month;duration:12hours;duration_change=false",
 			entries: func() []TimestampsSeqPair {
 				return GenerateTimestampsSeqPairs(now.Add(-31*24*time.Hour), now, time.Hour*12)
@@ -202,6 +204,7 @@ func TestTimestampsSeqArrayTrim(t *testing.T) {
 			}(),
 		},
 		{
+			// the gap changes from 12 hours to 24 hours at day -30: the purge timestamp falls before the change
 			name: "timespan=1.5month;duration:12hours/24hours;duration_change=true",
 			entries: func() []TimestampsSeqPair {
 				tsPair := GenerateTimestampsSeqPairs(now.Add(-60.5*24*time.Hour), now.Add(-30*24*time.Hour), time.Hour*12)
@@ -232,6 +235,7 @@ func TestTimestampsSeqArrayTrim(t *testing.T) {
 // TestTimestampsManagerEntryDue makes sure that entryDue is true for an empty array or once the newest entry is older than the update frequency.
 func TestTimestampsManagerEntryDue(t *testing.T) {
 	now := time.Now()
+	// entryAge returns a single entry that is the given age old
 	entryAge := func(age time.Duration) []TimestampsSeqPair {
 		return []TimestampsSeqPair{{Seq: 1, Timestamp: now.Add(-age).Unix()}}
 	}
@@ -241,9 +245,11 @@ func TestTimestampsManagerEntryDue(t *testing.T) {
 		entries       []TimestampsSeqPair
 		expected      bool
 	}{
+		// a purge interval of NumTimestampsEntries hours gives an update frequency of one hour
 		{name: "empty array", purgeInterval: NumTimestampsEntries * time.Hour, entries: nil, expected: true},
 		{name: "newest entry within update frequency", purgeInterval: NumTimestampsEntries * time.Hour, entries: entryAge(30 * time.Minute), expected: false},
 		{name: "newest entry older than update frequency", purgeInterval: NumTimestampsEntries * time.Hour, entries: entryAge(90 * time.Minute), expected: true},
+		// a purge interval of one hour would give one minute, so the update frequency is raised to the 10 minute minimum
 		{name: "minimum update frequency, entry within it", purgeInterval: time.Hour, entries: entryAge(5 * time.Minute), expected: false},
 		{name: "minimum update frequency, entry older than it", purgeInterval: time.Hour, entries: entryAge(15 * time.Minute), expected: true},
 		{
@@ -267,6 +273,7 @@ func TestTimestampsManagerEntryDue(t *testing.T) {
 	}
 }
 
+// TestTimestampsManagerAddEntry makes sure that addEntry adds an entry to the stored timestamps document and trims it by the purge interval.
 func TestTimestampsManagerAddEntry(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -292,6 +299,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 	err := tm.Start()
 	require.NoError(t, err)
 
+	// cleanupFunc resets the document to an empty array, so that subtests do not depend on each other
 	cleanupFunc := func(key string) {
 		_, err := tm.metadataStore.Update(ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 			val := TimestampsSeqArray{
@@ -306,6 +314,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 
 	t.Run("empty array", func(t *testing.T) {
 		defer cleanupFunc(metaKeys.TimestampsSeqKey())
+		// an empty array is always due
 		err := tm.addEntry()
 		require.NoError(t, err)
 		var tsDoc TimestampsSeqArray
@@ -364,7 +373,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 	})
 }
 
-// GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end, each with a random sequence.
+// GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end, each with sequence 0.
 // It returns nil if duration is not positive.
 func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration) []TimestampsSeqPair {
 	var pairs []TimestampsSeqPair
