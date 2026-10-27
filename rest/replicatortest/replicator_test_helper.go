@@ -16,7 +16,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/couchbaselabs/rosmar"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,21 +45,6 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 				},
 			},
 		})
-
-	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
-	// deleted when bucket.Close() is called during DatabaseContext.Close().
-	// Using IgnoreClose in leakyBucket to no-op the close operation.
-	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
-	// set up the leakyBucket wrapper prior to bucket creation.
-	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
-	leakyBucket, ok := base.AsLeakyBucket(activeRT.GetDatabase().Bucket)
-	if ok {
-		ub := leakyBucket.GetUnderlyingBucket()
-		_, isWalrusBucket := ub.(*rosmar.Bucket)
-		if isWalrusBucket {
-			leakyBucket.SetIgnoreClose(true)
-		}
-	}
 
 	// Trigger the lazy load of bucket for RestTester startup
 	_ = activeRT.Bucket()

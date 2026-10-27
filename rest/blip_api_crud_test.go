@@ -2989,11 +2989,8 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 // Tests changes made in CBG-2151 to return errors from sendRevision unless it's a document not found error,
 // in which case a noRev should be sent.
 func TestSendRevisionNoRevHandling(t *testing.T) {
-
 	base.LongRunningTest(t)
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip LeakyBucket test when running in integration")
-	}
+
 	testCases := []struct {
 		error       error
 		expectNoRev bool
@@ -3014,9 +3011,10 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				docName := fmt.Sprintf("%s", test.error)
 				rt := NewRestTester(t,
 					&RestTesterConfig{
-						GuestEnabled:     true,
-						CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
-					})
+						GuestEnabled:      true,
+						LeakyBucketConfig: &base.LeakyBucketConfig{},
+					},
+				)
 				defer rt.Close()
 
 				leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())

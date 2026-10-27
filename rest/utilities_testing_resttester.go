@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -422,6 +423,12 @@ func (rt *RestTester) WaitForResyncDCPStatusForDB(status db.BackgroundProcessSta
 
 // waitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
 func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, dbName string) db.ResyncManagerResponseDCP {
+	timeout := 10 * time.Second
+	pollInterval := 10 * time.Millisecond
+	if !base.UnitTestUrlIsWalrus() || base.IsRaceDetectorEnabled(rt.TB()) || os.Getenv("CI") != "" {
+		timeout = 60 * time.Second
+		pollInterval = 500 * time.Millisecond
+	}
 	var resyncStatus db.ResyncManagerResponseDCP
 	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
 		response := rt.SendAdminRequest("GET", "/"+dbName+"/_resync", "")
@@ -434,7 +441,7 @@ func (rt *RestTester) waitForResyncDCPStatus(status db.BackgroundProcessState, d
 			_, err := rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(rt.TB()), output)
 			assert.True(c, base.IsDocNotFoundError(err), "expected heartbeat doc to be deleted, got: %v", err)
 		}
-	}, time.Second*10, time.Millisecond*10)
+	}, timeout, pollInterval)
 	return resyncStatus
 }
 
