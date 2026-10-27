@@ -2543,8 +2543,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
 	}
 
+	var lastDocID string
 	for i := 0; i < 7; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+		lastDocID = fmt.Sprintf("docB%d", i)
+		_ = rt2.PutDoc(lastDocID, `{"channels": ["B"]}`)
 	}
 
 	rt2.WaitForPendingChanges()
@@ -2555,6 +2557,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
 	// to hit CBG-1591
+	waitForPullCheckpoint(t, ar, rt2.GetDocumentSequence(lastDocID))
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
@@ -2564,7 +2567,8 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 	// not processed by the rt1 receiver.
 	for i := 7; i < 15; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+		lastDocID = fmt.Sprintf("docB%d", i)
+		_ = rt2.PutDoc(lastDocID, `{"channels": ["B"]}`)
 	}
 
 	rt2.WaitForPendingChanges()
@@ -2574,6 +2578,9 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	changesResults = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 
+	// Stopping before the revoked channel's sequence is checkpointed would rewind the next replication past the
+	// revocation, and the channel A docs would be purged once purge_on_removal is turned on below.
+	waitForPullCheckpoint(t, ar, rt2.GetDocumentSequence(lastDocID))
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 	sgwStats, err = base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -2619,6 +2626,16 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+}
+
+// waitForPullCheckpoint waits for the pull replication to have checkpointed the given remote sequence. A pulled
+// document is written before its sequence reaches the checkpointer, so stopping in that window rewinds the next start.
+func waitForPullCheckpoint(t *testing.T, ar *db.ActiveReplicator, seq uint64) {
+	t.Helper()
+	expectedSeq := strconv.FormatUint(seq, 10)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, expectedSeq, ar.GetStatus(base.TestCtx(t)).LastSeqPull)
+	}, 20*time.Second, 10*time.Millisecond)
 }
 
 func TestRevocationDeletedRole(t *testing.T) {
