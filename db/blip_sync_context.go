@@ -895,7 +895,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 
 // digests returns a slice of digest extracted from the given attachment meta.
 func digests(meta []AttachmentStorageMeta) []string {
-	digests := make([]string, len(meta))
+	digests := make([]string, 0, len(meta))
 	for _, m := range meta {
 		digests = append(digests, m.digest)
 	}
