@@ -45,7 +45,7 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Couldn't read document body: %s", err)
 	}
 
-	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("doc: %s, ifNotRev: %s", docID, ifNotRev))
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("doc: %s, ifNotRev: %s", base.UD(docID).Redact(), ifNotRev))
 
 	// Still need to stamp _attachments into BLIP messages
 	if len(rev.Attachments) > 0 {

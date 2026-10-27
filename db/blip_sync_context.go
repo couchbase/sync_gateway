@@ -456,7 +456,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 		bsc.replicationStats.SendRevBytes.Add(int64(len(messageBody)))
 	}
 
-	base.TracefCtx(ctx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attMeta)
+	base.TracefCtx(ctx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), digests(attMeta))
 
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
@@ -864,9 +864,9 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 			// the document's rev tree could not be expressed on the wire - a metadata problem with the
 			// document rather than a replication problem.
 			handleChangesResponseCollection.dbStats().Database().InvalidRevTreeCount.Add(1)
-			err := base.RedactErrorf("Could not get rev tree history for %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
-			base.WarnfCtx(ctx, "%s", err)
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+			base.WarnfCtx(ctx, "Could not get rev tree history for %s %s: %v, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
+			// The peer logs the noRev reason as is, so keep the doc ID out of it. The noRev already carries the doc ID and rev ID.
+			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, fmt.Errorf("could not get rev tree history: %w", err))
 		}
 	}
 
