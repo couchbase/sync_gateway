@@ -42,6 +42,11 @@ pipeline {
             description: 'Revision of Sync Gateway to build.'
         )
         string(
+            name: 'CI_SCRIPTS_REF',
+            defaultValue: 'main',
+            description: 'Branch of Sync Gateway to take run_e2e_tests.sh and the CI helpers from, whatever SG_COMMIT is.'
+        )
+        string(
             name: 'COUCHBASE_LITE_TESTS_COMMIT',
             defaultValue: 'main',
             description: 'Version of couchbase-lite-tests repo.'
@@ -88,15 +93,16 @@ pipeline {
                     ])
                     env.GIT_COMMIT = scmVars.GIT_COMMIT
                 }
-                // As in e2e/Jenkinsfile, take the test runner and helpers from main, whatever SG_COMMIT is.
+                // As in e2e/Jenkinsfile, take the test runner and helpers from main, whatever SG_COMMIT is, unless
+                // CI_SCRIPTS_REF names a branch whose copies have changes that main does not have yet.
                 sh '''
                     set -eu
                     mkdir -p integration-test/e2e .ci
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/.ci/retry.sh -o .ci/retry.sh
                     chmod +x .ci/retry.sh
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
                 '''
                 script {
                     def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
