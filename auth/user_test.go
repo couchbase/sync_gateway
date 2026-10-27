@@ -707,3 +707,29 @@ func docExists(t *testing.T, dataStore base.DataStore, key string) {
 	_, _, err := dataStore.GetRaw(key)
 	require.Nil(t, err, "doc %s should exist in datastore", key)
 }
+
+// TestSetDisabledSessionUUID ensures that only disabling an enabled user changes the session UUID, so that disabling
+// invalidates existing sessions and re-enabling doesn't restore them.
+func TestSetDisabledSessionUUID(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	auth := NewTestAuthenticator(t, testBucket.GetSingleDataStore(), nil, DefaultAuthenticatorOptions(ctx))
+
+	user, err := auth.NewUser("alice", "password", base.Set{})
+	require.NoError(t, err)
+	enabledUUID := user.GetSessionUUID()
+
+	user.SetDisabled(false)
+	assert.Equal(t, enabledUUID, user.GetSessionUUID(), "enabling an enabled user must not change the session UUID")
+
+	user.SetDisabled(true)
+	disabledUUID := user.GetSessionUUID()
+	assert.NotEqual(t, enabledUUID, disabledUUID, "disabling a user must change the session UUID")
+
+	user.SetDisabled(true)
+	assert.Equal(t, disabledUUID, user.GetSessionUUID(), "disabling a disabled user must not change the session UUID")
+
+	user.SetDisabled(false)
+	assert.Equal(t, disabledUUID, user.GetSessionUUID(), "re-enabling must not change the session UUID")
+}
