@@ -2735,7 +2735,7 @@ func TestRevocationDeletedRole(t *testing.T) {
 	assert.True(t, changes.Results[0].Revoked)
 }
 
-func TestRevokedFeedPanicLosesRevocations(t *testing.T) {
+func TestRevokedFeedCrashLosesRevocations(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	const triggerDocID = "doc-ch105"
@@ -2794,10 +2794,13 @@ func TestRevokedFeedPanicLosesRevocations(t *testing.T) {
 	armed.Store(true)
 	defer armed.Store(false)
 
-	panickedChanges := rt.GetChanges(
-		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", sinceVal),
-		"user",
-	)
+	var panickedChanges ChangesResults
+	base.PrintLogsOnlyOnFailure(t, func() {
+		panickedChanges = rt.GetChanges(
+			fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", sinceVal),
+			"user",
+		)
+	})
 
 	require.Equal(t, int32(1), panicFired.Load(),
 		"the leaky bucket callback must have actually panicked during the changes request")

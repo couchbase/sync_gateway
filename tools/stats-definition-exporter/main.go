@@ -58,21 +58,20 @@ func main() {
 		outputFile = nil
 	}
 
-	err := statsToFile(logger, outputFile, *formatFlag)
+	err := statsToFile(logger, os.Stdout, outputFile, *formatFlag)
 	if err != nil {
 		logger.Fatalf("%v", err)
 	}
 }
 
 // Write stats to outputFile unless nil, in which case write to stdout
-func statsToFile(logger *log.Logger, outputFile *string, format string) error {
+func statsToFile(logger *log.Logger, stdout io.Writer, outputFile *string, format string) error {
 	stats, err := getStats(logger)
 	if err != nil {
 		return fmt.Errorf("could not get stats: %w", err)
 	}
 
-	// Write to console if outputFile is nil
-	writer := os.Stdout
+	writer := stdout
 	if outputFile != nil {
 		file, err := os.Create(*outputFile)
 		if err != nil {

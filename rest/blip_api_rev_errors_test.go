@@ -217,7 +217,7 @@ func TestProcessRevErrorStatus(t *testing.T) {
 		},
 		{
 			// the incoming attachment is not an object, which processRev type asserts without a check
-			name:       "attachmentNotObjectPanic",
+			name:       "attachmentNotObject",
 			rev:        "2-abc",
 			body:       `{"_attachments":{"att":"not an object"}}`,
 			properties: blip.Properties{db.RevMessageHistory: "1-abc"},
@@ -280,8 +280,11 @@ func TestProcessRevErrorStatus(t *testing.T) {
 				rev = "1-abc"
 			}
 			revRequest := bt.newRevMessage("doc", rev, []byte(testCase.body), testCase.properties)
-			bt.Send(revRequest)
-			resp := revRequest.Response()
+			var resp *blip.Message
+			base.PrintLogsOnlyOnFailure(t, func() {
+				bt.Send(revRequest)
+				resp = revRequest.Response()
+			})
 			respBody, err := resp.Body()
 			require.NoError(t, err)
 			assert.Equal(t, testCase.status, resp.Properties[db.BlipErrorCode], "body: %s", respBody)

@@ -144,7 +144,9 @@ func TestGrafanaFormatStdOutput(t *testing.T) {
 	var buf bytes.Buffer
 	logger := log.New(&buf, "", 0)
 
-	err := statsToFile(logger, nil, formatCapellaGrafana)
+	var stdout bytes.Buffer
+	err := statsToFile(logger, &stdout, nil, formatCapellaGrafana)
 	assert.NoError(t, err)
 	assert.Empty(t, buf)
+	assert.NotEmpty(t, stdout.String())
 }
