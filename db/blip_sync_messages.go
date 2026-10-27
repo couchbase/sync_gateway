@@ -303,7 +303,12 @@ func (s *SubChangesParams) String() string {
 		buffer.WriteString(fmt.Sprintf("Filter:%v ", filter))
 		channels, found := s.channels()
 		if found {
-			buffer.WriteString(fmt.Sprintf("Channels:%v ", channels))
+			// Redact each channel on its own, so a channel's hash in redacted logs matches its hash in other log lines.
+			channelNames := strings.Split(channels, ",")
+			for i, name := range channelNames {
+				channelNames[i] = base.UD(name).Redact()
+			}
+			buffer.WriteString(fmt.Sprintf("Channels:%s ", strings.Join(channelNames, ",")))
 		}
 	}
 
@@ -321,7 +326,7 @@ func (s *SubChangesParams) String() string {
 		buffer.WriteString(fmt.Sprintf("Future:%v ", future))
 	}
 	if len(s.docIDs()) > 0 {
-		buffer.WriteString(fmt.Sprintf("DocIDs:%v ", s.docIDs()))
+		buffer.WriteString(fmt.Sprintf("DocIDs:%v ", base.UD(s.docIDs()).Redact()))
 	}
 	return buffer.String()
 
@@ -561,7 +566,7 @@ func (g *getAttachmentParams) docID() string {
 }
 
 func (g *getAttachmentParams) String() string {
-	return fmt.Sprintf("Digest:%v, DocID: %v ", g.digest(), base.UD(g.docID()))
+	return fmt.Sprintf("Digest:%v, DocID: %v ", g.digest(), base.UD(g.docID()).Redact())
 }
 
 type IncludeConflictRevEntry struct {
