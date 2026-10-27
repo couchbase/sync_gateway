@@ -68,6 +68,9 @@ START_LOCAL_ARGS=(--server "${BACKING_STORE}" --build-testserver "${COUCHBASE_LI
 if [[ "$BACKING_STORE" == "cbs" ]]; then
     START_LOCAL_ARGS+=(--connstr "${SG_TEST_COUCHBASE_SERVER_URL}")
 fi
+# Split on spaces like PYTEST_EXTRA_ARGS below, e.g. START_LOCAL_EXTRA_ARGS=--capella-pft-bootstrap
+# shellcheck disable=SC2206
+START_LOCAL_ARGS+=(${START_LOCAL_EXTRA_ARGS:-})
 uv run -- ./environment/local/start_local.py "${START_LOCAL_ARGS[@]}"
 
 TOPOLOGY_CONFIG="$(cat environment/local/topology_config)"

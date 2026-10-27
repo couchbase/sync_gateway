@@ -1,0 +1,165 @@
+// Weekly run of couchbase-lite-tests' syncgateway/test_idle_ops.py, which checks that the idle_kv_ops and
+// idle_query_ops stats count every KV operation and query an idle Sync Gateway node makes, the way Capella's
+// free tier hibernation check subtracts them from Couchbase Server's kv_ops and n1ql_requests. The test leaves
+// the cluster idle for 1.5 hours, so it is marked standalone and stays out of the per-commit e2e job.
+//
+// It runs through integration-test/e2e/run_e2e_tests.sh like that job does, against Couchbase Server, with every
+// Sync Gateway started with the settings of Capella's free tier bootstrap config. Unlike that job it posts no
+// GitHub commit status, so that a failure here does not mark the commit's e2e run as failed.
+
+// Note for whoever points a job at this file: a cron trigger declared in a Jenkinsfile only registers once a
+// build has evaluated it, so start one build by hand afterwards.
+
+def idleOpsDetails(helpers) {
+    return [
+        SG_COMMIT: helpers.refLink(params.SG_COMMIT),
+        Commit: helpers.gitCommitLink(),
+        COUCHBASE_LITE_TESTS_COMMIT: params.COUCHBASE_LITE_TESTS_COMMIT,
+        COUCHBASE_LITE_VERSION: env.COUCHBASE_LITE_VERSION,
+        COUCHBASE_SERVER_VERSION: env.COUCHBASE_SERVER_VERSION,
+    ]
+}
+
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout()
+        timestamps()
+        // Builds of Sync Gateway and the test server, plus about 1.6 hours of test.
+        timeout(time: 4, unit: 'HOURS')
+        buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
+        // The test compares counts over the whole cluster, so two runs must never share an agent's Docker.
+        disableConcurrentBuilds()
+    }
+    triggers {
+        // Sunday morning Pacific, clear of the Saturday SyncGatewayIntegrationWeekly sweep.
+        cron('TZ=America/Los_Angeles\nH 6 * * 0')
+    }
+    parameters {
+        string(
+            name: 'SG_COMMIT',
+            defaultValue: 'main',
+            description: 'Revision of Sync Gateway to build.'
+        )
+        string(
+            name: 'COUCHBASE_LITE_TESTS_COMMIT',
+            defaultValue: 'main',
+            description: 'Version of couchbase-lite-tests repo.'
+        )
+        // Plain strings rather than the e2e job's active choices, which have no value on a timer build. Empty
+        // takes the Jenkins-wide default the e2e job also offers.
+        string(
+            name: 'COUCHBASE_LITE_VERSION',
+            defaultValue: '',
+            description: 'Version of Couchbase Lite C to build the test server from. Empty uses DEFAULT_COUCHBASE_LITE_VERSION.'
+        )
+        string(
+            name: 'COUCHBASE_SERVER_VERSION',
+            defaultValue: '',
+            description: 'Version of Couchbase Server. Empty uses DEFAULT_COUCHBASE_SERVER_VERSION.'
+        )
+    }
+    environment {
+        BACKING_STORE = 'cbs'
+        START_LOCAL_EXTRA_ARGS = '--capella-pft-bootstrap'
+        // -m standalone selects only the standalone tests, and info logging puts the test's progress and its
+        // count summary into the junit report.
+        PYTEST_EXTRA_ARGS = '-m standalone --cbl-log-level info'
+    }
+    stages {
+        stage('Checkout Scm') {
+            steps {
+                cleanWs(disableDeferredWipeout: false)
+                script {
+                    env.COUCHBASE_LITE_VERSION = params.COUCHBASE_LITE_VERSION ?: env.DEFAULT_COUCHBASE_LITE_VERSION
+                    env.COUCHBASE_SERVER_VERSION = params.COUCHBASE_SERVER_VERSION ?: env.DEFAULT_COUCHBASE_SERVER_VERSION
+                    if (!env.COUCHBASE_LITE_VERSION || !env.COUCHBASE_SERVER_VERSION) {
+                        error('COUCHBASE_LITE_VERSION and COUCHBASE_SERVER_VERSION need a value, or a Jenkins-wide DEFAULT_ one')
+                    }
+                    // See e2e/Jenkinsfile: a bare SHA only resolves when fetched into a ref of the same name.
+                    def scmVars = checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: params.SG_COMMIT]],
+                        userRemoteConfigs: [[
+                            url: 'git@github.com:couchbase/sync_gateway.git',
+                            credentialsId: 'CB_SG_Robot_Github_SSH_Key',
+                            refspec: "+${params.SG_COMMIT}:refs/remotes/origin/${params.SG_COMMIT}"
+                        ]]
+                    ])
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                }
+                // As in e2e/Jenkinsfile, take the test runner and helpers from main, whatever SG_COMMIT is.
+                sh '''
+                    set -eu
+                    mkdir -p integration-test/e2e .ci
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
+                    chmod +x .ci/retry.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
+                '''
+                script {
+                    def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
+                    currentBuild.description = [
+                        params.SG_COMMIT,
+                        trigger ? "for ${trigger}" : '',
+                        "on cbs ${env.COUCHBASE_SERVER_VERSION}",
+                    ].findAll { it }.join(' ')
+                }
+            }
+        }
+        stage('Run Idle Ops Test') {
+            steps {
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    script {
+                        // Exit 50 is a failed test (UNSTABLE); any other failure means the test never ran.
+                        def exitCode = sh(returnStatus: true, script: '/bin/bash integration-test/e2e/run_e2e_tests.sh')
+                        if (exitCode == 50) {
+                            unstable('The idle ops test failed')
+                        } else if (exitCode != 0) {
+                            error("Idle ops test run exited ${exitCode}")
+                        } else if (sh(returnStatus: true, script: 'grep -q \'skipped="0"\' couchbase-lite-tests/tests/junit_report.xml') != 0) {
+                            // pytest exits 0 on a skip, which here means a setup problem, such as Sync Gateway not
+                            // running with Capella's bootstrap settings, rather than a pass.
+                            unstable('The idle ops test was skipped - see its skip reason in the test report')
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: 'couchbase-lite-tests/environment/local/sync_gateway*.log, couchbase-lite-tests/environment/local/sync_gateway_instance*_logs/**',
+                allowEmptyArchive: true,
+                followSymlinks: false
+            )
+            junit(allowEmptyResults: true, skipPublishingChecks: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml')
+        }
+        // Slack notifications are off for now.
+        // success {
+        //     script {
+        //         def helpers = load('.ci/jenkinsHelpers.groovy')
+        //         slackSend(channel: 'syncgatewaybot', color: 'good', message: helpers.slackMessage('E2E idle ops test', 'passed', env.BUILD_URL, idleOpsDetails(helpers)))
+        //     }
+        // }
+        // unstable {
+        //     script {
+        //         def helpers = load('.ci/jenkinsHelpers.groovy')
+        //         helpers.slackSendFailure('E2E idle ops test', 'unstable', env.BUILD_URL, idleOpsDetails(helpers))
+        //     }
+        // }
+        // failure {
+        //     script {
+        //         if (fileExists('.ci/jenkinsHelpers.groovy')) {
+        //             def helpers = load('.ci/jenkinsHelpers.groovy')
+        //             helpers.slackSendFailure('E2E idle ops test', 'failed', "Console: ${env.BUILD_URL}console", idleOpsDetails(helpers))
+        //         }
+        //     }
+        // }
+        cleanup {
+            cleanWs(disableDeferredWipeout: true)
+        }
+    }
+}
