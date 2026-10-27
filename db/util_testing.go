@@ -933,6 +933,23 @@ func MoveAttachmentXattrFromGlobalToSync(t *testing.T, dataStore base.DataStore,
 	require.NoError(t, err)
 }
 
+// WaitForBackgroundManagerHeartbeatDocRemoval waits for removal of heartbeat document or fails the test harness.
+//
+// After a background manager state transition to completed, stopped, error is followed by immediate removal of the
+// heartbeat document. When restarting a background manager, the state of the heartbeat document is checked, allowing
+// for a small race if you try to stop and immediately restart a background manager.
+func WaitForBackgroundManagerHeartbeatDocRemoval(t testing.TB, mgr *BackgroundManager) {
+	if !mgr.isClusterAware() {
+		return
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(mgr.clusterAwareOptions.HeartbeatDocID())
+		assert.NoError(c, ok)
+		assert.False(c, exists, "BackgroundManager heartbeat document was not removed in expected time")
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
 func RequireBackgroundManagerState(t *testing.T, ctx context.Context, mgr *BackgroundManager, expState BackgroundProcessState) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var status BackgroundManagerStatus
