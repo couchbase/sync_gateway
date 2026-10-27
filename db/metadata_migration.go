@@ -228,7 +228,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 	//
 	//   isOurs         — plain prefix match. Used for the non-inverted families
 	//                    (seq / unusedSeq / sgcfg / heartbeat / resync / state / replication
-	//                    status), whose keys are `_sync:[m_<id>:]<type>`. A sibling DB's keys
+	//                    status / timestamps_seq), whose keys are `_sync:[m_<id>:]<type>`. A sibling DB's keys
 	//                    carry a distinct `m_<id>:` infix, so they never share our prefix and
 	//                    no sibling check is needed.
 	//
@@ -298,7 +298,8 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		isOurs(keys.BackgroundProcessHeartbeatPrefix("")),
 		isOurs(keys.BackgroundProcessStatusPrefix("")),
 		isOurs(keys.ResyncHeartbeaterPrefix()),
-		isOurs(keys.ResyncCfgPrefix()):
+		isOurs(keys.ResyncCfgPrefix()),
+		isOurs(keys.TimestampsSeqKey()):
 		// JSON-bodied metadata. moveFallbackDoc(binary=false) preserves the JSON
 		// datatype flag so strict readers (auth, RawJSONTranscoder) can decode the
 		// migrated doc on primary.
@@ -369,6 +370,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncHeartBeaterPrefix.String()),
 		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncCfgPrefix.String()),
 		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyDatabaseState.String()),
+		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyTimestampsSeq.String()),
 		base.IsHeartbeaterKey(key):
 		stats.DocsOutOfScope.Add(1)
 
