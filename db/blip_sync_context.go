@@ -456,7 +456,9 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 		bsc.replicationStats.SendRevBytes.Add(int64(len(messageBody)))
 	}
 
-	base.TracefCtx(ctx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), digests(attMeta))
+	if base.LogTraceEnabled(ctx, base.KeySync) {
+		base.TracefCtx(ctx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), digests(attMeta))
+	}
 
 	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
