@@ -284,6 +284,9 @@ func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp ui
 }
 
 func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
+	if lds.config.WriteUpdateWithXattrsCallback != nil {
+		lds.config.WriteUpdateWithXattrsCallback(k)
+	}
 	if lds.config.UpdateCallback != nil {
 		wrapperCallback := func(current []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 			updatedDoc, err := callback(current, xattrs, cas)
@@ -371,6 +374,18 @@ func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint3
 		lds.config.UpdateXattrsCallback(k)
 	}
 	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
+}
+
+func (lds *LeakyDataStore) SetUpdateXattrsCallback(callback func(key string)) {
+	lds.config.UpdateXattrsCallback = callback
+}
+
+func (lds *LeakyDataStore) SetXattrCallback(callback func(key string) error) {
+	lds.config.SetXattrCallback = callback
+}
+
+func (lds *LeakyDataStore) SetWriteUpdateWithXattrsCallback(callback func(key string)) {
+	lds.config.WriteUpdateWithXattrsCallback = callback
 }
 
 func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, xattrsToDelete []string, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {

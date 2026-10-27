@@ -935,19 +935,47 @@ func AssertTimestampGreaterThan(t *testing.T, e1, e2 int64, msgAndArgs ...interf
 	return assert.Greater(t, e1, e2, msgAndArgs...)
 }
 
-func GetVbucketForKey(bucket Bucket, key string) (vbNo uint32, err error) {
-
-	cbBucket, ok := AsCouchbaseBucketStore(bucket)
-	if !ok {
-		return 0, fmt.Errorf("GetVbucketForKey not supported for non-Couchbase bucket")
-	}
-
-	maxVbNo, err := cbBucket.GetMaxVbno()
+func GetVbucketForKey(bucket Bucket, key string) (uint32, error) {
+	maxVbNo, err := bucket.GetMaxVbno()
 	if err != nil {
 		return 0, err
 	}
-
 	return sgbucket.VBHash(key, maxVbNo), nil
+}
+
+// VBucket0DocIDs returns count doc IDs that all hash to vBucket 0 for every supported vBucket count
+// (32, 64, 100, 128, 1024). Placing multiple test docs on the same vBucket ensures they are processed
+// sequentially by a single DCP worker, which is required when a test pauses one doc and needs the
+// remaining docs to stay unprocessed until the pause is released.
+//
+// Keys were pre-computed using sgbucket.VBHash and are verified at runtime.
+// count must be between 1 and 6 inclusive.
+func VBucket0DocIDs(t testing.TB, bucket Bucket, count int) []string {
+	all := []string{"abbacomes", "baba", "ob", "rz", "aex", "fbz"}
+	require.GreaterOrEqual(t, count, 1, "VBucket0DocIDs: count must be at least 1")
+	require.LessOrEqual(t, count, len(all), "VBucket0DocIDs: count %d exceeds the %d pre-computed keys", count, len(all))
+	keys := all[:count]
+	for _, key := range keys {
+		vbNo, err := GetVbucketForKey(bucket, key)
+		require.NoError(t, err)
+		require.Equal(t, uint32(0), vbNo, "key %q should map to vBucket 0 (got %d)", key, vbNo)
+	}
+	return keys
+}
+
+// VBucketDocIDs returns count doc IDs that hash to vbNo for the bucket's vBucket count.
+func VBucketDocIDs(t testing.TB, bucket Bucket, vbNo uint32, count int) []string {
+	maxVbNo, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+	require.Less(t, vbNo, uint32(maxVbNo))
+	keys := make([]string, 0, count)
+	for i := 0; len(keys) < count; i++ {
+		key := fmt.Sprintf("doc%d", i)
+		if sgbucket.VBHash(key, maxVbNo) == vbNo {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // MoveDocument moves the document from src to dst
@@ -1084,6 +1112,31 @@ func RequireChanSendWithTimeout[T any](t testing.TB, ch chan<- T, val T, timeout
 	case <-timer.C:
 		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
 	}
+}
+
+// RequireChanClosedWithTimeout waits for channel to be closed. Will drain the channel if required.
+// Fails the test if the channel is not closed in time.
+func RequireChanClosedWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.Duration) {
+	t.Helper()
+	for {
+		select {
+		case _, ok := <-ch:
+			// drain the channel until it's closed, but fail if it isn't closed within the timeout
+			if ok {
+				continue
+			}
+			return
+		case <-time.After(timeout):
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel send", timeout))
+		}
+	}
+}
+
+// RequireChanClosed waits for channel to be closed. Will drain the channel if required.
+// Fails the test if the channel is not closed in TestChanTimeout.
+func RequireChanClosed[T any](t testing.TB, ch <-chan T) {
+	t.Helper()
+	RequireChanClosedWithTimeout(t, ch, TestChanTimeout)
 }
 
 // RequireChanRecv reads from a channel with a TestChanTimeout timeout. Fails the test if no value arrives in time.
