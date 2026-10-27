@@ -707,18 +707,21 @@ func TestReplicationStatusActions(t *testing.T) {
 	// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
 	doneChan := make(chan struct{})
 	var statusWg sync.WaitGroup
-	statusWg.Add(1)
-	go func() {
+	defer func() {
+		close(doneChan)
+		statusWg.Wait()
+	}()
+	statusWg.Go(func() {
 		for {
 			select {
 			case <-doneChan:
-				statusWg.Done()
 				return
-			default:
+			// wait just long enough to release control back to go scheduler if GOMAXPROCS=1
+			case <-time.After(5 * time.Millisecond):
+				_ = rt1.GetReplicationStatus(replicationID)
 			}
-			_ = rt1.GetReplicationStatus(replicationID)
 		}
-	}()
+	})
 
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -755,6 +758,11 @@ func TestReplicationStatusActions(t *testing.T) {
 		status := rt1.GetReplicationStatus(replicationID)
 		assert.Equal(c, db.ReplicationStateStopped, status.Status)
 		assert.Equal(c, "", status.LastSeqPull)
+		replications := rt1.GetReplications()
+		cfg, ok := replications[replicationID]
+		if assert.True(c, ok, "replication %q not found", replicationID) {
+			assert.Equal(c, db.ReplicationStateStopped, cfg.TargetState)
+		}
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Restart the replication
@@ -768,11 +776,6 @@ func TestReplicationStatusActions(t *testing.T) {
 		return status.DocsCheckedPull == 2 && status.DocsRead == 0
 	})
 	assert.NoError(t, statError)
-
-	// Terminate status goroutine
-	close(doneChan)
-	statusWg.Wait()
-
 }
 
 // TestReplicationRebalanceToZeroNodes checks that the replication goes into an unassigned state when there are no nodes available to run replications.
@@ -842,6 +845,13 @@ func TestReplicationRebalancePull(t *testing.T) {
 	docDEF1Body := activeRT.GetDocBody(docDEF1)
 	assert.Equal(t, "remoteRT", docDEF1Body["source"])
 
+	// Make the rebalance deterministic - activeRT is running both replications, so wait for the first
+	// document pulled by each to reach the status document and the checkpoint.
+	replicationIDs := []string{"rep_ABC", "rep_DEF"}
+	for _, replicationID := range replicationIDs {
+		requirePersistedReplicationProgress(activeRT, replicationID, db.ActiveReplicatorTypePull, 1)
+	}
+
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
 	defer activeRT2.Close()
@@ -872,27 +882,15 @@ func TestReplicationRebalancePull(t *testing.T) {
 	docDEF2Body2 := activeRT2.GetDocBody(docDEF2)
 	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
 
-	// Validate replication stats across rebalance, on both active nodes
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT.GetReplicationStatus("rep_ABC").DocsRead
-		t.Logf("activeRT rep_ABC DocsRead: %d", actual)
-		return actual == 2
-	})
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT.GetReplicationStatus("rep_DEF").DocsRead
-		t.Logf("activeRT rep_DEF DocsRead: %d", actual)
-		return actual == 2
-	})
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT2.GetReplicationStatus("rep_ABC").DocsRead
-		t.Logf("activeRT2 rep_ABC DocsRead: %d", actual)
-		return actual == 2
-	})
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT2.GetReplicationStatus("rep_DEF").DocsRead
-		t.Logf("activeRT2 rep_DEF DocsRead: %d", actual)
-		return actual == 2
-	})
+	// Each replication inherited the document it pulled before the rebalance and read the one it
+	// pulled after. The node running a replication reports live stats, the other reads the status
+	// document it persists.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for _, replicationID := range replicationIDs {
+			assert.Equal(c, int64(2), activeRT.GetReplicationStatus(replicationID).DocsRead, "%s: DocsRead on activeRT after rebalance", replicationID)
+			assert.Equal(c, int64(2), activeRT2.GetReplicationStatus(replicationID).DocsRead, "%s: DocsRead on activeRT2 after rebalance", replicationID)
+		}
+	}, 20*time.Second, 100*time.Millisecond)
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 	activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -949,6 +947,15 @@ func TestReplicationRebalancePush(t *testing.T) {
 	docDEF1Body := remoteRT.GetDocBody(docDEF1)
 	assert.Equal(t, "activeRT", docDEF1Body["source"])
 
+	// Make the rebalance deterministic - activeRT is running both replications, so wait for the first
+	// document pushed by each to reach the status document and the checkpoint. Without the checkpoint,
+	// that document is pushed again after the move: the passive already has it, so DocsWritten doesn't
+	// move, but DocsCheckedPush does.
+	replicationIDs := []string{"rep_ABC", "rep_DEF"}
+	for _, replicationID := range replicationIDs {
+		requirePersistedReplicationProgress(activeRT, replicationID, db.ActiveReplicatorTypePush, 1)
+	}
+
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.GetDatabase().Name, activeRT.TestBucket)
 	defer activeRT2.Close()
@@ -973,35 +980,15 @@ func TestReplicationRebalancePush(t *testing.T) {
 	docDEF2Body := remoteRT.GetDocBody(docDEF2)
 	assert.Equal(t, "activeRT", docDEF2Body["source"])
 
-	// Validate replication stats across rebalance, on both active nodes
-	// Checking DocsCheckedPush here, as DocsWritten isn't necessarily going to be 2, due to a
-	// potential for race updating status during replication rebalance:
-	//     1. active node 1 writes document 1 to passive
-	//     2. replication is rebalanced prior to checkpoint being persisted
-	//     3. active node 2 is assigned replication, starts from zero (since checkpoint wasn't persisted)
-	//     4. active node 2 attempts to write document 1, passive already has it.  DocsCheckedPush is incremented, but not DocsWritten
-	// Note that we can't wait for checkpoint persistence prior to rebalance, as the node initiating the rebalance
-	// isn't necessarily the one running the replication.
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush
-		t.Logf("activeRT rep_ABC DocsCheckedPush: %d", actual)
-		return actual == 2
-	})
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush
-		t.Logf("activeRT rep_DEF DocsCheckedPush: %d", actual)
-		return actual == 2
-	})
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush
-		t.Logf("activeRT2 rep_ABC DocsCheckedPush: %d", actual)
-		return actual == 2
-	})
-	rest.WaitAndAssertCondition(t, func() bool {
-		actual := activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush
-		t.Logf("activeRT2 rep_DEF DocsCheckedPush: %d", actual)
-		return actual == 2
-	})
+	// Each replication inherited the document it pushed before the rebalance and checked the one it
+	// pushed after, never re-checking the first. DocsCheckedPush rather than DocsWritten, so that a
+	// regression re-checking an already-replicated document fails here rather than passing silently.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for _, replicationID := range replicationIDs {
+			assert.Equal(c, int64(2), activeRT.GetReplicationStatus(replicationID).DocsCheckedPush, "%s: DocsCheckedPush on activeRT after rebalance", replicationID)
+			assert.Equal(c, int64(2), activeRT2.GetReplicationStatus(replicationID).DocsCheckedPush, "%s: DocsCheckedPush on activeRT2 after rebalance", replicationID)
+		}
+	}, 20*time.Second, 100*time.Millisecond)
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 	activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -4264,20 +4251,6 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			t.Logf("Starting replicator")
 			assert.NoError(t, ar.Start(ctx1))
 			t.Logf("Replicator started")
-
-			// wait for both push and pull to complete:
-			// - the document originally written to rt2 to arrive at rt1
-			// - the document originally written to rt1 to get a conflict on push
-			// - if applicable: the resolved rev to be pushed up to rt2
-			require.EventuallyWithTf(t, func(c *assert.CollectT) {
-				status := ar.GetStatus(ctx1)
-				assert.Equal(c, 1, int(status.PullReplicationStatus.DocsRead))
-				assert.Equal(c, 1, int(status.PushReplicationStatus.DocWriteConflict))
-				if test.expectedPushResolved {
-					assert.Equal(c, 1, int(status.PushReplicationStatus.DocsWritten))
-				}
-			}, 10*time.Second, 100*time.Millisecond, "Expected both push and pull to be completed: %+v", ar.GetStatus(ctx1))
-			t.Logf("========================Replication should be done, checking with changes")
 
 			// Validate results on the local (rt1)
 			changesResults := rt1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d", localDoc.Sequence), "", true)
