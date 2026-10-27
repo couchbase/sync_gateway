@@ -652,7 +652,9 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			rt := rest.NewRestTesterMultipleCollections(t, nil, 3)
+			rt := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+				LeakyBucketConfig: &base.LeakyBucketConfig{},
+			}, 3)
 			defer rt.Close()
 			scopeName := "sg_test_0"
 
@@ -663,6 +665,11 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 
 			rt.TakeDbOffline()
 
+			// Pause resync at the first user document so "running" is reliably observable before it completes.
+			pauser := newResyncPauser(rt)
+			defer pauser.Close()
+			pauser.Pause()
+
 			if !testCase.specifyCollection {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 				rest.RequireStatus(t, resp, http.StatusOK)
@@ -671,8 +678,10 @@ func TestDCPResyncCollectionsStatus(t *testing.T) {
 				resp := rt.SendAdminRequest("POST", "/db/_resync?action=start", payload)
 				rest.RequireStatus(t, resp, http.StatusOK)
 			}
+			pauser.WaitUntilBlocked()
 			statusResponse := rt.WaitForResyncDCPStatus(db.BackgroundProcessStateRunning)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
+			pauser.Release()
 
 			statusResponse = rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 			assert.ElementsMatch(t, statusResponse.CollectionsProcessing[scopeName], testCase.expectedResult[scopeName])
@@ -4090,8 +4099,17 @@ type resyncPauser struct {
 	callbackSet atomic.Bool
 }
 
+// newResyncPauser binds to the first collection (matching {{.keyspace1}}) so it also works against
+// multi-collection databases where GetSingleDataStore doesn't apply.
 func newResyncPauser(rt *rest.RestTester) *resyncPauser {
-	leakyDS, ok := base.AsLeakyDataStore(rt.GetSingleDataStore())
+	collections := rt.GetDbCollections()
+	require.NotEmpty(rt.TB(), collections, "database must have at least one collection")
+	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
+		Scope:      collections[0].ScopeName,
+		Collection: collections[0].Name,
+	})
+	require.NoError(rt.TB(), err)
+	leakyDS, ok := base.AsLeakyDataStore(ds)
 	require.True(rt.TB(), ok, "datastore must be a LeakyDataStore")
 	return &resyncPauser{
 		t:  rt.TB(),

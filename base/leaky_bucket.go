@@ -13,6 +13,7 @@ import (
 	"context"
 	"expvar"
 	"fmt"
+	"sync"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -23,6 +24,7 @@ var _ Bucket = &LeakyBucket{}
 type LeakyBucket struct {
 	bucket      Bucket
 	config      *LeakyBucketConfig
+	configLock  sync.RWMutex // guards callbacks that tests change while DCP workers can call them
 	collections map[string]*LeakyDataStore
 }
 
@@ -179,4 +181,40 @@ func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArgume
 		return b.bucket.StartDCPFeed(ctx, args, wrappedCallback, dbStats)
 	}
 	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
+}
+
+func (b *LeakyBucket) getUpdateXattrsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b.config.UpdateXattrsCallback
+}
+
+func (b *LeakyBucket) setUpdateXattrsCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b.config.UpdateXattrsCallback = fn
+}
+
+func (b *LeakyBucket) getWriteUpdateWithXattrsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b.config.WriteUpdateWithXattrsCallback
+}
+
+func (b *LeakyBucket) setWriteUpdateWithXattrsCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b.config.WriteUpdateWithXattrsCallback = fn
+}
+
+func (b *LeakyBucket) getSetXattrCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b.config.SetXattrCallback
+}
+
+func (b *LeakyBucket) setSetXattrCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b.config.SetXattrCallback = fn
 }
