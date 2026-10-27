@@ -64,7 +64,7 @@ func main() {
 	}
 }
 
-// Write stats to outputFile unless nil, in which case write to stdout
+// Write stats to outputFile unless nil, in which case write to the provided stdout writer.
 func statsToFile(logger *log.Logger, stdout io.Writer, outputFile *string, format string) error {
 	stats, err := getStats(logger)
 	if err != nil {
