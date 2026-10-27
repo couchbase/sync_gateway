@@ -8363,20 +8363,33 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 			passiveRT.CreateUser(username, []string{"*"})
 
 			version := passiveRT.PutDoc(docID, `{"foo":"bar"}`)
+			// The doc must already exist on the active peer, so the concurrent pulls of the tombstone and the demoting
+			// revision are CAS checked. See TestWriteUpdateWithXattrsConcurrentTombstoneInsert.
+			activeVersion := activeRT.PutDoc(docID, `{"foo":"bar"}`)
+			require.Equal(t, version.RevID, activeVersion.RevID)
 			tombstoneVersion := passiveRT.DeleteDoc(docID, version)
 			passiveRT.WaitForPendingChanges()
 
 			// Demote the tombstone mid-fetch, after the changes feed announced it, so its body is read from storage.
 			// demoted is set after the demote write so that doc2, the checkpoint target, gets the highest sequence.
 			var demoteStarted, demoted atomic.Bool
+			revSendCount := passiveRT.GetDatabase().DbStats.CBLReplicationPull().RevSendCount
+			activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollection()
 			demoteOnFetch := func(key string) error {
-				if key != docID || !demoteStarted.CompareAndSwap(false, true) {
+				if key != docID {
 					return nil
 				}
-				defer demoted.Store(true)
-				err := tc.demoteTombstone(passiveRT, tombstoneVersion)
-				assert.NoError(t, err, "demoting tombstone")
-				return err
+				if demoteStarted.CompareAndSwap(false, true) {
+					defer demoted.Store(true)
+					err := tc.demoteTombstone(passiveRT, tombstoneVersion)
+					assert.NoError(t, err, "demoting tombstone")
+					return err
+				}
+				// The active peer handles revs concurrently, so hold the demoting revision until the tombstone is applied.
+				if revSendCount.Value() > 0 {
+					return waitForTombstone(activeCtx, activeCollection, docID, tombstoneVersion.RevID)
+				}
+				return nil
 			}
 			// The doc is read with GetWithXattrs in xattr mode and with GetRaw otherwise.
 			passiveRT.LeakyBucket().SetGetWithXattrCallback(demoteOnFetch)
@@ -8415,7 +8428,6 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 				assert.Equal(c, strconv.FormatUint(doc2.Sequence, 10), ar.GetStatus(activeRT.Context()).LastSeqPull)
 			}, 10*time.Second, 50*time.Millisecond)
 
-			activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollection()
 			doc, err := activeCollection.GetDocument(activeCtx, docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			tombstoneRev, ok := doc.History[tombstoneVersion.RevID]
@@ -8423,4 +8435,18 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 			assert.True(t, tombstoneRev.Deleted)
 		})
 	}
+}
+
+// waitForTombstone waits for revID to be stored as a tombstone on the collection.
+func waitForTombstone(ctx context.Context, collection *db.DatabaseCollection, docID, revID string) error {
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		doc, err := collection.GetDocument(ctx, docID, db.DocUnmarshalSync)
+		if err != nil {
+			return err
+		}
+		if rev, ok := doc.History[revID]; ok && rev.Deleted {
+			return nil
+		}
+	}
+	return fmt.Errorf("timed out waiting for tombstone %s/%s", docID, revID)
 }
