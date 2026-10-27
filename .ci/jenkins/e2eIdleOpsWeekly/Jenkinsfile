@@ -98,11 +98,11 @@ pipeline {
                 sh '''
                     set -eu
                     mkdir -p integration-test/e2e .ci
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/.ci/retry.sh -o .ci/retry.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF:-main}"/integration-test/e2e/run_e2e_tests.sh -o integration-test/e2e/run_e2e_tests.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF:-main}"/.ci/retry.sh -o .ci/retry.sh
                     chmod +x .ci/retry.sh
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF}"/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF:-main}"/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/"${CI_SCRIPTS_REF:-main}"/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
                 '''
                 script {
                     def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
