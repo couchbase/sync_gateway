@@ -42,6 +42,7 @@ func TestAuditLoggingFields(t *testing.T) {
 	const (
 		requestInfoHeaderName       = "extra-audit-logging-header"
 		requestUser                 = "alice"
+		revokedSessionUser          = "erin"
 		filteredPublicUsername      = "bob"
 		filteredPublicRoleUsername  = "charlie"
 		filteredPublicRoleName      = "observer"
@@ -92,6 +93,17 @@ func TestAuditLoggingFields(t *testing.T) {
 	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 
 	rt.CreateUser(requestUser, nil)
+
+	// sessions revoked before the audited actions run, so that only the failed login is audited
+	rt.CreateUser(revokedSessionUser, nil)
+	revokedCookieSessionID := createSession(t, rt, revokedSessionUser)
+	resp := rt.SendUserRequest(http.MethodPost, "/db/_session?one_time=true", "", revokedSessionUser)
+	RequireStatus(t, resp, http.StatusOK)
+	var revokedOneTimeSession struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &revokedOneTimeSession))
+	RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/_user/"+revokedSessionUser+"/_session", ""), http.StatusOK)
 	rt.CreateUser(filteredPublicUsername, nil)
 	rt.CreateRole(filteredPublicRoleName, []string{channels.AllChannelWildcard})
 	rt.CreateUser(filteredPublicRoleUsername, nil, filteredPublicRoleName)
@@ -260,6 +272,44 @@ func TestAuditLoggingFields(t *testing.T) {
 				base.AuditIDPublicHTTPAPIRequest: {
 					base.AuditFieldHTTPMethod: http.MethodGet,
 					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "rejected session cookie",
+			auditableAction: func(t testing.TB) {
+				headers := map[string]string{"Cookie": auth.DefaultCookieName + "=" + revokedCookieSessionID}
+				RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/db/", "", headers), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticationFailed: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "cookie",
+					base.AuditFieldDatabase:      "db",
+					base.AuditFieldUserName:      revokedSessionUser,
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/",
+				},
+			},
+		},
+		{
+			name: "rejected websocket token",
+			auditableAction: func(t testing.TB) {
+				headers := map[string]string{secWebSocketProtocolHeader: blipSessionIDPrefix + revokedOneTimeSession.SessionID}
+				RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/db/_blipsync", "", headers), http.StatusUnauthorized)
+			},
+			expectedAuditEventFields: map[base.AuditID]base.AuditFields{
+				base.AuditIDPublicUserAuthenticationFailed: {
+					base.AuditFieldCorrelationID: auditFieldValueIgnored,
+					base.AuditFieldAuthMethod:    "websocket_token",
+					base.AuditFieldDatabase:      "db",
+					base.AuditFieldUserName:      revokedSessionUser,
+				},
+				base.AuditIDPublicHTTPAPIRequest: {
+					base.AuditFieldHTTPMethod: http.MethodGet,
+					base.AuditFieldHTTPPath:   "/db/_blipsync",
 				},
 			},
 		},
