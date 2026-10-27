@@ -61,6 +61,15 @@ func (rt *RestTester) GetDoc(docID string) (DocVersion, db.Body) {
 	return DocVersion{RevID: *r.RevID}, body
 }
 
+// WaitForNotFound waits for a GET request for the given docID to return 404 Not Found.
+func (rt *RestTester) WaitForNotFound(docID string) {
+	rt.TB().Helper()
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID, "")
+		assert.Equal(c, http.StatusNotFound, resp.Code, "expected doc %q to be not found, got status %d: %s", docID, resp.Code, resp.Body.String())
+	}, 20*time.Second, 100*time.Millisecond)
+}
+
 // GetDocVersion returns the doc body and version for the given docID and version. If the document is not found, t.Fail will be called.
 func (rt *RestTester) GetDocVersion(docID string, version DocVersion) db.Body {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"?rev="+version.RevID, "")
