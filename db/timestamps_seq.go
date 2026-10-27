@@ -148,6 +148,7 @@ func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqA
 // Start creates the timestamps document with an empty array, unless another node already created it.
 func (tm *TimestampsManager) Start() error {
 	key := tm.metaKeys.TimestampsSeqKey()
+	// TODO: Add this operation to KV Idle Ops
 	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(currentBytes []byte) ([]byte, *uint32, bool, error) {
 		if currentBytes != nil {
 			// another node has already created the document
@@ -172,6 +173,7 @@ func (tm *TimestampsManager) addEntry() error {
 	// the bytes of the last successful write, used to refresh the in-memory array
 	var newValBytes []byte
 	now := time.Now().Unix()
+	// TODO: Add this operation to KV Idle Ops
 	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		var timestampsSeqArray TimestampsSeqArray
 		if current == nil {
