@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -133,8 +134,9 @@ func (runner *SGRTestRunner) IsV4Protocol() bool {
 	return slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString())
 }
 
+// WaitForVersion will wait for revtree if v3 protocol or full version otherwise.
 func (runner *SGRTestRunner) WaitForVersion(docID string, rt *RestTester, version DocVersion) {
-	if !slices.Contains(runner.SupportedSubprotocols, db.CBMobileReplicationV4.SubprotocolString()) {
+	if !runner.IsV4Protocol() {
 		// only assert on rev tree IDs when we're not replicating using v4 protocol
 		rt.WaitForVersionRevIDOnly(docID, version)
 		return
@@ -313,4 +315,15 @@ func RequireRevTreeConvergence(t *testing.T, docID string, peers ...*RestTester)
 		}
 	}
 	return convergedRev, perPeer
+}
+
+// WaitForISGRPullSequence waits for the pull replication on rt to have checkpointed the given remote sequence.
+// A pulled document is written before its sequence reaches the checkpointer, so it can be readable on rt while the
+// replication is still unable to checkpoint it - stopping in that window rewinds the replication on the next start.
+func WaitForISGRPullSequence(rt *RestTester, replicationID string, seq uint64) {
+	rt.TB().Helper()
+	expectedSeq := strconv.FormatUint(seq, 10)
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.Equal(c, expectedSeq, rt.GetReplicationStatus(replicationID).LastSeqPull)
+	}, 20*time.Second, 10*time.Millisecond)
 }

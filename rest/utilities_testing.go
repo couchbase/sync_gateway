@@ -1258,6 +1258,7 @@ func RequestByUser(method, resource, body, username string) *http.Request {
 }
 
 func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+	t.Helper()
 	require.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
@@ -1266,6 +1267,7 @@ func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 }
 
 func AssertStatus(t testing.TB, response *TestResponse, expectedStatus int) bool {
+	t.Helper()
 	return assert.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),
