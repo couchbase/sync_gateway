@@ -286,6 +286,7 @@ func TestMetadataKeys(t *testing.T) {
 			require.Equal(t, test.resyncHeartbeatPrefix, metadataKeys.ResyncHeartbeaterPrefix())
 			require.Equal(t, test.resyncCfgPrefix, metadataKeys.ResyncCfgPrefix())
 			require.Equal(t, test.databaseStateKey, metadataKeys.DatabaseStateKey())
+			require.Equal(t, test.timestampsSeqKey, metadataKeys.TimestampsSeqKey())
 		})
 	}
 }
