@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"fmt"
 	"log"
 	"maps"
 	"net/http"
@@ -30,15 +29,16 @@ const testUseLegacySyncDocsIndex = false
 func TestDatabaseInitManager(t *testing.T) {
 	RequireN1QLIndexes(t)
 
+	ctx := base.TestCtx(t)
+	// Get a test bucket for bootstrap testing, and create dbconfig targeting that bucket
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
 	sc, closeFn := StartBootstrapServer(t)
 	defer closeFn()
 
 	initMgr := sc.DatabaseInitManager
 
-	ctx := base.TestCtx(t)
-	// Get a test bucket for bootstrap testing, and create dbconfig targeting that bucket
-	tb := base.GetTestBucket(t)
-	defer tb.Close(ctx)
 	dbName := "dbName"
 	var scopesConfig ScopesConfig
 	if base.TestsUseNamedCollections() {
@@ -54,13 +54,7 @@ func TestDatabaseInitManager(t *testing.T) {
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
-	select {
-	case err := <-doneChan:
-		require.NoError(t, err)
-	case <-time.After(30 * time.Second):
-		require.Fail(t, "InitializeDatabase didn't complete in 10s")
-	}
-
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan, base.TestIndexInitTimeout)
 }
 
 // TestDatabaseInitPostMigrationExcludesDefault verifies that once a system-metadata database has completed its
@@ -72,12 +66,12 @@ func TestDatabaseInitPostMigrationExcludesDefault(t *testing.T) {
 	RequireN1QLIndexes(t)
 	base.TestRequiresCollections(t)
 
-	sc, closeFn := StartBootstrapServer(t)
-	defer closeFn()
-
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	// Drop all test indexes so we can test InitializeDatabase
 	base.DropAllBucketIndexes(t, tb)
@@ -108,7 +102,7 @@ func TestDatabaseInitPostMigrationExcludesDefault(t *testing.T) {
 	// migrationComplete=true models a system-metadata database that has finished migrating off _default.
 	doneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, true)
 	require.NoError(t, err)
-	WaitForChannel(t, doneChan, "post-migration init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan, base.TestIndexInitTimeout)
 
 	seenLock.Lock()
 	defer seenLock.Unlock()
@@ -446,14 +440,15 @@ func dropSystemCollectionMetadataIndexes(t *testing.T, tb *base.TestBucket) {
 func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	RequireN1QLIndexes(t)
 	base.TestRequiresCollections(t)
-	sc, closeFn := StartBootstrapServer(t)
-	defer closeFn()
 
 	ctx := base.TestCtx(t)
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 	// Drop all test indexes so we can test InitializeDatabase
 	base.DropAllBucketIndexes(t, tb)
 
@@ -480,8 +475,8 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, singleCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))             // wait for the test to unblock before proceeding to the next collection
+			base.RequireChanSend(t, singleCollectionInitChannel, nil)                          // notify the test that indexes have been created for this collection
+			base.RequireChanClosedWithTimeout(t, testSignalChannel, base.TestIndexInitTimeout) // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -496,7 +491,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	WaitForChannel(t, singleCollectionInitChannel, "first collection init")
+	require.NoError(t, base.RequireChanRecv(t, singleCollectionInitChannel))
 
 	// Make a duplicate call to initialize database, should reuse the existing agent
 	duplicateDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -506,8 +501,8 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	WaitForChannel(t, doneChan, "first init done chan")
-	WaitForChannel(t, duplicateDoneChan, "duplicate init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan, base.TestIndexInitTimeout)
+	base.RequireNoErrorOnChanCloseWithTimeout(t, duplicateDoneChan, base.TestIndexInitTimeout)
 
 	// Verify initialization was only run for two collections
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -518,7 +513,7 @@ func TestDatabaseInitConfigChangeSameCollections(t *testing.T) {
 	// Rerun init, should start a new worker for the database and re-verify init for each collection
 	rerunDoneChan, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
-	WaitForChannel(t, rerunDoneChan, "repeated init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, rerunDoneChan, base.TestIndexInitTimeout)
 	totalCount = atomic.LoadInt64(&collectionCount)
 	require.Equal(t, expectedCollectionCount*2, totalCount)
 }
@@ -534,13 +529,14 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
 	base.TestRequiresCollections(t)
-	sc, closeFn := StartBootstrapServer(t)
-	defer closeFn()
 
 	ctx := base.TestCtx(t)
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	// Drop all test indexes so we can test InitializeDatabase
 	base.DropAllBucketIndexes(t, tb)
@@ -570,8 +566,8 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName.CollectionName())) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName.CollectionName()))            // wait for the test to unblock before proceeding to the next collection
+			base.RequireChanSend(t, firstCollectionInitChannel, nil)                           // notify the test that indexes have been created for this collection
+			base.RequireChanClosedWithTimeout(t, testSignalChannel, base.TestIndexInitTimeout) // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
@@ -586,7 +582,7 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
+	require.NoError(t, base.RequireChanRecv(t, firstCollectionInitChannel))
 
 	// Make a call to initialize database for the same db name, different collections
 	modifiedDbConfig := makeDbConfig(tb.GetName(), dbName, collection1and3ScopesConfig)
@@ -599,11 +595,11 @@ func TestDatabaseInitConfigChangeDifferentCollections(t *testing.T) {
 	close(testSignalChannel)
 
 	// Unblock second collection for original invocation
-	cancelErr := waitForError(t, doneChan, "first init cancellation")
-	require.Error(t, cancelErr)
+	cancelErr := base.RequireChanRecv(t, doneChan)
+	require.Error(t, cancelErr, "expected first init to be cancelled")
 
 	// Wait for notification on new done channel
-	WaitForChannel(t, modifiedDoneChan, "modified init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, modifiedDoneChan, base.TestIndexInitTimeout)
 
 	// Verify initialization was run for four collections (one prior to cancellation, three for subsequent init)
 	totalCount := atomic.LoadInt64(&collectionCount)
@@ -624,8 +620,6 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
 	// Start SG with no databases
-	sc, closeFn := StartBootstrapServer(t)
-	defer closeFn()
 	ctx := base.TestCtx(t)
 
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
@@ -638,6 +632,9 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	// Get two test buckets for bootstrap testing, and drop indexes created by bucket pool readier
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close(ctx)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	// Drop all test indexes so we can test InitializeDatabase
 	base.DropAllBucketIndexes(t, tb2)
@@ -666,13 +663,13 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 		log.Printf("Collection complete callback invoked for %s %s", dbName, scName)
 		currentCount := atomic.LoadInt64(&collectionCount)
 		if currentCount == 0 {
-			notifyChannel(t, firstCollectionInitChannel, fmt.Sprintf("singleCollectionInit-%s", scName)) // notify the test that indexes have been created for this collection
-			WaitForChannel(t, testSignalChannel, fmt.Sprintf("testSignalChannel-%s", scName))            // wait for the test to unblock before proceeding to the next collection
+			base.RequireChanSend(t, firstCollectionInitChannel, nil)                           // notify the test that indexes have been created for this collection
+			base.RequireChanClosedWithTimeout(t, testSignalChannel, base.TestIndexInitTimeout) // wait for the test to unblock before proceeding to the next collection
 		}
 		atomic.AddInt64(&collectionCount, 1)
 	}
 	initMgr.testDatabaseCompleteCallback = func(dbName string) {
-		notifyChannel(t, databaseCompleteChannel, "database complete")
+		base.RequireChanSend(t, databaseCompleteChannel, nil)
 	}
 
 	db1Name := "db1Name"
@@ -690,7 +687,7 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first collection to be initialized
-	WaitForChannel(t, firstCollectionInitChannel, "first collection init")
+	require.NoError(t, base.RequireChanRecvWithTimeout(t, firstCollectionInitChannel, base.TestIndexInitTimeout))
 
 	// Start second async index creation for db2 while first is still running
 	doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, db2Config.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
@@ -700,12 +697,12 @@ func TestDatabaseInitConcurrentDatabasesDifferentBuckets(t *testing.T) {
 	close(testSignalChannel)
 
 	// Wait for notification on both done channels
-	WaitForChannel(t, doneChan1, "modified init done chan")
-	WaitForChannel(t, doneChan2, "modified init done chan")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan1, base.TestIndexInitTimeout)
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan2, base.TestIndexInitTimeout)
 
 	// Wait for db completion notifications for both databases
-	WaitForChannel(t, databaseCompleteChannel, "database 1 init complete")
-	WaitForChannel(t, databaseCompleteChannel, "database 2 init complete")
+	require.NoError(t, base.RequireChanRecv(t, databaseCompleteChannel))
+	require.NoError(t, base.RequireChanRecv(t, databaseCompleteChannel))
 
 	// Verify initialization was run for 8 collections (four for db1, four for db2)
 	// _mobile, _default, collection1, collection2
@@ -723,13 +720,14 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 
-	sc, closeFn := StartBootstrapServer(t)
-	defer closeFn()
 	ctx := base.TestCtx(t)
 
 	// Get a test bucket for bootstrap testing, and drop indexes created by bucket pool readier
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	// Drop all test indexes so we can test InitializeDatabase
 	base.DropAllBucketIndexes(t, tb)
@@ -767,7 +765,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 			log.Printf("invoking InitializeDatabase again during teardown")
 			doneChan2, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 			require.NoError(t, err)
-			WaitForChannel(t, doneChan2, "done chan 2")
+			base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan2, base.TestIndexInitTimeout)
 		}
 	}
 
@@ -775,7 +773,7 @@ func TestDatabaseInitTeardownTiming(t *testing.T) {
 	doneChan1, err := initMgr.InitializeDatabase(ctx, sc.Config, dbConfig.ToDatabaseConfig(), testUseLegacySyncDocsIndex, true, false)
 	require.NoError(t, err)
 
-	WaitForChannel(t, doneChan1, "done chan 1")
+	base.RequireNoErrorOnChanCloseWithTimeout(t, doneChan1, base.TestIndexInitTimeout)
 	wg.Wait()
 
 	// Verify initialization was run for 8 collections, since it runs on 4 collections twice

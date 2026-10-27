@@ -471,11 +471,11 @@ func TestPersistentConfigRegistryRollbackAfterDbConfigRollback(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			oneCollectionScopesConfig := GetCollectionsConfig(t, tb, 1)
 			dataStoreNames := GetDataStoreNamesFromScopesConfig(oneCollectionScopesConfig)
@@ -578,11 +578,11 @@ func TestPersistentConfigRegistryRollbackCollectionConflictAfterDbConfigRollback
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.useXattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.useXattrConfig)
+			defer closeFn()
 
 			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -705,11 +705,11 @@ func TestPersistentConfigRegistryRollbackAfterCreateFailure(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -833,11 +833,11 @@ func TestPersistentConfigRegistryRollbackAfterUpdateFailure(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -968,11 +968,11 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -1066,11 +1066,11 @@ func TestPersistentConfigSlowCreateFailure(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, false)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, false)
+			defer closeFn()
 
 			threeCollectionScopesConfig := GetCollectionsConfig(t, tb, 3)
 			dataStoreNames := GetDataStoreNamesFromScopesConfig(threeCollectionScopesConfig)
@@ -1125,11 +1125,11 @@ func TestMigratev30PersistentConfig(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			bucketName := tb.GetName()
 			groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1195,10 +1195,11 @@ func TestMigratev30PersistentConfigUseXattrStore(t *testing.T) {
 	// does not exercise cluster-compat heartbeats and the long poll interval never fires.
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Minute * 10)
 	config.Bootstrap.NodeHeartbeatExpiry = nil
-	sc, closeFn := StartServerWithConfig(t, &config)
-	defer closeFn()
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := StartServerWithConfig(t, &config)
+	defer closeFn()
 
 	bucketName := tb.GetName()
 	groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1259,11 +1260,11 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			bucketName := tb.GetName()
 			groupID := sc.Config.Bootstrap.ConfigGroupID
@@ -1312,11 +1313,11 @@ func TestLegacyDuplicate(t *testing.T) {
 	for _, test := range persistentConfigTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
-			defer closeFn()
-
 			tb := base.GetTestBucket(t)
 			defer tb.Close(ctx)
+
+			sc, closeFn := startBootstrapServerWithoutConfigPolling(t, test.xattrConfig)
+			defer closeFn()
 
 			bucketName := tb.GetName()
 			groupID := sc.Config.Bootstrap.ConfigGroupID
