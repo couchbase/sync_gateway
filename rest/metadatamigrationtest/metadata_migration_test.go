@@ -114,7 +114,7 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	dbCtxA := rtA.GetDatabase()
 	require.NotNil(t, dbCtxA.MetadataMigrationManager)
 	require.NotNil(t, dbCtxA.ConfigFullyAppliedFunc)
-	applied, missing, err := dbCtxA.ConfigFullyAppliedFunc(ctx)
+	applied, missing, err := dbCtxA.ConfigFullyAppliedFunc(ctx, false)
 	require.NoError(t, err)
 	assert.False(t, applied, "config must not be fully applied while node B is still on the old version")
 	assert.Contains(t, missing, rtB.ServerContext().NodeUID, "node B must be reported as not having applied the new config version")
@@ -126,7 +126,7 @@ func TestMetadataMigrationStartsAfterAllNodesApplyConfig(t *testing.T) {
 	rtB.ServerContext().ForceClusterCompatRefresh(t, ctx)
 
 	// The gate now reports fully applied across the cluster - this is what unblocks the migration.
-	applied, missing, err = dbCtxA.ConfigFullyAppliedFunc(ctx)
+	applied, missing, err = dbCtxA.ConfigFullyAppliedFunc(ctx, false)
 	require.NoError(t, err)
 	assert.True(t, applied, "config should be fully applied once node B has applied the new version")
 	assert.Empty(t, missing)
@@ -1272,7 +1272,7 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	rtA.ServerContext().ForceClusterCompatRefresh(t, ctx)
 
 	// Sanity: the gate the handler consults reports not-applied, with node B outstanding.
-	applied, missing, err := rtA.GetDatabase().ConfigFullyAppliedFunc(ctx)
+	applied, missing, err := rtA.GetDatabase().ConfigFullyAppliedFunc(ctx, false)
 	require.NoError(t, err)
 	require.False(t, applied, "config must not be fully applied while node B is behind")
 	require.Contains(t, missing, rtB.ServerContext().NodeUID)
@@ -1288,7 +1288,7 @@ func TestMetadataMigrationRESTStartRejectedBeforeConfigApplied(t *testing.T) {
 	rtB.ServerContext().ForceDbConfigsReload(t, ctx)
 	rtB.ServerContext().ForceClusterCompatRefresh(t, ctx)
 
-	applied, _, err = rtA.GetDatabase().ConfigFullyAppliedFunc(ctx)
+	applied, _, err = rtA.GetDatabase().ConfigFullyAppliedFunc(ctx, false)
 	require.NoError(t, err)
 	require.True(t, applied, "config should be fully applied once node B has applied the new version")
 

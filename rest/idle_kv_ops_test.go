@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
@@ -46,4 +47,43 @@ func TestConfigPollIdleKVOpsCounted(t *testing.T) {
 		// status read.
 		require.GreaterOrEqual(t, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()-idleKVOpsBefore, int64(5))
 	}
+}
+
+// TestMetadataMigrationArmChecksIdleKVOps checks that the metadata migration checks made by the arm loop, which polls
+// on a node with no clients, count their bootstrap KV ops as idle, and that the same checks made for a REST request
+// use the original connection.
+func TestMetadataMigrationArmChecksIdleKVOps(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+	sc := rt.ServerContext()
+	// The original connection counts nothing, so give it a stat to see which connection each check uses.
+	originalKVOps := &base.SgwIntStat{}
+	sc.BootstrapContext.Connection = sc.BootstrapContext.Connection.WithKVOpStat(originalKVOps)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	database := rt.GetDatabase()
+	require.NotNil(t, database.ConfigFullyAppliedFunc)
+	require.NotNil(t, database.PerDBMetadataMigrationCompleteFunc)
+
+	ctx := rt.Context()
+	runChecks := func(idle bool) {
+		_, _, err := database.ConfigFullyAppliedFunc(ctx, idle)
+		require.NoError(t, err)
+		database.PerDBMetadataMigrationCompleteFunc(ctx, idle)
+	}
+	idleKVOps := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps
+
+	originalBefore := originalKVOps.Value()
+	runChecks(false)
+	requestKVOps := originalKVOps.Value() - originalBefore
+	require.Positive(t, requestKVOps, "the registry and migration status reads")
+
+	originalBefore = originalKVOps.Value()
+	idleBefore := idleKVOps.Value()
+	runChecks(true)
+	assert.Equal(t, int64(0), originalKVOps.Value()-originalBefore, "the arm loop's checks must not use the original connection")
+	// Other background work counts idle KV ops too, so this is a lower bound.
+	assert.GreaterOrEqual(t, idleKVOps.Value()-idleBefore, requestKVOps)
 }
