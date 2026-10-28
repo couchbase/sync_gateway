@@ -288,8 +288,9 @@ func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid str
 }
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
+// If seq is zero, it removes the history entries of the named channels instead.
 // This is used to prune stale channel assignment history to reduce storage overhead.
-func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64, channelsToDelete []string) ([]string, error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -324,9 +325,18 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	}
 
 	compactedChannels := make(base.Set)
+	channelsToDeleteMap := make(map[string]struct{})
+	for _, chanName := range channelsToDelete {
+		channelsToDeleteMap[chanName] = struct{}{}
+	}
 
 	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
-		del := channel.End <= seq
+		var del bool
+		if seq != 0 {
+			del = channel.End <= seq
+		} else {
+			_, del = channelsToDeleteMap[channel.Name]
+		}
 		if del {
 			compactedChannels.Add(channel.Name)
 		}
@@ -334,7 +344,13 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	})
 
 	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
-		del := channel.End != 0 && channel.End <= seq
+		var del bool
+		if seq != 0 {
+			del = channel.End != 0 && channel.End <= seq
+		} else {
+			_, ok := channelsToDeleteMap[channel.Name]
+			del = channel.End != 0 && ok
+		}
 		if del {
 			compactedChannels.Add(channel.Name)
 		}
@@ -342,7 +358,16 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 	})
 
 	for chanName, chanEntry := range doc.SyncData.Channels {
-		if chanEntry != nil && chanEntry.Seq <= seq {
+		if chanEntry == nil {
+			continue
+		}
+		var del bool
+		if seq != 0 {
+			del = chanEntry.Seq <= seq
+		} else {
+			_, del = channelsToDeleteMap[chanName]
+		}
+		if del {
 			compactedChannels.Add(chanName)
 			delete(doc.SyncData.Channels, chanName)
 		}
