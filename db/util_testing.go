@@ -162,16 +162,12 @@ func AssertEqualBodies(t *testing.T, expected, actual Body) {
 	assert.Equal(t, string(expectedCanonical), string(actualCanonical))
 }
 
-func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
-	var isChanged bool
-	for i := 0; i < 100; i++ {
-		isChanged = userWaiter.RefreshUserCount()
-		if isChanged {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return isChanged
+// WaitForUserWaiterChange waits for number of users found to change. Fails test harness if the no users were modified.
+func WaitForUserWaiterChange(t testing.TB, userWaiter *ChangeWaiter) {
+	timeout := 10 * time.Second
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, userWaiter.RefreshUserCount(), "Expected the user count for the ChangeWaiter to be updated")
+	}, timeout, 10*time.Millisecond, "Timed out after %d ms waiting for users in ChangeWaiter to be updated", timeout.Milliseconds())
 }
 
 // purgeWithDCPFeed purges all documents seen on a DCP feed with system xattrs, including tombstones which aren't found when emptying the primary index.
@@ -799,6 +795,34 @@ func (db *DatabaseContext) GetMutationListener(t *testing.T) *changeListener {
 func (db *DatabaseContext) InitChannel(ctx context.Context, t *testing.T, chanName string) error {
 	_, err := db.channelCache.getSingleChannelCache(ctx, channels.NewID(chanName, base.DefaultCollectionID))
 	return err
+}
+
+// WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database. Fails the
+// test harness if cache does not catch up.
+func (db *DatabaseContext) WaitForPendingChanges(t testing.TB) {
+	ctx := base.TestCtx(t)
+	lastSequence, err := db.sequences.lastSequence(ctx)
+	require.NoError(t, err, "Error retrieving last sequence")
+	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
+	db.changeCache.requireWaitForSequence(t, lastSequence)
+}
+
+// WaitForSequence blocks until the change-cache has processed up to the target sequence. Fails the test harness
+// if cache does not catch up.
+func (db *DatabaseContext) WaitForSequence(t testing.TB, targetSequence uint64) {
+	db.changeCache.requireWaitForSequence(t, targetSequence)
+}
+
+// requireWaitForSequence blocks until the change cache has processed up to the target sequence. Fails the test harness
+// if cache does not catch up.
+func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64) {
+	ctx := base.TestCtx(t)
+	startTime := time.Now()
+	waitForSequenceTimeout := defaultWaitForSequence
+	require.EventuallyWithT(t, func(cT *assert.CollectT) {
+		assert.GreaterOrEqual(cT, c.getNextSequence(), targetSequence+1)
+	}, waitForSequenceTimeout, 10*time.Millisecond, "Waited for %v for sequence %d to be processed", waitForSequenceTimeout, targetSequence)
+	base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", targetSequence, time.Since(startTime))
 }
 
 // WaitForBackgroundManagerHeartbeatDocRemoval waits for removal of heartbeat document or fails the test harness.

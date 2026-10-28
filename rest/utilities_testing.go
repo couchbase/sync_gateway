@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -640,15 +641,11 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 
 // Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) {
-	collection, ctx := rt.GetSingleTestDatabaseCollection()
-	require.NoError(rt.TB(), collection.WaitForSequence(ctx, seq))
+	rt.GetDatabase().WaitForSequence(rt.TB(), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() {
-	ctx := rt.Context()
-	for _, collection := range rt.GetDbCollections() {
-		require.NoError(rt.TB(), collection.WaitForPendingChanges(ctx))
-	}
+	rt.GetDatabase().WaitForPendingChanges(rt.TB())
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
@@ -919,8 +916,8 @@ func RequireChangeRevVersion(t *testing.T, expected DocVersion, changeRev db.Cha
 
 func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, username string, useAdminPort bool) ChangesResults {
 	waitTime := 20 * time.Second // some tests rely on cbgt import which can be quite slow if it needs to rollback
-	if base.UnitTestUrlIsWalrus() {
-		// rosmar will never take a long time, so have faster failures
+	if base.UnitTestUrlIsWalrus() && os.Getenv("CI") == "" {
+		// local rosmar will never take a long time, but it is sometimes slower in jenkins/github actions
 		waitTime = 1 * time.Second
 	}
 	var changes *ChangesResults

@@ -445,3 +445,9 @@ func (rt *RestTester) RequireDbOnline() {
 	require.NoError(rt.TB(), base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(rt.TB(), "Online", body["state"].(string))
 }
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Fails the
+// test harness if the sequence remains in the skipped list after timeout.
+func (rt *RestTester) WaitForSequenceNotSkipped(sequence uint64) {
+	require.NoError(rt.TB(), rt.GetDatabase().WaitForSequenceNotSkipped(rt.Context(), sequence))
+}
