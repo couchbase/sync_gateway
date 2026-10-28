@@ -100,7 +100,7 @@ func shortWaitCacheWithLateLogMax(lateLogMax int) db.CacheOptions {
 // cap, _purgeLateLogEntries force-drops the stalled feed's pinned lastSequence and the queue plateaus.
 //
 // The assertions use listeners registered against the cache, not feed2: an un-drained feed isn't reliably
-// parked (buffered output channel, waitForCacheUpdate's 100ms poll), so it may return after the cap pruned it
+// parked (buffered output channel, waitForCacheSequence's 100ms poll), so it may return after the cap pruned it
 // and be rolled back - correctly - which is why the rollback count is logged rather than asserted on.
 func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	base.LongRunningTest(t)
@@ -260,9 +260,23 @@ func TestLateLogsForcedRollbackResetsSlowFeed(t *testing.T) {
 		}
 	}
 
-	require.Greaterf(t, forcedRollbacks(), int64(0),
-		"feed2 fell far enough behind that its lastSequence was pruned from lateLogs; returning to read "+
-			"must have forced at least one rollback (LateFeedForcedRollbacks)")
+	// feed2 counts the rollback at the start of its next pass, which it can only begin once it has sent the rest
+	// of the pass it is blocked in. A drain frees just the slots up to the first waiting marker, so whether that
+	// is enough depends on where feed2's buffer filled, and one empty pass more or less (such as after its
+	// startup backfill) moves that. Keep reading feed2 until the rollback is counted.
+	rollbackDeadline := time.After(10 * time.Second)
+	for forcedRollbacks() == 0 {
+		select {
+		case event := <-feed2:
+			if event != nil {
+				feed2Seen[event.Seq.Seq] = true
+			}
+		case <-time.After(10 * time.Millisecond):
+		case <-rollbackDeadline:
+			require.FailNow(t, "feed2 fell far enough behind that its lastSequence was pruned from lateLogs; returning to read "+
+				"must have forced at least one rollback (LateFeedForcedRollbacks)")
+		}
+	}
 
 	// Recovery: after a final in-order write, feed2 must be able to drain up to the latest sequence,
 	// proving the rollback reset it rather than leaving it stuck or silently missing sequences.
