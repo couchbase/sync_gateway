@@ -135,6 +135,10 @@ type BlipSyncContext struct {
 	// stopped
 	fatalErrorCallback func(err error)
 
+	// connState is the blipConnState of an active replicator's connection, used to decide whether a close needs a
+	// reconnect.
+	connState atomic.Int32
+
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 
@@ -262,6 +266,31 @@ func (bsc *BlipSyncContext) Close() {
 		close(bsc.terminator)
 		bsc.ctxCancelFunc(errors.New("BlipSyncContext.Close called"))
 	})
+}
+
+// blipConnState is the lifecycle of an active replicator's connection.
+type blipConnState int32
+
+const (
+	blipConnConnecting blipConnState = iota
+	blipConnConnected
+	blipConnClosed
+)
+
+// markConnected moves the connection from connecting to connected. It returns false if the connection already closed.
+func (bsc *BlipSyncContext) markConnected() bool {
+	return bsc.connState.CompareAndSwap(int32(blipConnConnecting), int32(blipConnConnected))
+}
+
+// markLocalDisconnected records that this side is closing the connection, so the close does not start a reconnect.
+func (bsc *BlipSyncContext) markLocalDisconnected() {
+	bsc.connState.Store(int32(blipConnClosed))
+}
+
+// markRemoteDisconnected records a close that this side did not start. It returns true only if the connection was
+// connected, because a close while connecting fails the connect attempt, and its caller retries.
+func (bsc *BlipSyncContext) markRemoteDisconnected() bool {
+	return bsc.connState.Swap(int32(blipConnClosed)) == int32(blipConnConnected)
 }
 
 // NotFoundHandler is used for unknown requests

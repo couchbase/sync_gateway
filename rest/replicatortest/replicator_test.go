@@ -11,12 +11,15 @@ package replicatortest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"runtime"
 	"sort"
@@ -27,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -2767,6 +2772,430 @@ func TestReconnectReplicator(t *testing.T) {
 		}
 	})
 
+}
+
+// TestReplicatorReconnectAfterCheckpointError asserts that a replicator settles on a single connection after the
+// remote accepts the first _blipsync and fails its getCheckpoint, as a remote can while it starts up.
+func TestReplicatorReconnectAfterCheckpointError(t *testing.T) {
+	failingBlipSync := func(t *testing.T) http.Handler {
+		blipCtx := newTestBlipContext(t)
+		blipCtx.HandlerForProfile[db.MessageGetCheckpoint] = func(rq *blip.Message) {
+			rq.Response().SetError("HTTP", http.StatusServiceUnavailable, "database not ready")
+		}
+		return blipCtx.WebSocketServer()
+	}
+	runReconnectAfterFailedBlipSyncTest(t, failingBlipSync, "database not ready")
+}
+
+// TestReplicatorReconnectAfterConnectionDroppedDuringCheckpoint asserts that a replicator settles on a single
+// connection after the remote accepts the first _blipsync and drops it without answering getCheckpoint, as a remote
+// does when it goes down mid-handshake.
+func TestReplicatorReconnectAfterConnectionDroppedDuringCheckpoint(t *testing.T) {
+	droppingBlipSync := func(t *testing.T) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var subprotocols []string
+			for _, header := range r.Header.Values("Sec-WebSocket-Protocol") {
+				for p := range strings.SplitSeq(header, ",") {
+					subprotocols = append(subprotocols, strings.TrimSpace(p))
+				}
+			}
+			conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: subprotocols})
+			if !assert.NoError(t, err) {
+				return
+			}
+			// Read the getCheckpoint request, then drop the TCP connection without a close frame.
+			_, _, err = conn.Read(r.Context())
+			assert.NoError(t, err)
+			assert.NoError(t, conn.CloseNow())
+		})
+	}
+	runReconnectAfterFailedBlipSyncTest(t, droppingBlipSync, "")
+}
+
+// TestReplicatorPushReconnectsOnceAfterDatabaseWentAway asserts that a push replicator reconnects once when the remote
+// answers the changes batch of every collection with ErrDatabaseWentAway.
+func TestReplicatorPushReconnectsOnceAfterDatabaseWentAway(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
+
+	// Each collection sends its changes batches from its own goroutine, so the batches of two collections are in flight
+	// at the same time.
+	const numCollections = 2
+	passiveRT := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	t.Cleanup(passiveRT.Close)
+	passiveSrv := httptest.NewServer(passiveRT.TestAdminHandler())
+	t.Cleanup(passiveSrv.Close)
+	passiveURL, err := url.Parse(passiveSrv.URL + "/" + passiveRT.GetDatabase().Name)
+	require.NoError(t, err)
+
+	activeRT := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	t.Cleanup(activeRT.Close)
+	docID := sgtest.SafeDocumentName(t, t.Name())
+	for i := 1; i <= numCollections; i++ {
+		rest.RequireStatus(t, activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace%d}}/%s", i, docID), `{}`), http.StatusCreated)
+	}
+
+	var numChanges atomic.Int32
+	allInFlight := make(chan struct{})
+	blipCtx := newTestBlipContext(t)
+	blipCtx.HandlerForProfile[db.MessageGetCollections] = func(rq *blip.Message) {
+		assert.NoError(t, rq.Response().SetJSONBody([]any{map[string]any{}, map[string]any{}}))
+	}
+	blipCtx.HandlerForProfile[db.MessageChanges] = func(rq *blip.Message) {
+		if rq.NoReply() {
+			return
+		}
+		// Hold every batch until all are in flight, so each error response reaches the replicator.
+		if numChanges.Add(1) == numCollections {
+			close(allInFlight)
+		}
+		select {
+		case <-allInFlight:
+		case <-time.After(10 * time.Second):
+			assert.Fail(t, "changes batches were not all in flight")
+		}
+		rq.Response().SetError("HTTP", http.StatusServiceUnavailable, db.ErrDatabaseWentAway.Message)
+	}
+	remote := newBlipSyncRemote(t, passiveURL, blipCtx.WebSocketServer())
+	ar, stats := newReconnectTestReplicator(t, activeRT, db.ActiveReplicatorTypePush, remote.url)
+
+	require.NoError(t, ar.Start(activeRT.Context()))
+	require.Eventually(t, func() bool {
+		return stats.NumConnectAttempts.Value() >= 2
+	}, 10*time.Second, 10*time.Millisecond)
+	requireReplicatorState(t, ar, db.ReplicationStateRunning)
+	requireConnectAttemptsSettle(t, stats, 2)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for i := 1; i <= numCollections; i++ {
+			assert.Equal(c, http.StatusOK, passiveRT.SendAdminRequest(http.MethodGet, fmt.Sprintf("/{{.keyspace%d}}/%s", i, docID), "").Code)
+		}
+	}, 10*time.Second, 50*time.Millisecond)
+}
+
+// TestReplicatorClosesConnectionAfterGetCollectionsError asserts that a replicator closes its connection after a
+// fatal getCollections error, and that a restart then replicates.
+func TestReplicatorClosesConnectionAfterGetCollectionsError(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
+
+	for _, direction := range []db.ActiveReplicatorDirection{db.ActiveReplicatorTypePull, db.ActiveReplicatorTypePush} {
+		t.Run(string(direction), func(t *testing.T) {
+			activeRT, passiveRT, passiveURL := newReconnectTestPeers(t, true)
+
+			blipCtx := newTestBlipContext(t)
+			blipCtx.HandlerForProfile[db.MessageGetCollections] = func(rq *blip.Message) {
+				rq.Response().SetError("HTTP", http.StatusServiceUnavailable, "database not ready")
+			}
+			closed := make(chan struct{})
+			blipSync := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(closed)
+				blipCtx.WebSocketServer().ServeHTTP(w, r)
+			})
+			remote := newBlipSyncRemote(t, passiveURL, blipSync)
+			ar, stats := newReconnectTestReplicator(t, activeRT, direction, remote.url)
+
+			require.ErrorContains(t, ar.Start(activeRT.Context()), "Error getting collections from remote: HTTP 503")
+			requireReplicatorState(t, ar, db.ReplicationStateError)
+			select {
+			case <-closed:
+			case <-time.After(10 * time.Second):
+				require.Fail(t, "replicator left the connection open")
+			}
+
+			require.NoError(t, ar.Start(activeRT.Context()))
+			requireReplicatorState(t, ar, db.ReplicationStateRunning)
+			requireConnectAttemptsSettle(t, stats, 2)
+			requireDocReplicates(t, direction, activeRT, passiveRT)
+		})
+	}
+}
+
+// TestReplicatorStopsCheckpointersAfterFailedStart asserts that a collections replicator stops the checkpointers it
+// started when another collection fails to start.
+func TestReplicatorStopsCheckpointersAfterFailedStart(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
+
+	for _, direction := range []db.ActiveReplicatorDirection{db.ActiveReplicatorTypePull, db.ActiveReplicatorTypePush} {
+		t.Run(string(direction), func(t *testing.T) {
+			activeRT := rest.NewRestTesterMultipleCollections(t, nil, 2)
+			t.Cleanup(activeRT.Close)
+
+			blipCtx := newTestBlipContext(t)
+			blipCtx.HandlerForProfile[db.MessageGetCollections] = func(rq *blip.Message) {
+				// Collections start in random order, so the valid collection's checkpointer starts before the invalid
+				// collection fails in about half of the connect attempts.
+				assert.NoError(t, rq.Response().SetJSONBody([]any{
+					map[string]any{},
+					map[string]any{"last_sequence": "invalid"},
+				}))
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/_blipsync") {
+					blipCtx.WebSocketServer().ServeHTTP(w, r)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			remoteURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			checkpointers := numCheckpointerGoroutines()
+			ar, stats := newReconnectTestReplicator(t, activeRT, direction, remoteURL, func(config *db.ActiveReplicatorConfig) {
+				config.CheckpointInterval = time.Minute
+				config.MaxReconnectInterval = 50 * time.Millisecond
+			})
+			require.Error(t, ar.Start(activeRT.Context()))
+
+			// The chance that no attempt started a checkpointer is 2^-10.
+			require.Eventually(t, func() bool {
+				return stats.NumConnectAttempts.Value() >= 10
+			}, 20*time.Second, 10*time.Millisecond)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Equal(c, checkpointers, numCheckpointerGoroutines())
+			}, 10*time.Second, 10*time.Millisecond)
+		})
+	}
+}
+
+// TestReplicatorClosesConnectionAfterSubprotocolError asserts that a replicator closes a connection whose negotiated
+// subprotocol it rejects.
+func TestReplicatorClosesConnectionAfterSubprotocolError(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
+
+	activeRT := rest.NewRestTesterDefaultCollection(t, nil)
+	t.Cleanup(activeRT.Close)
+
+	ctx, cancel := context.WithCancelCause(base.TestCtx(t))
+	t.Cleanup(func() { cancel(errors.New("test finished")) })
+	var numOpen atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/_blipsync") {
+			return
+		}
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{r.Header.Get("Sec-WebSocket-Protocol")}})
+		if !assert.NoError(t, err) {
+			return
+		}
+		numOpen.Add(1)
+		defer numOpen.Add(-1)
+		for err == nil {
+			_, _, err = conn.Read(ctx)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	remoteURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	ar, stats := newReconnectTestReplicator(t, activeRT, db.ActiveReplicatorTypePull, remoteURL, func(config *db.ActiveReplicatorConfig) {
+		// Accepted by the remote, but outside the CBMobile versions the replicator supports.
+		config.SupportedBLIPProtocols = []string{"CBMobile_99"}
+	})
+	require.ErrorContains(t, ar.Start(activeRT.Context()), "invalid subprotocol")
+	require.Eventually(t, func() bool {
+		return stats.NumConnectAttempts.Value() >= 3
+	}, 10*time.Second, 10*time.Millisecond)
+	require.NoError(t, ar.Stop())
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, int32(0), numOpen.Load(), "replicator left connections open")
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// numCheckpointerGoroutines returns the number of running Checkpointer goroutines in this process.
+func numCheckpointerGoroutines() int {
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			return strings.Count(string(buf[:n]), "db.(*Checkpointer).Start.func1(")
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+}
+
+// runReconnectAfterFailedBlipSyncTest serves the first _blipsync of a default collection replication with
+// firstBlipSync and proxies every other request to a real passive peer.  It asserts the replicator then reconnects
+// exactly once and replicates a document.  expectedStartErr is the error expected from Start, if not empty.
+func runReconnectAfterFailedBlipSyncTest(t *testing.T, firstBlipSync func(*testing.T) http.Handler, expectedStartErr string) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
+
+	for _, direction := range []db.ActiveReplicatorDirection{db.ActiveReplicatorTypePull, db.ActiveReplicatorTypePush} {
+		t.Run(string(direction), func(t *testing.T) {
+			activeRT, passiveRT, passiveURL := newReconnectTestPeers(t, false)
+			remote := newBlipSyncRemote(t, passiveURL, firstBlipSync(t))
+			ar, stats := newReconnectTestReplicator(t, activeRT, direction, remote.url)
+			ctx := activeRT.Context()
+
+			startErr := ar.Start(ctx)
+			require.Error(t, startErr)
+			if expectedStartErr != "" {
+				require.ErrorContains(t, startErr, expectedStartErr)
+			}
+			requireReplicatorState(t, ar, db.ReplicationStateRunning)
+			// One failed attempt and one successful reconnect.  Each extra attempt tears down a working connection.
+			requireConnectAttemptsSettle(t, stats, 2)
+			requireDocReplicates(t, direction, activeRT, passiveRT)
+		})
+	}
+}
+
+// TestReplicatorReconnectAfterRemoteDrop asserts that a replicator reconnects exactly once after the remote drops a
+// healthy connection, and does not reconnect after it is stopped.
+func TestReplicatorReconnectAfterRemoteDrop(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
+
+	for _, direction := range []db.ActiveReplicatorDirection{db.ActiveReplicatorTypePull, db.ActiveReplicatorTypePush} {
+		t.Run(string(direction), func(t *testing.T) {
+			activeRT, passiveRT, passiveURL := newReconnectTestPeers(t, base.TestsUseNamedCollections())
+			remote := newBlipSyncRemote(t, passiveURL, nil)
+			ar, stats := newReconnectTestReplicator(t, activeRT, direction, remote.url)
+			ctx := activeRT.Context()
+
+			require.NoError(t, ar.Start(ctx))
+			requireReplicatorState(t, ar, db.ReplicationStateRunning)
+			require.Equal(t, int64(1), stats.NumConnectAttempts.Value())
+
+			remote.dropWebsockets(t)
+			base.RequireWaitForStat(t, stats.NumConnectAttempts.Value, 2)
+			requireReplicatorState(t, ar, db.ReplicationStateRunning)
+			requireConnectAttemptsSettle(t, stats, 2)
+			requireDocReplicates(t, direction, activeRT, passiveRT)
+
+			require.NoError(t, ar.Stop())
+			requireConnectAttemptsSettle(t, stats, 2)
+			requireReplicatorState(t, ar, db.ReplicationStateStopped)
+		})
+	}
+}
+
+// newReconnectTestPeers creates an active and a passive RestTester, using a named collection if collections is true.
+// The passive peer has a user alice with access to all channels, and passiveURL is its public URL for alice.
+func newReconnectTestPeers(t *testing.T, collections bool) (activeRT, passiveRT *rest.RestTester, passiveURL *url.URL) {
+	newRT := rest.NewRestTesterDefaultCollection
+	if collections {
+		base.TestRequiresCollections(t)
+		newRT = rest.NewRestTester
+	}
+	passiveRT = newRT(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	t.Cleanup(passiveRT.Close)
+	passiveRT.CreateUser("alice", []string{"*"})
+	passiveURL = userDBURL(passiveRT, "alice")
+
+	activeRT = newRT(t, nil)
+	t.Cleanup(activeRT.Close)
+	return activeRT, passiveRT, passiveURL
+}
+
+// newTestBlipContext creates a blip context for a fake passive peer.
+func newTestBlipContext(t *testing.T) *blip.Context {
+	ctx, cancel := context.WithCancelCause(base.TestCtx(t))
+	t.Cleanup(func() { cancel(errors.New("test finished")) })
+	_, blipCtx, err := db.NewSGBlipContext(ctx, "", nil, ctx)
+	require.NoError(t, err)
+	return blipCtx
+}
+
+// blipSyncRemote is a remote peer for an active replicator. It serves the first _blipsync with firstBlipSync, if set,
+// and proxies every other request to a real passive peer.
+type blipSyncRemote struct {
+	url        *url.URL
+	lock       sync.Mutex
+	websockets []net.Conn // connections hijacked for a websocket
+}
+
+func newBlipSyncRemote(t *testing.T, passiveURL *url.URL, firstBlipSync http.Handler) *blipSyncRemote {
+	remote := &blipSyncRemote{}
+	var servedFirstBlipSync atomic.Bool
+	proxy := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: passiveURL.Scheme, Host: passiveURL.Host})
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if firstBlipSync != nil && strings.HasSuffix(r.URL.Path, "/_blipsync") && servedFirstBlipSync.CompareAndSwap(false, true) {
+			firstBlipSync.ServeHTTP(w, r)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	srv.Config.ConnState = func(conn net.Conn, state http.ConnState) {
+		if state == http.StateHijacked {
+			remote.lock.Lock()
+			defer remote.lock.Unlock()
+			remote.websockets = append(remote.websockets, conn)
+		}
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	var err error
+	remote.url, err = url.Parse(srv.URL + passiveURL.Path)
+	require.NoError(t, err)
+	remote.url.User = passiveURL.User
+	return remote
+}
+
+// dropWebsockets closes the TCP connection of every websocket opened so far, without a close frame.
+func (r *blipSyncRemote) dropWebsockets(t *testing.T) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	require.NotEmpty(t, r.websockets)
+	for _, conn := range r.websockets {
+		assert.NoError(t, conn.Close())
+	}
+}
+
+// newReconnectTestReplicator creates a continuous replicator from activeRT to remoteURL that retries quickly, and returns
+// it with the stats for its direction. configure changes the config before the replicator is created. The replicator
+// is stopped by testing.T.Cleanup.
+func newReconnectTestReplicator(t *testing.T, activeRT *rest.RestTester, direction db.ActiveReplicatorDirection, remoteURL *url.URL, configure ...func(*db.ActiveReplicatorConfig)) (*db.ActiveReplicator, *db.BlipSyncStats) {
+	config := &db.ActiveReplicatorConfig{
+		ID:                       t.Name(),
+		Direction:                direction,
+		RemoteDBURL:              remoteURL,
+		ActiveDB:                 &db.Database{DatabaseContext: activeRT.GetDatabase()},
+		Continuous:               true,
+		InitialReconnectInterval: 10 * time.Millisecond,
+		ReplicationStatsMap:      dbReplicatorStats(t, activeRT.GetDatabase()),
+		CollectionsEnabled:       !activeRT.GetDatabase().OnlyDefaultCollection(),
+	}
+	for _, fn := range configure {
+		fn(config)
+	}
+	ar, err := db.NewActiveReplicator(activeRT.Context(), config)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, ar.Stop()) })
+
+	if direction == db.ActiveReplicatorTypePush {
+		return ar, ar.Push.GetStats()
+	}
+	return ar, ar.Pull.GetStats()
+}
+
+func requireReplicatorState(t *testing.T, ar *db.ActiveReplicator, expected string) {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, _ := ar.State(base.TestCtx(t))
+		assert.Equal(c, expected, state)
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// requireConnectAttemptsSettle requires that the connect attempts stay at expected.
+func requireConnectAttemptsSettle(t *testing.T, stats *db.BlipSyncStats, expected int64) {
+	assert.Never(t, func() bool {
+		return stats.NumConnectAttempts.Value() != expected
+	}, 2*time.Second, 50*time.Millisecond,
+		"replicator made an unexpected connect attempt")
+	require.Equal(t, expected, stats.NumConnectAttempts.Value())
+}
+
+// requireDocReplicates writes a document to the source peer of direction and waits for it on the target peer.
+func requireDocReplicates(t *testing.T, direction db.ActiveReplicatorDirection, activeRT, passiveRT *rest.RestTester) {
+	docID := sgtest.SafeDocumentName(t, t.Name())
+	source, target := activeRT, passiveRT
+	if direction == db.ActiveReplicatorTypePull {
+		source, target = passiveRT, activeRT
+	}
+	version := source.PutDoc(docID, `{"channels": ["alice"]}`)
+	target.WaitForVersionRevIDOnly(docID, version)
 }
 
 func TestReplicatorReconnectTimeout(t *testing.T) {
