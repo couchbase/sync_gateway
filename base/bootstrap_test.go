@@ -611,9 +611,13 @@ func TestBootstrapKVOpStat(t *testing.T) {
 	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
 		f := newBootstrapDualTestFixture(t, useXattrs)
 		ctx := TestCtx(t)
-		primaryDocID := SyncDocPrefix + "kvops-primary"
-		legacyDocID := SyncDocPrefix + "kvops-legacy"
-		missingDocID := SyncDocPrefix + "kvops-missing"
+		// Couchbase Server keeps a tombstone of a deleted doc, and an xattr lookup that finds one is a KV op. Unique doc
+		// IDs stop a tombstone left in the pooled bucket by an earlier run from standing in for a missing doc.
+		suffix, err := GenerateRandomID()
+		require.NoError(t, err)
+		primaryDocID := SyncDocPrefix + "kvops-primary-" + suffix
+		legacyDocID := SyncDocPrefix + "kvops-legacy-" + suffix
+		missingDocID := SyncDocPrefix + "kvops-missing-" + suffix
 		t.Cleanup(func() {
 			f.CleanupDoc(t, primaryDocID)
 			f.CleanupDoc(t, legacyDocID)
