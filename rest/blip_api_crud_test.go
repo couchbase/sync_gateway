@@ -858,7 +858,7 @@ function(doc, oldDoc) {
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Attempt to send the doc again, should succeed if the blip context also received notification
 	_, _, _, sendErr = bt.SendRev(
@@ -1135,12 +1135,13 @@ function(doc, oldDoc) {
 		require.NoError(t, sendErr)
 	}
 
+	timeout := 30 * time.Second
 	// Wait until all expected changes are received by change handler
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, timeout)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
 	fmt.Println("Revs sent and changes received in", time.Now().UnixMilli()-beforeChangesSent, "ms")
 
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, timeout)
 	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
@@ -1393,7 +1394,7 @@ func TestReloadUser(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	// Wait for notification
-	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+	db.WaitForUserWaiterChange(t, userWaiter)
 
 	// Add a doc in the PBS channel
 	_, _, addRevResponse, err := bt.SendRev(
@@ -3272,7 +3273,7 @@ func TestBlipMessageAfterUserDelete(t *testing.T) {
 		// refreshUser only reloads once the deletion has been notified over the caching feed
 		userWaiter := rt.NewUserWaiter(username)
 		rt.DeleteUser(username)
-		require.True(t, db.WaitForUserWaiterChange(userWaiter))
+		db.WaitForUserWaiterChange(t, userWaiter)
 
 		unsubChangesRequest := blip.NewRequest()
 		unsubChangesRequest.SetProfile(db.MessageUnsubChanges)
@@ -3687,6 +3688,7 @@ func TestBlipPullConflict(t *testing.T) {
 		)
 		rt.CreateUser(alice, []string{"*"})
 		sgVersion := rt.PutDoc(docID, `{"actor": "sg"}`)
+		rt.WaitForPendingChanges()
 
 		opts := &BlipTesterClientOpts{
 			Username: alice,
@@ -4218,7 +4220,7 @@ func TestBlipPullReplicationRolePurge(t *testing.T) {
 		// document notification alone and is still holding the stale channel set.
 		userWaiter := rt.NewUserWaiter(username)
 		RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_role/"+roleName+"?purge=true", ""), http.StatusOK)
-		require.True(t, db.WaitForUserWaiterChange(userWaiter))
+		db.WaitForUserWaiterChange(t, userWaiter)
 
 		// Changes are sent in sequence order, so once afterPurgeAllowed arrives, afterPurgeRevoked would
 		// already have arrived if the revoked channel were still being served.

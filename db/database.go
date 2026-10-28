@@ -2615,3 +2615,9 @@ func (o *UnsupportedOptions) GetSameSiteCookieMode() (http.SameSite, error) {
 		return http.SameSiteDefaultMode, fmt.Errorf("unsupported_options.same_site_cookie option %q is not valid, choices are \"Lax\", \"Strict\", and \"None", *o.SameSiteCookie)
 	}
 }
+
+// WaitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list. Returns an error
+// if the sequence remains in skipped list.
+func (db *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, targetSequence uint64) error {
+	return db.changeCache.waitForSequenceNotSkipped(ctx, targetSequence, defaultWaitForSequence)
+}
