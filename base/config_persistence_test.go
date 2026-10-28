@@ -160,8 +160,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 
 	// Retrieve the config
 	var loadedConfig map[string]any
-	_, _, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, kvOps, loadErr := cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
+	assert.Equal(t, 1, kvOps)
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// set the document to an empty body, shouldn't be treated as delete
@@ -169,8 +170,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Retrieve the config
-	_, _, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, kvOps, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
+	assert.Equal(t, 1, kvOps, "an empty body is not a deleted doc, so it is not restored")
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling didn't occur
@@ -184,8 +186,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.NoError(t, deleteErr)
 
 	// Retrieve the config
-	_, _, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, kvOps, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
+	assert.Equal(t, 2, kvOps, "the deleted doc is read and then restored")
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 	// Fetch the document directly from the bucket to verify resurrect handling DID occur
@@ -194,8 +197,9 @@ func TestXattrConfigPersistence(t *testing.T) {
 	assert.True(t, docBody != nil)
 
 	// Retrieve the config
-	_, _, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
+	_, kvOps, loadErr = cp.loadConfig(ctx, c, configKey, &loadedConfig)
 	require.NoError(t, loadErr)
+	assert.Equal(t, 1, kvOps, "the doc was restored by the last read")
 	assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
 
 }
