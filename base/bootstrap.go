@@ -29,7 +29,7 @@ type BootstrapConnection interface {
 	GetConfigBuckets(context.Context) ([]string, error)
 	// WithKVOpStat returns a connection that shares this one's connections and caches, and adds every KV operation it
 	// makes to stat. Background work uses it so that its KV operations are counted as idle, and the same calls made for
-	// client requests are not.
+	// client requests are not. Called on a connection that already has a stat, the new stat replaces it.
 	WithKVOpStat(stat *SgwIntStat) BootstrapConnection
 	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
 	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr any) (cas uint64, err error)
@@ -320,9 +320,13 @@ func (cc *CouchbaseCluster) WithKVOpStat(stat *SgwIntStat) BootstrapConnection {
 	if stat == nil {
 		return cc
 	}
+	persistence := cc.configPersistence
+	if counted, ok := persistence.(*kvOpStatConfigPersistence); ok {
+		persistence = counted.ConfigPersistence
+	}
 	return &CouchbaseCluster{
 		couchbaseClusterState: cc.couchbaseClusterState,
-		configPersistence:     &kvOpStatConfigPersistence{ConfigPersistence: cc.configPersistence, stat: stat},
+		configPersistence:     &kvOpStatConfigPersistence{ConfigPersistence: persistence, stat: stat},
 		kvOpStat:              stat,
 	}
 }
