@@ -1165,7 +1165,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				if belowRequestPlus && !deferredBackfill && !postStableSeqsFound {
 					wakeSeq = options.RequestPlusSeq
 				}
-				waitResponse := col.waitForFeedProgress(ctx, options.ChangesCtx, changeWaiter, pollCache, wakeSeq)
+				waitResponse := col.waitForFeedProgress(options.ChangesCtx, changeWaiter, pollCache, wakeSeq)
 
 				if options.ChangesCtx.Err() != nil {
 					return
@@ -1233,7 +1233,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 // waiter, which would block until the next user-visible change. They wake once the cached sequence reaches wakeSeq.
 //
 // Cancellation of changesCtx is left for the caller to check.
-func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx context.Context, changeWaiter *ChangeWaiter, pollCache bool, wakeSeq uint64) uint32 {
+func (col *DatabaseCollectionWithUser) waitForFeedProgress(changesCtx context.Context, changeWaiter *ChangeWaiter, pollCache bool, wakeSeq uint64) uint32 {
 	pullStats := col.dbStats().CBLReplicationPull()
 	pullStats.NumPullReplTotalCaughtUp.Add(1)
 	pullStats.NumPullReplCaughtUp.Add(1)
@@ -1248,7 +1248,7 @@ func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx conte
 		changeWaiter.RefreshCounts()
 		return WaiterHasChanges
 	}
-	return changeWaiter.Wait(ctx)
+	return changeWaiter.Wait(changesCtx)
 }
 
 // waitForCacheSequence polls until the cached sequence reaches wakeSeq, ctx is done, the change listener stops, or

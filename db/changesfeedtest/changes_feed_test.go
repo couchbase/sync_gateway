@@ -149,16 +149,9 @@ func TestRequestPlusTargetInUnwatchedChannel(t *testing.T) {
 
 			// The feed's exit condition (currentCachedSequence >= RequestPlusSeq) is now satisfied, so it
 			// should close promptly. Five seconds is 100 broadcast ticks.
-			deadline := time.After(5 * time.Second)
-			for closed := false; !closed; {
-				select {
-				case _, ok := <-feed:
-					closed = !ok
-				case <-deadline:
-					require.FailNow(t, "request_plus feed did not complete after the cache passed its target",
-						"sequence %d is in channels %q; the feed watches ABC", tc.docSeq, tc.docChannels)
-				}
-			}
+			base.RequireChanClosedWithTimeout(t, feed, 5*time.Second,
+				"request_plus feed did not complete after the cache passed its target: sequence %d is in channels %q; the feed watches ABC",
+				tc.docSeq, tc.docChannels)
 		})
 	}
 }
@@ -198,10 +191,10 @@ func TestRequestPlusPollingFeedCancelled(t *testing.T) {
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
 	require.NoError(t, err)
 
-	entry := <-feed
+	entry := base.RequireChanRecv(t, feed)
 	require.NotNil(t, entry)
 	require.Equal(t, "1", entry.Seq.String())
-	require.Nil(t, <-feed, "expected the waiting marker once sequence 1 was sent")
+	require.Nil(t, base.RequireChanRecv(t, feed), "expected the waiting marker once sequence 1 was sent")
 
 	// The caught-up gauge only rises inside waitForFeedProgress, so once it does the feed is parked in the poll.
 	base.RequireStatGreaterThan(t, caughtUp, caughtUpStart)
@@ -248,17 +241,17 @@ func TestRequestPlusLongpollParksAfterTarget(t *testing.T) {
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
 	require.NoError(t, err)
 
-	entry := <-feed
+	entry := base.RequireChanRecv(t, feed)
 	require.NotNil(t, entry)
 	require.Equal(t, "1", entry.Seq.String())
-	require.Nil(t, <-feed, "expected the waiting marker while below the request_plus sequence")
+	require.Nil(t, base.RequireChanRecv(t, feed), "expected the waiting marker while below the request_plus sequence")
 
 	// Reach the target via a document the feed can't see. The feed has nothing new to send, so it parks again. Drain
 	// any further waiting markers until it has gone quiet before measuring, so the check below only sees wakes
 	// caused by the next write.
 	db.WriteDirect(t, collection, []string{"XYZ"}, 2)
 	database.WaitForSequence(t, 2)
-	require.Nil(t, <-feed, "expected the waiting marker after reaching the request_plus sequence")
+	require.Nil(t, base.RequireChanRecv(t, feed), "expected the waiting marker after reaching the request_plus sequence")
 	// The overall deadline catches a feed that never parks and keeps sending waiting markers, which would otherwise
 	// restart the quiet timer forever.
 	drainDeadline := time.After(5 * time.Second)
@@ -288,7 +281,7 @@ func TestRequestPlusLongpollParksAfterTarget(t *testing.T) {
 
 	// A change it does watch wakes it, and as a longpoll that has now sent something, it completes.
 	db.WriteDirect(t, collection, []string{"ABC"}, 4)
-	entry = <-feed
+	entry = base.RequireChanRecv(t, feed)
 	require.NotNil(t, entry)
 	require.Equal(t, "4", entry.Seq.String())
 	base.RequireChanClosed(t, feed, "longpoll feed did not complete after sending a change")
@@ -332,10 +325,10 @@ func TestRequestPlusFeedWakesAtTarget(t *testing.T) {
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
 	require.NoError(t, err)
 
-	entry := <-feed
+	entry := base.RequireChanRecv(t, feed)
 	require.NotNil(t, entry)
 	require.Equal(t, "1", entry.Seq.String())
-	require.Nil(t, <-feed, "expected the waiting marker while below the request_plus sequence")
+	require.Nil(t, base.RequireChanRecv(t, feed), "expected the waiting marker while below the request_plus sequence")
 	base.RequireWaitForStat(t, totalCaughtUp.Value, totalCaughtUpStart+1)
 
 	// Move the cache towards the target through a channel the feed doesn't watch. Each write is given longer than
@@ -393,10 +386,10 @@ func TestRequestPlusFeedParksAfterPollWake(t *testing.T) {
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
 	require.NoError(t, err)
 
-	entry := <-feed
+	entry := base.RequireChanRecv(t, feed)
 	require.NotNil(t, entry)
 	require.Equal(t, "1", entry.Seq.String())
-	require.Nil(t, <-feed, "expected the waiting marker while below the request_plus sequence")
+	require.Nil(t, base.RequireChanRecv(t, feed), "expected the waiting marker while below the request_plus sequence")
 	base.RequireWaitForStat(t, totalCaughtUp.Value, totalCaughtUpStart+1)
 
 	// Sequence 2 is in a watched channel, so it moves the waiter's count, but it is below the target so the
@@ -404,10 +397,10 @@ func TestRequestPlusFeedParksAfterPollWake(t *testing.T) {
 	db.WriteDirect(t, collection, []string{"ABC"}, 2)
 	db.WriteDirect(t, collection, []string{"XYZ"}, 3)
 
-	entry = <-feed
+	entry = base.RequireChanRecv(t, feed)
 	require.NotNil(t, entry)
 	require.Equal(t, "2", entry.Seq.String())
-	require.Nil(t, <-feed, "expected the waiting marker after reaching the request_plus sequence")
+	require.Nil(t, base.RequireChanRecv(t, feed), "expected the waiting marker after reaching the request_plus sequence")
 
 	// Wake only for the target: anything further, inside the ~5s poll timeout and well past the 50ms broadcast
 	// interval, is the waiter waking for sequence 2 again.
@@ -438,20 +431,12 @@ func TestRequestPlusFeedExitsOnListenerStop(t *testing.T) {
 		Since: db.SequenceID{Seq: 0}, ChangesCtx: changesCtx, RequestPlusSeq: 2,
 	})
 	require.NoError(t, err)
-	require.NotNil(t, <-feed)
-	require.Nil(t, <-feed)
+	require.NotNil(t, base.RequireChanRecv(t, feed))
+	require.Nil(t, base.RequireChanRecv(t, feed))
 	base.RequireStatGreaterThan(t, caughtUp, caughtUpStart)
 
 	database.GetMutationListener(t).Stop(ctx)
-	deadline := time.After(15 * time.Second)
-	for closed := false; !closed; {
-		select {
-		case _, ok := <-feed:
-			closed = !ok
-		case <-deadline:
-			require.FailNow(t, "request_plus feed still running 15s after the change listener stopped")
-		}
-	}
+	base.RequireChanClosedWithTimeout(t, feed, 15*time.Second, "request_plus feed still running 15s after the change listener stopped")
 }
 
 // TestPollingContinuousFeedSeesUserUpdate checks whether a continuous feed that is polling the cache, rather than
@@ -500,10 +485,7 @@ func TestPollingContinuousFeedSeesUserUpdate(t *testing.T) {
 			require.NoError(t, err)
 
 			// Read the initial changes up to the first waiting marker.
-			for entry := range feed {
-				if entry == nil {
-					break
-				}
+			for entry := base.RequireChanRecv(t, feed); entry != nil; entry = base.RequireChanRecv(t, feed) {
 			}
 			base.RequireStatGreaterThan(t, caughtUp, caughtUpStart)
 
