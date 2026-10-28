@@ -138,6 +138,14 @@ func (b *bootstrapContext) withKVOpStat(stat *base.SgwIntStat) *bootstrapContext
 	return &withStat
 }
 
+// bootstrapContextFor returns sc.BootstrapContext, or for idle background work a copy that counts its KV ops as idle.
+func (sc *ServerContext) bootstrapContextFor(idle bool) *bootstrapContext {
+	if !idle {
+		return sc.BootstrapContext
+	}
+	return sc.BootstrapContext.withKVOpStat(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps)
+}
+
 type getOrAddDatabaseConfigOptions struct {
 	failFast       bool // if set, a failure to connect to a bucket of collection will immediately fail
 	useExisting    bool //  if true, return an existing DatabaseContext vs return an error
@@ -1098,8 +1106,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		configGroupID := sc.Config.Bootstrap.ConfigGroupID
 		bucketName := spec.BucketName
 		cfgVersion := config.Version
-		dbcontext.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
-			registry, err := sc.BootstrapContext.getGatewayRegistry(ctx, bucketName)
+		dbcontext.ConfigFullyAppliedFunc = func(ctx context.Context, idle bool) (bool, []string, error) {
+			registry, err := sc.bootstrapContextFor(idle).getGatewayRegistry(ctx, bucketName)
 			if err != nil {
 				return false, nil, err
 			}
@@ -1119,8 +1127,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			_, err := sc.BootstrapContext.Connection.UpdateMetadataMigrationStatus(ctx, bucketName, mutator)
 			return err
 		}
-		dbcontext.PerDBMetadataMigrationCompleteFunc = func(ctx context.Context) bool {
-			return sc.isPerDBMigrationComplete(ctx, bucketName, metadataID)
+		dbcontext.PerDBMetadataMigrationCompleteFunc = func(ctx context.Context, idle bool) bool {
+			return sc.isPerDBMigrationComplete(ctx, idle, bucketName, metadataID)
 		}
 		dbcontext.PostMetadataMigrationCompleteFunc = func(ctx context.Context) error {
 			return sc.maybeCompleteBucketMetadataMigration(ctx, sc.BootstrapContext, bucketName)
@@ -2506,11 +2514,11 @@ func (sc *ServerContext) isPerDBMigrationInProgress(ctx context.Context, bucketN
 // "complete" would wrongly skip a needed migration. This is the deliberate opposite bias to
 // isPerDBMigrationInProgress, which errs toward "in progress" to avoid prematurely disabling
 // fallback reads.
-func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, bucketName, metadataID string) bool {
+func (sc *ServerContext) isPerDBMigrationComplete(ctx context.Context, idle bool, bucketName, metadataID string) bool {
 	if sc.BootstrapContext == nil || sc.BootstrapContext.Connection == nil {
 		return false
 	}
-	status, _, err := sc.BootstrapContext.Connection.GetMetadataMigrationStatus(ctx, bucketName)
+	status, _, err := sc.bootstrapContextFor(idle).Connection.GetMetadataMigrationStatus(ctx, bucketName)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "Unable to read %s on bucket %q while checking per-DB migration completion: %v — treating as not complete", base.MD(base.MetadataMigrationStatusDocID), base.MD(bucketName), err)
