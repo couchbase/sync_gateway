@@ -313,7 +313,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			if spec.BucketName == testBucket.GetName() {
 				return testBucket.NoCloseClone(), nil
 			}
-			return db.ConnectToBucket(ctx, spec, false)
+			return db.ConnectToBucket(ctx, spec, failfast)
 		}
 	}
 	rt.RestTesterServerContext.allowScopesInPersistentConfig = true

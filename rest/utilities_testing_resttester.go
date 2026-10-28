@@ -411,6 +411,13 @@ func (rt *RestTester) RunResync() db.ResyncManagerResponseDCP {
 	return rt.WaitForResyncDCPStatus(db.BackgroundProcessStateCompleted)
 }
 
+// WaitForDBInitializationCompleted polls the ServerContext until there is no active database initialization (index creation). Fails the test if initialization does not complete within the timeout.
+func (rt *RestTester) WaitForDBInitializationCompleted(dbName string) {
+	require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+		assert.False(c, rt.ServerContext().DatabaseInitManager.HasActiveInitialization(dbName))
+	}, 30*time.Second, 100*time.Millisecond, "Database initialization did not complete within expected time")
+}
+
 // WaitForResyncDCPStatus waits for the resync status to reach the expected status and returns the final status.
 func (rt *RestTester) WaitForResyncDCPStatus(status db.BackgroundProcessState) db.ResyncManagerResponseDCP {
 	return rt.waitForResyncDCPStatus(status, "{{.db}}")

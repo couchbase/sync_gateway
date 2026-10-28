@@ -42,6 +42,7 @@ func TestResyncWithoutIndexes(t *testing.T) {
 	config := rt.NewDbConfig()
 	config.StartOffline = base.Ptr(true)
 	rest.RequireStatus(t, rt.UpsertDbConfig(dbName, config), http.StatusCreated)
+	rt.WaitForDBInitializationCompleted(dbName)
 
 	if !base.TestsDisableGSI() {
 		rest.DropAllTestIndexesIncludingPrimary(t, rt.TestBucket)
