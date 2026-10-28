@@ -208,7 +208,7 @@ func TestRequestPlusPollingFeedCancelled(t *testing.T) {
 
 	changesCtxCancel(errors.New("client went away"))
 
-	// Well inside waitForCacheUpdate's ~5s poll timeout, so the feed must have seen the cancellation rather than
+	// Well inside waitForCacheSequence's ~5s poll timeout, so the feed must have seen the cancellation rather than
 	// timed out of the poll.
 	base.RequireChanClosedWithTimeout(t, feed, time.Second, "request_plus feed did not exit after cancellation")
 	base.RequireWaitForStat(t, caughtUp.Value, caughtUpStart)
@@ -293,6 +293,68 @@ func TestRequestPlusLongpollParksAfterTarget(t *testing.T) {
 	require.Equal(t, "4", entry.Seq.String())
 	base.RequireChanClosed(t, feed, "longpoll feed did not complete after sending a change")
 	require.Equal(t, parkedTotal, totalCaughtUp.Value())
+}
+
+// TestRequestPlusFeedWakesAtTarget checks that a request_plus feed polling below its target doesn't re-run its
+// changes loop each time the cache moves, only once the cache reaches the target. Every re-run walks all of the
+// user's channels, so with a lagging cache and many request_plus feeds, re-running on every move costs read-side
+// CPU just when caching is behind.
+func TestRequestPlusFeedWakesAtTarget(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+
+	database, ctx := db.SetupTestDBWithCacheOptions(t, db.ShortWaitCache())
+	defer database.Close(ctx)
+
+	authenticator := database.Authenticator(ctx)
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+	database.SetUser(user)
+
+	dbCollection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collection := dbCollection.DatabaseCollection
+
+	db.WriteDirect(t, collection, []string{"ABC"}, 1)
+	database.WaitForSequence(t, 1)
+
+	totalCaughtUp := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp
+	totalCaughtUpStart := totalCaughtUp.Value()
+
+	const unwatchedWrites = 8
+	const requestPlusSeq = unwatchedWrites + 2
+	changesCtx, changesCtxCancel := context.WithCancelCause(ctx)
+	defer changesCtxCancel(errors.New("test teardown"))
+	options := db.ChangesOptions{
+		Since:          db.SequenceID{Seq: 0},
+		ChangesCtx:     changesCtx,
+		RequestPlusSeq: requestPlusSeq,
+	}
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
+	require.NoError(t, err)
+
+	entry := <-feed
+	require.NotNil(t, entry)
+	require.Equal(t, "1", entry.Seq.String())
+	require.Nil(t, <-feed, "expected the waiting marker while below the request_plus sequence")
+	base.RequireWaitForStat(t, totalCaughtUp.Value, totalCaughtUpStart+1)
+
+	// Move the cache towards the target through a channel the feed doesn't watch. Each write is given longer than
+	// one 100ms poll to be noticed, so a feed waking on any cache movement would re-run once per write. The whole
+	// sequence stays well inside the ~5s poll timeout, so any wake seen here is one the movement caused.
+	for seq := uint64(2); seq < requestPlusSeq; seq++ {
+		db.WriteDirect(t, collection, []string{"XYZ"}, seq)
+		database.WaitForSequence(t, seq)
+		select {
+		case entry, ok := <-feed:
+			require.FailNow(t, "feed re-ran below its request_plus sequence", "cached sequence %d, received %v (open: %t)", seq, entry, ok)
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	require.Equal(t, totalCaughtUpStart+1, totalCaughtUp.Value(), "feed re-ran below its request_plus sequence")
+
+	// Reaching the target wakes it, and as a one-shot feed with nothing more to send, it completes.
+	db.WriteDirect(t, collection, []string{"XYZ"}, requestPlusSeq)
+	base.RequireChanClosedWithTimeout(t, feed, 2*time.Second, "request_plus feed did not complete after the cache reached its target")
 }
 
 func TestRequestPlusFeedExitsOnListenerStop(t *testing.T) {

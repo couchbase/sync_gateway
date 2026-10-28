@@ -1155,8 +1155,17 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Poll the cache instead.
 				// Similar handling for when we see sequences later than the stable sequence, and for request_plus feeds below their target, whose
 				// target sequence may be in a channel the user can't see.
-				pollCache := deferredBackfill || postStableSeqsFound || options.RequestPlusSeq > currentCachedSequence
-				waitResponse := col.waitForFeedProgress(ctx, options.ChangesCtx, changeWaiter, pollCache, currentCachedSequence)
+				belowRequestPlus := options.RequestPlusSeq > currentCachedSequence
+				pollCache := deferredBackfill || postStableSeqsFound || belowRequestPlus
+				// A deferred backfill or post-stable sequence may be resolved by the next cached sequence, so either needs a
+				// re-run on any cache movement. A request_plus feed alone only wakes once the cache reaches its target, or on
+				// the poll timeout: re-running on every move walks all of the user's channels, which while the cache lags
+				// costs more than it saves. Changes the feed can see that land below the target wait for that wake.
+				wakeSeq := currentCachedSequence + 1
+				if belowRequestPlus && !deferredBackfill && !postStableSeqsFound {
+					wakeSeq = options.RequestPlusSeq
+				}
+				waitResponse := col.waitForFeedProgress(ctx, options.ChangesCtx, changeWaiter, pollCache, wakeSeq)
 
 				if options.ChangesCtx.Err() != nil {
 					return
@@ -1221,17 +1230,17 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 // pollCache is for feeds whose waiter keys can't see the event they're waiting for: a deferred backfill whose
 // granting doc isn't visible to the user, sequences later than the stable sequence, or a request_plus target
 // that may land in a channel the feed doesn't watch. Those poll the cached sequence instead of parking on the
-// waiter, which would block until the next user-visible change.
+// waiter, which would block until the next user-visible change. They wake once the cached sequence reaches wakeSeq.
 //
 // Cancellation of changesCtx is left for the caller to check.
-func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx context.Context, changeWaiter *ChangeWaiter, pollCache bool, currentCachedSequence uint64) uint32 {
+func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx context.Context, changeWaiter *ChangeWaiter, pollCache bool, wakeSeq uint64) uint32 {
 	pullStats := col.dbStats().CBLReplicationPull()
 	pullStats.NumPullReplTotalCaughtUp.Add(1)
 	pullStats.NumPullReplCaughtUp.Add(1)
 	defer pullStats.NumPullReplCaughtUp.Add(-1)
 
 	if pollCache {
-		if !col.waitForCacheUpdate(changesCtx, changeWaiter, currentCachedSequence) {
+		if !col.waitForCacheSequence(changesCtx, changeWaiter, wakeSeq) {
 			return WaiterClosed
 		}
 		// Wait() usually refreshes user counts and here we are bypassing that. Without this a continuous feed doesn't
@@ -1242,10 +1251,11 @@ func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx conte
 	return changeWaiter.Wait(ctx)
 }
 
-// waitForCacheUpdate polls until the cached sequence moves past currentCachedSequence, ctx is done, the change
-// listener stops, or about five seconds pass. It returns false only when the listener has stopped, so the feed
-// should end. Otherwise the caller re-runs its changes loop, and is responsible for checking ctx for cancellation.
-func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, changeWaiter *ChangeWaiter, currentCachedSequence uint64) bool {
+// waitForCacheSequence polls until the cached sequence reaches wakeSeq, ctx is done, the change listener stops, or
+// about five seconds pass. The timeout bounds how long a feed polling for a distant wakeSeq goes without picking up
+// user-visible changes and access changes. It returns false only when the listener has stopped, so the feed should
+// end. Otherwise the caller re-runs its changes loop, and is responsible for checking ctx for cancellation.
+func (col *DatabaseCollectionWithUser) waitForCacheSequence(ctx context.Context, changeWaiter *ChangeWaiter, wakeSeq uint64) bool {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for retry := 0; retry <= 50; retry++ {
@@ -1255,7 +1265,7 @@ func (col *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, c
 		case <-changeWaiter.listener.terminator:
 			return false
 		case <-ticker.C:
-			if col.changeCache().getChannelCache().GetHighCacheSequence() != currentCachedSequence {
+			if col.changeCache().getChannelCache().GetHighCacheSequence() >= wakeSeq {
 				return true
 			}
 		}

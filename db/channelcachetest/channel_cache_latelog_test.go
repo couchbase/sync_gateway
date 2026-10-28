@@ -100,7 +100,7 @@ func shortWaitCacheWithLateLogMax(lateLogMax int) db.CacheOptions {
 // cap, _purgeLateLogEntries force-drops the stalled feed's pinned lastSequence and the queue plateaus.
 //
 // The assertions use listeners registered against the cache, not feed2: an un-drained feed isn't reliably
-// parked (buffered output channel, waitForCacheUpdate's 100ms poll), so it may return after the cap pruned it
+// parked (buffered output channel, waitForCacheSequence's 100ms poll), so it may return after the cap pruned it
 // and be rolled back - correctly - which is why the rollback count is logged rather than asserted on.
 func TestLateLogsBoundedWhenConsumerStops(t *testing.T) {
 	base.LongRunningTest(t)
