@@ -253,9 +253,9 @@ func TestRequestPlusLongpollParksAfterTarget(t *testing.T) {
 	require.Equal(t, "1", entry.Seq.String())
 	require.Nil(t, <-feed, "expected the waiting marker while below the request_plus sequence")
 
-	// Reach the target via a document the feed can't see. The feed has nothing new to send, so it parks again. It
-	// may wake once more straight away (the waiter's baseline count predates its channel keys), so drain waiting
-	// markers until it has gone quiet before measuring.
+	// Reach the target via a document the feed can't see. The feed has nothing new to send, so it parks again. Drain
+	// any further waiting markers until it has gone quiet before measuring, so the check below only sees wakes
+	// caused by the next write.
 	db.WriteDirect(t, collection, []string{"XYZ"}, 2)
 	database.WaitForSequence(t, 2)
 	require.Nil(t, <-feed, "expected the waiting marker after reaching the request_plus sequence")
@@ -355,6 +355,68 @@ func TestRequestPlusFeedWakesAtTarget(t *testing.T) {
 	// Reaching the target wakes it, and as a one-shot feed with nothing more to send, it completes.
 	db.WriteDirect(t, collection, []string{"XYZ"}, requestPlusSeq)
 	base.RequireChanClosedWithTimeout(t, feed, 2*time.Second, "request_plus feed did not complete after the cache reached its target")
+}
+
+// TestRequestPlusFeedParksAfterPollWake checks that a continuous feed which polled up to its request_plus target
+// parks on its change waiter straight after the pass that wakes it. A change it watches lands while it polls; that
+// pass sends it, so the waiter must not also count it as new and wake the feed for an empty pass.
+func TestRequestPlusFeedParksAfterPollWake(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+
+	database, ctx := db.SetupTestDBWithCacheOptions(t, db.ShortWaitCache())
+	defer database.Close(ctx)
+
+	authenticator := database.Authenticator(ctx)
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+	database.SetUser(user)
+
+	dbCollection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
+	collection := dbCollection.DatabaseCollection
+
+	db.WriteDirect(t, collection, []string{"ABC"}, 1)
+	database.WaitForSequence(t, 1)
+
+	totalCaughtUp := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp
+	totalCaughtUpStart := totalCaughtUp.Value()
+
+	changesCtx, changesCtxCancel := context.WithCancelCause(ctx)
+	defer changesCtxCancel(errors.New("test teardown"))
+	options := db.ChangesOptions{
+		Since:          db.SequenceID{Seq: 0},
+		ChangesCtx:     changesCtx,
+		Continuous:     true,
+		Wait:           true,
+		RequestPlusSeq: 3,
+	}
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
+	require.NoError(t, err)
+
+	entry := <-feed
+	require.NotNil(t, entry)
+	require.Equal(t, "1", entry.Seq.String())
+	require.Nil(t, <-feed, "expected the waiting marker while below the request_plus sequence")
+	base.RequireWaitForStat(t, totalCaughtUp.Value, totalCaughtUpStart+1)
+
+	// Sequence 2 is in a watched channel, so it moves the waiter's count, but it is below the target so the
+	// polling feed doesn't wake for it. Sequence 3 reaches the target through a channel the feed doesn't watch.
+	db.WriteDirect(t, collection, []string{"ABC"}, 2)
+	db.WriteDirect(t, collection, []string{"XYZ"}, 3)
+
+	entry = <-feed
+	require.NotNil(t, entry)
+	require.Equal(t, "2", entry.Seq.String())
+	require.Nil(t, <-feed, "expected the waiting marker after reaching the request_plus sequence")
+
+	// Wake only for the target: anything further, inside the ~5s poll timeout and well past the 50ms broadcast
+	// interval, is the waiter waking for sequence 2 again.
+	select {
+	case entry, ok := <-feed:
+		require.FailNow(t, "feed re-ran for a change it had already sent", "received %v (open: %t)", entry, ok)
+	case <-time.After(500 * time.Millisecond):
+	}
+	require.Equal(t, totalCaughtUpStart+2, totalCaughtUp.Value(), "feed re-ran for a change it had already sent")
 }
 
 func TestRequestPlusFeedExitsOnListenerStop(t *testing.T) {

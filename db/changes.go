@@ -1243,9 +1243,9 @@ func (col *DatabaseCollectionWithUser) waitForFeedProgress(ctx, changesCtx conte
 		if !col.waitForCacheSequence(changesCtx, changeWaiter, wakeSeq) {
 			return WaiterClosed
 		}
-		// Wait() usually refreshes user counts and here we are bypassing that. Without this a continuous feed doesn't
-		// reload its user after a grant or revocation keeping stale channel access on the feed.
-		changeWaiter.RefreshUserCount()
+		// Without this a continuous feed doesn't reload its user after a grant or revocation, keeping stale channel
+		// access, and its next Wait returns straight away for the changes this pass is about to pick up.
+		changeWaiter.RefreshCounts()
 		return WaiterHasChanges
 	}
 	return changeWaiter.Wait(ctx)
