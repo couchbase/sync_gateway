@@ -604,6 +604,31 @@ func TestBootstrapInsertMetadataDocumentWritesPrimary(t *testing.T) {
 	})
 }
 
+// existsConfigPersistence reports every key as existing, without a bucket.
+type existsConfigPersistence struct {
+	ConfigPersistence
+}
+
+func (existsConfigPersistence) keyExists(*gocb.Collection, string) (bool, error) {
+	return true, nil
+}
+
+// TestCouchbaseClusterWithKVOpStatReplacesStat checks that WithKVOpStat on a connection that already has a stat counts
+// into the new stat only, both for config persistence ops and for the KV ops the connection makes itself.
+func TestCouchbaseClusterWithKVOpStatReplacesStat(t *testing.T) {
+	first, second := &SgwIntStat{}, &SgwIntStat{}
+	cluster := &CouchbaseCluster{configPersistence: existsConfigPersistence{}}
+	copied, ok := cluster.WithKVOpStat(first).WithKVOpStat(second).(*CouchbaseCluster)
+	require.True(t, ok)
+
+	_, err := copied.configPersistence.keyExists(nil, "key")
+	require.NoError(t, err)
+	copied.countKVOps(1)
+
+	assert.Equal(t, int64(0), first.Value())
+	assert.Equal(t, int64(2), second.Value())
+}
+
 // TestBootstrapKVOpStat checks that a connection made by WithKVOpStat adds every KV operation it makes to the stat,
 // including registry probes and fallback reads, and that the connection it was made from adds nothing. Like Couchbase
 // Server's kv_ops, it leaves out a subdoc lookup of a missing document, which is how xattr config persistence reads.
