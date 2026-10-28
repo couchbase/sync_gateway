@@ -1133,3 +1133,24 @@ func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.D
 		return *new(T) // unreachable
 	}
 }
+
+// WaitWithTimeout calls for the WaitGroup.Wait() and fails the test if the Wait does not return within the timeout.
+func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
+	t.Helper()
+	// Create a channel so that a goroutine waiting on the waitgroup can send it's result (if any)
+	wgFinished := make(chan bool)
+
+	go func() {
+		wg.Wait()
+		wgFinished <- true
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-wgFinished:
+		return
+	case <-timer.C:
+		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
+	}
+}
