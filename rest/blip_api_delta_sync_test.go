@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -475,23 +476,52 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		data = btcRunner.WaitForVersion(client.id, docID, docVersion2)
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
-		msg := client.pullReplication.WaitForMessage(5)
-		t.Logf("allMessages: %s\n", client.pullReplication.GetAllMessagesSummary())
+		// Find the two rev messages. Since there will be two rev messages associated with this version, can not use
+		// WaitForBlipRevMessage or GetBlipRevMessage.
+		// The ordering of messages stored by blip client is not 100% guaranteed, so find the
+		// messages by type and sort by serial number.
+		// 1. rev with deltaSrc (rejected)
+		// 2. rev without deltaSrc (accepted)
+		var revMsgs []*blip.Message
+		// We must use require.EventuallyWithT to poll the messages list here. While WaitForVersion
+		// guarantees that the client's document store has been updated (via addRev), the raw BLIP message
+		// itself is appended to pullReplication.GetMessages() via a defer hook after handleRev exits.
+		// Polling prevents a race condition where WaitForVersion returns but the final accepted full-body
+		// message is not yet appended to the replication messages log.
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			revMsgs = nil
+			for _, msg := range client.pullReplication.GetMessages() {
+				if msg.Profile() != db.MessageRev {
+					continue
+				}
+				if msg.Properties[db.RevMessageID] != docID {
+					continue
+				}
+				if msg.Properties[db.RevMessageRev] != docVersion2.RevID {
+					continue
+				}
+				revMsgs = append(revMsgs, msg)
+			}
+			assert.Len(c, revMsgs, 2)
+		}, 5*time.Second, 5*time.Millisecond, client.pullReplication.GetAllMessagesSummary())
+		revMsg1 := revMsgs[0]
+		revMsg2 := revMsgs[1]
+		if revMsg1.SerialNumber() > revMsg2.SerialNumber() {
+			revMsg1, revMsg2 = revMsg2, revMsg1
+		}
 
 		// Check the request was initially sent with the correct deltaSrc property
-		assert.Equal(t, docVersion1.RevID, msg.Properties[db.RevMessageDeltaSrc])
+		assert.Equal(t, docVersion1.RevID, revMsg1.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was the actual delta
-		msgBody, err := msg.Body()
+		msgBody, err := revMsg1.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
 		assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 
-		msg = btcRunner.WaitForBlipRevMessage(client.id, docID, docVersion2)
-
 		// Check the resent request was NOT sent with a deltaSrc property
-		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
+		assert.Equal(t, "", revMsg2.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
-		msgBody, err = msg.Body()
+		msgBody, err = revMsg2.Body()
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(msgBody))
