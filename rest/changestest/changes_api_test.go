@@ -3484,8 +3484,13 @@ func TestTombstoneCompaction(t *testing.T) {
 					numIdleQueryOpsAfter := int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleQueryOps.Value())
 
 					// cannot do equal here because there are other idle kv ops unrelated to compaction. Each purge reads the
-					// doc and then deletes it.
-					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, 2*expectedCompactions)
+					// doc and then deletes it. On Couchbase Server, deleting a tombstone's xattrs takes a failed delete, a
+					// read and an xattr delete.
+					kvOpsPerPurge := 2
+					if !base.UnitTestUrlIsWalrus() {
+						kvOpsPerPurge = 4
+					}
+					assert.GreaterOrEqual(t, numIdleKvOpsAfter-numIdleKvOpsBefore, kvOpsPerPurge*expectedCompactions)
 					assert.Equal(t, numIdleQueryOpsAfter-numIdleQueryOpsBefore, expectedBatches)
 				} else {
 					resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
