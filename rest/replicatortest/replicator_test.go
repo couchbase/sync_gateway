@@ -2911,9 +2911,9 @@ func TestReplicatorClosesConnectionAfterGetCollectionsError(t *testing.T) {
 	}
 }
 
-// TestReplicatorStopsCheckpointersAfterFailedStart asserts that a collections replicator stops the checkpointers it
-// started when another collection fails to start.
-func TestReplicatorStopsCheckpointersAfterFailedStart(t *testing.T) {
+// TestReplicatorReconnectsAfterPartialCheckpointerStart asserts that a collections replicator keeps retrying when a
+// collection fails to start before every collection has a checkpointer.
+func TestReplicatorReconnectsAfterPartialCheckpointerStart(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyWebSocket)
 
@@ -2924,8 +2924,8 @@ func TestReplicatorStopsCheckpointersAfterFailedStart(t *testing.T) {
 
 			blipCtx := newTestBlipContext(t)
 			blipCtx.HandlerForProfile[db.MessageGetCollections] = func(rq *blip.Message) {
-				// Collections start in random order, so the valid collection's checkpointer starts before the invalid
-				// collection fails in about half of the connect attempts.
+				// Collections start in random order, so the invalid collection fails before the valid collection has a
+				// checkpointer in about half of the connect attempts.
 				assert.NoError(t, rq.Response().SetJSONBody([]any{
 					map[string]any{},
 					map[string]any{"last_sequence": "invalid"},
@@ -2940,20 +2940,17 @@ func TestReplicatorStopsCheckpointersAfterFailedStart(t *testing.T) {
 			remoteURL, err := url.Parse(srv.URL + "/db")
 			require.NoError(t, err)
 
-			checkpointers := numCheckpointerGoroutines()
 			ar, stats := newReconnectTestReplicator(t, activeRT, direction, remoteURL, func(config *db.ActiveReplicatorConfig) {
 				config.CheckpointInterval = time.Minute
 				config.MaxReconnectInterval = 50 * time.Millisecond
 			})
 			require.Error(t, ar.Start(activeRT.Context()))
 
-			// The chance that no attempt started a checkpointer is 2^-10.
+			// The chance that no attempt failed before the valid collection had a checkpointer is 2^-10.
 			require.Eventually(t, func() bool {
 				return stats.NumConnectAttempts.Value() >= 10
 			}, 20*time.Second, 10*time.Millisecond)
-			require.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Equal(c, checkpointers, numCheckpointerGoroutines())
-			}, 10*time.Second, 10*time.Millisecond)
+			requireReplicatorState(t, ar, db.ReplicationStateReconnecting)
 		})
 	}
 }
@@ -3000,18 +2997,6 @@ func TestReplicatorClosesConnectionAfterSubprotocolError(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, int32(0), numOpen.Load(), "replicator left connections open")
 	}, 10*time.Second, 10*time.Millisecond)
-}
-
-// numCheckpointerGoroutines returns the number of running Checkpointer goroutines in this process.
-func numCheckpointerGoroutines() int {
-	buf := make([]byte, 1<<20)
-	for {
-		n := runtime.Stack(buf, true)
-		if n < len(buf) {
-			return strings.Count(string(buf[:n]), "db.(*Checkpointer).Start.func1(")
-		}
-		buf = make([]byte, 2*len(buf))
-	}
 }
 
 // runReconnectAfterFailedBlipSyncTest serves the first _blipsync of a default collection replication with

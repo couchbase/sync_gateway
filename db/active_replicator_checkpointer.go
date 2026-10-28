@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -204,12 +205,14 @@ func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]SequenceID) {
 	c.lock.Unlock()
 }
 
-func (c *Checkpointer) Start() {
-	// Start a time-based checkpointer goroutine
+// Start starts the time-based checkpointer goroutine, counted in running while it runs.
+func (c *Checkpointer) Start(running *atomic.Int32) {
 	if c.checkpointInterval > 0 {
 		c.closeWg.Add(1)
+		running.Add(1)
 		go func() {
 			defer c.closeWg.Done()
+			defer running.Add(-1)
 			ticker := time.NewTicker(c.checkpointInterval)
 			defer ticker.Stop()
 			for {
