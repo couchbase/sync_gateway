@@ -14,11 +14,13 @@ licenses/APL2.txt.
 import gzip
 import hashlib
 import http
+import math
 import optparse
 import os
 import pathlib
 import re
 import shutil
+import ssl
 import sys
 import tempfile
 import threading
@@ -29,7 +31,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import copy
-from typing import Callable, List, Optional, Union
+from typing import BinaryIO, Callable, List, Optional, Union
 
 
 class LogRedactor:
@@ -714,9 +716,101 @@ def flatten(iterable):
     return [e for e in iter_flatten(iterable)]
 
 
-def do_upload(path, url, proxy):
+# S3 rejects single uploads over 5 GiB, keep some headroom below that.
+MAX_UPLOAD_PART_SIZE = int(4.9 * 1024**3)
+
+
+class UploadError(Exception):
     """
-    Uploads file path to a URL and returns exit code for the program.
+    An expected server rejection. do_upload logs only its message, and logs a traceback for unexpected errors.
+    """
+
+
+class FileRangeReader:
+    """
+    Read at most length bytes of a file starting at offset, so a part can be streamed without copying it to disk.
+    """
+
+    def __init__(self, f: BinaryIO, offset: int, length: int) -> None:
+        self.f = f
+        self.remaining = length
+        f.seek(offset)
+
+    def read(self, size: int = -1) -> bytes:
+        """
+        http.client reads until it gets b"". Stop at the end of the range so the request does not send bytes from
+        the next part.
+        """
+        if size < 0 or size > self.remaining:
+            size = self.remaining
+        data = self.f.read(size)
+        self.remaining -= len(data)
+        return data
+
+
+def upload_part_order(num_parts: int) -> list[int]:
+    """
+    Returns the order to upload parts: the first part, then the last part, then the rest. A partial upload is either
+    a lone .000 or has a gap, so a receiver cannot mistake it for a complete file with fewer parts.
+    """
+    return [0, num_parts - 1, *range(1, num_parts - 1)]
+
+
+def part_url(url: str, part: int) -> str:
+    """
+    Returns url with .NNN appended to the path, not the end of the string, so a query string (for example an auth
+    signature) stays valid for every part.
+    """
+    parts = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit(parts._replace(path=f"{parts.path}.{part:03d}"))
+
+
+def redact_url(url: str) -> str:
+    """
+    Returns url with the query string redacted, because it can carry an auth signature.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if not parts.query:
+        return url
+    return urllib.parse.urlunsplit(parts._replace(query="<redacted>"))
+
+
+def upload_range(
+    opener: urllib.request.OpenerDirector,
+    f: BinaryIO,
+    offset: int,
+    length: int,
+    url: str,
+) -> None:
+    """
+    PUT length bytes of f starting at offset to url. urllib cannot get the length of a file-like body and falls back
+    to chunked encoding, which S3 rejects, so set Content-Length explicitly. Raises UploadError on a non-200 response.
+    """
+    request = urllib.request.Request(
+        url, data=FileRangeReader(f, offset, length), method="PUT"
+    )
+    request.add_header("Content-Type", "application/zip")
+    request.add_header("Content-Length", str(length))
+    try:
+        response = opener.open(request)
+    except urllib.error.HTTPError as e:
+        response = e
+    if response.status != 200:
+        body = response.read().decode(errors="replace")
+        raise UploadError(
+            f"Error uploading to {redact_url(url)}, expected status code 200, got status code: {response.status}, body: {body}"
+        )
+
+
+def do_upload(
+    path: str | os.PathLike[str],
+    url: str,
+    proxy: str,
+    part_size: int | None = MAX_UPLOAD_PART_SIZE,
+) -> int:
+    """
+    Uploads file path to a URL and returns exit code for the program. Files larger than part_size are uploaded as
+    parts with .000, .001, ... appended to the URL. If part_size is None, the file uploads in one request.
     """
 
     with open(path, "rb") as f:
@@ -726,21 +820,28 @@ def do_upload(path, url, proxy):
             # unless a proxy is explicitly passed, then use that instead
             proxy_handler = urllib.request.ProxyHandler({"https": proxy, "http": proxy})
 
-        opener = urllib.request.build_opener(proxy_handler)
-        request = urllib.request.Request(url, data=f, method="PUT")
-        request.add_header(str("Content-Type"), str("application/zip"))
-        request.add_header("Content-Length", os.fstat(f.fileno()).st_size)
+        opener = urllib.request.build_opener(
+            proxy_handler,
+            urllib.request.HTTPSHandler(context=ssl._create_unverified_context()),
+        )
+        size = os.fstat(f.fileno()).st_size
 
         try:
-            url = opener.open(request)
-            if url.getcode() == 200:
-                log("Done uploading")
+            if part_size is None or size <= part_size:
+                upload_range(opener, f, 0, size, url)
             else:
-                raise Exception(
-                    "Error uploading, expected status code 200, got status code: {0}".format(
-                        url.getcode()
+                num_parts = math.ceil(size / part_size)
+                for i in upload_part_order(num_parts):
+                    url_i = part_url(url, i)
+                    log(f"Uploading part {i + 1} of {num_parts} to {redact_url(url_i)}")
+                    offset = i * part_size
+                    upload_range(
+                        opener, f, offset, min(part_size, size - offset), url_i
                     )
-                )
+            log("Done uploading")
+        except UploadError as e:
+            log(str(e))
+            return 1
         except Exception:
             log(traceback.format_exc())
             return 1
@@ -816,4 +917,4 @@ def urlopen(url: str, auth_headers: dict[str, str]) -> http.client.HTTPResponse:
     Open a URL with basic authentication if username and password are provided. Can raise urllib.error.URLError if there is an error.
     """
     request = urllib.request.Request(url, headers=auth_headers)
-    return urllib.request.urlopen(request)
+    return urllib.request.urlopen(request, context=ssl._create_unverified_context())
