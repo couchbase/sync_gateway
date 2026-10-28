@@ -1790,43 +1790,21 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	rt2.WaitForPendingChanges()
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docC", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
+	rt1.WaitForNotFound("docC")
 
 	// Revoke B and ensure docB gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{"A"}))
 	RequireStatus(t, resp, http.StatusOK)
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docB", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
+	rt1.WaitForNotFound("docB")
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_role/"+revocationTestRole, GetRolePayload(t, "", rt2ds, []string{}))
 	RequireStatus(t, resp, http.StatusOK)
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
-		return resp.Code == http.StatusNotFound
-	})
-	require.NoError(t, err)
+	rt1.WaitForNotFound("docA")
+	rt1.WaitForNotFound("docAB")
+	rt1.WaitForNotFound("docABC")
 
 }
 
@@ -1906,23 +1884,11 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		assert.NoError(t, ar.Stop())
 	}()
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
+	rt1.WaitForNotFound("docA")
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
+	rt1.WaitForNotFound("docA1")
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
+	rt1.WaitForNotFound("docA2")
 }
 
 func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
@@ -1991,16 +1957,13 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
 	resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2ds, []string{}, nil))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Stop())
 
 	require.NoError(t, ar.Start(ctx1))
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
+	rt1.WaitForNotFound("docA")
 }
 
 func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
@@ -2072,28 +2035,15 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	// Revoke A and ensure docA, docAB, docABC get purged from local
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", RestTesterDefaultUserPassword, "", rt2ds, []string{}, nil))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	assert.NoError(t, ar.Stop())
 
 	require.NoError(t, ar.Start(ctx1))
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
+	rt1.WaitForNotFound("docA")
+	rt1.WaitForNotFound("docAB")
+	rt1.WaitForNotFound("docABC")
 }
 
 func TestReplicatorRevocationsFromZero(t *testing.T) {
@@ -2147,9 +2097,9 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
 	require.NoError(t, err)
 
-	_ = rt2.PutDoc("docA", `{"channels": ["A"]}`)
-	_ = rt2.PutDoc("docA1", `{"channels": ["A"]}`)
-	_ = rt2.PutDoc("docA2", `{"channels": ["A"]}`)
+	docAVersion := rt2.PutDoc("docA", `{"channels": ["A"]}`)
+	docA1Version := rt2.PutDoc("docA1", `{"channels": ["A"]}`)
+	docA2Version := rt2.PutDoc("docA2", `{"channels": ["A"]}`)
 	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
@@ -2159,51 +2109,23 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
 	// Be sure docs have arrived
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusOK
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
-		return resp.Code == http.StatusOK
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
-		return resp.Code == http.StatusOK
-	})
-	assert.NoError(t, err)
-
+	rt1.WaitForVersion("docA", docAVersion)
+	rt1.WaitForVersion("docA1", docA1Version)
+	rt1.WaitForVersion("docA2", docA2Version)
 	// Reset checkpoint (since 0)
 	require.NoError(t, ar.Reset())
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "letmein", "", rt2ds, []string{"B"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
+	rt2.WaitForPendingChanges()
 
 	require.NoError(t, ar.Start(ctx1))
 
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA1", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
-
-	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
-		return resp.Code == http.StatusNotFound
-	})
-	assert.NoError(t, err)
+	rt1.WaitForNotFound("docA")
+	rt1.WaitForNotFound("docA1")
+	rt1.WaitForNotFound("docA2")
 }
 
 func TestRevocationMessage(t *testing.T) {
@@ -2544,8 +2466,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		_ = rt2.PutDoc(fmt.Sprintf("docA%d", i), `{"channels": ["A"]}`)
 	}
 
+	var lastDocID string
 	for i := 0; i < 7; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+		lastDocID = fmt.Sprintf("docB%d", i)
+		_ = rt2.PutDoc(lastDocID, `{"channels": ["B"]}`)
 	}
 
 	rt2.WaitForPendingChanges()
@@ -2556,6 +2480,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
 	// to hit CBG-1591
+	waitForPullCheckpoint(t, ar, rt2.GetDocumentSequence(lastDocID))
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
@@ -2565,7 +2490,8 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 	// not processed by the rt1 receiver.
 	for i := 7; i < 15; i++ {
-		_ = rt2.PutDoc(fmt.Sprintf("docB%d", i), `{"channels": ["B"]}`)
+		lastDocID = fmt.Sprintf("docB%d", i)
+		_ = rt2.PutDoc(lastDocID, `{"channels": ["B"]}`)
 	}
 
 	rt2.WaitForPendingChanges()
@@ -2575,6 +2501,9 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	changesResults = rt1.WaitForChanges(8, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", changesResults.Last_Seq), "", true)
 
+	// Stopping before the revoked channel's sequence is checkpointed would rewind the next replication past the
+	// revocation, and the channel A docs would be purged once purge_on_removal is turned on below.
+	waitForPullCheckpoint(t, ar, rt2.GetDocumentSequence(lastDocID))
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 	sgwStats, err = base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -2620,6 +2549,16 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Shutdown replicator to close out
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+}
+
+// waitForPullCheckpoint waits for the pull replication to have checkpointed the given remote sequence. A pulled
+// document is written before its sequence reaches the checkpointer, so stopping in that window rewinds the next start.
+func waitForPullCheckpoint(t *testing.T, ar *db.ActiveReplicator, seq uint64) {
+	t.Helper()
+	expectedSeq := strconv.FormatUint(seq, 10)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, expectedSeq, ar.GetStatus(base.TestCtx(t)).LastSeqPull)
+	}, 20*time.Second, 10*time.Millisecond)
 }
 
 func TestRevocationDeletedRole(t *testing.T) {

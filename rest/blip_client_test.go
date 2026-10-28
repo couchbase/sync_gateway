@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"iter"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -1443,15 +1444,12 @@ func (btr *BlipTesterReplicator) GetAllMessagesSummary() string {
 	output := strings.Builder{}
 	messages := btr.GetMessages()
 	output.WriteString("{")
-	for i := 1; i <= len(messages); i++ {
-		if i == 0 {
-			output.WriteString("\n")
-		}
-		msg, ok := messages[blip.MessageNumber(i)]
-		require.True(btr.TB(), ok, "Message %d not found in messages map", i)
+	// messages are numbered from Sync Gateway, so different replicators (push/pull) can have missing values.
+	for _, msgNum := range slices.Sorted(maps.Keys(messages)) {
+		msg := messages[msgNum]
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
-		output.WriteString(fmt.Sprintf("\t%s:{Properties:%s Body: %s}\n", msg, msg.Properties, body))
+		fmt.Fprintf(&output, "\t%s:{Properties:%s Body: %s}\n", msg, msg.Properties, string(body))
 	}
 	output.WriteString("}")
 	return output.String()

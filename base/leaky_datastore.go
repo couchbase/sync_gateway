@@ -21,7 +21,7 @@ import (
 type LeakyDataStore struct {
 	dataStore DataStore
 	incrCount uint16
-	bucket    Bucket
+	bucket    *LeakyBucket
 	config    *LeakyBucketConfig
 }
 
@@ -278,6 +278,9 @@ func (lds *LeakyDataStore) WriteWithXattrs(ctx context.Context, k string, exp ui
 }
 
 func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (casOut uint64, err error) {
+	if cb := lds.bucket.getWriteUpdateWithXattrsCallback(); cb != nil {
+		cb(k)
+	}
 	if lds.config.UpdateCallback != nil {
 		wrapperCallback := func(current []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 			updatedDoc, err := callback(current, xattrs, cas)
@@ -294,8 +297,8 @@ func (lds *LeakyDataStore) WriteUpdateWithXattrs(ctx context.Context, k string, 
 }
 
 func (lds *LeakyDataStore) SetXattrs(ctx context.Context, k string, xv map[string][]byte) (casOut uint64, err error) {
-	if lds.config.SetXattrCallback != nil {
-		if err := lds.config.SetXattrCallback(k); err != nil {
+	if cb := lds.bucket.getSetXattrCallback(); cb != nil {
+		if err := cb(k); err != nil {
 			return 0, err
 		}
 	}
@@ -361,7 +364,22 @@ func (lds *LeakyDataStore) IsSupported(feature sgbucket.BucketStoreFeature) bool
 }
 
 func (lds *LeakyDataStore) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {
+	if cb := lds.bucket.getUpdateXattrsCallback(); cb != nil {
+		cb(k)
+	}
 	return lds.dataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
+}
+
+func (lds *LeakyDataStore) SetUpdateXattrsCallback(callback func(key string)) {
+	lds.bucket.setUpdateXattrsCallback(callback)
+}
+
+func (lds *LeakyDataStore) SetXattrCallback(callback func(key string) error) {
+	lds.bucket.setSetXattrCallback(callback)
+}
+
+func (lds *LeakyDataStore) SetWriteUpdateWithXattrsCallback(callback func(key string)) {
+	lds.bucket.setWriteUpdateWithXattrsCallback(callback)
 }
 
 func (lds *LeakyDataStore) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, xattrsToDelete []string, deleteBody bool, opts *sgbucket.MutateInOptions) (casOut uint64, err error) {

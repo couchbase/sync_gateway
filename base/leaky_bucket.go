@@ -13,6 +13,7 @@ import (
 	"context"
 	"expvar"
 	"fmt"
+	"sync"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -23,6 +24,7 @@ var _ Bucket = &LeakyBucket{}
 type LeakyBucket struct {
 	bucket      Bucket
 	config      *LeakyBucketConfig
+	configLock  sync.RWMutex // guards callbacks that tests change while DCP workers can call them
 	collections map[string]*LeakyDataStore
 }
 
@@ -150,6 +152,12 @@ type LeakyBucketConfig struct {
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
 
+	// UpdateXattrsCallback is called before UpdateXattrs. Useful for injecting delays or errors per-key.
+	UpdateXattrsCallback func(key string)
+
+	// WriteUpdateWithXattrsCallback is called before WriteUpdateWithXattrs. Useful for injecting delays per-key.
+	WriteUpdateWithXattrsCallback func(key string)
+
 	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
 	IncrCallback func()
 
@@ -173,4 +181,40 @@ func (b *LeakyBucket) StartDCPFeed(ctx context.Context, args sgbucket.FeedArgume
 		return b.bucket.StartDCPFeed(ctx, args, wrappedCallback, dbStats)
 	}
 	return b.bucket.StartDCPFeed(ctx, args, callback, dbStats)
+}
+
+func (b *LeakyBucket) getUpdateXattrsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b.config.UpdateXattrsCallback
+}
+
+func (b *LeakyBucket) setUpdateXattrsCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b.config.UpdateXattrsCallback = fn
+}
+
+func (b *LeakyBucket) getWriteUpdateWithXattrsCallback() func(string) {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b.config.WriteUpdateWithXattrsCallback
+}
+
+func (b *LeakyBucket) setWriteUpdateWithXattrsCallback(fn func(string)) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b.config.WriteUpdateWithXattrsCallback = fn
+}
+
+func (b *LeakyBucket) getSetXattrCallback() func(string) error {
+	b.configLock.RLock()
+	defer b.configLock.RUnlock()
+	return b.config.SetXattrCallback
+}
+
+func (b *LeakyBucket) setSetXattrCallback(fn func(string) error) {
+	b.configLock.Lock()
+	defer b.configLock.Unlock()
+	b.config.SetXattrCallback = fn
 }
