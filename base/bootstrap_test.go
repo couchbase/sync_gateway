@@ -605,7 +605,8 @@ func TestBootstrapInsertMetadataDocumentWritesPrimary(t *testing.T) {
 }
 
 // TestBootstrapKVOpStat checks that a connection made by WithKVOpStat adds every KV operation it makes to the stat,
-// including registry probes and fallback reads, and that the connection it was made from adds nothing.
+// including registry probes and fallback reads, and that the connection it was made from adds nothing. Like Couchbase
+// Server's kv_ops, it leaves out a subdoc lookup of a missing document, which is how xattr config persistence reads.
 func TestBootstrapKVOpStat(t *testing.T) {
 	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
 		f := newBootstrapDualTestFixture(t, useXattrs)
@@ -629,11 +630,16 @@ func TestBootstrapKVOpStat(t *testing.T) {
 
 		// The bucket's bootstrap target may not be cached yet, in which case every call first probes for the
 		// registry. These calls all leave the cache as it was, so each pays the same probe cost.
+		missOps := 1 // a read of a missing document
+		if useXattrs {
+			missOps = 0
+		}
+
 		var loaded bootstrapTestCfg
 		probeOps := kvOps(func() {
 			_, err := counted.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
 			require.Error(t, err)
-		}) - 2 // primary and fallback both miss
+		}) - 2*missOps // primary and fallback both miss
 		require.GreaterOrEqual(t, probeOps, 0)
 		if UnitTestUrlIsWalrus() {
 			// A Rosmar test bucket starts with no registry, so both collections are probed for it.
@@ -664,14 +670,14 @@ func TestBootstrapKVOpStat(t *testing.T) {
 		}), "the connection WithKVOpStat was called on does not add to the stat")
 		require.Equal(t, idleKVOpsBefore, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value(), "a read for a client request must not count as idle")
 
-		require.Equal(t, probeOps+2, kvOps(func() {
+		require.Equal(t, probeOps+2*missOps, kvOps(func() {
 			_, err := counted.GetMetadataDocument(ctx, f.BucketName, missingDocID, &loaded)
 			require.Error(t, err)
 		}), "primary and fallback reads")
 
 		// A fallback hit points this bucket's cache at the primary collection, so the calls after it make no probe.
 		var legacyCAS uint64
-		require.Equal(t, probeOps+2, kvOps(func() {
+		require.Equal(t, probeOps+missOps+1, kvOps(func() {
 			var err error
 			legacyCAS, err = counted.GetMetadataDocument(ctx, f.BucketName, legacyDocID, &loaded)
 			require.NoError(t, err)

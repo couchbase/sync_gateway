@@ -23,14 +23,17 @@ import (
 // Implementations support using either document body or xattr for storage
 type ConfigPersistence interface {
 	// Operations for interacting with raw config ([]byte).  gocb.Cas values represent document cas,
-	// cfgCas represent the cas value associated with the last mutation, and may not match document CAS
-	loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error)
+	// cfgCas represent the cas value associated with the last mutation, and may not match document CAS.
+	// loadRawConfig returns the number of KV ops it made, as loadConfig does.
+	loadRawConfig(ctx context.Context, c *gocb.Collection, key string) (value []byte, cas gocb.Cas, kvOps int, err error)
 	removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error)
 	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, err error)
 
 	// Operations for interacting with marshalled config. cfgCas represents the cas value
 	// associated with the last config mutation, and may not match document CAS. loadConfig can
-	// write as well as read, so it returns the number of KV ops it made.
+	// write as well as read, so it returns the number of KV ops it made. The count follows
+	// Couchbase Server's kv_ops, which Capella subtracts the idle KV op stat from: a subdoc lookup
+	// of a missing document is not in kv_ops, so it is not counted.
 	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cfgCas uint64, kvOps int, err error)
 	insertConfig(c *gocb.Collection, key string, value any) (cfgCas uint64, err error)
 
@@ -50,9 +53,10 @@ type kvOpStatConfigPersistence struct {
 	stat *SgwIntStat
 }
 
-func (p *kvOpStatConfigPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
-	p.stat.Add(1)
-	return p.ConfigPersistence.loadRawConfig(ctx, c, key)
+func (p *kvOpStatConfigPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, int, error) {
+	value, cas, kvOps, err := p.ConfigPersistence.loadRawConfig(ctx, c, key)
+	p.stat.Add(int64(kvOps))
+	return value, cas, kvOps, err
 }
 
 func (p *kvOpStatConfigPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {
@@ -135,7 +139,7 @@ func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, ke
 
 // loadRawConfig returns the config and document cas.  Does not restore deleted documents,
 // to avoid cas collisions with concurrent updates
-func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
+func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, int, error) {
 
 	var rawValue []byte
 	ops := []gocb.LookupInSpec{
@@ -153,14 +157,15 @@ func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb
 		if xattrContErr != nil {
 			SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Add(1)
 			DebugfCtx(ctx, KeyCRUD, "Found config document but No xattr config found for key=%s, path=%s: %v", key, cfgXattrConfigPath, xattrContErr)
-			return rawValue, 0, ErrNotFound
+			return rawValue, 0, 1, ErrNotFound
 		}
-		return rawValue, res.Cas(), nil
+		return rawValue, res.Cas(), 1, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
 		DebugfCtx(ctx, KeyCRUD, "No config document found for key=%s", key)
-		return rawValue, 0, ErrNotFound
+		// Couchbase Server leaves a subdoc lookup of a missing document out of kv_ops
+		return rawValue, 0, 0, ErrNotFound
 	} else {
-		return rawValue, 0, lookupErr
+		return rawValue, 0, 1, lookupErr
 	}
 }
 
@@ -248,7 +253,8 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		return uint64(casOut), kvOps, nil
 	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
 		DebugfCtx(ctx, KeyCRUD, "No config document found for key=%s", key)
-		return 0, kvOps, ErrNotFound
+		// Couchbase Server leaves a subdoc lookup of a missing document out of kv_ops
+		return 0, 0, ErrNotFound
 	} else {
 		return 0, kvOps, lookupErr
 	}
@@ -279,22 +285,22 @@ type DocumentBootstrapPersistence struct {
 	CommonBootstrapPersistence
 }
 
-func (dbp *DocumentBootstrapPersistence) loadRawConfig(_ context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
+func (dbp *DocumentBootstrapPersistence) loadRawConfig(_ context.Context, c *gocb.Collection, key string) ([]byte, gocb.Cas, int, error) {
 	res, err := c.Get(key, &gocb.GetOptions{
 		Transcoder: gocb.NewRawJSONTranscoder(),
 	})
 
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 1, err
 	}
 
 	var bucketValue []byte
 	err = res.Content(&bucketValue)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 1, err
 	}
 
-	return bucketValue, res.Cas(), err
+	return bucketValue, res.Cas(), 1, err
 }
 
 func (dbp *DocumentBootstrapPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {

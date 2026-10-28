@@ -655,9 +655,9 @@ func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bu
 // migrated between collections mid-operation. On a successful fallback hit the bucket's cached
 // bootstrap target is updated (via noteBucketFallbackHit) so subsequent ops route correctly.
 func (cc *CouchbaseCluster) loadConfigWithFallback(ctx context.Context, bucketName string, primary, fallback *gocb.Collection, docID string) (collection *gocb.Collection, value []byte, cas gocb.Cas, err error) {
-	value, cas, err = cc.configPersistence.loadRawConfig(ctx, primary, docID)
+	value, cas, _, err = cc.configPersistence.loadRawConfig(ctx, primary, docID)
 	if cc.shouldFallback(err, fallback) {
-		value, cas, err = cc.configPersistence.loadRawConfig(ctx, fallback, docID)
+		value, cas, _, err = cc.configPersistence.loadRawConfig(ctx, fallback, docID)
 		if err == nil {
 			cc.noteBucketFallbackHit(bucketName)
 			return fallback, value, cas, nil
