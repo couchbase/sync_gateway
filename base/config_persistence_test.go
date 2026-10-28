@@ -70,7 +70,7 @@ func TestConfigPersistence(t *testing.T) {
 			require.NoError(t, loadErr)
 			assert.Equal(t, insertCas, loadCas)
 			assert.Equal(t, configBody["sampleConfig"], loadedConfig["sampleConfig"])
-			rawConfig, rawCas, rawErr := cp.loadRawConfig(ctx, c, configKey)
+			rawConfig, rawCas, _, rawErr := cp.loadRawConfig(ctx, c, configKey)
 			require.NoError(t, rawErr)
 			assert.Equal(t, insertCas, uint64(rawCas))
 			assert.Equal(t, rawConfigBody, rawConfig)
@@ -95,7 +95,7 @@ func TestConfigPersistence(t *testing.T) {
 			assert.Equal(t, configBody["updated"], updatedConfig["updated"])
 
 			// retrieve raw config, validate updated value
-			rawConfig, rawCas, rawErr = cp.loadRawConfig(ctx, c, configKey)
+			rawConfig, rawCas, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
 			require.NoError(t, rawErr)
 			assert.Equal(t, updateCas, rawCas)
 			assert.JSONEq(t, string(updatedRawBody), string(rawConfig))
@@ -114,7 +114,7 @@ func TestConfigPersistence(t *testing.T) {
 			assert.Equal[error](t, ErrNotFound, loadErr)
 
 			// attempt to retrieve raw config, validate updated value
-			_, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
+			_, _, _, rawErr = cp.loadRawConfig(ctx, c, configKey)
 			require.Error(t, rawErr)
 		})
 	}
@@ -238,7 +238,7 @@ func TestConfigPersistenceXattrFormatMismatches(t *testing.T) {
 	existingStat := SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value()
 
 	// load config in xattr mode
-	data, _, err := xattrConfigPersistence.loadRawConfig(ctx, c, nonXattrConfigKey)
+	data, _, _, err := xattrConfigPersistence.loadRawConfig(ctx, c, nonXattrConfigKey)
 	require.Error(t, err)
 	assert.Nil(t, data)
 	assert.Equal(t, existingStat+1, SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value())
@@ -252,7 +252,7 @@ func TestConfigPersistenceXattrFormatMismatches(t *testing.T) {
 	existingStat = SyncGatewayStats.GlobalStats.ConfigStat.XattrFormatMismatches.Value()
 
 	// load config in non-xattr mode
-	data, _, err = nonXattrConfigPersistence.loadRawConfig(ctx, c, xattrConfigKey)
+	data, _, _, err = nonXattrConfigPersistence.loadRawConfig(ctx, c, xattrConfigKey)
 	require.NoError(t, err)
 	assert.Equal(t, []byte(`{"cfgVersion":1}`), data) // whitespace stripped cfgXattrBody
 
