@@ -18,17 +18,20 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"maps"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -346,6 +349,8 @@ func run() int {
 
 	if cfg.TestDebug {
 		extraEnv["SG_TEST_LOG_LEVEL"] = "debug"
+	}
+	if cfg.TestDebug || cfg.SGTestBucketDebug {
 		extraEnv["SG_TEST_BUCKET_POOL_DEBUG"] = "true"
 	}
 
@@ -424,6 +429,7 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 	cmd.Env = mergeEnv(envExtras...)
+	killProcessTreeOnCancel(cmd)
 	prefix := labelPrefix(args.label)
 	printCommand(prefix, cmd, envExtras...)
 	logger.Debugf("%s  out  %s", prefix, logFile)
@@ -468,6 +474,8 @@ func runGotestsum(ctx context.Context, args goTestArgs, logFile string, envExtra
 		}
 		if err := scanner.Err(); err != nil {
 			nonFatal.add(fmt.Errorf("gotestsum output scanner: %w", err))
+			// Keep reading so the writer side never blocks, which would hang cmd.Wait().
+			_, _ = io.Copy(outFile, pr)
 		}
 	}()
 
@@ -559,7 +567,10 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 		logger.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	// The test processes run in their own process groups, so a terminal Ctrl-C reaches them only through ctx.
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithCancelCause(sigCtx)
 	defer cancel(nil)
 
 	var wg sync.WaitGroup
@@ -624,7 +635,10 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 		}
 	}
 
-	anyFailed := false
+	anyFailed := sigCtx.Err() != nil
+	if anyFailed {
+		nonFatal.add(errors.New("integration tests interrupted by signal"))
+	}
 	for _, r := range results {
 		if r.failed {
 			anyFailed = true
