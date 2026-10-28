@@ -282,6 +282,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 		c.Bucket.waitForAvailKvOp()
 		getResult, err := c.Collection.Get(k, getOptions)
 		c.Bucket.releaseKvOp()
+		addKVOps(ctx, 1)
 
 		if err != nil {
 			if !errors.Is(err, gocb.ErrDocumentNotFound) {
@@ -355,6 +356,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 			}
 		}
 		c.Bucket.releaseKvOp()
+		addKVOps(ctx, 1)
 
 		if casRetry {
 			// retry on cas failure

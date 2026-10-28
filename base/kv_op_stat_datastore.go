@@ -18,9 +18,9 @@ import (
 // even on a node with no clients uses NewIdleKVOpDataStore instead, so that its KV operations are counted as idle.
 // A nil stat returns ds unchanged.
 //
-// Each attempt of Update counts as a read, plus a write when it makes one, so CAS retries are counted. For a
-// MetadataStore, the primary and fallback DataStores are wrapped instead of the MetadataStore itself, so its fallback
-// reads and its own retries are counted too.
+// A call that makes several KV operations, such as the CAS retries of Update or the extra steps of DeleteWithXattrs on a
+// tombstone, counts each of them. For a MetadataStore, the primary and fallback DataStores are wrapped instead of the
+// MetadataStore itself, so its fallback reads and its own retries are counted too.
 func NewKVOpStatDataStore(ds DataStore, stat *SgwIntStat) DataStore {
 	if stat == nil {
 		return ds
@@ -34,6 +34,28 @@ func NewKVOpStatDataStore(ds DataStore, stat *SgwIntStat) DataStore {
 // NewIdleKVOpDataStore wraps ds so that every KV operation made through it is counted as an idle KV op.
 func NewIdleKVOpDataStore(ds DataStore) DataStore {
 	return NewKVOpStatDataStore(ds, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps)
+}
+
+// kvOpCountKey is the context key for a kvOpCount.
+type kvOpCountKey struct{}
+
+// kvOpCount holds the KV operations that one DataStore call reports making. Only Couchbase Server's Collection reports
+// them, from the methods that make several KV operations in one call.
+type kvOpCount struct {
+	n int
+}
+
+// withKVOpCount returns a context that a DataStore call reports its KV operations to, and the count it reports to.
+func withKVOpCount(ctx context.Context) (context.Context, *kvOpCount) {
+	count := &kvOpCount{}
+	return context.WithValue(ctx, kvOpCountKey{}, count), count
+}
+
+// addKVOps adds n to the KV operation count in ctx, if there is one.
+func addKVOps(ctx context.Context, n int) {
+	if count, ok := ctx.Value(kvOpCountKey{}).(*kvOpCount); ok {
+		count.n += n
+	}
 }
 
 // kvOpCountingLeaf adds the KV operations made on a single DataStore to stat.
@@ -51,6 +73,16 @@ func newKVOpCountingLeaf(ds DataStore, stat *SgwIntStat) DataStore {
 
 func (c *kvOpCountingLeaf) count(n int) {
 	c.stat.Add(int64(n))
+}
+
+// countReported counts the KV operations that the underlying DataStore reported. A DataStore that reports none, such as
+// rosmar, is counted as estimated instead.
+func (c *kvOpCountingLeaf) countReported(reported *kvOpCount, estimated int) {
+	if reported.n > 0 {
+		c.count(reported.n)
+		return
+	}
+	c.count(estimated)
 }
 
 func (c *kvOpCountingLeaf) Get(ctx context.Context, k string, rv any) (uint64, error) {
@@ -108,20 +140,22 @@ func (c *kvOpCountingLeaf) Remove(ctx context.Context, k string, cas uint64) (ui
 	return c.DataStore.Remove(ctx, k, cas)
 }
 
-// Update counts a read for each attempt, and a write for each attempt whose callback asks for one. The underlying
-// DataStore runs the CAS retry loop, so the callback is the only place each attempt can be seen.
+// Update counts the KV operations the underlying DataStore reports. Otherwise it estimates them from the callback, which
+// is the only place each attempt of the underlying CAS retry loop can be seen: a read for each attempt, and a write for
+// each attempt whose callback asks for one.
 func (c *kvOpCountingLeaf) Update(ctx context.Context, k string, exp uint32, callback sgbucket.UpdateFunc) (uint64, error) {
-	attempts := 0
+	ctx, reported := withKVOpCount(ctx)
+	attempts, writes := 0, 0
 	casOut, err := c.DataStore.Update(ctx, k, exp, func(current []byte) ([]byte, *uint32, bool, error) {
 		attempts++
 		updated, expiry, isDelete, cbErr := callback(current)
 		if cbErr == nil && (updated != nil || expiry != nil || isDelete) {
-			c.count(1)
+			writes++
 		}
 		return updated, expiry, isDelete, cbErr
 	})
 	// A read that fails returns before the callback runs.
-	c.count(max(attempts, 1))
+	c.countReported(reported, max(attempts, 1)+writes)
 	return casOut, err
 }
 
@@ -195,20 +229,25 @@ func (c *kvOpCountingLeaf) GetWithXattrs(ctx context.Context, k string, xattrKey
 	return c.DataStore.GetWithXattrs(ctx, k, xattrKeys)
 }
 
+// DeleteWithXattrs counts the KV operations the underlying DataStore reports, because on Couchbase Server a doc with no
+// body or no xattrs takes more than one.
 func (c *kvOpCountingLeaf) DeleteWithXattrs(ctx context.Context, k string, xattrKeys []string) error {
-	c.count(1)
-	return c.DataStore.DeleteWithXattrs(ctx, k, xattrKeys)
+	ctx, reported := withKVOpCount(ctx)
+	err := c.DataStore.DeleteWithXattrs(ctx, k, xattrKeys)
+	c.countReported(reported, 1)
+	return err
 }
 
 // WriteUpdateWithXattrs counts like Update, except that the first attempt makes no read when the caller passes the
 // document it already has.
 func (c *kvOpCountingLeaf) WriteUpdateWithXattrs(ctx context.Context, k string, xattrKeys []string, exp uint32, previous *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions, callback sgbucket.WriteUpdateWithXattrsFunc) (uint64, error) {
-	attempts := 0
+	ctx, reported := withKVOpCount(ctx)
+	attempts, writes := 0, 0
 	casOut, err := c.DataStore.WriteUpdateWithXattrs(ctx, k, xattrKeys, exp, previous, opts, func(doc []byte, xattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 		attempts++
 		updated, cbErr := callback(doc, xattrs, cas)
 		if cbErr == nil {
-			c.count(1)
+			writes++
 		}
 		return updated, cbErr
 	})
@@ -218,7 +257,7 @@ func (c *kvOpCountingLeaf) WriteUpdateWithXattrs(ctx context.Context, k string, 
 	} else if previous != nil {
 		reads-- // the first attempt uses previous instead of reading
 	}
-	c.count(reads)
+	c.countReported(reported, reads+writes)
 	return casOut, err
 }
 

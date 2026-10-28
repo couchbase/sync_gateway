@@ -9,8 +9,12 @@
 package base
 
 import (
+	"context"
+	"errors"
+	"strconv"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
@@ -61,6 +65,197 @@ func TestKVOpStatDataStoreUpdate(t *testing.T) {
 		require.Equal(t, 2, attempts)
 		assert.Equal(t, int64(4), stat.Value(), "a read and a write for each attempt")
 	})
+}
+
+// TestKVOpStatDataStoreUpdateFailedRetryRead checks that the read of a CAS retry is counted when it fails, which
+// returns before the callback runs. Couchbase Server reads the doc as JSON, so a doc rewritten as binary makes the retry
+// read fail after it reaches the server. Rosmar does not care about the doc's type, so the retry read succeeds there.
+func TestKVOpStatDataStoreUpdateFailedRetryRead(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("needs Couchbase Server to make the retry read fail")
+	}
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	underlying := bucket.GetSingleDataStore()
+
+	key := t.Name()
+	require.NoError(t, underlying.Set(ctx, key, 0, nil, map[string]int{"v": 1}))
+	stat := &SgwIntStat{}
+	datastore := NewKVOpStatDataStore(underlying, stat)
+	attempts := 0
+	_, err := datastore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
+		attempts++
+		// A concurrent writer changes the CAS, so the write fails and the retry reads a binary doc.
+		require.NoError(t, underlying.SetRaw(ctx, key, 0, nil, []byte("binary")))
+		return []byte(`{"v":2}`), nil, false, nil
+	})
+	require.Error(t, err)
+	require.Equal(t, 1, attempts)
+	assert.Equal(t, int64(3), stat.Value(), "read, failed write, and failed retry read")
+}
+
+// TestKVOpStatDataStoreWriteUpdateWithXattrs checks that each attempt of a WriteUpdateWithXattrs is counted as a read
+// and a write, except a first attempt that uses the doc the caller passed.
+func TestKVOpStatDataStoreWriteUpdateWithXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	underlying := bucket.GetSingleDataStore()
+	xattrKeys := []string{SyncXattrName}
+
+	for _, withPrevious := range []bool{false, true} {
+		t.Run("CAS retry, previous="+strconv.FormatBool(withPrevious), func(t *testing.T) {
+			key := t.Name()
+			cas, err := underlying.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"v":1}`), map[string][]byte{SyncXattrName: []byte(`{"x":1}`)}, nil, nil)
+			require.NoError(t, err)
+			var previous *sgbucket.BucketDocument
+			if withPrevious {
+				previous = &sgbucket.BucketDocument{Body: []byte(`{"v":1}`), Xattrs: map[string][]byte{SyncXattrName: []byte(`{"x":1}`)}, Cas: cas}
+			}
+			stat := &SgwIntStat{}
+			datastore := NewKVOpStatDataStore(underlying, stat)
+			attempts := 0
+			_, err = datastore.WriteUpdateWithXattrs(ctx, key, xattrKeys, 0, previous, &sgbucket.MutateInOptions{}, func([]byte, map[string][]byte, uint64) (sgbucket.UpdatedDoc, error) {
+				attempts++
+				if attempts == 1 {
+					// A concurrent writer changes the CAS, so the first write fails and the update is retried.
+					_, err := underlying.SetXattrs(ctx, key, map[string][]byte{SyncXattrName: []byte(`{"x":2}`)})
+					require.NoError(t, err)
+				}
+				return sgbucket.UpdatedDoc{Doc: []byte(`{"v":3}`), Xattrs: map[string][]byte{SyncXattrName: []byte(`{"x":3}`)}}, nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, 2, attempts)
+			expectedKVOps := 4 // a read and a write for each attempt
+			if withPrevious {
+				expectedKVOps = 3 // the first attempt uses previous instead of reading
+			}
+			assert.Equal(t, int64(expectedKVOps), stat.Value())
+		})
+	}
+}
+
+// TestKVOpStatDataStoreDeleteWithXattrs checks that every KV operation of a DeleteWithXattrs is counted. On Couchbase
+// Server a doc with no body or no xattrs takes more than one, which rosmar does in one.
+func TestKVOpStatDataStoreDeleteWithXattrs(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	underlying := bucket.GetSingleDataStore()
+	xattrKeys := []string{SyncXattrName}
+	xattrs := map[string][]byte{SyncXattrName: []byte(`{"x":1}`)}
+
+	testCases := []struct {
+		name string
+		// setup writes the doc to delete
+		setup func(t *testing.T, key string)
+		// expectedServerKVOps is the count on Couchbase Server
+		expectedServerKVOps int
+	}{
+		{
+			name: "body and xattrs",
+			setup: func(t *testing.T, key string) {
+				_, err := underlying.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"v":1}`), xattrs, nil, nil)
+				require.NoError(t, err)
+			},
+			expectedServerKVOps: 1,
+		},
+		{
+			// The body and xattrs delete fails, so the CAS is read and the xattrs are deleted on their own.
+			name: "tombstone",
+			setup: func(t *testing.T, key string) {
+				cas, err := underlying.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"v":1}`), xattrs, nil, nil)
+				require.NoError(t, err)
+				_, err = underlying.WriteTombstoneWithXattrs(ctx, key, 0, cas, xattrs, nil, true, nil)
+				require.NoError(t, err)
+			},
+			expectedServerKVOps: 3,
+		},
+		{
+			// The body and xattrs delete fails, so the body is deleted on its own.
+			name: "body only",
+			setup: func(t *testing.T, key string) {
+				require.NoError(t, underlying.Set(ctx, key, 0, nil, map[string]int{"v": 1}))
+			},
+			expectedServerKVOps: 2,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			key := t.Name()
+			testCase.setup(t, key)
+			stat := &SgwIntStat{}
+			datastore := NewKVOpStatDataStore(underlying, stat)
+			require.NoError(t, datastore.DeleteWithXattrs(ctx, key, xattrKeys))
+			expectedKVOps := testCase.expectedServerKVOps
+			if UnitTestUrlIsWalrus() {
+				expectedKVOps = 1
+			}
+			assert.Equal(t, int64(expectedKVOps), stat.Value())
+		})
+	}
+}
+
+// kvOpReportingDataStore reports a fixed number of KV operations for each call, like Couchbase Server's Collection
+// does for the calls that make several, and then fails without running the callback.
+type kvOpReportingDataStore struct {
+	DataStore
+	reported int
+}
+
+var errKVOpReportingDataStore = errors.New("kvOpReportingDataStore")
+
+func (ds *kvOpReportingDataStore) Update(ctx context.Context, _ string, _ uint32, _ sgbucket.UpdateFunc) (uint64, error) {
+	addKVOps(ctx, ds.reported)
+	return 0, errKVOpReportingDataStore
+}
+
+func (ds *kvOpReportingDataStore) WriteUpdateWithXattrs(ctx context.Context, _ string, _ []string, _ uint32, _ *sgbucket.BucketDocument, _ *sgbucket.MutateInOptions, _ sgbucket.WriteUpdateWithXattrsFunc) (uint64, error) {
+	addKVOps(ctx, ds.reported)
+	return 0, errKVOpReportingDataStore
+}
+
+func (ds *kvOpReportingDataStore) DeleteWithXattrs(ctx context.Context, _ string, _ []string) error {
+	addKVOps(ctx, ds.reported)
+	return errKVOpReportingDataStore
+}
+
+// TestKVOpStatDataStoreReportedKVOps checks that the KV operations the underlying DataStore reports are counted instead
+// of the estimate, which would count one read for a call whose callback never ran.
+func TestKVOpStatDataStoreReportedKVOps(t *testing.T) {
+	ctx := TestCtx(t)
+	testCases := []struct {
+		name string
+		op   func(DataStore) error
+	}{
+		{
+			name: "Update",
+			op: func(ds DataStore) error {
+				_, err := ds.Update(ctx, "doc", 0, nil)
+				return err
+			},
+		},
+		{
+			name: "WriteUpdateWithXattrs",
+			op: func(ds DataStore) error {
+				_, err := ds.WriteUpdateWithXattrs(ctx, "doc", nil, 0, nil, nil, nil)
+				return err
+			},
+		},
+		{
+			name: "DeleteWithXattrs",
+			op:   func(ds DataStore) error { return ds.DeleteWithXattrs(ctx, "doc", nil) },
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stat := &SgwIntStat{}
+			datastore := NewKVOpStatDataStore(&kvOpReportingDataStore{reported: 3}, stat)
+			require.ErrorIs(t, testCase.op(datastore), errKVOpReportingDataStore)
+			assert.Equal(t, int64(3), stat.Value())
+		})
+	}
 }
 
 // TestKVOpStatDataStoreMetadataStore checks that the reads a MetadataStore makes from its fallback, and the extra
