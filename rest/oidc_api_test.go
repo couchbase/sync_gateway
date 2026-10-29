@@ -2820,12 +2820,12 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 func TestPutDBConfigOIDC(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
-	sc, closeFn := StartBootstrapServer(t)
-	defer closeFn()
-
 	ctx := base.TestCtx(t)
 	tb := base.GetTestBucket(t)
 	defer tb.Close(ctx)
+
+	sc, closeFn := StartBootstrapServer(t)
+	defer closeFn()
 
 	resp := BootstrapAdminRequest(t, sc, http.MethodPut, "/db/",
 		fmt.Sprintf(
