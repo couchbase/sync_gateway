@@ -1065,6 +1065,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			select {
 			case bh.inFlightRevsThrottle <- struct{}{}:
 			case <-bh.terminator:
+				stats.throttledRevTime.Add(time.Since(throttleStart).Nanoseconds())
 				return ErrClosedBLIPSender
 			}
 			stats.throttledRevTime.Add(time.Since(throttleStart).Nanoseconds())

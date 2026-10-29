@@ -1312,6 +1312,8 @@ func TestBlipRevsThrottleUnblockedOnClose(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, int64(numThrottledRevs), revsFinished())
 	}, time.Second*20, time.Millisecond*50, "revs waiting for an inFlightRevsThrottle slot were not released when the connection was closed")
+	// no throttled rev ever got a slot, so all of the recorded wait comes from the close path
+	require.Greater(t, pushStats.WriteThrottledTime.Value(), int64(0), "time spent waiting before the connection closed was not recorded")
 }
 
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
