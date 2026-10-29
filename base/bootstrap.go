@@ -835,6 +835,8 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 		return 0, err
 	}
 
+	// IsCasMismatch also matches the error of a subdoc write with a stale CAS, which is how xattr config persistence
+	// writes.
 	for {
 		newConfig, err := updateCallback(bucketValue, uint64(cas))
 		if err != nil {
@@ -845,7 +847,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 		if newConfig == nil {
 			removeCasOut, _, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
 			if err != nil {
-				if errors.Is(err, gocb.ErrCasMismatch) {
+				if IsCasMismatch(err) {
 					collection, bucketValue, cas, err = cc.loadConfigWithFallback(ctx, location, primary, fallback, docID)
 					if err != nil {
 						return 0, err
@@ -859,7 +861,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 
 		replaceCfgCasOut, _, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
-			if errors.Is(err, gocb.ErrCasMismatch) {
+			if IsCasMismatch(err) {
 				collection, bucketValue, cas, err = cc.loadConfigWithFallback(ctx, location, primary, fallback, docID)
 				if err != nil {
 					return 0, err
@@ -1109,12 +1111,13 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 		fallbackCas := gocb.Cas(cas)
 
 		_, _, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
-		if insertErr != nil && !errors.Is(insertErr, gocb.ErrDocumentExists) {
+		if insertErr != nil && !errors.Is(insertErr, ErrAlreadyExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
 
 		if _, _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
-			if errors.Is(err, gocb.ErrCasMismatch) {
+			// IsCasMismatch also matches a stale CAS on xattr config persistence's subdoc remove.
+			if IsCasMismatch(err) {
 				InfofCtx(ctx, KeyConfig, "Bootstrap migration: skipping fallback delete for %q on bucket %q (CAS mismatch — concurrent write), caller should re-run", MD(docID), MD(bucket))
 				continue
 			}

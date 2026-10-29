@@ -729,7 +729,8 @@ func (c *RosmarCluster) MigrateBootstrapDocs(ctx context.Context, bucket string,
 		}
 		c.countKVOps(1)
 		_, insertErr := systemCol.WriteCas(ctx, docID, 0, 0, body, 0)
-		if insertErr != nil && !errors.Is(insertErr, sgbucket.ErrKeyExists) {
+		// A CAS 0 write of a doc that already exists fails with a CAS mismatch.
+		if insertErr != nil && !IsCasMismatch(insertErr) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
 		c.countKVOps(1)

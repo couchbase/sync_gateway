@@ -9,9 +9,11 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -905,4 +907,112 @@ func TestBootstrapFallbackDisabledOnDroppedDefaultCollection(t *testing.T) {
 			require.False(t, cc.bootstrapFallbackDisabled("other-bucket"), "latch must be per-bucket")
 		})
 	}
+}
+
+// TestBootstrapUpdateMetadataDocumentCASRetry checks that an UpdateMetadataDocument that loses a CAS race to a
+// concurrent writer reads the doc again and retries, for both a replace and a remove. A subdoc write with a stale CAS,
+// which is how xattr config persistence writes, fails with a different error to a plain KV write.
+func TestBootstrapUpdateMetadataDocumentCASRetry(t *testing.T) {
+	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
+		for _, remove := range []bool{false, true} {
+			t.Run("remove="+strconv.FormatBool(remove), func(t *testing.T) {
+				f := newBootstrapDualTestFixture(t, useXattrs)
+				ctx := TestCtx(t)
+				docID := SyncDocPrefix + "metadata-update-cas-retry"
+				t.Cleanup(func() { f.CleanupDoc(t, docID) })
+				_, err := f.Cluster.InsertMetadataDocument(ctx, f.BucketName, docID, bootstrapTestCfg{Foo: "initial"})
+				require.NoError(t, err)
+
+				attempts := 0
+				_, err = f.Cluster.UpdateMetadataDocument(ctx, f.BucketName, docID, func(_ []byte, cas uint64) ([]byte, error) {
+					attempts++
+					if attempts == 1 {
+						_, err := f.Cluster.WriteMetadataDocument(ctx, f.BucketName, docID, cas, bootstrapTestCfg{Foo: "concurrent"})
+						require.NoError(t, err)
+					}
+					if remove {
+						return nil, nil
+					}
+					return JSONMarshal(bootstrapTestCfg{Foo: "updated"})
+				})
+				require.NoError(t, err)
+				require.Equal(t, 2, attempts, "the first write loses the CAS race and is retried")
+
+				var loaded bootstrapTestCfg
+				_, err = f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &loaded)
+				if remove {
+					require.True(t, IsDocNotFoundError(err), "expected the doc to be removed, got %v", err)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, "updated", loaded.Foo)
+				}
+			})
+		}
+	})
+}
+
+// TestBootstrapMigrateBootstrapDocsPrimaryExists checks that migrating a doc that is already in the primary collection
+// leaves the primary copy as it is and removes the fallback copy, rather than failing the migration.
+func TestBootstrapMigrateBootstrapDocsPrimaryExists(t *testing.T) {
+	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
+		f := newBootstrapDualTestFixture(t, useXattrs)
+		ctx := TestCtx(t)
+		docID := SyncDocPrefix + "migrate-primary-exists"
+		t.Cleanup(func() { f.CleanupDoc(t, docID) })
+
+		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "first"})
+		require.NoError(t, f.Cluster.MigrateBootstrapDocs(ctx, f.BucketName, []string{docID}))
+		require.True(t, f.PrimaryExists(t, docID))
+		require.False(t, f.FallbackExists(t, docID))
+
+		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "second"})
+		require.NoError(t, f.Cluster.MigrateBootstrapDocs(ctx, f.BucketName, []string{docID}))
+		require.False(t, f.FallbackExists(t, docID))
+
+		var loaded bootstrapTestCfg
+		_, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, docID, &loaded)
+		require.NoError(t, err)
+		require.Equal(t, "first", loaded.Foo, "the primary copy is not overwritten")
+	})
+}
+
+// rewriteAfterLoadConfigPersistence rewrites each doc it loads with the same value, so a later CAS-safe write of that
+// doc fails as if a concurrent writer had changed it.
+type rewriteAfterLoadConfigPersistence struct {
+	ConfigPersistence
+	t *testing.T
+}
+
+func (p *rewriteAfterLoadConfigPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (uint64, int, error) {
+	cas, kvOps, err := p.ConfigPersistence.loadConfig(ctx, c, key, valuePtr)
+	if err == nil {
+		raw, rawCas, _, rawErr := p.ConfigPersistence.loadRawConfig(ctx, c, key)
+		require.NoError(p.t, rawErr)
+		_, _, rewriteErr := p.ConfigPersistence.replaceRawConfig(c, key, raw, rawCas)
+		require.NoError(p.t, rewriteErr)
+	}
+	return cas, kvOps, err
+}
+
+// TestBootstrapMigrateBootstrapDocsFallbackChanged checks that a migration whose fallback copy changes before it is
+// removed keeps the fallback copy and carries on, leaving the caller to run the migration again.
+func TestBootstrapMigrateBootstrapDocsFallbackChanged(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("changes the doc between the read and the remove through CouchbaseCluster's config persistence")
+	}
+	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
+		f := newBootstrapDualTestFixture(t, useXattrs)
+		ctx := TestCtx(t)
+		docID := SyncDocPrefix + "migrate-fallback-changed"
+		t.Cleanup(func() { f.CleanupDoc(t, docID) })
+		f.SeedLegacy(t, docID, bootstrapTestCfg{Foo: "legacy"})
+
+		cluster, ok := f.Cluster.(*CouchbaseCluster)
+		require.True(t, ok)
+		cluster.configPersistence = &rewriteAfterLoadConfigPersistence{ConfigPersistence: cluster.configPersistence, t: t}
+
+		require.NoError(t, cluster.MigrateBootstrapDocs(ctx, f.BucketName, []string{docID}))
+		require.True(t, f.PrimaryExists(t, docID))
+		require.True(t, f.FallbackExists(t, docID), "the changed fallback copy is kept")
+	})
 }
