@@ -324,54 +324,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		cas = doc.Cas
 	}
 
-	compactedChannels := make(base.Set)
-	channelsToDeleteMap := make(map[string]struct{})
-	for _, chanName := range channelsToDelete {
-		channelsToDeleteMap[chanName] = struct{}{}
-	}
-
-	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
-		var del bool
-		if seq != 0 {
-			del = channel.End <= seq
-		} else {
-			_, del = channelsToDeleteMap[channel.Name]
-		}
-		if del {
-			compactedChannels.Add(channel.Name)
-		}
-		return del
-	})
-
-	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
-		var del bool
-		if seq != 0 {
-			del = channel.End != 0 && channel.End <= seq
-		} else {
-			_, ok := channelsToDeleteMap[channel.Name]
-			del = channel.End != 0 && ok
-		}
-		if del {
-			compactedChannels.Add(channel.Name)
-		}
-		return del
-	})
-
-	for chanName, chanEntry := range doc.SyncData.Channels {
-		if chanEntry == nil {
-			continue
-		}
-		var del bool
-		if seq != 0 {
-			del = chanEntry.Seq <= seq
-		} else {
-			_, del = channelsToDeleteMap[chanName]
-		}
-		if del {
-			compactedChannels.Add(chanName)
-			delete(doc.SyncData.Channels, chanName)
-		}
-	}
+	compactedChannels := doc.CompactHistory(seq, channelsToDelete)
 
 	// Exit early if no compaction occurred
 	if len(compactedChannels) == 0 {
