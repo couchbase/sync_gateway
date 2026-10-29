@@ -187,6 +187,7 @@ type DatabaseContext struct {
 	numVBuckets                        uint16                            // Number of vbuckets in the bucket
 	SameSiteCookieMode                 http.SameSite
 	DBStateManager                     *DatabaseStateMgr // Manager used to manage the state of processes across nodes
+	TimestampsManger                   *TimestampsManager
 
 	scopeName string // name of the single scope for the database
 }
@@ -196,52 +197,53 @@ type Scope struct {
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions                     *CacheOptions
-	RevisionCacheOptions             *RevisionCacheOptions
-	OldRevExpirySeconds              uint32
-	AdminInterface                   *string
-	UnsupportedOptions               *UnsupportedOptions
-	OIDCOptions                      *auth.OIDCOptions
-	LocalJWTConfig                   auth.LocalJWTConfig
-	ImportOptions                    ImportOptions
-	LocalDocExpirySecs               uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride             bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName                string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly            bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserFunctions                    *UserFunctions   // JS/N1QL functions clients can call
-	AllowConflicts                   *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader        *bool            // False disables setting of 'WWW-Authenticate' header
-	DisablePasswordAuthentication    bool             // True enforces OIDC/guest only
-	UseViews                         bool             // Force use of views
-	DeltaSyncOptions                 DeltaSyncOptions // Delta Sync Options
-	CompactInterval                  uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
-	SGReplicateOptions               SGReplicateOptions
-	SlowQueryWarningThreshold        time.Duration
-	QueryPaginationLimit             int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
-	UserXattrKey                     string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
-	ClientPartitionWindow            *time.Duration
-	BcryptCost                       int
-	GroupID                          string
-	JavascriptTimeout                time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
-	UseLegacySyncDocsIndex           bool
-	Scopes                           ScopesOptions
-	MetadataStore                    base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
-	MetadataID                       string         // MetadataID used for metadata storage
-	BlipStatsReportingInterval       int64          // interval to report blip stats in milliseconds
-	ChangesRequestPlus               bool           // Sets the default value for request_plus, for non-continuous changes feeds
-	ConfigPrincipals                 *ConfigPrincipals
-	TestPurgeIntervalOverride        *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
-	TestVersionPruningWindowOverride *time.Duration    // If set, use this value for db.GetVersionPruningWindow - test seam to force specific pruning window for tests
-	LoggingConfig                    *base.DbLogConfig // Per-database log configuration
-	MaxConcurrentChangesBatches      *int              // Maximum number of changes batches to process concurrently per replication
-	MaxConcurrentRevs                *int              // Maximum number of revs to process concurrently per replication
-	NumIndexReplicas                 uint              // Number of replicas for GSI indexes
-	NumIndexPartitions               *uint32           // Number of partitions for GSI indexes, if not set will default to 1
-	ImportVersion                    uint64            // Version included in import DCP checkpoints, incremented when collections added to db
-	DisablePublicAllDocs             bool              // Disable public access to the _all_docs endpoint for this database
-	StoreLegacyRevTreeData           *bool             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
-	UseSystemMetadataCollection      bool              // Whether to use a system collection for SG metadata storage
-	EnableChannelHistoryCompaction   bool              // Whether document writes compact the channel history of the document
+	CacheOptions                          *CacheOptions
+	RevisionCacheOptions                  *RevisionCacheOptions
+	OldRevExpirySeconds                   uint32
+	AdminInterface                        *string
+	UnsupportedOptions                    *UnsupportedOptions
+	OIDCOptions                           *auth.OIDCOptions
+	LocalJWTConfig                        auth.LocalJWTConfig
+	ImportOptions                         ImportOptions
+	LocalDocExpirySecs                    uint32           // The _local doc expiry time in seconds
+	SecureCookieOverride                  bool             // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName                     string           // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly                 bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	UserFunctions                         *UserFunctions   // JS/N1QL functions clients can call
+	AllowConflicts                        *bool            // False forbids creating conflicts
+	SendWWWAuthenticateHeader             *bool            // False disables setting of 'WWW-Authenticate' header
+	DisablePasswordAuthentication         bool             // True enforces OIDC/guest only
+	UseViews                              bool             // Force use of views
+	DeltaSyncOptions                      DeltaSyncOptions // Delta Sync Options
+	CompactInterval                       uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	SGReplicateOptions                    SGReplicateOptions
+	SlowQueryWarningThreshold             time.Duration
+	QueryPaginationLimit                  int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
+	UserXattrKey                          string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
+	ClientPartitionWindow                 *time.Duration
+	BcryptCost                            int
+	GroupID                               string
+	JavascriptTimeout                     time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
+	UseLegacySyncDocsIndex                bool
+	Scopes                                ScopesOptions
+	MetadataStore                         base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	MetadataID                            string         // MetadataID used for metadata storage
+	BlipStatsReportingInterval            int64          // interval to report blip stats in milliseconds
+	ChangesRequestPlus                    bool           // Sets the default value for request_plus, for non-continuous changes feeds
+	ConfigPrincipals                      *ConfigPrincipals
+	TestPurgeIntervalOverride             *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
+	TestVersionPruningWindowOverride      *time.Duration    // If set, use this value for db.GetVersionPruningWindow - test seam to force specific pruning window for tests
+	LoggingConfig                         *base.DbLogConfig // Per-database log configuration
+	MaxConcurrentChangesBatches           *int              // Maximum number of changes batches to process concurrently per replication
+	MaxConcurrentRevs                     *int              // Maximum number of revs to process concurrently per replication
+	NumIndexReplicas                      uint              // Number of replicas for GSI indexes
+	NumIndexPartitions                    *uint32           // Number of partitions for GSI indexes, if not set will default to 1
+	ImportVersion                         uint64            // Version included in import DCP checkpoints, incremented when collections added to db
+	DisablePublicAllDocs                  bool              // Disable public access to the _all_docs endpoint for this database
+	StoreLegacyRevTreeData                *bool             // Whether to store additional data for legacy rev tree support in delta sync and replication backup revs
+	UseSystemMetadataCollection           bool              // Whether to use a system collection for SG metadata storage
+	EnableChannelHistoryCompaction        bool              // Whether document writes compact the channel history of the document
+	TestTimestampsUpdateFrequencyOverride *time.Duration
 }
 
 type ConfigPrincipals struct {
@@ -819,6 +821,9 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	}
 	if db.CfgSG != nil {
 		db.CfgSG.Stop()
+	}
+	if db.TimestampsManger != nil {
+		db.TimestampsManger.Stop(ctx)
 	}
 }
 
@@ -2620,6 +2625,21 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db)
 
 	db.startReplications(ctx)
+
+	timestampsMgrOpts := TimestampsMgrOpts{
+		metadataStore:               db.MetadataStore,
+		metaKeys:                    db.MetadataKeys,
+		purgeIntervalFunc:           db.ClientPartitionWindow,
+		getSequenceFunc:             db.LastSequence,
+		dbName:                      db.Name,
+		testUpdateFrequencyOverride: db.Options.TestTimestampsUpdateFrequencyOverride,
+	}
+	db.TimestampsManger = NewTimestampsManager(timestampsMgrOpts)
+
+	err = db.TimestampsManger.Start(ctx)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

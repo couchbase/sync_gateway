@@ -33,7 +33,6 @@ func TestTimestampsDocCreation(t *testing.T) {
 	metaKeys := base.NewMetadataKeys(t.Name())
 
 	mgrOpts := TimestampsMgrOpts{
-		ctx:           ctx,
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		purgeIntervalFunc: func() time.Duration {
@@ -44,7 +43,7 @@ func TestTimestampsDocCreation(t *testing.T) {
 	tm := NewTimestampsManager(mgrOpts)
 	require.NotNil(t, tm, "NewTimestampsManager must return a TimestampsManager")
 
-	err := tm.Start()
+	err := tm.Start(ctx)
 	require.NoError(t, err)
 	assert.NotNil(t, tm.timestampsSeqArray.Load())
 
@@ -313,7 +312,6 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 	metaKeys := base.NewMetadataKeys(t.Name())
 
 	mgrOpts := TimestampsMgrOpts{
-		ctx:           ctx,
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		purgeIntervalFunc: func() time.Duration {
@@ -322,23 +320,24 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		getSequenceFunc: func(ctx context.Context) (uint64, error) {
 			return 0, nil
 		},
+		dbName: t.Name(),
 	}
 
 	tm := NewTimestampsManager(mgrOpts)
 	require.NotNil(t, tm)
 
-	err := tm.Start()
+	err := tm.Start(ctx)
 	require.NoError(t, err)
 
 	// cleanupFunc resets the document to an empty array, so that subtests do not depend on each other
 	cleanupFunc := func() {
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{}})
+		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{}})
 	}
 
 	t.Run("empty array", func(t *testing.T) {
 		defer cleanupFunc()
 		// an empty array is always due
-		err := tm.addEntry()
+		err := tm.addEntry(ctx)
 		require.NoError(t, err)
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -354,9 +353,9 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		pairs := GenerateTimestampsSeqPairs(now.Add(-61*time.Hour), now.Add(-2*time.Hour), time.Hour, 0)
 		require.Len(t, pairs, NumTimestampsEntries)
 
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: pairs})
 
-		require.NoError(t, tm.addEntry())
+		require.NoError(t, tm.addEntry(ctx))
 
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -372,7 +371,6 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		const day = 24 * time.Hour
 		// A 60 day purge interval gives an update frequency of one day, so the entry at day -1 is old enough for a new one.
 		longPurgeMgr := NewTimestampsManager(TimestampsMgrOpts{
-			ctx:               ctx,
 			metadataStore:     metadataStore,
 			metaKeys:          metaKeys,
 			purgeIntervalFunc: func() time.Duration { return 60 * day },
@@ -383,9 +381,9 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		pairs := GenerateTimestampsSeqPairs(now.Add(-59*day), now.Add(-30*day), 12*time.Hour, 0)
 		pairs = append(pairs, GenerateTimestampsSeqPairs(now.Add(-29*day), now.Add(-1*day), day, 0)...)
 
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: pairs})
 
-		require.NoError(t, longPurgeMgr.addEntry())
+		require.NoError(t, longPurgeMgr.addEntry(ctx))
 
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -399,9 +397,9 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		defer cleanupFunc()
 		// The first call adds an entry to the empty array. The newest entry is then within the update frequency,
 		// so later calls cancel the update and add nothing.
-		require.NoError(t, tm.addEntry())
+		require.NoError(t, tm.addEntry(ctx))
 		for i := range 4 {
-			require.NoError(t, tm.addEntry(), "call %d", i+2)
+			require.NoError(t, tm.addEntry(ctx), "call %d", i+2)
 		}
 
 		var tsDoc TimestampsSeqArray
@@ -417,7 +415,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		now := time.Now()
 		pairs := GenerateTimestampsSeqPairs(now.Add(-4*24*time.Hour), now.Add(-24*time.Hour), time.Hour*24, 50)
 		require.Len(t, pairs, 4)
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: pairs})
 
 		// the sequence has rolled back to 51, so the entries above it are invalid
 		rollbackOpts := mgrOpts
@@ -425,7 +423,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 			return 51, nil
 		}
 		rollbackMgr := NewTimestampsManager(rollbackOpts)
-		require.NoError(t, rollbackMgr.addEntry())
+		require.NoError(t, rollbackMgr.addEntry(ctx))
 		assert.Len(t, rollbackMgr.timestampsSeqArray.Load().Timestamps, 2)
 	})
 
@@ -440,7 +438,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 			{Seq: 30, Timestamp: now.Add(-30 * time.Minute).Unix()},
 			{Seq: 40, Timestamp: now.Add(-10 * time.Minute).Unix()},
 		}
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: pairs})
 
 		// the sequence has rolled back to 20, so the last two entries are invalid
 		rollbackOpts := mgrOpts
@@ -448,7 +446,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 			return 20, nil
 		}
 		rollbackMgr := NewTimestampsManager(rollbackOpts)
-		require.NoError(t, rollbackMgr.addEntry())
+		require.NoError(t, rollbackMgr.addEntry(ctx))
 
 		// the invalid entries are removed, and no new entry is appended
 		var tsDoc TimestampsSeqArray
@@ -464,7 +462,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		now := time.Now()
 		pairs := GenerateTimestampsSeqPairs(now.Add(-4*24*time.Hour), now.Add(-24*time.Hour), time.Hour*24, 50)
 		require.Len(t, pairs, 4)
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx,TimestampsSeqArray{Timestamps: pairs})
 
 		errSequence := errors.New("sequence unavailable")
 		errOpts := mgrOpts
@@ -474,7 +472,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		errMgr := NewTimestampsManager(errOpts)
 		errMgr.updateTimestampsArray(TimestampsSeqArray{Timestamps: slices.Clone(pairs)})
 
-		require.ErrorIs(t, errMgr.addEntry(), errSequence)
+		require.ErrorIs(t, errMgr.addEntry(ctx), errSequence)
 
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -489,7 +487,7 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		require.NoError(t, metadataStore.Set(ctx, metaKeys.TimestampsSeqKey(), 0, nil, invalidDoc))
 		memoryBefore := tm.timestampsSeqArray.Load()
 
-		require.Error(t, tm.addEntry())
+		require.Error(t, tm.addEntry(ctx))
 
 		// the document is left as it was, and the in-memory array is not replaced
 		stored, _, err := metadataStore.GetRaw(ctx, metaKeys.TimestampsSeqKey())
@@ -503,10 +501,10 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 
 		// another node with a faster clock added an entry that is still in the future for this node
 		pairs := []TimestampsSeqPair{{Seq: 0, Timestamp: time.Now().Add(2 * time.Hour).Unix()}}
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx,TimestampsSeqArray{Timestamps: pairs})
 
 		// the update is cancelled without an error, and the stored document is loaded into memory
-		require.NoError(t, tm.addEntry())
+		require.NoError(t, tm.addEntry(ctx))
 
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -520,13 +518,13 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 
 		now := time.Now()
 		pairs := GenerateTimestampsSeqPairs(now.Add(-40*24*time.Hour), now.Add(-24*time.Hour), 12*time.Hour, 0)
-		tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: pairs})
+		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: pairs})
 
 		// the default purge interval is used, so entries older than it are trimmed
 		zeroPurgeOpts := mgrOpts
 		zeroPurgeOpts.purgeIntervalFunc = func() time.Duration { return 0 }
 		zeroPurgeMgr := NewTimestampsManager(zeroPurgeOpts)
-		require.NoError(t, zeroPurgeMgr.addEntry())
+		require.NoError(t, zeroPurgeMgr.addEntry(ctx))
 
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -539,11 +537,11 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 
 	t.Run("document deleted", func(t *testing.T) {
 		defer cleanupFunc()
-		require.NoError(t, tm.addEntry())
+		require.NoError(t, tm.addEntry(ctx))
 		require.NoError(t, metadataStore.Delete(ctx, metaKeys.TimestampsSeqKey()))
 
 		// the document is recreated from the in-memory array, which still holds the entry added above
-		require.NoError(t, tm.addEntry())
+		require.NoError(t, tm.addEntry(ctx))
 
 		var tsDoc TimestampsSeqArray
 		_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -562,7 +560,6 @@ func TestConcurrentAddEntry(t *testing.T) {
 	metaKeys := base.NewMetadataKeys(t.Name())
 
 	tm := NewTimestampsManager(TimestampsMgrOpts{
-		ctx:           ctx,
 		metadataStore: metadataStore,
 		metaKeys:      metaKeys,
 		purgeIntervalFunc: func() time.Duration {
@@ -572,7 +569,7 @@ func TestConcurrentAddEntry(t *testing.T) {
 			return 0, nil
 		},
 	})
-	require.NoError(t, tm.Start())
+	require.NoError(t, tm.Start(ctx))
 
 	const numGoroutines = 20
 	errs := make(chan error, numGoroutines)
@@ -582,7 +579,7 @@ func TestConcurrentAddEntry(t *testing.T) {
 	for range numGoroutines {
 		wg.Go(func() {
 			<-start
-			errs <- tm.addEntry()
+			errs <- tm.addEntry(ctx)
 		})
 	}
 	close(start)
@@ -617,7 +614,6 @@ func TestConcurrentAddEntryMultipleManagers(t *testing.T) {
 		// a new document for each iteration, so that every iteration starts with an empty array
 		metaKeys := base.NewMetadataKeys(fmt.Sprintf("%s_%d", t.Name(), i))
 		opts := TimestampsMgrOpts{
-			ctx:           ctx,
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
 			purgeIntervalFunc: func() time.Duration {
@@ -632,7 +628,7 @@ func TestConcurrentAddEntryMultipleManagers(t *testing.T) {
 			managers[n] = NewTimestampsManager(opts)
 		}
 		// the first manager creates the document, so that the concurrent calls all race to add the first entry
-		require.NoError(t, managers[0].Start())
+		require.NoError(t, managers[0].Start(ctx))
 
 		errs := make(chan error, numNodes)
 		// start is closed once every goroutine exists, so that the calls overlap as much as possible
@@ -641,7 +637,7 @@ func TestConcurrentAddEntryMultipleManagers(t *testing.T) {
 		for _, tm := range managers {
 			wg.Go(func() {
 				<-start
-				errs <- tm.addEntry()
+				errs <- tm.addEntry(ctx)
 			})
 		}
 		close(start)
@@ -666,9 +662,8 @@ func TestConcurrentAddEntryMultipleManagers(t *testing.T) {
 // timestamps document untouched and loads it into memory, whether the document exists before Start or is
 // created by another node while Start is running.
 func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
-	newOpts := func(ctx context.Context, metadataStore base.DataStore, metaKeys *base.MetadataKeys) TimestampsMgrOpts {
+	newOpts := func(t *testing.T, ctx context.Context, metadataStore base.DataStore, metaKeys *base.MetadataKeys) TimestampsMgrOpts {
 		return TimestampsMgrOpts{
-			ctx:           ctx,
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
 			purgeIntervalFunc: func() time.Duration {
@@ -677,6 +672,7 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 			getSequenceFunc: func(ctx context.Context) (uint64, error) {
 				return 0, nil
 			},
+			dbName: t.Name(),
 		}
 	}
 	// requireJoinedNode asserts the document still holds node 1's single entry, and that node 2 mirrors it in memory.
@@ -696,12 +692,12 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 		metadataStore := testBucket.GetMetadataStore()
 		metaKeys := base.NewMetadataKeys(t.Name())
 
-		tm1 := NewTimestampsManager(newOpts(ctx, metadataStore, metaKeys))
-		require.NoError(t, tm1.Start())
-		require.NoError(t, tm1.addEntry())
+		tm1 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys))
+		require.NoError(t, tm1.Start(ctx))
+		require.NoError(t, tm1.addEntry(ctx))
 
-		tm2 := NewTimestampsManager(newOpts(ctx, metadataStore, metaKeys))
-		require.NoError(t, tm2.Start())
+		tm2 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys))
+		require.NoError(t, tm2.Start(ctx))
 		requireJoinedNode(t, ctx, metadataStore, metaKeys, tm2)
 	})
 
@@ -712,21 +708,21 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 		metadataStore := testBucket.GetMetadataStore()
 		metaKeys := base.NewMetadataKeys(t.Name())
 
-		tm1 := NewTimestampsManager(newOpts(ctx, metadataStore, metaKeys))
+		tm1 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys))
 		// The callback runs after node 2 sees no document but before it writes, so node 1 wins the race and
 		// node 2's write fails on CAS and retries against node 1's document.
 		var once atomic.Bool
 		leakyBucket := testBucket.LeakyBucketClone(base.LeakyBucketConfig{
 			UpdateCallback: func(key string) {
 				if key == metaKeys.TimestampsSeqKey() && once.CompareAndSwap(false, true) {
-					require.NoError(t, tm1.Start())
-					require.NoError(t, tm1.addEntry())
+					require.NoError(t, tm1.Start(ctx))
+					require.NoError(t, tm1.addEntry(ctx))
 				}
 			},
 		})
 
-		tm2 := NewTimestampsManager(newOpts(ctx, leakyBucket.GetMetadataStore(), metaKeys))
-		require.NoError(t, tm2.Start())
+		tm2 := NewTimestampsManager(newOpts(t, ctx, leakyBucket.GetMetadataStore(), metaKeys))
+		require.NoError(t, tm2.Start(ctx))
 		requireJoinedNode(t, ctx, metadataStore, metaKeys, tm2)
 	})
 }
@@ -753,8 +749,8 @@ func TestTimestampsManagerCancelledAddEntryLoadsOtherNodeEntry(t *testing.T) {
 	}
 
 	tm1 := NewTimestampsManager(opts)
-	require.NoError(t, tm1.Start())
-	require.NoError(t, tm1.addEntry())
+	require.NoError(t, tm1.Start(ctx))
+	require.NoError(t, tm1.addEntry(ctx))
 
 	// node 2 only knows about an old entry, so from its point of view an entry is due
 	tm2 := NewTimestampsManager(opts)
@@ -764,7 +760,7 @@ func TestTimestampsManagerCancelledAddEntryLoadsOtherNodeEntry(t *testing.T) {
 	require.True(t, tm2.entryDue())
 
 	// node 1's entry is within the update frequency, so node 2 adds nothing and loads node 1's entry
-	require.NoError(t, tm2.addEntry())
+	require.NoError(t, tm2.addEntry(ctx))
 
 	var tsDoc TimestampsSeqArray
 	_, err := metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
@@ -799,17 +795,17 @@ func (c *testClock) Advance(d time.Duration) { c.unix.Add(int64(d / time.Second)
 
 // newClockTestManager returns a manager that reads the time from clock. A nil purgeInterval gives a purge interval of
 // NumTimestampsEntries hours, and so an update frequency of one hour.
-func newClockTestManager(ctx context.Context, metadataStore base.DataStore, metaKeys *base.MetadataKeys, clock *testClock, purgeInterval PurgeIntervalFunc) *TimestampsManager {
+func newClockTestManager(ctx context.Context, metadataStore base.DataStore, metaKeys *base.MetadataKeys, clock *testClock, purgeInterval PurgeIntervalFunc, dbName string) *TimestampsManager {
 	if purgeInterval == nil {
 		purgeInterval = func() time.Duration { return NumTimestampsEntries * time.Hour }
 	}
 	return NewTimestampsManager(TimestampsMgrOpts{
-		ctx:               ctx,
 		metadataStore:     metadataStore,
 		metaKeys:          metaKeys,
 		purgeIntervalFunc: purgeInterval,
 		getSequenceFunc:   func(context.Context) (uint64, error) { return 0, nil },
 		nowFunc:           clock.Now,
+		dbName: dbName,
 	})
 }
 
@@ -849,14 +845,14 @@ func TestTimestampsManagerUpdateFrequencyBoundary(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			clock := newTestClock(clockStart)
-			tm := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil)
+			tm := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil, t.Name())
 			newest := []TimestampsSeqPair{{Seq: 0, Timestamp: clockStart.Unix()}}
-			tm.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: newest})
+			tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: newest})
 			tm.updateTimestampsArray(TimestampsSeqArray{Timestamps: slices.Clone(newest)})
 			clock.Advance(test.elapsed)
 
 			assert.Equal(t, test.due, tm.entryDue())
-			require.NoError(t, tm.addEntry())
+			require.NoError(t, tm.addEntry(ctx))
 			assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, test.expectedLen)
 		})
 	}
@@ -877,12 +873,12 @@ func TestTimestampsManagerSteadyStateSize(t *testing.T) {
 		purgeIntervals  = 3
 	)
 	clock := newTestClock(clockStart)
-	tm := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil)
-	require.NoError(t, tm.Start())
+	tm := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil, t.Name())
+	require.NoError(t, tm.Start(ctx))
 
 	// The entry at or before the purge timestamp is kept, so a full document holds NumTimestampsEntries+1 entries.
 	for i := range purgeIntervals * NumTimestampsEntries {
-		require.NoError(t, tm.addEntry(), "call %d", i)
+		require.NoError(t, tm.addEntry(ctx), "call %d", i)
 		expectedLen := min(i+1, NumTimestampsEntries+1)
 		require.Len(t, tm.timestampsSeqArray.Load().Timestamps, expectedLen, "call %d", i)
 		clock.Advance(updateFrequency)
@@ -910,12 +906,12 @@ func TestTimestampsManagerPurgeIntervalShrinks(t *testing.T) {
 	clock := newTestClock(clockStart)
 	tm := newClockTestManager(ctx, metadataStore, metaKeys, clock, func() time.Duration {
 		return time.Duration(purgeInterval.Load())
-	})
-	require.NoError(t, tm.Start())
+	}, t.Name())
+	require.NoError(t, tm.Start(ctx))
 
 	// an entry every hour for more than a purge interval, which leaves a full document
 	for range NumTimestampsEntries + 10 {
-		require.NoError(t, tm.addEntry())
+		require.NoError(t, tm.addEntry(ctx))
 		clock.Advance(time.Hour)
 	}
 	require.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, NumTimestampsEntries+1)
@@ -924,7 +920,7 @@ func TestTimestampsManagerPurgeIntervalShrinks(t *testing.T) {
 	// A purge interval of 10 hours gives an update frequency of 10 minutes, the minimum.
 	purgeInterval.Store(int64(10 * time.Hour))
 	clock.Set(time.Unix(newest, 0).Add(10 * time.Minute))
-	require.NoError(t, tm.addEntry())
+	require.NoError(t, tm.addEntry(ctx))
 
 	// Entries newer than the purge timestamp are kept with the one before them, and the new entry is added.
 	// The entries are an hour apart, so these are the 10 entries newest entries, the one before them, and the new one.
@@ -936,7 +932,7 @@ func TestTimestampsManagerPurgeIntervalShrinks(t *testing.T) {
 
 	// the entry is due again after the new, shorter update frequency
 	clock.Advance(10 * time.Minute)
-	require.NoError(t, tm.addEntry())
+	require.NoError(t, tm.addEntry(ctx))
 	assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 13)
 }
 
@@ -955,14 +951,14 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 	t.Run("node clock behind the newest entry", func(t *testing.T) {
 		metaKeys := base.NewMetadataKeys(t.Name())
 		clockA, clockB := newTestClock(clockStart), newTestClock(clockStart)
-		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil)
-		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil)
-		require.NoError(t, nodeA.Start())
-		require.NoError(t, nodeA.addEntry())
+		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil, t.Name())
+		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil, t.Name())
+		require.NoError(t, nodeA.Start(ctx))
+		require.NoError(t, nodeA.addEntry(ctx))
 
 		// node B is two hours behind node A, so the newest entry is in its future
 		clockB.Set(clockStart.Add(-2 * time.Hour))
-		require.NoError(t, nodeB.addEntry())
+		require.NoError(t, nodeB.addEntry(ctx))
 
 		tsDoc := getTimestampsDoc(t, ctx, metadataStore, metaKeys)
 		assert.Len(t, tsDoc.Timestamps, 1)
@@ -970,93 +966,129 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 
 		// once the clock of node B passes the newest entry by the update frequency, it adds its entry
 		clockB.Set(clockStart.Add(updateFrequency))
-		require.NoError(t, nodeB.addEntry())
+		require.NoError(t, nodeB.addEntry(ctx))
 		assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 2)
 	})
 
 	t.Run("node clock ahead holds back the other nodes", func(t *testing.T) {
 		metaKeys := base.NewMetadataKeys(t.Name())
 		clockA, clockB := newTestClock(clockStart), newTestClock(clockStart)
-		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil)
-		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil)
-		require.NoError(t, nodeA.Start())
-		require.NoError(t, nodeA.addEntry())
+		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil, t.Name())
+		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil, t.Name())
+		require.NoError(t, nodeA.Start(ctx))
+		require.NoError(t, nodeA.addEntry(ctx))
 
 		// node B is two hours ahead of node A, and adds an entry stamped in the future of node A
 		clockB.Set(clockStart.Add(2 * time.Hour))
-		require.NoError(t, nodeB.addEntry())
+		require.NoError(t, nodeB.addEntry(ctx))
 		require.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 2)
 
 		// node A adds nothing while its clock is before that entry, or within the update frequency after it
 		for _, elapsed := range []time.Duration{updateFrequency, 2 * time.Hour, 2*time.Hour + updateFrequency - time.Second} {
 			clockA.Set(clockStart.Add(elapsed))
-			require.NoError(t, nodeA.addEntry(), "elapsed %s", elapsed)
+			require.NoError(t, nodeA.addEntry(ctx), "elapsed %s", elapsed)
 			assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 2, "elapsed %s", elapsed)
 		}
 		assert.Equal(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys), *nodeA.timestampsSeqArray.Load())
 
 		// then node A adds its entry, after the entry of node B
 		clockA.Set(clockStart.Add(2*time.Hour + updateFrequency))
-		require.NoError(t, nodeA.addEntry())
+		require.NoError(t, nodeA.addEntry(ctx))
 		assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 3)
 	})
 
 	t.Run("clock steps backward on the same node", func(t *testing.T) {
 		metaKeys := base.NewMetadataKeys(t.Name())
 		clock := newTestClock(clockStart)
-		node := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil)
-		require.NoError(t, node.Start())
-		require.NoError(t, node.addEntry())
+		node := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil, t.Name())
+		require.NoError(t, node.Start(ctx))
+		require.NoError(t, node.addEntry(ctx))
 
 		// the clock is stepped back by a day, then moves forward again, one update frequency at a time
 		clock.Advance(-24 * time.Hour)
 		for range 3 {
-			require.NoError(t, node.addEntry())
+			require.NoError(t, node.addEntry(ctx))
 			assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 1)
 			clock.Advance(8 * time.Hour)
 		}
 		// the clock is now back at the time of the entry, plus one update frequency after the next step
 		clock.Set(clockStart.Add(updateFrequency))
-		require.NoError(t, node.addEntry())
+		require.NoError(t, node.addEntry(ctx))
 		assert.Len(t, getTimestampsDoc(t, ctx, metadataStore, metaKeys).Timestamps, 2)
 	})
 
 	t.Run("both clocks move in opposite directions", func(t *testing.T) {
 		metaKeys := base.NewMetadataKeys(t.Name())
 		clockA, clockB := newTestClock(clockStart), newTestClock(clockStart)
-		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil)
-		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil)
-		require.NoError(t, nodeA.Start())
+		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil, t.Name())
+		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil, t.Name())
+		require.NoError(t, nodeA.Start(ctx))
 
 		// node A jumps forward and adds an entry, while node B jumps backward and adds nothing
 		clockA.Set(clockStart.Add(5 * time.Hour))
-		require.NoError(t, nodeA.addEntry())
+		require.NoError(t, nodeA.addEntry(ctx))
 		clockB.Set(clockStart.Add(-5 * time.Hour))
-		require.NoError(t, nodeB.addEntry())
+		require.NoError(t, nodeB.addEntry(ctx))
 		tsDoc := getTimestampsDoc(t, ctx, metadataStore, metaKeys)
 		assert.Len(t, tsDoc.Timestamps, 1)
 		assert.Equal(t, tsDoc, *nodeB.timestampsSeqArray.Load())
 
 		// node B jumps forward past node A, and now node A is the one that adds nothing
 		clockB.Set(clockStart.Add(7 * time.Hour))
-		require.NoError(t, nodeB.addEntry())
+		require.NoError(t, nodeB.addEntry(ctx))
 		clockA.Set(clockStart.Add(4 * time.Hour))
-		require.NoError(t, nodeA.addEntry())
+		require.NoError(t, nodeA.addEntry(ctx))
 		tsDoc = getTimestampsDoc(t, ctx, metadataStore, metaKeys)
 		assert.Len(t, tsDoc.Timestamps, 2)
 		assert.Equal(t, tsDoc, *nodeA.timestampsSeqArray.Load())
 	})
 }
 
-// CreateTSDocForTest writes tsArray to the timestamps document, replacing any existing content.
-func (tm *TimestampsManager) CreateTSDocForTest(t *testing.T, tsArray TimestampsSeqArray) {
-	t.Helper()
-	require.NoError(t, tm.metadataStore.Set(tm.ctx, tm.metaKeys.TimestampsSeqKey(), 0, nil, tsArray))
-}
-
 // GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end. If startSeq is
 // non-zero, the sequences start at startSeq and increase by one per pair, otherwise every pair has sequence 0.
 // It returns nil if duration is not positive, or if start is after end.
+func TestTimestampsManagerStop(t *testing.T) {
+	ctx := t.Context()
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:   func(context.Context) (uint64, error) { return 0, nil },
+		dbName:            t.Name(),
+	})
+	require.NoError(t, tm.Start(ctx))
+	require.Len(t, tm.backgroundTasks, 1)
+	doneChan := tm.backgroundTasks[0].doneChan
+
+	select {
+	case <-doneChan:
+		t.Fatal("background task finished before Stop")
+	default:
+	}
+
+	tm.Stop(ctx)
+
+	select {
+	case <-doneChan:
+	default:
+		t.Fatal("Stop returned before the background task terminated")
+	}
+
+	// a second Stop must be a no-op rather than panic on a double close
+	require.NotPanics(t, func() { tm.Stop(ctx) })
+}
+
+// CreateTSDocForTest writes tsArray to the timestamps document, replacing any existing content.
+func (tm *TimestampsManager) CreateTSDocForTest(t *testing.T, ctx context.Context, tsArray TimestampsSeqArray) {
+	t.Helper()
+	require.NoError(t, tm.metadataStore.Set(ctx, tm.metaKeys.TimestampsSeqKey(), 0, nil, tsArray))
+}
+
+// GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end, each with sequence 0.
+// It returns nil if duration is not positive.
 func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration, startSeq uint64) []TimestampsSeqPair {
 	var pairs []TimestampsSeqPair
 	seq := startSeq
