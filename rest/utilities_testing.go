@@ -1217,6 +1217,22 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	return rawResponse.Xattrs.Sync.Sequence
 }
 
+// SetDocumentSequence overwrites the sequence in a document's _sync xattr. The body is unchanged, so the document is not
+// imported.
+func (rt *RestTester) SetDocumentSequence(docID string, sequence uint64) {
+	ctx := rt.Context()
+	dataStore := rt.GetSingleDataStore()
+	xattrs, cas, err := dataStore.GetXattrs(ctx, docID, []string{base.SyncXattrName})
+	require.NoError(rt.TB(), err)
+	var syncData map[string]any
+	require.NoError(rt.TB(), base.JSONUnmarshal(xattrs[base.SyncXattrName], &syncData))
+	syncData["sequence"] = sequence
+	rawSyncData, err := base.JSONMarshal(syncData)
+	require.NoError(rt.TB(), err)
+	_, err = dataStore.UpdateXattrs(ctx, docID, 0, cas, map[string][]byte{base.SyncXattrName: rawSyncData}, nil)
+	require.NoError(rt.TB(), err)
+}
+
 // GetRawDoc returns the raw document response for a given document ID using the _raw endpoint.
 func (rt *RestTester) GetRawDoc(key string) RawDocResponse {
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
