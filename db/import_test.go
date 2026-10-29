@@ -1020,7 +1020,7 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	require.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
 
-func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
+func TestOnDemandImportInvalidSyncData(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})

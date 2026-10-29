@@ -26,17 +26,19 @@ func TestImportFeedEventRecover(t *testing.T) {
 	}
 
 	// assert false to indicate that this checkpoint will not be incremented
-	if base.IsDevMode() {
-		require.Panics(t, func() {
-			listener.ProcessFeedEvent(sgbucket.FeedEvent{
+	base.PrintLogsOnlyOnFailure(t, func() {
+		if base.IsDevMode() {
+			require.Panics(t, func() {
+				listener.ProcessFeedEvent(sgbucket.FeedEvent{
+					Key:    []byte("example-doc"),
+					Opcode: sgbucket.FeedOpMutation,
+				})
+			})
+		} else {
+			require.False(t, listener.ProcessFeedEvent(sgbucket.FeedEvent{
 				Key:    []byte("example-doc"),
 				Opcode: sgbucket.FeedOpMutation,
-			})
-		})
-	} else {
-		require.False(t, listener.ProcessFeedEvent(sgbucket.FeedEvent{
-			Key:    []byte("example-doc"),
-			Opcode: sgbucket.FeedOpMutation,
-		}))
-	}
+			}))
+		}
+	})
 }

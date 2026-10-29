@@ -113,7 +113,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 }
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
-func TestNoPanicInvalidUpdate(t *testing.T) {
+func TestInvalidUpdateConflictingDoc(t *testing.T) {
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
