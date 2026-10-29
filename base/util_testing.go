@@ -1096,6 +1096,12 @@ func TestRequiresDeltaSync(t testing.TB) {
 
 const (
 	TestChanTimeout = 30 * time.Second
+
+	// TestIndexInitTimeout is for channel waits gated on real index creation against Couchbase Server. The index
+	// service serializes CREATE/BUILD INDEX work across every database sharing the cluster, so a single collection
+	// can take tens of seconds when the cluster is busy - far longer than the in-process handshakes TestChanTimeout
+	// is sized for.
+	TestIndexInitTimeout = 3 * time.Minute
 )
 
 // RequireChanSend performs a blocking send on a channel with a TestChanTimeout timeout. Fails the test if the send cannot complete in time.
@@ -1134,6 +1140,25 @@ func RequireChanRecvWithTimeout[T any](t testing.TB, ch <-chan T, timeout time.D
 	case <-timer.C:
 		require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel read", timeout))
 		return *new(T) // unreachable
+	}
+}
+
+// RequireNoErrorOnChanCloseWithTimeout waits for an error channel to be closed. Fails the test if a non-nil
+// error is sent before the close, or if the channel isn't closed within the timeout.
+func RequireNoErrorOnChanCloseWithTimeout(t testing.TB, ch <-chan error, timeout time.Duration) {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case err, ok := <-ch:
+			if !ok {
+				return
+			}
+			require.NoError(t, err)
+		case <-timer.C:
+			require.FailNow(t, fmt.Sprintf("timed out after %v waiting for channel close", timeout))
+		}
 	}
 }
 
