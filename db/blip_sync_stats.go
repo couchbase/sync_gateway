@@ -44,7 +44,6 @@ type BlipSyncStats struct {
 	SendRevErrorTotal                *base.SgwIntStat
 	SendRevErrorConflictCount        *base.SgwIntStat
 	SendRevErrorRejectedCount        *base.SgwIntStat
-	SendRevErrorOtherCount           *base.SgwIntStat
 	HandleChangesCount               *base.SgwIntStat // handleChanges/handleProposeChanges
 	HandleChangesTime                *base.SgwIntStat
 	HandleChangesDeltaRequestedCount *base.SgwIntStat
@@ -96,7 +95,6 @@ func NewBlipSyncStats() *BlipSyncStats {
 		SendRevErrorTotal:                &base.SgwIntStat{},
 		SendRevErrorConflictCount:        &base.SgwIntStat{},
 		SendRevErrorRejectedCount:        &base.SgwIntStat{},
-		SendRevErrorOtherCount:           &base.SgwIntStat{},
 		HandleChangesCount:               &base.SgwIntStat{}, // handleChanges/handleProposeChanges
 		HandleChangesTime:                &base.SgwIntStat{},
 		HandleChangesDeltaRequestedCount: &base.SgwIntStat{},
