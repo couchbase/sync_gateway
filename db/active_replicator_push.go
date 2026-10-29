@@ -54,6 +54,7 @@ func (apr *ActivePushReplicator) _connect() error {
 	// TODO: If this were made a config option, and the default conflict resolver not enforced on
 	// 	the pull side, it would be feasible to run sgr-2 in 'manual conflict resolution' mode
 	apr.blipSyncContext.sendRevNoConflicts = true
+	apr.blipSyncContext.fatalErrorCallback = apr.fatalErrorCallback(apr.blipSyncContext)
 
 	if apr.config.CollectionsEnabled {
 		if err := apr._startPushWithCollections(); err != nil {
@@ -66,8 +67,24 @@ func (apr *ActivePushReplicator) _connect() error {
 		}
 	}
 
-	apr.setState(ReplicationStateRunning)
 	return nil
+}
+
+// fatalErrorCallback returns the handler for changes response errors on the connection bsc.
+func (apr *ActivePushReplicator) fatalErrorCallback(bsc *BlipSyncContext) func(error) {
+	return func(err error) {
+		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
+			apr.setError(PreHydrogenTargetAllowConflictsError)
+			if err := apr.stopAndDisconnect(); err != nil {
+				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
+			}
+		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
+			// Every in-flight changes batch can report this, so only the first report for this connection reconnects.
+			if bsc.markRemoteDisconnected() {
+				apr.reconnect()
+			}
+		}
+	}
 }
 
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
@@ -181,11 +198,6 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(apr.ctx, dbCollection))
 
 	if err := apr._initCheckpointer(nil); err != nil {
-		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
-		apr.checkpointerCtx = nil
-		apr.blipSender.Close()
-		apr.blipSyncContext.Close()
 		return err
 	}
 
@@ -209,23 +221,6 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 	var channels base.Set
 	if filteredChannels := apr.config.getFilteredChannels(bh.collectionIdx); len(filteredChannels) > 0 {
 		channels = base.SetFromArray(filteredChannels)
-	}
-
-	apr.blipSyncContext.fatalErrorCallback = func(err error) {
-		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
-			err = ErrUseProposeChanges
-			apr.setError(PreHydrogenTargetAllowConflictsError)
-			err = apr.stopAndDisconnect()
-			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to stop and disconnect replication: %v", err)
-			}
-		} else if strings.Contains(err.Error(), ErrDatabaseWentAway.Message) {
-			err = apr.disconnect()
-			if err != nil {
-				base.ErrorfCtx(apr.ctx, "Failed to disconnect replication after database went away: %v", err)
-			}
-		}
-		// No special handling for error
 	}
 
 	apr.activeSendChanges.Add(1)
@@ -252,8 +247,9 @@ func (apr *ActivePushReplicator) _startSendingChanges(bh *blipHandler, since Seq
 		})
 		if err != nil {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Terminating blip connection due to changes feed error: %v", err)
+			// The close starts a reconnect, so the error is recorded without moving the state to Error.
+			apr.setLastError(err)
 			bh.ctxCancelFunc(fmt.Errorf("ISGR push replicator changes feed error: %w", err))
-			apr.setError(err)
 			apr.publishStatus()
 			return
 		}
