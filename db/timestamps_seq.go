@@ -101,34 +101,41 @@ type GetSequenceFunc func(ctx context.Context) (uint64, error)
 
 // TimestampsManager maintains the timestamps document in the metadata store, and keeps an in-memory copy of it.
 type TimestampsManager struct {
-	ctx                context.Context
 	timestampsSeqArray atomic.Pointer[TimestampsSeqArray]
 	metadataStore      base.DataStore
 	metaKeys           *base.MetadataKeys
 	purgeIntervalFunc  PurgeIntervalFunc
 	getSequenceFunc    GetSequenceFunc
 	nowFunc            func() time.Time
+	backgroundTasks             []BackgroundTask
+	terminator                  chan bool
+	stopped                     base.AtomicBool
+	dbName                      string
+	testUpdateFrequencyOverride *time.Duration
 }
 
 // TimestampsMgrOpts holds the dependencies of a TimestampsManager.
 type TimestampsMgrOpts struct {
-	ctx               context.Context
 	metadataStore     base.DataStore
 	metaKeys          *base.MetadataKeys
 	purgeIntervalFunc PurgeIntervalFunc
 	getSequenceFunc   GetSequenceFunc
 	nowFunc           func() time.Time // the clock, so that tests can control time. Defaults to time.Now.
+	dbName                      string
+	testUpdateFrequencyOverride *time.Duration
 }
 
 // NewTimestampsManager returns a TimestampsManager with an empty in-memory array. It does not touch the metadata store until Start is called.
 func NewTimestampsManager(opts TimestampsMgrOpts) *TimestampsManager {
 	tm := &TimestampsManager{
-		ctx:               opts.ctx,
 		metadataStore:     opts.metadataStore,
 		metaKeys:          opts.metaKeys,
 		purgeIntervalFunc: opts.purgeIntervalFunc,
 		getSequenceFunc:   opts.getSequenceFunc,
 		nowFunc:           opts.nowFunc,
+		dbName:                      opts.dbName,
+		terminator:                  make(chan bool),
+		testUpdateFrequencyOverride: opts.testUpdateFrequencyOverride,
 	}
 	if tm.nowFunc == nil {
 		tm.nowFunc = time.Now
@@ -149,6 +156,9 @@ func (tm *TimestampsManager) purgeInterval() time.Duration {
 // updateFrequency returns the minimum time between two entries: the purge interval split across
 // NumTimestampsEntries, but never less than 10 minutes.
 func (tm *TimestampsManager) updateFrequency() time.Duration {
+	if tm.testUpdateFrequencyOverride != nil {
+		return *tm.testUpdateFrequencyOverride
+	}
 	purgeInterval := tm.purgeInterval()
 	return max(purgeInterval/NumTimestampsEntries, time.Minute*10)
 }
@@ -167,15 +177,37 @@ func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqA
 
 // Start calls addEntry: it loads the document into memory, or writes the in-memory array (empty on a new node)
 // if the document is missing.
-func (tm *TimestampsManager) Start() error {
-	// TODO: Add BackgroundTask here
-	err := tm.addEntry()
-	return err
+func (tm *TimestampsManager) Start(ctx context.Context) error {
+	err := tm.addEntry(ctx)
+	if err != nil {
+		return err
+	}
+
+
+	bgt, err := NewBackgroundTask(ctx, "TimestampsSequenceRecorder", tm.addEntry, tm.updateFrequency(), tm.terminator)
+	if err != nil {
+		return err
+	}
+
+	tm.backgroundTasks = append(tm.backgroundTasks, bgt)
+	return nil
+}
+
+func (tm *TimestampsManager) Stop(ctx context.Context) {
+
+	if !tm.stopped.CompareAndSwap(false, true) {
+		base.WarnfCtx(ctx, "TimestampsManager already stopped")
+		return
+	}
+
+	close(tm.terminator)
+
+	waitForBGTCompletion(ctx, BGTCompletionMaxWait, tm.backgroundTasks, tm.dbName)
 }
 
 // addEntry writes the in-memory array if the timestamps document is missing, without removing invalid entries. Otherwise
 // it removes entries ahead of the current sequence or, if none were removed and an entry is due, appends one and trims.
-func (tm *TimestampsManager) addEntry() error {
+func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	key := tm.metaKeys.TimestampsSeqKey()
 	// the bytes of the last successful write, used to refresh the in-memory array
 	var newValBytes []byte
@@ -183,7 +215,7 @@ func (tm *TimestampsManager) addEntry() error {
 	var removedEntries []TimestampsSeqPair
 	now := tm.nowFunc().Unix()
 	// TODO: Add this operation to KV Idle Ops
-	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
+	_, err := tm.metadataStore.Update(ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		removedEntries = nil
 		var timestampsSeqArray TimestampsSeqArray
 		if current == nil {
@@ -236,7 +268,7 @@ func (tm *TimestampsManager) addEntry() error {
 		return err
 	}
 	if err == nil && len(removedEntries) > 0 {
-		base.WarnfCtx(tm.ctx, "Removed %d timestamp entries with a sequence greater than the current sequence: %+v", len(removedEntries), removedEntries)
+		base.WarnfCtx(ctx, "Removed %d timestamp entries with a sequence greater than the current sequence: %+v", len(removedEntries), removedEntries)
 	}
 
 	var updatedTimestampsSeqArray TimestampsSeqArray
