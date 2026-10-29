@@ -96,7 +96,8 @@ func TestKVOpStatDataStoreUpdateFailedRetryRead(t *testing.T) {
 }
 
 // TestKVOpStatDataStoreWriteUpdateWithXattrs checks that each attempt of a WriteUpdateWithXattrs is counted as a read
-// and a write, except a first attempt that uses the doc the caller passed.
+// and a write, except a first attempt that uses the doc the caller passed. On Couchbase Server the write that fails on
+// the CAS is not counted, since kv_ops leaves it out.
 func TestKVOpStatDataStoreWriteUpdateWithXattrs(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -129,7 +130,10 @@ func TestKVOpStatDataStoreWriteUpdateWithXattrs(t *testing.T) {
 			require.Equal(t, 2, attempts)
 			expectedKVOps := 4 // a read and a write for each attempt
 			if withPrevious {
-				expectedKVOps = 3 // the first attempt uses previous instead of reading
+				expectedKVOps-- // the first attempt uses previous instead of reading
+			}
+			if !UnitTestUrlIsWalrus() {
+				expectedKVOps-- // the failed write
 			}
 			assert.Equal(t, int64(expectedKVOps), stat.Value())
 		})
@@ -162,7 +166,8 @@ func TestKVOpStatDataStoreDeleteWithXattrs(t *testing.T) {
 			expectedServerKVOps: 1,
 		},
 		{
-			// The body and xattrs delete fails, so the CAS is read and the xattrs are deleted on their own.
+			// The body and xattrs delete fails on the missing body, which kv_ops leaves out, so the CAS is read and the
+			// xattrs are deleted on their own.
 			name: "tombstone",
 			setup: func(t *testing.T, key string) {
 				cas, err := underlying.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"v":1}`), xattrs, nil, nil)
@@ -170,10 +175,11 @@ func TestKVOpStatDataStoreDeleteWithXattrs(t *testing.T) {
 				_, err = underlying.WriteTombstoneWithXattrs(ctx, key, 0, cas, xattrs, nil, true, nil)
 				require.NoError(t, err)
 			},
-			expectedServerKVOps: 3,
+			expectedServerKVOps: 2,
 		},
 		{
-			// The body and xattrs delete fails, so the body is deleted on its own.
+			// The body and xattrs delete fails on the missing xattrs, which kv_ops counts, so the body is deleted on its
+			// own.
 			name: "body only",
 			setup: func(t *testing.T, key string) {
 				require.NoError(t, underlying.Set(ctx, key, 0, nil, map[string]int{"v": 1}))
@@ -191,6 +197,157 @@ func TestKVOpStatDataStoreDeleteWithXattrs(t *testing.T) {
 			expectedKVOps := testCase.expectedServerKVOps
 			if UnitTestUrlIsWalrus() {
 				expectedKVOps = 1
+			}
+			assert.Equal(t, int64(expectedKVOps), stat.Value())
+		})
+	}
+}
+
+// TestKVOpStatDataStoreFailedCalls checks that a call that fails is counted as Couchbase Server counts it in kv_ops. A
+// subdoc command that fails on the whole document is left out, but one that fails on a path is not, and a remove that
+// fails on the CAS is left out, but one of a missing document is not. Rosmar counts each call.
+func TestKVOpStatDataStoreFailedCalls(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	underlying := bucket.GetSingleDataStore()
+	xattrKeys := []string{SyncXattrName}
+	xattrs := map[string][]byte{SyncXattrName: []byte(`{"x":1}`)}
+	const staleCas = 1
+
+	writeDoc := func(t *testing.T, key string) {
+		_, err := underlying.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"v":1}`), xattrs, nil, nil)
+		require.NoError(t, err)
+	}
+	writeBody := func(t *testing.T, key string) {
+		require.NoError(t, underlying.Set(ctx, key, 0, nil, map[string]int{"v": 1}))
+	}
+	noDoc := func(*testing.T, string) {}
+
+	testCases := []struct {
+		name string
+		// setup writes the doc the call fails on
+		setup func(t *testing.T, key string)
+		call  func(ds DataStore, key string) error
+		// expectedServerKVOps is the count on Couchbase Server
+		expectedServerKVOps int
+	}{
+		{
+			name:  "GetXattrs of a missing doc",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, _, err := ds.GetXattrs(ctx, key, xattrKeys)
+				return err
+			},
+			expectedServerKVOps: 0,
+		},
+		{
+			name:  "GetXattrs of a missing xattr",
+			setup: writeBody,
+			call: func(ds DataStore, key string) error {
+				_, _, err := ds.GetXattrs(ctx, key, xattrKeys)
+				return err
+			},
+			expectedServerKVOps: 1,
+		},
+		{
+			// Returns the same error as a missing doc, but the lookup reaches the tombstone.
+			name: "GetWithXattrs of a tombstone with no xattrs",
+			setup: func(t *testing.T, key string) {
+				writeBody(t, key)
+				require.NoError(t, underlying.Delete(ctx, key))
+			},
+			call: func(ds DataStore, key string) error {
+				_, _, _, err := ds.GetWithXattrs(ctx, key, xattrKeys)
+				return err
+			},
+			expectedServerKVOps: 1,
+		},
+		{
+			name:  "GetSubDocRaw of a missing doc",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, _, err := ds.GetSubDocRaw(ctx, key, "v")
+				return err
+			},
+			expectedServerKVOps: 0,
+		},
+		{
+			name:  "WriteWithXattrs with a stale CAS",
+			setup: writeDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.WriteWithXattrs(ctx, key, 0, staleCas, []byte(`{"v":2}`), xattrs, nil, nil)
+				return err
+			},
+			expectedServerKVOps: 0,
+		},
+		{
+			name:  "WriteResurrectionWithXattrs of a live doc",
+			setup: writeDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.WriteResurrectionWithXattrs(ctx, key, 0, []byte(`{"v":2}`), xattrs, nil)
+				return err
+			},
+			expectedServerKVOps: 0,
+		},
+		{
+			name:  "UpdateXattrs of a missing doc",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.UpdateXattrs(ctx, key, 0, staleCas, xattrs, nil)
+				return err
+			},
+			expectedServerKVOps: 0,
+		},
+		{
+			name:                "SubdocInsert of an existing path",
+			setup:               writeBody,
+			call:                func(ds DataStore, key string) error { return ds.SubdocInsert(ctx, key, "v", 0, 2) },
+			expectedServerKVOps: 1,
+		},
+		{
+			name:                "DeleteSubDocPaths of a missing path",
+			setup:               writeBody,
+			call:                func(ds DataStore, key string) error { return ds.DeleteSubDocPaths(ctx, key, "missing") },
+			expectedServerKVOps: 1,
+		},
+		{
+			name:                "DeleteWithXattrs of a missing doc",
+			setup:               noDoc,
+			call:                func(ds DataStore, key string) error { return ds.DeleteWithXattrs(ctx, key, xattrKeys) },
+			expectedServerKVOps: 0,
+		},
+		{
+			name:  "Remove with a stale CAS",
+			setup: writeBody,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.Remove(ctx, key, staleCas)
+				return err
+			},
+			expectedServerKVOps: 0,
+		},
+		{
+			name:  "Remove of a missing doc",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.Remove(ctx, key, 0)
+				return err
+			},
+			expectedServerKVOps: 1,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			key := t.Name()
+			testCase.setup(t, key)
+			stat := &SgwIntStat{}
+			err := testCase.call(NewKVOpStatDataStore(underlying, stat), key)
+			expectedKVOps := testCase.expectedServerKVOps
+			if UnitTestUrlIsWalrus() {
+				// Rosmar lets some of these calls succeed, such as a delete of a missing path.
+				expectedKVOps = 1
+			} else {
+				require.Error(t, err)
 			}
 			assert.Equal(t, int64(expectedKVOps), stat.Value())
 		})

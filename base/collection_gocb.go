@@ -312,6 +312,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 		var casGoCB gocb.Cas
 		var result *gocb.MutationResult
 		casRetry := false
+		writeKVOps := 1
 
 		c.Bucket.waitForAvailKvOp()
 		if cas == 0 {
@@ -334,6 +335,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 					Cas: gocb.Cas(cas),
 				}
 				result, err = c.Collection.Remove(k, removeOptions)
+				writeKVOps = removeKVOps(err)
 				if err == nil {
 					casGoCB = result.Cas()
 				} else if errors.Is(err, gocb.ErrCasMismatch) {
@@ -356,7 +358,7 @@ func (c *Collection) Update(ctx context.Context, k string, exp uint32, callback 
 			}
 		}
 		c.Bucket.releaseKvOp()
-		addKVOps(ctx, 1)
+		addKVOps(ctx, writeKVOps)
 
 		if casRetry {
 			// retry on cas failure

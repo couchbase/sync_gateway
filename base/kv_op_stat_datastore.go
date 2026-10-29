@@ -10,7 +10,9 @@ package base
 
 import (
 	"context"
+	"errors"
 
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
@@ -19,7 +21,8 @@ import (
 // A nil stat returns ds unchanged.
 //
 // A call that makes several KV operations, such as the CAS retries of Update or the extra steps of DeleteWithXattrs on a
-// tombstone, counts each of them. For a MetadataStore, the primary and fallback DataStores are wrapped instead of the
+// tombstone, counts each of them. A call that fails is counted as Couchbase Server counts it in kv_ops: see
+// subdocKVOps and removeKVOps. For a MetadataStore, the primary and fallback DataStores are wrapped instead of the
 // MetadataStore itself, so its fallback reads and its own retries are counted too.
 func NewKVOpStatDataStore(ds DataStore, stat *SgwIntStat) DataStore {
 	if stat == nil {
@@ -40,9 +43,12 @@ func NewIdleKVOpDataStore(ds DataStore) DataStore {
 type kvOpCountKey struct{}
 
 // kvOpCount holds the KV operations that one DataStore call reports making. Only Couchbase Server's Collection reports
-// them, from the methods that make several KV operations in one call.
+// them: from the methods that make several KV operations in one call, and from its subdoc reads, whose errors do not
+// show whether the document was missing.
 type kvOpCount struct {
 	n int
+	// reported is set by any report, since a call can report making no KV operations that kv_ops counts.
+	reported bool
 }
 
 // withKVOpCount returns a context that a DataStore call reports its KV operations to, and the count it reports to.
@@ -55,7 +61,29 @@ func withKVOpCount(ctx context.Context) (context.Context, *kvOpCount) {
 func addKVOps(ctx context.Context, n int) {
 	if count, ok := ctx.Value(kvOpCountKey{}).(*kvOpCount); ok {
 		count.n += n
+		count.reported = true
 	}
+}
+
+// subdocKVOps is the number of KV operations that Couchbase Server adds to kv_ops for one subdoc command that returned
+// err. A subdoc command that fails on the whole document, because the document is missing, already exists, or has
+// another CAS, is left out of kv_ops. One that fails only on a path is still counted. ErrNotFound is taken to mean a
+// missing document, which is what Collection's single subdoc commands return it for.
+func subdocKVOps(err error) int {
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocb.ErrDocumentExists) ||
+		errors.Is(err, gocb.ErrCasMismatch) || errors.Is(err, ErrNotFound) {
+		return 0
+	}
+	return 1
+}
+
+// removeKVOps is the number of KV operations that Couchbase Server adds to kv_ops for one remove that returned err. A
+// remove whose CAS does not match is left out of kv_ops, although a remove of a missing document is counted.
+func removeKVOps(err error) int {
+	if errors.Is(err, gocb.ErrCasMismatch) {
+		return 0
+	}
+	return 1
 }
 
 // kvOpCountingLeaf adds the KV operations made on a single DataStore to stat.
@@ -75,10 +103,10 @@ func (c *kvOpCountingLeaf) count(n int) {
 	c.stat.Add(int64(n))
 }
 
-// countReported counts the KV operations that the underlying DataStore reported. A DataStore that reports none, such as
-// rosmar, is counted as estimated instead.
+// countReported counts the KV operations that the underlying DataStore reported. A DataStore that does not report them,
+// such as rosmar, is counted as estimated instead.
 func (c *kvOpCountingLeaf) countReported(reported *kvOpCount, estimated int) {
-	if reported.n > 0 {
+	if reported.reported {
 		c.count(reported.n)
 		return
 	}
@@ -136,8 +164,9 @@ func (c *kvOpCountingLeaf) Delete(ctx context.Context, k string) error {
 }
 
 func (c *kvOpCountingLeaf) Remove(ctx context.Context, k string, cas uint64) (uint64, error) {
-	c.count(1)
-	return c.DataStore.Remove(ctx, k, cas)
+	casOut, err := c.DataStore.Remove(ctx, k, cas)
+	c.count(removeKVOps(err))
+	return casOut, err
 }
 
 // Update counts the KV operations the underlying DataStore reports. Otherwise it estimates them from the callback, which
@@ -175,58 +204,74 @@ func (c *kvOpCountingLeaf) Exists(ctx context.Context, k string) (bool, error) {
 }
 
 func (c *kvOpCountingLeaf) SubdocInsert(ctx context.Context, k string, subdocPath string, cas uint64, value any) error {
-	c.count(1)
-	return c.DataStore.SubdocInsert(ctx, k, subdocPath, cas, value)
+	err := c.DataStore.SubdocInsert(ctx, k, subdocPath, cas, value)
+	c.count(subdocKVOps(err))
+	return err
 }
 
 func (c *kvOpCountingLeaf) GetSubDocRaw(ctx context.Context, k string, subdocPath string) ([]byte, uint64, error) {
-	c.count(1)
-	return c.DataStore.GetSubDocRaw(ctx, k, subdocPath)
+	v, cas, err := c.DataStore.GetSubDocRaw(ctx, k, subdocPath)
+	c.count(subdocKVOps(err))
+	return v, cas, err
 }
 
 func (c *kvOpCountingLeaf) WriteSubDoc(ctx context.Context, k string, subdocPath string, cas uint64, value []byte) (uint64, error) {
-	c.count(1)
-	return c.DataStore.WriteSubDoc(ctx, k, subdocPath, cas, value)
+	v, err := c.DataStore.WriteSubDoc(ctx, k, subdocPath, cas, value)
+	c.count(subdocKVOps(err))
+	return v, err
 }
 
 func (c *kvOpCountingLeaf) WriteWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, value []byte, xattrsValues map[string][]byte, xattrsToDelete []string, opts *sgbucket.MutateInOptions) (uint64, error) {
-	c.count(1)
-	return c.DataStore.WriteWithXattrs(ctx, k, exp, cas, value, xattrsValues, xattrsToDelete, opts)
+	v, err := c.DataStore.WriteWithXattrs(ctx, k, exp, cas, value, xattrsValues, xattrsToDelete, opts)
+	c.count(subdocKVOps(err))
+	return v, err
 }
 
 func (c *kvOpCountingLeaf) WriteTombstoneWithXattrs(ctx context.Context, k string, exp uint32, cas uint64, xattrValue map[string][]byte, xattrsToDelete []string, deleteBody bool, opts *sgbucket.MutateInOptions) (uint64, error) {
-	c.count(1)
-	return c.DataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xattrValue, xattrsToDelete, deleteBody, opts)
+	v, err := c.DataStore.WriteTombstoneWithXattrs(ctx, k, exp, cas, xattrValue, xattrsToDelete, deleteBody, opts)
+	c.count(subdocKVOps(err))
+	return v, err
 }
 
 func (c *kvOpCountingLeaf) WriteResurrectionWithXattrs(ctx context.Context, k string, exp uint32, body []byte, xattrs map[string][]byte, opts *sgbucket.MutateInOptions) (uint64, error) {
-	c.count(1)
-	return c.DataStore.WriteResurrectionWithXattrs(ctx, k, exp, body, xattrs, opts)
+	v, err := c.DataStore.WriteResurrectionWithXattrs(ctx, k, exp, body, xattrs, opts)
+	c.count(subdocKVOps(err))
+	return v, err
 }
 
 func (c *kvOpCountingLeaf) SetXattrs(ctx context.Context, k string, xattrs map[string][]byte) (uint64, error) {
-	c.count(1)
-	return c.DataStore.SetXattrs(ctx, k, xattrs)
+	v, err := c.DataStore.SetXattrs(ctx, k, xattrs)
+	c.count(subdocKVOps(err))
+	return v, err
 }
 
 func (c *kvOpCountingLeaf) RemoveXattrs(ctx context.Context, k string, xattrKeys []string, cas uint64) error {
-	c.count(1)
-	return c.DataStore.RemoveXattrs(ctx, k, xattrKeys, cas)
+	err := c.DataStore.RemoveXattrs(ctx, k, xattrKeys, cas)
+	c.count(subdocKVOps(err))
+	return err
 }
 
 func (c *kvOpCountingLeaf) DeleteSubDocPaths(ctx context.Context, k string, paths ...string) error {
-	c.count(1)
-	return c.DataStore.DeleteSubDocPaths(ctx, k, paths...)
+	err := c.DataStore.DeleteSubDocPaths(ctx, k, paths...)
+	c.count(subdocKVOps(err))
+	return err
 }
 
+// GetXattrs counts the KV operations the underlying DataStore reports, because on Couchbase Server its error does not
+// show whether the document was missing, which kv_ops leaves out, or only the xattrs, which kv_ops counts.
 func (c *kvOpCountingLeaf) GetXattrs(ctx context.Context, k string, xattrKeys []string) (map[string][]byte, uint64, error) {
-	c.count(1)
-	return c.DataStore.GetXattrs(ctx, k, xattrKeys)
+	ctx, reported := withKVOpCount(ctx)
+	xattrs, cas, err := c.DataStore.GetXattrs(ctx, k, xattrKeys)
+	c.countReported(reported, 1)
+	return xattrs, cas, err
 }
 
+// GetWithXattrs counts the KV operations the underlying DataStore reports, for the same reason as GetXattrs.
 func (c *kvOpCountingLeaf) GetWithXattrs(ctx context.Context, k string, xattrKeys []string) ([]byte, map[string][]byte, uint64, error) {
-	c.count(1)
-	return c.DataStore.GetWithXattrs(ctx, k, xattrKeys)
+	ctx, reported := withKVOpCount(ctx)
+	body, xattrs, cas, err := c.DataStore.GetWithXattrs(ctx, k, xattrKeys)
+	c.countReported(reported, 1)
+	return body, xattrs, cas, err
 }
 
 // DeleteWithXattrs counts the KV operations the underlying DataStore reports, because on Couchbase Server a doc with no
@@ -262,6 +307,7 @@ func (c *kvOpCountingLeaf) WriteUpdateWithXattrs(ctx context.Context, k string, 
 }
 
 func (c *kvOpCountingLeaf) UpdateXattrs(ctx context.Context, k string, exp uint32, cas uint64, xv map[string][]byte, opts *sgbucket.MutateInOptions) (uint64, error) {
-	c.count(1)
-	return c.DataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
+	v, err := c.DataStore.UpdateXattrs(ctx, k, exp, cas, xv, opts)
+	c.count(subdocKVOps(err))
+	return v, err
 }
