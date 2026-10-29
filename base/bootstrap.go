@@ -723,7 +723,8 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 			return 0, ErrAlreadyExists
 		}
 	}
-	return cc.configPersistence.insertConfig(primary, key, value)
+	cfgCas, _, err := cc.configPersistence.insertConfig(primary, key, value)
+	return cfgCas, err
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch.
@@ -751,11 +752,11 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location,
 	}
 
 	primary, fallback := cc.metadataCollections(b)
-	casOut, err := cc.configPersistence.replaceRawConfig(primary, docID, rawDocument, gocb.Cas(cas))
+	casOut, _, err := cc.configPersistence.replaceRawConfig(primary, docID, rawDocument, gocb.Cas(cas))
 	if cc.shouldFallback(err, fallback) {
 		// Doc is not in primary. Caller's CAS must be from a previous fallback read; replay the
 		// write against the fallback collection so CAS semantics line up.
-		casOut, err = cc.configPersistence.replaceRawConfig(fallback, docID, rawDocument, gocb.Cas(cas))
+		casOut, _, err = cc.configPersistence.replaceRawConfig(fallback, docID, rawDocument, gocb.Cas(cas))
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
@@ -777,9 +778,9 @@ func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location,
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
-	casOut, err := cc.configPersistence.touchConfigRollback(primary, docID, property, value, gocb.Cas(cas))
+	casOut, _, err := cc.configPersistence.touchConfigRollback(primary, docID, property, value, gocb.Cas(cas))
 	if cc.shouldFallback(err, fallback) {
-		casOut, err = cc.configPersistence.touchConfigRollback(fallback, docID, property, value, gocb.Cas(cas))
+		casOut, _, err = cc.configPersistence.touchConfigRollback(fallback, docID, property, value, gocb.Cas(cas))
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
@@ -801,9 +802,9 @@ func (cc *CouchbaseCluster) DeleteMetadataDocument(ctx context.Context, location
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
-	_, removeErr := cc.configPersistence.removeRawConfig(primary, key, gocb.Cas(cas))
+	_, _, removeErr := cc.configPersistence.removeRawConfig(primary, key, gocb.Cas(cas))
 	if cc.shouldFallback(removeErr, fallback) {
-		_, removeErr = cc.configPersistence.removeRawConfig(fallback, key, gocb.Cas(cas))
+		_, _, removeErr = cc.configPersistence.removeRawConfig(fallback, key, gocb.Cas(cas))
 		if removeErr == nil {
 			cc.noteBucketFallbackHit(location)
 		}
@@ -842,7 +843,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			removeCasOut, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
+			removeCasOut, _, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
 			if err != nil {
 				if errors.Is(err, gocb.ErrCasMismatch) {
 					collection, bucketValue, cas, err = cc.loadConfigWithFallback(ctx, location, primary, fallback, docID)
@@ -856,7 +857,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 			return uint64(removeCasOut), nil
 		}
 
-		replaceCfgCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
+		replaceCfgCasOut, _, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				collection, bucketValue, cas, err = cc.loadConfigWithFallback(ctx, location, primary, fallback, docID)
@@ -1107,12 +1108,12 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 		}
 		fallbackCas := gocb.Cas(cas)
 
-		_, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
+		_, _, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
 		if insertErr != nil && !errors.Is(insertErr, gocb.ErrDocumentExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
 
-		if _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
+		if _, _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				InfofCtx(ctx, KeyConfig, "Bootstrap migration: skipping fallback delete for %q on bucket %q (CAS mismatch — concurrent write), caller should re-run", MD(docID), MD(bucket))
 				continue

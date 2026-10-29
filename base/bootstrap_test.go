@@ -631,7 +631,8 @@ func TestCouchbaseClusterWithKVOpStatReplacesStat(t *testing.T) {
 
 // TestBootstrapKVOpStat checks that a connection made by WithKVOpStat adds every KV operation it makes to the stat,
 // including registry probes and fallback reads, and that the connection it was made from adds nothing. Like Couchbase
-// Server's kv_ops, it leaves out a subdoc lookup of a missing document, which is how xattr config persistence reads.
+// Server's kv_ops, it leaves out a subdoc lookup of a missing document, which is how xattr config persistence reads,
+// and a subdoc write that fails on the whole document.
 func TestBootstrapKVOpStat(t *testing.T) {
 	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
 		f := newBootstrapDualTestFixture(t, useXattrs)
@@ -663,6 +664,15 @@ func TestBootstrapKVOpStat(t *testing.T) {
 		if useXattrs {
 			missOps = 0
 		}
+		// kv_ops counts a failed plain KV write but not a failed subdoc write. Both persistence modes touch a doc with
+		// a subdoc write, and xattr persistence writes one with a subdoc write too. Rosmar counts every write.
+		failedTouchOps, failedWriteOps := 0, 1
+		if useXattrs {
+			failedWriteOps = 0
+		}
+		if UnitTestUrlIsWalrus() {
+			failedTouchOps, failedWriteOps = 1, 1
+		}
 
 		var loaded bootstrapTestCfg
 		probeOps := kvOps(func() {
@@ -687,7 +697,7 @@ func TestBootstrapKVOpStat(t *testing.T) {
 			require.NoError(t, err)
 		}), "primary read")
 
-		require.Equal(t, probeOps+1, kvOps(func() {
+		require.Equal(t, probeOps+failedTouchOps, kvOps(func() {
 			_, err := counted.TouchMetadataDocument(ctx, f.BucketName, primaryDocID, "name", "touched", cas+1)
 			require.True(t, IsCasMismatch(err), "expected CAS mismatch, got %v", err)
 		}), "a CAS mismatch on the primary does not go to the fallback")
@@ -712,7 +722,7 @@ func TestBootstrapKVOpStat(t *testing.T) {
 			require.NoError(t, err)
 		}), "primary miss and fallback read")
 
-		require.Equal(t, 2, kvOps(func() {
+		require.Equal(t, failedWriteOps+1, kvOps(func() {
 			_, err := counted.WriteMetadataDocument(ctx, f.BucketName, legacyDocID, legacyCAS, bootstrapTestCfg{Foo: "updated"})
 			require.NoError(t, err)
 		}), "primary miss and fallback write")

@@ -22,24 +22,25 @@ import (
 // ConfigPersistence manages the underlying storage of database config documents in the bucket.
 // Implementations support using either document body or xattr for storage
 type ConfigPersistence interface {
+	// The operations that return kvOps return the number of KV ops they made. The count follows Couchbase Server's
+	// kv_ops, which Capella subtracts the idle KV op stat from, so a failed operation that kv_ops leaves out, such as a
+	// subdoc command on a missing document or with a stale CAS, is not counted: see subdocKVOps and removeKVOps.
+
 	// Operations for interacting with raw config ([]byte).  gocb.Cas values represent document cas,
 	// cfgCas represent the cas value associated with the last mutation, and may not match document CAS.
-	// loadRawConfig returns the number of KV ops it made, as loadConfig does.
 	loadRawConfig(ctx context.Context, c *gocb.Collection, key string) (value []byte, cas gocb.Cas, kvOps int, err error)
-	removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error)
-	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, err error)
+	removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (casOut gocb.Cas, kvOps int, err error)
+	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, kvOps int, err error)
 
 	// Operations for interacting with marshalled config. cfgCas represents the cas value
 	// associated with the last config mutation, and may not match document CAS. loadConfig can
-	// write as well as read, so it returns the number of KV ops it made. The count follows
-	// Couchbase Server's kv_ops, which Capella subtracts the idle KV op stat from: a subdoc lookup
-	// of a missing document is not in kv_ops, so it is not counted.
+	// write as well as read.
 	loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (cfgCas uint64, kvOps int, err error)
-	insertConfig(c *gocb.Collection, key string, value any) (cfgCas uint64, err error)
+	insertConfig(c *gocb.Collection, key string, value any) (cfgCas uint64, kvOps int, err error)
 
 	// touchConfigRollback sets the specific property to the specified string value via a subdoc operation.
 	// Used to change to the cas value during rollback, to guard against races with slow updates
-	touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (casOut gocb.Cas, err error)
+	touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (casOut gocb.Cas, kvOps int, err error)
 
 	// keyExists checks whether the specified key exists in the collection
 	keyExists(c *gocb.Collection, key string) (found bool, err error)
@@ -59,14 +60,16 @@ func (p *kvOpStatConfigPersistence) loadRawConfig(ctx context.Context, c *gocb.C
 	return value, cas, kvOps, err
 }
 
-func (p *kvOpStatConfigPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {
-	p.stat.Add(1)
-	return p.ConfigPersistence.removeRawConfig(c, key, cas)
+func (p *kvOpStatConfigPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, int, error) {
+	casOut, kvOps, err := p.ConfigPersistence.removeRawConfig(c, key, cas)
+	p.stat.Add(int64(kvOps))
+	return casOut, kvOps, err
 }
 
-func (p *kvOpStatConfigPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
-	p.stat.Add(1)
-	return p.ConfigPersistence.replaceRawConfig(c, key, value, cas)
+func (p *kvOpStatConfigPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, int, error) {
+	casOut, kvOps, err := p.ConfigPersistence.replaceRawConfig(c, key, value, cas)
+	p.stat.Add(int64(kvOps))
+	return casOut, kvOps, err
 }
 
 func (p *kvOpStatConfigPersistence) loadConfig(ctx context.Context, c *gocb.Collection, key string, valuePtr any) (uint64, int, error) {
@@ -75,14 +78,16 @@ func (p *kvOpStatConfigPersistence) loadConfig(ctx context.Context, c *gocb.Coll
 	return cfgCas, kvOps, err
 }
 
-func (p *kvOpStatConfigPersistence) insertConfig(c *gocb.Collection, key string, value any) (uint64, error) {
-	p.stat.Add(1)
-	return p.ConfigPersistence.insertConfig(c, key, value)
+func (p *kvOpStatConfigPersistence) insertConfig(c *gocb.Collection, key string, value any) (uint64, int, error) {
+	cfgCas, kvOps, err := p.ConfigPersistence.insertConfig(c, key, value)
+	p.stat.Add(int64(kvOps))
+	return cfgCas, kvOps, err
 }
 
-func (p *kvOpStatConfigPersistence) touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (gocb.Cas, error) {
-	p.stat.Add(1)
-	return p.ConfigPersistence.touchConfigRollback(c, key, property, value, cas)
+func (p *kvOpStatConfigPersistence) touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (gocb.Cas, int, error) {
+	casOut, kvOps, err := p.ConfigPersistence.touchConfigRollback(c, key, property, value, cas)
+	p.stat.Add(int64(kvOps))
+	return casOut, kvOps, err
 }
 
 func (p *kvOpStatConfigPersistence) keyExists(c *gocb.Collection, key string) (bool, error) {
@@ -101,7 +106,7 @@ const cfgXattrKey = "_sync"
 const cfgXattrConfigPath = cfgXattrKey + ".config"
 const cfgXattrBody = `{"cfgVersion": 1}`
 
-func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, err error) {
+func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, kvOps int, err error) {
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, value, UpsertSpecXattr),
@@ -111,17 +116,18 @@ func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key strin
 		StoreSemantic: gocb.StoreSemanticsInsert,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	kvOps = subdocKVOps(mutateErr)
 	if isKVError(mutateErr, memd.StatusKeyExists) {
-		return 0, ErrAlreadyExists
+		return 0, kvOps, ErrAlreadyExists
 	}
 	if mutateErr != nil {
-		return 0, mutateErr
+		return 0, kvOps, mutateErr
 	}
-	return uint64(result.Cas()), nil
+	return uint64(result.Cas()), kvOps, nil
 
 }
 
-func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, key, property, value string, cas gocb.Cas) (casOut gocb.Cas, err error) {
+func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, key, property, value string, cas gocb.Cas) (casOut gocb.Cas, kvOps int, err error) {
 	xattrProperty := cfgXattrKey + "." + property
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(xattrProperty, value, UpsertSpecXattr),
@@ -131,10 +137,11 @@ func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, ke
 		Cas:           cas,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	kvOps = subdocKVOps(mutateErr)
 	if mutateErr != nil {
-		return 0, mutateErr
+		return 0, kvOps, mutateErr
 	}
-	return result.Cas(), nil
+	return result.Cas(), kvOps, nil
 }
 
 // loadRawConfig returns the config and document cas.  Does not restore deleted documents,
@@ -169,7 +176,7 @@ func (xbp *XattrBootstrapPersistence) loadRawConfig(ctx context.Context, c *gocb
 	}
 }
 
-func (xbp *XattrBootstrapPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {
+func (xbp *XattrBootstrapPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, int, error) {
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.RemoveSpec(cfgXattrKey, RemoveSpecXattr),
@@ -180,24 +187,26 @@ func (xbp *XattrBootstrapPersistence) removeRawConfig(c *gocb.Collection, key st
 		Cas:           cas,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	// Counted before the error is translated, since kv_ops leaves out a missing document but counts a missing xattr.
+	kvOps := subdocKVOps(mutateErr)
 	if mutateErr == nil {
-		return result.Cas(), nil
+		return result.Cas(), kvOps, nil
 	}
 
 	// StatusKeyNotFound returned if document doesn't exist
 	if errors.Is(mutateErr, gocbcore.ErrDocumentNotFound) {
-		return 0, ErrNotFound
+		return 0, kvOps, ErrNotFound
 	}
 
 	// StatusSubDocBadMulti returned if xattr doesn't exist
 	if isKVError(mutateErr, memd.StatusSubDocBadMulti) {
-		return 0, ErrNotFound
+		return 0, kvOps, ErrNotFound
 	}
-	return 0, mutateErr
+	return 0, kvOps, mutateErr
 
 }
 
-func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
+func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, int, error) {
 
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, bytesToRawMessage(value), UpsertSpecXattr),
@@ -207,10 +216,11 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 		Cas:           cas,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	kvOps := subdocKVOps(mutateErr)
 	if mutateErr != nil {
-		return 0, mutateErr
+		return 0, kvOps, mutateErr
 	}
-	return result.Cas(), nil
+	return result.Cas(), kvOps, nil
 }
 
 // loadConfig returns the cas associated with the last cfg change (xattr._sync.cas).  If a deleted document body is
@@ -242,8 +252,8 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 		var body map[string]any
 		bodyErr := res.ContentAt(1, &body)
 		if bodyErr != nil {
-			restoreCas, restoreErr := xbp.restoreDocumentBody(c, key, valuePtr)
-			kvOps++
+			restoreCas, restoreKVOps, restoreErr := xbp.restoreDocumentBody(c, key, valuePtr)
+			kvOps += restoreKVOps
 			if restoreErr != nil {
 				WarnfCtx(ctx, "Error attempting to restore unexpected deletion of config: %v", restoreErr)
 			} else {
@@ -261,7 +271,7 @@ func (xbp *XattrBootstrapPersistence) loadConfig(ctx context.Context, c *gocb.Co
 }
 
 // Restore a deleted document's body.  Rewrites metadata
-func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value any) (casOut gocb.Cas, err error) {
+func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, key string, value any) (casOut gocb.Cas, kvOps int, err error) {
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, value, UpsertSpecXattr),
 		gocb.ReplaceSpec("", json.RawMessage(cfgXattrBody), nil),
@@ -270,13 +280,14 @@ func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, ke
 		StoreSemantic: gocb.StoreSemanticsInsert,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	kvOps = subdocKVOps(mutateErr)
 	if isKVError(mutateErr, memd.StatusKeyExists) {
-		return 0, ErrAlreadyExists
+		return 0, kvOps, ErrAlreadyExists
 	}
 	if mutateErr != nil {
-		return 0, mutateErr
+		return 0, kvOps, mutateErr
 	}
-	return result.Cas(), nil
+	return result.Cas(), kvOps, nil
 }
 
 // Document Body persistence stores config in the document body.
@@ -303,22 +314,24 @@ func (dbp *DocumentBootstrapPersistence) loadRawConfig(_ context.Context, c *goc
 	return bucketValue, res.Cas(), 1, err
 }
 
-func (dbp *DocumentBootstrapPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error) {
+func (dbp *DocumentBootstrapPersistence) removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, int, error) {
 	deleteRes, err := c.Remove(key, &gocb.RemoveOptions{Cas: cas})
+	kvOps := removeKVOps(err)
 	if err != nil {
-		return 0, err
+		return 0, kvOps, err
 	}
-	return deleteRes.Cas(), err
+	return deleteRes.Cas(), kvOps, err
 }
 
-func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
+// replaceRawConfig makes one KV op, which kv_ops counts even when the replace fails.
+func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, int, error) {
 	replaceRes, err := c.Replace(key, value, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: cas})
 	if err != nil {
-		return 0, err
+		return 0, 1, err
 	}
 
 	// For DocumentBootstrapPersistence, cfgCas always equals doc.cas
-	return replaceRes.Cas(), nil
+	return replaceRes.Cas(), 1, nil
 }
 
 func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.Collection, key string, valuePtr any) (cas uint64, kvOps int, err error) {
@@ -342,19 +355,20 @@ func (dbp *DocumentBootstrapPersistence) loadConfig(_ context.Context, c *gocb.C
 	return uint64(res.Cas()), 1, nil
 }
 
-func (dbp *DocumentBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, err error) {
+// insertConfig makes one KV op, which kv_ops counts even when the document already exists.
+func (dbp *DocumentBootstrapPersistence) insertConfig(c *gocb.Collection, key string, value any) (cas uint64, kvOps int, err error) {
 	res, err := c.Insert(key, value, nil)
 	if err != nil {
 		if isKVError(err, memd.StatusKeyExists) {
-			return 0, ErrAlreadyExists
+			return 0, 1, ErrAlreadyExists
 		}
-		return 0, err
+		return 0, 1, err
 	}
 
-	return uint64(res.Cas()), nil
+	return uint64(res.Cas()), 1, nil
 }
 
-func (dbp *DocumentBootstrapPersistence) touchConfigRollback(c *gocb.Collection, key, property, value string, cas gocb.Cas) (casOut gocb.Cas, err error) {
+func (dbp *DocumentBootstrapPersistence) touchConfigRollback(c *gocb.Collection, key, property, value string, cas gocb.Cas) (casOut gocb.Cas, kvOps int, err error) {
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(property, value, UpsertSpecXattr),
 	}
@@ -363,10 +377,11 @@ func (dbp *DocumentBootstrapPersistence) touchConfigRollback(c *gocb.Collection,
 		Cas:           cas,
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	kvOps = subdocKVOps(mutateErr)
 	if mutateErr != nil {
-		return 0, mutateErr
+		return 0, kvOps, mutateErr
 	}
-	return result.Cas(), nil
+	return result.Cas(), kvOps, nil
 }
 
 // Common operations that don't depend on storage format
