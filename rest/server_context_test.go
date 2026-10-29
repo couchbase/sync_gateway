@@ -958,10 +958,12 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	}
 
 	touchErr := errors.New("touch error")
+	var failTouch atomic.Bool
+	failTouch.Store(true)
 	rt := NewRestTester(t, &RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{
 			TouchCallback: func(key string) error {
-				if strings.Contains(key, "heartbeat_timeout") {
+				if failTouch.Load() && strings.Contains(key, "heartbeat_timeout") {
 					return touchErr
 				}
 				return nil
@@ -976,7 +978,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	}
 
 	// this call does use the leaky bucket
-	dbContext, err := rt.ServerContext().AddDatabaseFromConfigWithBucket(rt.Context(), t, dbConfig, rt.Bucket())
+	dbContext, err := rt.ServerContext().AddDatabaseFromConfig(rt.Context(), dbConfig)
 	require.ErrorIs(t, err, touchErr)
 	require.Nil(t, dbContext)
 	require.Equal(t, "Offline", rt.GetDBState())
@@ -992,6 +994,7 @@ func TestDatabaseStartupFailure(t *testing.T) {
 	assert.Equal(t, invalDb.DatabaseError.ErrMsg, db.DatabaseErrorMap[db.DatabaseOnlineProcessError])
 
 	// assert that you can attempt again to bring db back online again after failure
+	failTouch.Store(false)
 	resp := rt.SendAdminRequest(http.MethodPost, "/"+invalDb.Bucket+"/_online", "")
 	RequireStatus(t, resp, http.StatusOK)
 	rt.WaitForDBOnline()

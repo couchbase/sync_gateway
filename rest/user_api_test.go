@@ -552,10 +552,6 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 }
 
 func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip LeakyBucket test when running in integration")
-	}
-
 	testCases := []struct {
 		Name             string
 		triggerOnUserDoc bool
@@ -584,6 +580,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				}
 			}
 		`,
+					LeakyBucketConfig: &base.LeakyBucketConfig{},
 				})
 			defer rt.Close()
 			ds := rt.GetSingleDataStore()
