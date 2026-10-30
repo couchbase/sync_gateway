@@ -1382,6 +1382,7 @@ func TestCBLPushEncodedCVForDocNotOnSGW(t *testing.T) {
 		require.Equal(t, "Revision+Tree+Encoding", cblVersion.CV.SourceID)
 
 		btcRunner.StartPush(btc.id)
+		defer btcRunner.StopPush(btc.id)
 		rt.WaitForVersion(docID, cblVersion)
 	})
 }
