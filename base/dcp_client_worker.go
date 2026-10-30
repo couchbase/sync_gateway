@@ -39,6 +39,8 @@ type DCPWorker struct {
 	lastMetaPersistTime   time.Time
 	metaPersistFrequency  time.Duration
 	assignedVbs           []uint16
+	idleCheckpointOps     bool // Whether a checkpoint write made only for _sync: doc events is counted as an idle KV op
+	sawNonSyncDoc         bool // Whether an event that was not for a _sync: doc has been seen since the last persist
 }
 
 const defaultQueueLength = 10
@@ -48,6 +50,7 @@ type DCPWorkerOptions struct {
 	eventQueueLength     int
 	ignoreDeletes        bool
 	metaPersistFrequency *time.Duration
+	idleCheckpointOps    bool
 }
 
 func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbucket.FeedEventCallbackFunc,
@@ -80,6 +83,7 @@ func NewDCPWorker(workerID int, metadata DCPMetadataStore, mutationCallback sgbu
 		pendingSnapshot:       make(map[uint16]snapshotEvent),
 		metaPersistFrequency:  metadataPersistFrequency,
 		assignedVbs:           assignedVbs,
+		idleCheckpointOps:     options != nil && options.idleCheckpointOps,
 	}
 }
 
@@ -153,9 +157,18 @@ func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq 
 	// TODO: update snapshot and seq in a single atomic update
 	w.checkPendingSnapshot(vbID)
 	w.metadata.UpdateSeq(vbID, seq)
+	if !bytes.HasPrefix(key, []byte(SyncDocPrefix)) {
+		w.sawNonSyncDoc = true
+	}
 
 	if time.Since(w.lastMetaPersistTime) > w.metaPersistFrequency {
 		w.metadata.Persist(ctx, w.ID, w.assignedVbs)
+		// Background work such as heartbeats writes _sync: docs even on a node with no clients. When only those were
+		// seen, the checkpoint write is idle work too.
+		if w.idleCheckpointOps && !w.sawNonSyncDoc {
+			SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+		}
+		w.sawNonSyncDoc = false
 	}
 
 }

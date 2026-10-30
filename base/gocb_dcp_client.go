@@ -63,6 +63,7 @@ type GoCBDCPClient struct {
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
 	feedContent                sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
 	metadataStore              DataStore
+	idleCheckpointOps          bool // Whether workers count checkpoint writes made only for _sync: docs as idle KV ops
 }
 
 // GoCBDCPClientOptions contains options specific for starting a DCP client backed by gocb.
@@ -81,6 +82,7 @@ type GoCBDCPClientOptions struct {
 	NumVBuckets                uint16               // NumVBuckets is used to set the number of vbuckets for the DCP feed, if not set, it will be determined from the bucket when creating the client
 	FeedContent                sgbucket.FeedContent // FeedContent specifies whether the DCP feed should include values, xattrs, or both
 	MetadataStore              DataStore            // MetadataStore is used for DCPMetadata persistence when MetadataStoreType is DCPMetadataStoreCS
+	IdleCheckpointOps          bool                 // If true, a checkpoint write made when only _sync: docs were seen since the last one is counted as an idle KV op. Only applies to DCPMetadataStoreCS.
 }
 
 // MemdDcpOpenFlag returns the memd.DcpOpenFlag to use for the given FeedContent option.
@@ -148,6 +150,8 @@ func NewGocbDCPClient(ctx context.Context, callback sgbucket.FeedEventCallbackFu
 		agentPriority:    options.AgentPriority,
 		collectionIDs:    options.CollectionIDs,
 		feedContent:      options.FeedContent,
+		// An in-memory metadata store makes no KV operations when it persists.
+		idleCheckpointOps: options.IdleCheckpointOps && options.MetadataStoreType == DCPMetadataStoreCS,
 	}
 
 	// Initialize active vbuckets
@@ -454,6 +458,7 @@ func (dc *GoCBDCPClient) startWorkers(ctx context.Context) {
 	for index, _ := range dc.workers {
 		options := &DCPWorkerOptions{
 			metaPersistFrequency: dc.checkpointPersistFrequency,
+			idleCheckpointOps:    dc.idleCheckpointOps,
 		}
 		dc.workers[index] = NewDCPWorker(index, dc.metadata, dc.callback, dc.onStreamEnd, dc.terminator, nil, dc.checkpointPrefix, assignedVbs[index], options)
 		dc.workers[index].Start(ctx, &dc.workersWg)

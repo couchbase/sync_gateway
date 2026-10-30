@@ -1175,7 +1175,7 @@ func TestDatabaseStateMgrIsUpdatedConcurrentWithUpdateState(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iters {
-				if newCAS, state, ok := dbStateMgr.isUpdated(ctx); ok {
+				if newCAS, state, ok := dbStateMgr.isUpdated(ctx, dbStateMgr.metadataStore); ok {
 					if state != nil && state.ResyncRunning != nil && *state.ResyncRunning {
 						handlerFires.Add(1)
 					}

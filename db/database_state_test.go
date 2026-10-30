@@ -223,3 +223,21 @@ func TestDatabaseStateMgrPolling(t *testing.T) {
 		require.Equal(t, int32(1), callCount.Load(), "expected exactly one callback after stopping (no additional calls)")
 	})
 }
+
+// TestDatabaseStatePollCountsIdleKVOps checks that each poll of the state document, which runs while a database is
+// offline even with no clients, counts its KV operations as idle KV ops.
+func TestDatabaseStatePollCountsIdleKVOps(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
+	mgr := NewDatabaseStateMgr(tBucket.GetSingleDataStore(), base.NewMetadataKeys(t.Name()).DatabaseStateKey(), nil)
+
+	for _, name := range []string{"state doc missing", "state doc present"} {
+		t.Run(name, func(t *testing.T) {
+			idleKVOpsBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
+			mgr.poll(ctx)
+			assert.Equal(t, int64(1), base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()-idleKVOpsBefore, "a read of the state doc")
+		})
+		require.NoError(t, mgr.UpdateState(ctx, DatabaseState{ResyncRunning: new(false)}))
+	}
+}

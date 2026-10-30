@@ -43,7 +43,9 @@ import (
 // Errors from either side-channel enumeration are logged at Warn and the partial result is
 // returned — the caller's CCV cap still functions correctly with whichever observations did
 // succeed.
-func (db *DatabaseContext) ObservePreCCVAwarePeers(ctx context.Context, ccvAwareMajor, ccvAwareMinor uint8) map[string]base.RegistryPreCCVAwareNode {
+//
+// The KV operations made reading the side-channels are added to kvOpStat, if set.
+func (db *DatabaseContext) ObservePreCCVAwarePeers(ctx context.Context, ccvAwareMajor, ccvAwareMinor uint8, kvOpStat *base.SgwIntStat) map[string]base.RegistryPreCCVAwareNode {
 	out := make(map[string]base.RegistryPreCCVAwareNode)
 
 	upsert := func(uuid string, version *base.ComparableBuildVersion) {
@@ -70,7 +72,7 @@ func (db *DatabaseContext) ObservePreCCVAwarePeers(ctx context.Context, ccvAware
 	}
 
 	if db.ImportListener != nil && db.ImportListener.cbgtContext != nil {
-		cbgtNodes, err := base.ListCbgtNodes(ctx, db.ImportListener.cbgtContext.Cfg)
+		cbgtNodes, err := base.ListCbgtNodes(ctx, base.NewKVOpStatCfg(db.ImportListener.cbgtContext.Cfg, kvOpStat))
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to enumerate cbgt nodes for pre-CCV-aware peer observation on database %s: %v", base.MD(db.Name), err)
 		} else {
@@ -81,7 +83,7 @@ func (db *DatabaseContext) ObservePreCCVAwarePeers(ctx context.Context, ccvAware
 	}
 
 	if db.SGReplicateMgr != nil {
-		sgrNodes, err := db.SGReplicateMgr.getNodes()
+		sgrNodes, err := db.SGReplicateMgr.getNodesFromCfg(base.NewKVOpStatCfg(db.SGReplicateMgr.cfg, kvOpStat))
 		if err != nil {
 			base.WarnfCtx(ctx, "Failed to enumerate SGRCluster nodes for pre-CCV-aware peer observation on database %s: %v", base.MD(db.Name), err)
 		} else {
