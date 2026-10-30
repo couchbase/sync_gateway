@@ -805,6 +805,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			{"own unusedSeq (binary)", def.UnusedSeqKey(5), dispMigrated},
 			{"own unusedSeqRange (binary)", def.UnusedSeqRangeKey(5, 9), dispMigrated},
 			{"own database state", def.DatabaseStateKey(), dispMigrated},
+			{"own timestamps_seq", def.TimestampsSeqKey(), dispMigrated},
 			{"own replication status", def.ReplicationStatusKey("repl1"), dispMigrated},
 			{"own sgcfg", def.SGCfgPrefix("") + "nodeDefs-known", dispMigrated},
 			{"own resync cfg", def.ResyncCfgPrefix() + cbgt.PLAN_PINDEXES_KEY, dispMigrated},
@@ -813,6 +814,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			// non-inverted sibling family (`_sync:m_db2:…`) — out-of-scope via SyncDocMetadataPrefix arm
 			{"sibling non-inverted seq", db2.SyncSeqKey(), dispOutOfScope},
 			{"sibling non-inverted unusedSeq", db2.UnusedSeqKey(7), dispOutOfScope},
+			{"sibling non-inverted timestamps_seq", db2.TimestampsSeqKey(), dispOutOfScope},
 
 			// heartbeater — deleted, never moved
 			{"own heartbeater", def.HeartbeaterPrefix("") + "heartbeat_timeout:node1", dispDeleted},
@@ -853,6 +855,10 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			// non-inverted owned — migrated
 			{"own unusedSeq (binary)", db2.UnusedSeqKey(5), dispMigrated},
 			{"own database state", db2.DatabaseStateKey(), dispMigrated},
+			{"own timestamps_seq", db2.TimestampsSeqKey(), dispMigrated},
+
+			// the default sibling's non-inverted key — out-of-scope (formatMetadataKey arm)
+			{"default-sibling timestamps_seq", def.TimestampsSeqKey(), dispOutOfScope},
 
 			// a DIFFERENT sibling's non-inverted key — out-of-scope
 			{"otherDB non-inverted key", base.NewMetadataKeys("otherDB").SGCfgPrefix(""), dispOutOfScope},
