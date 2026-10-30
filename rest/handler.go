@@ -928,11 +928,19 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 
 	// Record Auth stats
 	defer func(t time.Time) {
+		// Checked once here rather than in each auth method, since bearer tokens are otherwise accepted for a disabled
+		// user. The guest user is excluded because the guest path below already handles a disabled guest.
+		if err == nil && h.user != nil && h.user.Name() != "" && h.user.Disabled() {
+			base.InfofCtx(h.ctx(), base.KeyAuth, "Rejecting login for disabled user %s", base.UD(h.user.Name()))
+			auditFields[base.AuditFieldUserName] = h.user.Name()
+			h.user = nil
+			err = ErrInvalidLogin
+		}
 		delta := time.Since(t).Nanoseconds()
 		dbCtx.DbStats.Security().TotalAuthTime.Add(delta)
 		if err != nil {
 			dbCtx.DbStats.Security().AuthFailedCount.Add(1)
-			if errors.Is(err, ErrInvalidLogin) {
+			if isPublicAuthFailure(err) {
 				base.Audit(h.ctx(), base.AuditIDPublicUserAuthenticationFailed, auditFields)
 			}
 		} else {
@@ -1025,17 +1033,25 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	if h.isBlipSync() {
 		sessionID := h.getWebsocketToken()
 		if sessionID != "" {
-			var err error
 			auditFields = base.AuditFields{base.AuditFieldAuthMethod: "websocket_token"}
-			h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
+			var sessionUsername string
+			var err error
+			h.user, sessionUsername, err = dbCtx.Authenticator(h.ctx()).AuthenticateOneTimeSession(h.ctx(), sessionID)
+			if err != nil && sessionUsername != "" {
+				auditFields[base.AuditFieldUserName] = sessionUsername
+			}
 			return err
 		}
 	}
 
 	// Check cookie
 	auditFields = base.AuditFields{base.AuditFieldAuthMethod: "cookie"}
-	h.user, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
+	var sessionUsername string
+	h.user, sessionUsername, err = dbCtx.Authenticator(h.ctx()).AuthenticateCookie(h.rq, h.response)
 	if err != nil && h.privs != publicPrivs {
+		if sessionUsername != "" {
+			auditFields[base.AuditFieldUserName] = sessionUsername
+		}
 		return err
 	} else if h.user != nil {
 		return nil
@@ -1057,6 +1073,20 @@ func (h *handler) checkPublicAuth(dbCtx *db.DatabaseContext) (err error) {
 	}
 
 	return nil
+}
+
+// isPublicAuthFailure reports whether err from checkPublicAuth means the supplied credentials were rejected. Session
+// and websocket token failures return their own 401 errors rather than ErrInvalidLogin. ErrLoginRequired is excluded
+// because no credentials were supplied.
+func isPublicAuthFailure(err error) bool {
+	if errors.Is(err, ErrInvalidLogin) {
+		return true
+	}
+	if errors.Is(err, ErrLoginRequired) {
+		return false
+	}
+	status, _ := base.ErrorAsHTTPStatus(err)
+	return status == http.StatusUnauthorized
 }
 
 // verifyWebsocketToken checks for a valid websocket token in the request headers. If present, invalidate the token so it can't be reused.

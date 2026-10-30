@@ -456,9 +456,9 @@ func TestSessionAPI(t *testing.T) {
 	user3sessions := make([]string, 5)
 
 	for i := 0; i < 5; i++ {
-		user1sessions[i] = createSession(t, rt, "user1")
-		user2sessions[i] = createSession(t, rt, "user2")
-		user3sessions[i] = createSession(t, rt, "user3")
+		user1sessions[i] = rt.CreateSession("user1")
+		user2sessions[i] = rt.CreateSession("user2")
+		user3sessions[i] = rt.CreateSession("user3")
 	}
 
 	// GET Tests
@@ -712,18 +712,6 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.Contains(t, response.Body.String(), "Session no longer valid")
 }
 
-func createSession(t *testing.T, rt *RestTester, username string) string {
-
-	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
-	RequireStatus(t, response, 200)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	sessionId := body["session_id"].(string)
-
-	return sessionId
-}
-
 func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -823,4 +811,126 @@ func TestOneTimeSessionWithCookie(t *testing.T) {
 	// Second request should fail since it's a one-time session
 	resp = rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", headers)
 	RequireStatus(t, resp, http.StatusUnauthorized)
+}
+
+// TestDisabledUserSessionRejected ensures that disabling a user invalidates sessions that were created while the user
+// was still enabled, and that they stay invalid if the user is re-enabled.
+func TestDisabledUserSessionRejected(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	const username = "alice"
+	rt.CreateUser(username, []string{"alicechan"})
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc2", `{"channels":["alicechan"]}`), http.StatusCreated)
+
+	sessionID := rt.CreateSession(username)
+	cookieHeaders := map[string]string{
+		"Cookie": auth.DefaultCookieName + "=" + sessionID,
+	}
+
+	// session works while the user is enabled
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusOK)
+
+	// one-time session for websocket token auth, created while the user is enabled and redeemed after disabling
+	resp := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+	RequireStatus(t, resp, http.StatusOK)
+	var oneTimeSession struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &oneTimeSession))
+	require.NotEmpty(t, oneTimeSession.SessionID)
+
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`), http.StatusOK)
+
+	// basic auth is already rejected for a disabled user
+	RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc2", "", username), http.StatusUnauthorized)
+
+	// the pre-existing session must be rejected for both reads and writes
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusUnauthorized)
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc3", `{"channels":["alicechan"]}`, cookieHeaders), http.StatusUnauthorized)
+	AssertStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/_blipsync", "", map[string]string{
+		secWebSocketProtocolHeader: blipSessionIDPrefix + oneTimeSession.SessionID,
+	}), http.StatusUnauthorized)
+
+	// re-enabling the user doesn't restore the session, but basic auth works again
+	RequireStatus(t, rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":false}`), http.StatusOK)
+	RequireStatus(t, rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc2", "", cookieHeaders), http.StatusUnauthorized)
+	RequireStatus(t, rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc2", "", username), http.StatusOK)
+}
+
+// TestRejectedSessionNotExtended ensures that a session rejected at authentication time does not have its expiry
+// refreshed, so repeated requests on a rejected session can't keep it alive.
+func TestRejectedSessionNotExtended(t *testing.T) {
+	testCases := []struct {
+		name         string
+		rejectAction func(rt *RestTester, username string)
+	}{
+		{
+			name: "disabled user",
+			rejectAction: func(rt *RestTester, username string) {
+				RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, `{"disabled":true}`), http.StatusOK)
+			},
+		},
+		{
+			// an older node disables the user without changing its session UUID
+			name: "disabled user with unchanged session UUID",
+			rejectAction: func(rt *RestTester, username string) {
+				ctx := base.TestCtx(rt.TB())
+				userDocID := rt.GetDatabase().Authenticator(ctx).DocIDForUser(username)
+				var userDoc map[string]any
+				_, err := rt.MetadataStore().Get(userDocID, &userDoc)
+				require.NoError(rt.TB(), err)
+				userDoc["disabled"] = true
+				require.NoError(rt.TB(), rt.MetadataStore().Set(userDocID, 0, nil, userDoc))
+			},
+		},
+		{
+			name: "all sessions deleted",
+			rejectAction: func(rt *RestTester, username string) {
+				RequireStatus(rt.TB(), rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username+"/_session", ""), http.StatusOK)
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			const username = "alice"
+			rt.CreateUser(username, []string{"*"})
+
+			authenticator := rt.GetDatabase().Authenticator(ctx)
+			user, err := authenticator.GetUser(username)
+			require.NoError(t, err)
+
+			id, err := base.GenerateRandomSecret()
+			require.NoError(t, err)
+
+			// more than 10% of the TTL has elapsed, so a valid request on this session would refresh it
+			originalExpiration := time.Now().Add(4 * time.Hour).Truncate(time.Second)
+			session := auth.LoginSession{
+				ID:          id,
+				Username:    username,
+				Expiration:  originalExpiration,
+				Ttl:         24 * time.Hour,
+				SessionUUID: user.GetSessionUUID(),
+			}
+			require.NoError(t, rt.MetadataStore().Set(authenticator.DocIDForSession(session.ID), 0, nil, session))
+
+			tc.rejectAction(rt, username)
+
+			response := rt.SendRequestWithHeaders(http.MethodGet, "/{{.db}}/", "", map[string]string{
+				"Cookie": auth.DefaultCookieName + "=" + session.ID,
+			})
+			RequireStatus(t, response, http.StatusUnauthorized)
+			assert.Empty(t, response.Header().Get("Set-Cookie"))
+
+			var storedSession auth.LoginSession
+			_, err = rt.MetadataStore().Get(authenticator.DocIDForSession(session.ID), &storedSession)
+			require.NoError(t, err)
+			assert.True(t, originalExpiration.Equal(storedSession.Expiration), "expected expiration %s, got %s", originalExpiration, storedSession.Expiration)
+		})
+	}
 }
