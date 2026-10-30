@@ -1359,6 +1359,33 @@ func TestCBLPushEncodedCVDerivedFromSGWLocalRevID(t *testing.T) {
 	})
 }
 
+// TestCBLPushEncodedCVForDocNotOnSGW pushes a document whose CV is revision tree encoded when SGW has no copy of
+// the document, so there is no local revID to compare the encoded CV against.
+func TestCBLPushEncodedCVForDocNotOnSGW(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeySync, base.KeySyncMsg)
+
+	btcRunner := NewBlipTesterClientRunner(t)
+
+	btcRunner.SkipSubtest[RevtreeSubtestName] = true // vv specific test
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			GuestEnabled: true,
+		})
+		defer rt.Close()
+
+		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, nil)
+		defer btc.Close()
+
+		docID := sgtest.SafeDocumentName(t, t.Name())
+
+		cblVersion := btcRunner.AddEncodedCVRev(btc.id, docID, "1-abc", EmptyDocVersion(), []byte(`{"key":"val"}`))
+		require.Equal(t, "Revision+Tree+Encoding", cblVersion.CV.SourceID)
+
+		btcRunner.StartPush(btc.id)
+		rt.WaitForVersion(docID, cblVersion)
+	})
+}
+
 // removeHLV removes _vv and clears _sync.ver and _sync.src from a document. Consider instead using CreateDocNoHLV
 func removeHLV(rt *RestTester, docID string) {
 	ds := rt.GetSingleDataStore()

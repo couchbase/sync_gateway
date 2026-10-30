@@ -1642,8 +1642,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				doc.HLV = NewHybridLogicalVector()
 			}
 			doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-			// If incoming doc has RTE CV we should check that this isn't derived from our local revID, if so we don't need this rev
-			if doc.HLV.SourceID == encodedRevTreeSourceID {
+			// If incoming doc has RTE CV we should check that this isn't derived from our local revID, if so we don't need this rev.
+			// A doc that doesn't exist locally has no revID to derive from, so there is nothing to compare.
+			if doc.HLV.HasRevEncodedCV() && doc.GetRevTreeID() != "" {
 				// convert our current rev to RTE and compare
 				encodedCV, err := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
 				if err != nil {
