@@ -564,6 +564,51 @@ func (rt *RestTester) DeleteUser(username string) {
 	RequireStatus(rt.TB(), response, http.StatusOK)
 }
 
+// DeleteUserSession deletes all sessions for the given user via the admin API.
+func (rt *RestTester) DeleteUserSession(username string) {
+	rt.TB().Helper()
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodDelete, "/{{.db}}/_user/"+username+"/_session", "", base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodDelete, "/{{.db}}/_user/"+username+"/_session", "")
+	}
+	RequireStatus(rt.TB(), response, http.StatusOK)
+}
+
+// CreateSession creates a session for the given user via the admin API, and returns the session ID.
+func (rt *RestTester) CreateSession(username string) string {
+	rt.TB().Helper()
+	body := fmt.Sprintf(`{"name":%q}`, username)
+	var response *TestResponse
+	if rt.AdminInterfaceAuthentication {
+		response = rt.SendAdminRequestWithAuth(http.MethodPost, "/{{.db}}/_session", body, base.TestClusterUsername(), base.TestClusterPassword())
+	} else {
+		response = rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_session", body)
+	}
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	var session struct {
+		SessionID string `json:"session_id"`
+	}
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &session))
+	require.NotEmpty(rt.TB(), session.SessionID)
+	return session.SessionID
+}
+
+// CreateOneTimeSession creates a one-time session for the given user, and returns the session ID. The admin API can't
+// create one-time sessions, so this uses the public API and requires the user to have RestTesterDefaultUserPassword.
+func (rt *RestTester) CreateOneTimeSession(username string) string {
+	rt.TB().Helper()
+	response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session?one_time=true", "", username)
+	RequireStatus(rt.TB(), response, http.StatusOK)
+	var session struct {
+		SessionID string `json:"one_time_session_id"`
+	}
+	require.NoError(rt.TB(), base.JSONUnmarshal(response.BodyBytes(), &session))
+	require.NotEmpty(rt.TB(), session.SessionID)
+	return session.SessionID
+}
+
 // NewUserWaiter returns a db.ChangeWaiter for the given user, notified when the user document or any
 // of the user's role documents is written or deleted.  Create the waiter before making the change,
 // then call db.WaitForUserWaiterChange to wait for that change to be notified.
