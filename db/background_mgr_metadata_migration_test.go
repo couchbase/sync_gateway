@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"testing"
@@ -115,12 +116,12 @@ func TestTryStartMetadataMigrationAlreadyRunning(t *testing.T) {
 	require.NoError(t, err)
 
 	// Config is fully applied so the attempt proceeds to Start.
-	dbCtx.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
+	dbCtx.ConfigFullyAppliedFunc = func(ctx context.Context, _ bool) (bool, []string, error) {
 		return true, nil, nil
 	}
 
 	// done=true tells the arm loop to stop polling rather than retry and re-run later.
-	require.True(t, dbCtx.tryStartMetadataMigration(ctx))
+	require.True(t, dbCtx.tryStartMetadataMigration(ctx, false))
 
 	// The local manager must not have started: it should still be in its initial (uninitialized)
 	// run state, having backed off rather than acquiring the lock.
@@ -444,10 +445,33 @@ func TestTryStartMetadataMigrationConfigNotApplied(t *testing.T) {
 	}
 	dbCtx.MetadataMigrationManager = NewMetadataMigrationManager(dbCtx)
 
-	dbCtx.ConfigFullyAppliedFunc = func(ctx context.Context) (bool, []string, error) {
+	dbCtx.ConfigFullyAppliedFunc = func(ctx context.Context, _ bool) (bool, []string, error) {
 		return false, []string{"node2"}, nil
 	}
 
-	assert.False(t, dbCtx.tryStartMetadataMigration(ctx))
+	assert.False(t, dbCtx.tryStartMetadataMigration(ctx, false))
 	assert.NotEqual(t, BackgroundProcessStateRunning, dbCtx.MetadataMigrationManager.GetRunState())
+}
+
+// TestTryStartMetadataMigrationPassesIdle checks that tryStartMetadataMigration passes idle to both of its checks, so
+// the KV ops of the arm loop's checks count as idle and those of the check made at startup do not.
+func TestTryStartMetadataMigrationPassesIdle(t *testing.T) {
+	for _, idle := range []bool{false, true} {
+		t.Run(fmt.Sprintf("idle=%t", idle), func(t *testing.T) {
+			var passedIdle []bool
+			dbCtx := &DatabaseContext{
+				Name: "test",
+				PerDBMetadataMigrationCompleteFunc: func(_ context.Context, idle bool) bool {
+					passedIdle = append(passedIdle, idle)
+					return false
+				},
+				ConfigFullyAppliedFunc: func(_ context.Context, idle bool) (bool, []string, error) {
+					passedIdle = append(passedIdle, idle)
+					return false, []string{"node2"}, nil
+				},
+			}
+			assert.False(t, dbCtx.tryStartMetadataMigration(base.TestCtx(t), idle))
+			assert.Equal(t, []bool{idle, idle}, passedIdle)
+		})
+	}
 }

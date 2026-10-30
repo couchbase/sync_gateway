@@ -27,6 +27,10 @@ import (
 type BootstrapConnection interface {
 	// GetConfigBuckets returns a list of bucket names where a bootstrap metadata documents could reside.
 	GetConfigBuckets(context.Context) ([]string, error)
+	// WithKVOpStat returns a connection that shares this one's connections and caches, and adds every KV operation it
+	// makes to stat. Background work uses it so that its KV operations are counted as idle, and the same calls made for
+	// client requests are not. Called on a connection that already has a stat, the new stat replaces it.
+	WithKVOpStat(stat *SgwIntStat) BootstrapConnection
 	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
 	GetMetadataDocument(ctx context.Context, bucket, key string, valuePtr any) (cas uint64, err error)
 	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key.
@@ -118,6 +122,13 @@ type CouchbaseClusterSpec struct {
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
+	*couchbaseClusterState
+	configPersistence ConfigPersistence // ConfigPersistence mode, which counts its KV operations when kvOpStat is set
+	kvOpStat          *SgwIntStat       // Every KV operation made is added to this, if set. See WithKVOpStat
+}
+
+// couchbaseClusterState is the connections and caches of a CouchbaseCluster, shared with the copies WithKVOpStat makes.
+type couchbaseClusterState struct {
 	server                      string
 	clusterOptions              gocb.ClusterOptions
 	perBucketAuth               map[string]*gocb.Authenticator
@@ -125,7 +136,6 @@ type CouchbaseCluster struct {
 	cachedClusterConnection     *gocb.Cluster           // Cached cluster connection, should only be used by GetConfigBuckets
 	cachedBucketConnections     cachedBucketConnections // Per-bucket cached connections
 	cachedConnectionLock        sync.Mutex              // mutex for access to cachedBucketConnections
-	configPersistence           ConfigPersistence       // ConfigPersistence mode
 	useSystemMetadataCollection bool                    // When true, bootstrap metadata is stored in _system._mobile, with read-fallback to _default._default during migration
 	// bucketBootstrapTargets caches the resolved bootstrap-doc location for each bucket.
 	// Resolved lazily on first interaction (or eagerly via SetBucketBootstrapTargetHint).
@@ -285,14 +295,14 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
 	}
 
-	cbCluster := &CouchbaseCluster{
+	cbCluster := &CouchbaseCluster{couchbaseClusterState: &couchbaseClusterState{
 		server:                      clusterSpec.Server,
 		perBucketAuth:               perBucketAuth,
 		clusterOptions:              clusterOptions,
 		bucketConnectionMode:        bucketMode,
 		useSystemMetadataCollection: useSystemMetadataCollection,
 		useGOCBFastFailRetry:        clusterSpec.UseGOCBFastFailRetry,
-	}
+	}}
 
 	if bucketMode == CachedClusterConnections {
 		cbCluster.cachedBucketConnections = cachedBucketConnections{buckets: make(map[string]*cachedBucket)}
@@ -304,6 +314,28 @@ func NewCouchbaseCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec,
 	}
 
 	return cbCluster, nil
+}
+
+func (cc *CouchbaseCluster) WithKVOpStat(stat *SgwIntStat) BootstrapConnection {
+	if stat == nil {
+		return cc
+	}
+	persistence := cc.configPersistence
+	if counted, ok := persistence.(*kvOpStatConfigPersistence); ok {
+		persistence = counted.ConfigPersistence
+	}
+	return &CouchbaseCluster{
+		couchbaseClusterState: cc.couchbaseClusterState,
+		configPersistence:     &kvOpStatConfigPersistence{ConfigPersistence: persistence, stat: stat},
+		kvOpStat:              stat,
+	}
+}
+
+// countKVOps adds KV operations made outside of configPersistence to kvOpStat, if set.
+func (cc *CouchbaseCluster) countKVOps(n int) {
+	if cc.kvOpStat != nil {
+		cc.kvOpStat.Add(int64(n))
+	}
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
@@ -627,9 +659,9 @@ func (cc *CouchbaseCluster) RefreshBucketBootstrapTarget(ctx context.Context, bu
 // migrated between collections mid-operation. On a successful fallback hit the bucket's cached
 // bootstrap target is updated (via noteBucketFallbackHit) so subsequent ops route correctly.
 func (cc *CouchbaseCluster) loadConfigWithFallback(ctx context.Context, bucketName string, primary, fallback *gocb.Collection, docID string) (collection *gocb.Collection, value []byte, cas gocb.Cas, err error) {
-	value, cas, err = cc.configPersistence.loadRawConfig(ctx, primary, docID)
+	value, cas, _, err = cc.configPersistence.loadRawConfig(ctx, primary, docID)
 	if cc.shouldFallback(err, fallback) {
-		value, cas, err = cc.configPersistence.loadRawConfig(ctx, fallback, docID)
+		value, cas, _, err = cc.configPersistence.loadRawConfig(ctx, fallback, docID)
 		if err == nil {
 			cc.noteBucketFallbackHit(bucketName)
 			return fallback, value, cas, nil
@@ -653,15 +685,14 @@ func (cc *CouchbaseCluster) GetMetadataDocument(ctx context.Context, location, d
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
-	cas, err = cc.configPersistence.loadConfig(ctx, primary, docID, valuePtr)
+	cas, _, err = cc.configPersistence.loadConfig(ctx, primary, docID, valuePtr)
 	if cc.shouldFallback(err, fallback) {
-		cas, err = cc.configPersistence.loadConfig(ctx, fallback, docID, valuePtr)
+		cas, _, err = cc.configPersistence.loadConfig(ctx, fallback, docID, valuePtr)
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
 		cc.disableBootstrapFallbackIfUnrecoverable(ctx, location, fallback, err)
 	}
-	SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	return cas, err
 }
 
@@ -692,7 +723,8 @@ func (cc *CouchbaseCluster) InsertMetadataDocument(ctx context.Context, location
 			return 0, ErrAlreadyExists
 		}
 	}
-	return cc.configPersistence.insertConfig(primary, key, value)
+	cfgCas, _, err := cc.configPersistence.insertConfig(primary, key, value)
+	return cfgCas, err
 }
 
 // WriteMetadataDocument writes a metadata document, and fails on CAS mismatch.
@@ -720,11 +752,11 @@ func (cc *CouchbaseCluster) WriteMetadataDocument(ctx context.Context, location,
 	}
 
 	primary, fallback := cc.metadataCollections(b)
-	casOut, err := cc.configPersistence.replaceRawConfig(primary, docID, rawDocument, gocb.Cas(cas))
+	casOut, _, err := cc.configPersistence.replaceRawConfig(primary, docID, rawDocument, gocb.Cas(cas))
 	if cc.shouldFallback(err, fallback) {
 		// Doc is not in primary. Caller's CAS must be from a previous fallback read; replay the
 		// write against the fallback collection so CAS semantics line up.
-		casOut, err = cc.configPersistence.replaceRawConfig(fallback, docID, rawDocument, gocb.Cas(cas))
+		casOut, _, err = cc.configPersistence.replaceRawConfig(fallback, docID, rawDocument, gocb.Cas(cas))
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
@@ -746,9 +778,9 @@ func (cc *CouchbaseCluster) TouchMetadataDocument(ctx context.Context, location,
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
-	casOut, err := cc.configPersistence.touchConfigRollback(primary, docID, property, value, gocb.Cas(cas))
+	casOut, _, err := cc.configPersistence.touchConfigRollback(primary, docID, property, value, gocb.Cas(cas))
 	if cc.shouldFallback(err, fallback) {
-		casOut, err = cc.configPersistence.touchConfigRollback(fallback, docID, property, value, gocb.Cas(cas))
+		casOut, _, err = cc.configPersistence.touchConfigRollback(fallback, docID, property, value, gocb.Cas(cas))
 		if err == nil {
 			cc.noteBucketFallbackHit(location)
 		}
@@ -770,9 +802,9 @@ func (cc *CouchbaseCluster) DeleteMetadataDocument(ctx context.Context, location
 	defer teardown()
 
 	primary, fallback := cc.metadataCollections(b)
-	_, removeErr := cc.configPersistence.removeRawConfig(primary, key, gocb.Cas(cas))
+	_, _, removeErr := cc.configPersistence.removeRawConfig(primary, key, gocb.Cas(cas))
 	if cc.shouldFallback(removeErr, fallback) {
-		_, removeErr = cc.configPersistence.removeRawConfig(fallback, key, gocb.Cas(cas))
+		_, _, removeErr = cc.configPersistence.removeRawConfig(fallback, key, gocb.Cas(cas))
 		if removeErr == nil {
 			cc.noteBucketFallbackHit(location)
 		}
@@ -811,7 +843,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			removeCasOut, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
+			removeCasOut, _, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
 			if err != nil {
 				if errors.Is(err, gocb.ErrCasMismatch) {
 					collection, bucketValue, cas, err = cc.loadConfigWithFallback(ctx, location, primary, fallback, docID)
@@ -825,7 +857,7 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(ctx context.Context, location
 			return uint64(removeCasOut), nil
 		}
 
-		replaceCfgCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
+		replaceCfgCasOut, _, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				collection, bucketValue, cas, err = cc.loadConfigWithFallback(ctx, location, primary, fallback, docID)
@@ -889,6 +921,7 @@ func (cc *CouchbaseCluster) GetDocument(ctx context.Context, bucketName, docID s
 		Transcoder: NewSGJSONTranscoder(),
 	}
 	getResult, err := b.DefaultCollection().Get(docID, getOptions)
+	cc.countKVOps(1)
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentNotFound) {
 			return false, nil
@@ -915,6 +948,7 @@ func (cc *CouchbaseCluster) GetRawDocument(ctx context.Context, bucketName, docI
 		Transcoder: NewSGRawTranscoder(),
 	}
 	getResult, err := b.DefaultCollection().Get(docID, getOptions)
+	cc.countKVOps(1)
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentNotFound) {
 			return nil, false, nil
@@ -943,6 +977,7 @@ func (cc *CouchbaseCluster) GetMetadataMigrationStatus(ctx context.Context, buck
 	defer teardown()
 
 	res, err := cc.systemMobileCollection(b).Get(MetadataMigrationStatusDocID, &gocb.GetOptions{Transcoder: NewSGJSONTranscoder()})
+	cc.countKVOps(1)
 	if err != nil {
 		if IsDocNotFoundError(err) {
 			return nil, 0, ErrNotFound
@@ -972,6 +1007,7 @@ func (cc *CouchbaseCluster) InsertMetadataMigrationStatus(ctx context.Context, b
 	defer teardown()
 
 	res, err := cc.systemMobileCollection(b).Insert(MetadataMigrationStatusDocID, status, &gocb.InsertOptions{Transcoder: NewSGJSONTranscoder()})
+	cc.countKVOps(1)
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentExists) {
 			return 0, ErrAlreadyExists
@@ -1002,6 +1038,7 @@ func (cc *CouchbaseCluster) UpdateMetadataMigrationStatus(ctx context.Context, b
 			isFresh bool
 		)
 		res, getErr := col.Get(MetadataMigrationStatusDocID, &gocb.GetOptions{Transcoder: NewSGJSONTranscoder()})
+		cc.countKVOps(1)
 		if getErr != nil {
 			if !IsDocNotFoundError(getErr) {
 				return 0, getErr
@@ -1019,6 +1056,7 @@ func (cc *CouchbaseCluster) UpdateMetadataMigrationStatus(ctx context.Context, b
 		}
 		if isFresh {
 			ins, err := col.Insert(MetadataMigrationStatusDocID, status, &gocb.InsertOptions{Transcoder: NewSGJSONTranscoder()})
+			cc.countKVOps(1)
 			if err != nil {
 				if errors.Is(err, gocb.ErrDocumentExists) {
 					// peer SG won the race; retry the read-modify-write against the real doc
@@ -1029,6 +1067,7 @@ func (cc *CouchbaseCluster) UpdateMetadataMigrationStatus(ctx context.Context, b
 			return uint64(ins.Cas()), nil
 		}
 		repl, err := col.Replace(MetadataMigrationStatusDocID, status, &gocb.ReplaceOptions{Cas: cas, Transcoder: NewSGJSONTranscoder()})
+		cc.countKVOps(1)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				continue
@@ -1059,7 +1098,7 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 
 	for _, docID := range docIDs {
 		var value map[string]interface{}
-		cas, err := cc.configPersistence.loadConfig(ctx, fallback, docID, &value)
+		cas, _, err := cc.configPersistence.loadConfig(ctx, fallback, docID, &value)
 		if err != nil {
 			if IsDocNotFoundError(err) {
 				continue
@@ -1069,12 +1108,12 @@ func (cc *CouchbaseCluster) MigrateBootstrapDocs(ctx context.Context, bucket str
 		}
 		fallbackCas := gocb.Cas(cas)
 
-		_, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
+		_, _, insertErr := cc.configPersistence.insertConfig(primary, docID, value)
 		if insertErr != nil && !errors.Is(insertErr, gocb.ErrDocumentExists) {
 			return fmt.Errorf("insert primary %q during bootstrap migration: %w", docID, insertErr)
 		}
 
-		if _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
+		if _, _, err := cc.configPersistence.removeRawConfig(fallback, docID, fallbackCas); err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				InfofCtx(ctx, KeyConfig, "Bootstrap migration: skipping fallback delete for %q on bucket %q (CAS mismatch — concurrent write), caller should re-run", MD(docID), MD(bucket))
 				continue

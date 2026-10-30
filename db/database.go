@@ -135,20 +135,22 @@ type DatabaseContext struct {
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	ServerUUID                  string // UUID of the server, if available
 
-	DbStats                      *base.DbStats                                     // stats that correspond to this database context
-	CompactState                 uint32                                            // Status of database compaction
-	terminator                   chan bool                                         // Signal termination of background goroutines
-	CancelContext                context.Context                                   // Cancelled when the database is closed - used to notify associated processes (e.g. blipContext)
-	cancelContextFunc            context.CancelCauseFunc                           // Cancel function for cancelContext
-	backgroundTasks              []BackgroundTask                                  // List of background tasks that are initiated.
-	activeChannels               *channels.ActiveChannels                          // Tracks active replications by channel
-	CfgSG                        *base.CfgSG                                       // Sync Gateway cluster shared config
-	SGReplicateMgr               *sgReplicateManager                               // Manages interactions with sg-replicate replications
-	Heartbeater                  base.Heartbeater                                  // Node heartbeater for SG cluster awareness
-	ServeInsecureAttachmentTypes bool                                              // Attachment content type will bypass the content-disposition handling, default false
-	NoX509HTTPClient             *http.Client                                      // A HTTP Client from gocb to use the management endpoints
-	ServerContextHasStarted      chan struct{}                                     // Closed via PostStartup once the server has fully started
-	ConfigFullyAppliedFunc       func(ctx context.Context) (bool, []string, error) // Returns (applied, missingNodeUIDs, err) for the current db config version
+	DbStats                      *base.DbStats            // stats that correspond to this database context
+	CompactState                 uint32                   // Status of database compaction
+	terminator                   chan bool                // Signal termination of background goroutines
+	CancelContext                context.Context          // Cancelled when the database is closed - used to notify associated processes (e.g. blipContext)
+	cancelContextFunc            context.CancelCauseFunc  // Cancel function for cancelContext
+	backgroundTasks              []BackgroundTask         // List of background tasks that are initiated.
+	activeChannels               *channels.ActiveChannels // Tracks active replications by channel
+	CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
+	SGReplicateMgr               *sgReplicateManager      // Manages interactions with sg-replicate replications
+	Heartbeater                  base.Heartbeater         // Node heartbeater for SG cluster awareness
+	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
+	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
+	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
+	// ConfigFullyAppliedFunc returns (applied, missingNodeUIDs, err) for the current db config version. idle counts its
+	// KV ops as idle, for background work.
+	ConfigFullyAppliedFunc func(ctx context.Context, idle bool) (bool, []string, error)
 	// MetadataMigrationStatusUpdater runs a CAS-safe read-modify-write against the bucket-level
 	// _sync:metadata_migration_status doc in _system._mobile. Set by ServerContext when the
 	// db is created under use_system_metadata_collection.
@@ -163,8 +165,9 @@ type DatabaseContext struct {
 	SiblingMetadataIDFunc func(ctx context.Context) ([]string, error)
 	// PerDBMetadataMigrationCompleteFunc reads the durable bucket-level status doc and reports whether
 	// this database's per-DB migration is complete cluster-wide (so a peer node's completion is seen even
-	// though this node's local MetadataStore flag is still unset). Wired when the DB has opted in.
-	PerDBMetadataMigrationCompleteFunc func(ctx context.Context) bool
+	// though this node's local MetadataStore flag is still unset). Wired when the DB has opted in. idle counts its KV
+	// ops as idle, for background work.
+	PerDBMetadataMigrationCompleteFunc func(ctx context.Context, idle bool) bool
 	ClusterCompatVersionFunc           func() *base.ClusterCompatVersion // Resolves the current cluster-wide minimum SG version, or nil if not yet known. Re-resolved at call time since CCV changes during rolling upgrades.
 	UserFunctionTimeout                time.Duration                     // Default timeout for N1QL & JavaScript queries. (Applies to REST and BLIP requests.)
 	Scopes                             map[string]Scope                  // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
@@ -677,6 +680,12 @@ func (context *DatabaseContext) shouldRunMetadataMigration(ctx context.Context) 
 // left to migrate. Every caller uses this to decide whether migrating is still worth attempting, so
 // that conflation is intentional.
 func (context *DatabaseContext) MetadataMigrationComplete(ctx context.Context) bool {
+	return context.metadataMigrationComplete(ctx, false)
+}
+
+// metadataMigrationComplete is MetadataMigrationComplete, with idle set for background work so that its status doc
+// read counts as idle.
+func (context *DatabaseContext) metadataMigrationComplete(ctx context.Context, idle bool) bool {
 	ms, isDual := context.MetadataStore.(*base.MetadataStore)
 	if isDual && !ms.FallbackReadsEnabled() {
 		return true
@@ -684,7 +693,7 @@ func (context *DatabaseContext) MetadataMigrationComplete(ctx context.Context) b
 	if context.PerDBMetadataMigrationCompleteFunc == nil {
 		return false
 	}
-	if context.PerDBMetadataMigrationCompleteFunc(ctx) {
+	if context.PerDBMetadataMigrationCompleteFunc(ctx, idle) {
 		if isDual {
 			ms.DisableFallbackReads()
 		}
@@ -729,7 +738,8 @@ func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		if dbCtx.tryStartMetadataMigration(ctx) {
+		// The arm loop keeps polling on a node with no clients until every node has applied the config.
+		if dbCtx.tryStartMetadataMigration(ctx, true) {
 			return
 		}
 	}
@@ -738,17 +748,18 @@ func (dbCtx *DatabaseContext) armMetadataMigrationTask(ctx context.Context) {
 // tryStartMetadataMigration makes a single attempt to start the metadata migration. It returns true
 // when arming is complete and the caller should stop polling - either because this node started the
 // migration, or because another node already owns the run. It returns false (keep polling) when the
-// cluster has not yet converged on the config or a transient error occurred.
-func (dbCtx *DatabaseContext) tryStartMetadataMigration(ctx context.Context) bool {
+// cluster has not yet converged on the config or a transient error occurred. idle counts the KV ops of its checks as
+// idle, for background work.
+func (dbCtx *DatabaseContext) tryStartMetadataMigration(ctx context.Context, idle bool) bool {
 	// A migration kicked off via the manual REST endpoint (or by a peer node) may already have
 	// completed while this poller was waiting on config convergence. Re-check completion each attempt
 	// so we don't win the now-free heartbeat lease and re-run a finished migration. Returning true
 	// stops the arm loop — there is nothing left to migrate.
-	if dbCtx.MetadataMigrationComplete(ctx) {
+	if dbCtx.metadataMigrationComplete(ctx, idle) {
 		base.DebugfCtx(ctx, base.KeyAll, "Metadata migration already complete for database %s, not starting", base.MD(dbCtx.Name))
 		return true
 	}
-	applied, missing, err := dbCtx.ConfigFullyAppliedFunc(ctx)
+	applied, missing, err := dbCtx.ConfigFullyAppliedFunc(ctx, idle)
 	if err != nil {
 		base.WarnfCtx(ctx, "No eligible nodes for database %s: %v", base.MD(dbCtx.Name), err)
 		return false
@@ -2587,7 +2598,7 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		// without spawning a polling goroutine, and tests that observe state immediately after
 		// StartOnlineProcesses returns see a deterministic outcome (either the migration started,
 		// or the polling goroutine is sleeping a full ticker before the next attempt).
-		if db.ConfigFullyAppliedFunc != nil && !db.tryStartMetadataMigration(ctx) {
+		if db.ConfigFullyAppliedFunc != nil && !db.tryStartMetadataMigration(ctx, false) {
 			go db.armMetadataMigrationTask(ctx)
 		}
 	}

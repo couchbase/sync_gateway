@@ -1,0 +1,89 @@
+// Copyright 2026-Present Couchbase, Inc.
+//
+// Use of this software is governed by the Business Source License included
+// in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+// in that file, in accordance with the Business Source License, use of this
+// software will be governed by the Apache License, Version 2.0, included in
+// the file licenses/APL2.txt.
+
+package rest
+
+import (
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbase/sync_gateway/testing/require"
+)
+
+// TestConfigPollIdleKVOpsCounted runs ticks of the config polling loop on a node with no clients, and checks that the KV
+// operations each tick makes are counted as idle. The exact counts of the bootstrap connection are checked by its own
+// tests, so this checks a lower bound that holds on any backing store.
+func TestConfigPollIdleKVOpsCounted(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+		MutateStartupConfig: func(config *StartupConfig) {
+			// Long enough that the background loop never ticks, so the test can run the loop body by itself.
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Hour)
+		},
+	})
+	defer rt.Close()
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
+	sc := rt.ServerContext()
+
+	for range 3 {
+		// Refresh is rate limited, so clear its last run to make every tick write the registry heartbeat.
+		func() {
+			sc.ClusterCompat.mu.Lock()
+			defer sc.ClusterCompat.mu.Unlock()
+			sc.ClusterCompat.lastRefreshAt = time.Time{}
+		}()
+
+		idleKVOpsBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
+		sc.pollBootstrapConfig(rt.Context())
+		// At least the registry and database config reads, the registry heartbeat read and write, and the migration
+		// status read.
+		require.GreaterOrEqual(t, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()-idleKVOpsBefore, int64(5))
+	}
+}
+
+// TestMetadataMigrationArmChecksIdleKVOps checks that the metadata migration checks made by the arm loop, which polls
+// on a node with no clients, count their bootstrap KV ops as idle, and that the same checks made for a REST request
+// use the original connection.
+func TestMetadataMigrationArmChecksIdleKVOps(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+	sc := rt.ServerContext()
+	// The original connection counts nothing, so give it a stat to see which connection each check uses.
+	originalKVOps := &base.SgwIntStat{}
+	sc.BootstrapContext.Connection = sc.BootstrapContext.Connection.WithKVOpStat(originalKVOps)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.UseSystemMobileMetadataCollection = new(true)
+	RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+	database := rt.GetDatabase()
+	require.NotNil(t, database.ConfigFullyAppliedFunc)
+	require.NotNil(t, database.PerDBMetadataMigrationCompleteFunc)
+
+	ctx := rt.Context()
+	runChecks := func(idle bool) {
+		_, _, err := database.ConfigFullyAppliedFunc(ctx, idle)
+		require.NoError(t, err)
+		database.PerDBMetadataMigrationCompleteFunc(ctx, idle)
+	}
+	idleKVOps := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps
+
+	originalBefore := originalKVOps.Value()
+	runChecks(false)
+	requestKVOps := originalKVOps.Value() - originalBefore
+	require.Positive(t, requestKVOps, "the registry and migration status reads")
+
+	originalBefore = originalKVOps.Value()
+	idleBefore := idleKVOps.Value()
+	runChecks(true)
+	assert.Equal(t, int64(0), originalKVOps.Value()-originalBefore, "the arm loop's checks must not use the original connection")
+	// Other background work counts idle KV ops too, so this is a lower bound.
+	assert.GreaterOrEqual(t, idleKVOps.Value()-idleBefore, requestKVOps)
+}

@@ -35,6 +35,11 @@ func NewLeakyBootstrapConnection(conn BootstrapConnection, config LeakyBootstrap
 	}
 }
 
+// WithKVOpStat wraps the counting connection too, so that its forced errors still apply.
+func (c *LeakyBootstrapConnection) WithKVOpStat(stat *SgwIntStat) BootstrapConnection {
+	return NewLeakyBootstrapConnection(c.BootstrapConnection.WithKVOpStat(stat), c.config)
+}
+
 func (c *LeakyBootstrapConnection) DeleteMetadataDocument(ctx context.Context, bucket, key string, cas uint64) error {
 	if c.config.BeforeDeleteMetadataDocument != nil {
 		c.config.BeforeDeleteMetadataDocument(bucket, key)

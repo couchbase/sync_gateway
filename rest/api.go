@@ -219,7 +219,7 @@ func (h *handler) handleMetadataMigration() error {
 		// those writes. ConfigFullyAppliedFunc is nil only outside persistent-config mode, where
 		// there is no cluster to coordinate, so a nil func skips the gate.
 		if h.db.ConfigFullyAppliedFunc != nil {
-			applied, missing, err := h.db.ConfigFullyAppliedFunc(h.ctx())
+			applied, missing, err := h.db.ConfigFullyAppliedFunc(h.ctx(), false)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "unable to verify the database config has been applied across the cluster before starting metadata migration: %v", err)
 			}

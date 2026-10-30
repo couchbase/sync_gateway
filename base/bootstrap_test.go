@@ -604,6 +604,136 @@ func TestBootstrapInsertMetadataDocumentWritesPrimary(t *testing.T) {
 	})
 }
 
+// existsConfigPersistence reports every key as existing, without a bucket.
+type existsConfigPersistence struct {
+	ConfigPersistence
+}
+
+func (existsConfigPersistence) keyExists(*gocb.Collection, string) (bool, error) {
+	return true, nil
+}
+
+// TestCouchbaseClusterWithKVOpStatReplacesStat checks that WithKVOpStat on a connection that already has a stat counts
+// into the new stat only, both for config persistence ops and for the KV ops the connection makes itself.
+func TestCouchbaseClusterWithKVOpStatReplacesStat(t *testing.T) {
+	first, second := &SgwIntStat{}, &SgwIntStat{}
+	cluster := &CouchbaseCluster{configPersistence: existsConfigPersistence{}}
+	copied, ok := cluster.WithKVOpStat(first).WithKVOpStat(second).(*CouchbaseCluster)
+	require.True(t, ok)
+
+	_, err := copied.configPersistence.keyExists(nil, "key")
+	require.NoError(t, err)
+	copied.countKVOps(1)
+
+	assert.Equal(t, int64(0), first.Value())
+	assert.Equal(t, int64(2), second.Value())
+}
+
+// TestBootstrapKVOpStat checks that a connection made by WithKVOpStat adds every KV operation it makes to the stat,
+// including registry probes and fallback reads, and that the connection it was made from adds nothing. Like Couchbase
+// Server's kv_ops, it leaves out a subdoc lookup of a missing document, which is how xattr config persistence reads,
+// and a subdoc write that fails on the whole document.
+func TestBootstrapKVOpStat(t *testing.T) {
+	forEachBootstrapXattrMode(t, func(t *testing.T, useXattrs bool) {
+		f := newBootstrapDualTestFixture(t, useXattrs)
+		ctx := TestCtx(t)
+		// Couchbase Server keeps a tombstone of a deleted doc, and an xattr lookup that finds one is a KV op. Unique doc
+		// IDs stop a tombstone left in the pooled bucket by an earlier run from standing in for a missing doc.
+		suffix, err := GenerateRandomID()
+		require.NoError(t, err)
+		primaryDocID := SyncDocPrefix + "kvops-primary-" + suffix
+		legacyDocID := SyncDocPrefix + "kvops-legacy-" + suffix
+		missingDocID := SyncDocPrefix + "kvops-missing-" + suffix
+		t.Cleanup(func() {
+			f.CleanupDoc(t, primaryDocID)
+			f.CleanupDoc(t, legacyDocID)
+		})
+		f.SeedLegacy(t, legacyDocID, bootstrapTestCfg{Foo: "legacy"})
+
+		stat := &SgwIntStat{}
+		counted := f.Cluster.WithKVOpStat(stat)
+		kvOps := func(op func()) int {
+			before := stat.Value()
+			op()
+			return int(stat.Value() - before)
+		}
+
+		// The bucket's bootstrap target may not be cached yet, in which case every call first probes for the
+		// registry. These calls all leave the cache as it was, so each pays the same probe cost.
+		missOps := 1 // a read of a missing document
+		if useXattrs {
+			missOps = 0
+		}
+		// kv_ops counts a failed plain KV write but not a failed subdoc write. Both persistence modes touch a doc with
+		// a subdoc write, and xattr persistence writes one with a subdoc write too. Rosmar counts every write.
+		failedTouchOps, failedWriteOps := 0, 1
+		if useXattrs {
+			failedWriteOps = 0
+		}
+		if UnitTestUrlIsWalrus() {
+			failedTouchOps, failedWriteOps = 1, 1
+		}
+
+		var loaded bootstrapTestCfg
+		probeOps := kvOps(func() {
+			_, err := counted.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
+			require.Error(t, err)
+		}) - 2*missOps // primary and fallback both miss
+		require.GreaterOrEqual(t, probeOps, 0)
+		if UnitTestUrlIsWalrus() {
+			// A Rosmar test bucket starts with no registry, so both collections are probed for it.
+			require.Equal(t, 2, probeOps, "registry probe of _system._mobile and _default._default")
+		}
+
+		require.Equal(t, probeOps+2, kvOps(func() {
+			_, err := counted.InsertMetadataDocument(ctx, f.BucketName, primaryDocID, bootstrapTestCfg{Foo: "primary"})
+			require.NoError(t, err)
+		}), "fallback existence check and insert")
+
+		var cas uint64
+		require.Equal(t, probeOps+1, kvOps(func() {
+			var err error
+			cas, err = counted.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
+			require.NoError(t, err)
+		}), "primary read")
+
+		require.Equal(t, probeOps+failedTouchOps, kvOps(func() {
+			_, err := counted.TouchMetadataDocument(ctx, f.BucketName, primaryDocID, "name", "touched", cas+1)
+			require.True(t, IsCasMismatch(err), "expected CAS mismatch, got %v", err)
+		}), "a CAS mismatch on the primary does not go to the fallback")
+
+		idleKVOpsBefore := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
+		require.Equal(t, 0, kvOps(func() {
+			_, err := f.Cluster.GetMetadataDocument(ctx, f.BucketName, primaryDocID, &loaded)
+			require.NoError(t, err)
+		}), "the connection WithKVOpStat was called on does not add to the stat")
+		require.Equal(t, idleKVOpsBefore, SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value(), "a read for a client request must not count as idle")
+
+		require.Equal(t, probeOps+2*missOps, kvOps(func() {
+			_, err := counted.GetMetadataDocument(ctx, f.BucketName, missingDocID, &loaded)
+			require.Error(t, err)
+		}), "primary and fallback reads")
+
+		// A fallback hit points this bucket's cache at the primary collection, so the calls after it make no probe.
+		var legacyCAS uint64
+		require.Equal(t, probeOps+missOps+1, kvOps(func() {
+			var err error
+			legacyCAS, err = counted.GetMetadataDocument(ctx, f.BucketName, legacyDocID, &loaded)
+			require.NoError(t, err)
+		}), "primary miss and fallback read")
+
+		require.Equal(t, failedWriteOps+1, kvOps(func() {
+			_, err := counted.WriteMetadataDocument(ctx, f.BucketName, legacyDocID, legacyCAS, bootstrapTestCfg{Foo: "updated"})
+			require.NoError(t, err)
+		}), "primary miss and fallback write")
+
+		require.Equal(t, 1, kvOps(func() {
+			_, _, err := counted.GetMetadataMigrationStatus(ctx, f.BucketName)
+			require.True(t, err == nil || IsDocNotFoundError(err), "unexpected error: %v", err)
+		}))
+	})
+}
+
 // TestBootstrapWriteMetadataDocumentFallbackCAS verifies WriteMetadataDocument replays against the
 // fallback collection when the supplied CAS came from a fallback read, so callers don't see a
 // spurious not-found just because the doc hasn't migrated to _system._mobile yet.
@@ -765,7 +895,7 @@ func TestBootstrapFallbackDisabledOnDroppedDefaultCollection(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			ctx := TestCtx(t)
-			cc := &CouchbaseCluster{}
+			cc := &CouchbaseCluster{couchbaseClusterState: &couchbaseClusterState{}}
 			const bucketName = "bucket1"
 			require.False(t, cc.bootstrapFallbackDisabled(bucketName), "fallback must start in play")
 
