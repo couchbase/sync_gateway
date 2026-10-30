@@ -9220,7 +9220,6 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 			// Demote the tombstone mid-fetch, after the changes feed announced it, so its body is read from storage.
 			// demoted is set after the demote write so that doc2, the checkpoint target, gets the highest sequence.
 			var demoteStarted, demoted atomic.Bool
-			revSendCount := passiveRT.GetDatabase().DbStats.CBLReplicationPull().RevSendCount
 			activeCollection, activeCtx := activeRT.GetSingleTestDatabaseCollection()
 			passiveRT.LeakyBucket().SetGetWithXattrCallback(func(key string) error {
 				if key != docID {
@@ -9233,7 +9232,8 @@ func TestActiveReplicatorPullTombstoneWithDeletedInBody(t *testing.T) {
 					return err
 				}
 				// The active peer handles revs concurrently, so hold the demoting revision until the tombstone is applied.
-				if revSendCount.Value() > 0 {
+				// Fetches made by the demote write itself run before demoted is set.
+				if demoted.Load() {
 					return waitForTombstone(activeCtx, activeCollection, docID, tombstoneVersion.RevTreeID)
 				}
 				return nil
