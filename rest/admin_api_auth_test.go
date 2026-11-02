@@ -14,9 +14,12 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1011,9 +1014,11 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication:    true,
 		enableAdminAuthPermissionsCheck: true,
+		PersistentConfig:                true,
 	})
 	defer rt.Close()
 
+	RequireStatus(t, rt.CreateDatabase("db", rt.NewDbConfig()), http.StatusCreated)
 	bucketName := rt.Bucket().GetName()
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
@@ -1448,6 +1453,18 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 						resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", user, "password")
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 						isAllowedUser = true
+						if endpoint.Endpoint == "/db/_online" && testUser == "sync_gateway_configurator" {
+							// db is currently in offline state (from last successful offline call) or in starting
+							// state (from last successful online call). Wait until online call finishes online
+							// process and db is online state before moving to next test case
+							require.EventuallyWithT(rt.TB(), func(c *assert.CollectT) {
+								// cannot use rest api reliably here given it's prone to panic when online process
+								// reloads the db so assert off the database context directly
+								dbCtx := rt.GetDatabase()
+								runState := db.RunStateString[atomic.LoadUint32(&dbCtx.State)]
+								assert.Equal(c, db.RunStateString[db.DBOnline], runState)
+							}, 10*time.Second, 500*time.Millisecond)
+						}
 					}
 				}
 
