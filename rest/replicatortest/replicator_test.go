@@ -2805,11 +2805,12 @@ func TestReplicatorPushReconnectsOnceAfterDatabaseWentAway(t *testing.T) {
 	blipCtx.HandlerForProfile[db.MessageGetCollections] = func(rq *blip.Message) {
 		assert.NoError(t, rq.Response().SetJSONBody([]any{map[string]any{}, map[string]any{}}))
 	}
+	started := make(chan struct{})
 	blipCtx.HandlerForProfile[db.MessageChanges] = func(rq *blip.Message) {
 		if rq.NoReply() {
 			return
 		}
-		// Hold every batch until all are in flight, so each error response reaches the replicator.
+		// Hold every batch until all are in flight and startup has completed.
 		if numChanges.Add(1) == numCollections {
 			close(allInFlight)
 		}
@@ -2817,6 +2818,13 @@ func TestReplicatorPushReconnectsOnceAfterDatabaseWentAway(t *testing.T) {
 		case <-allInFlight:
 		case <-time.After(10 * time.Second):
 			assert.Fail(t, "changes batches were not all in flight")
+			return
+		}
+		select {
+		case <-started:
+		case <-time.After(10 * time.Second):
+			assert.Fail(t, "replicator did not finish starting")
+			return
 		}
 		rq.Response().SetError("HTTP", http.StatusServiceUnavailable, db.ErrDatabaseWentAway.Message)
 	}
@@ -2824,6 +2832,7 @@ func TestReplicatorPushReconnectsOnceAfterDatabaseWentAway(t *testing.T) {
 	ar, stats := newReconnectTestReplicator(t, activeRT, db.ActiveReplicatorTypePush, remote.url)
 
 	require.NoError(t, ar.Start(activeRT.Context()))
+	close(started)
 	require.Eventually(t, func() bool {
 		return stats.NumConnectAttempts.Value() >= 2
 	}, 10*time.Second, 10*time.Millisecond)
