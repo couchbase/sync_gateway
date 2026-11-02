@@ -24,7 +24,8 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestTimestampsDocCreation makes sure that Start creates the timestamps document in the metadata store.
+// TestTimestampsDocCreation makes sure that Start creates the timestamps document in the metadata store, and adds an
+// entry for the current sequence without waiting for the background task.
 func TestTimestampsDocCreation(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -38,6 +39,9 @@ func TestTimestampsDocCreation(t *testing.T) {
 		purgeIntervalFunc: func() time.Duration {
 			return NumTimestampsEntries * time.Hour
 		},
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return 5, nil
+		},
 	}
 
 	tm := NewTimestampsManager(mgrOpts)
@@ -45,17 +49,15 @@ func TestTimestampsDocCreation(t *testing.T) {
 
 	err := tm.Start(ctx)
 	require.NoError(t, err)
+	defer tm.Stop(ctx)
 	assert.NotNil(t, tm.timestampsSeqArray.Load())
 
-	tsDocBytes, _, err := metadataStore.GetRaw(ctx, metaKeys.TimestampsSeqKey())
-	assert.NoError(t, err)
-	assert.NotNil(t, tsDocBytes)
-
 	var tsDoc TimestampsSeqArray
-	err = base.JSONUnmarshal(tsDocBytes, &tsDoc)
+	_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
 	require.NoError(t, err)
-	assert.Len(t, tsDoc.Timestamps, 0)
-
+	require.Len(t, tsDoc.Timestamps, 0)
+	assert.Equal(t, uint64(5), tsDoc.Timestamps[0].Seq)
+	assert.Equal(t, tsDoc, *tm.timestampsSeqArray.Load())
 }
 
 // TestTimestampsSeqArrayIsEmpty makes sure that isEmpty is true only when the array has no entries.
@@ -279,6 +281,7 @@ func TestTimestampsManagerEntryDue(t *testing.T) {
 		{name: "empty array", purgeInterval: NumTimestampsEntries * time.Hour, entries: nil, expected: true},
 		{name: "newest entry within update frequency", purgeInterval: NumTimestampsEntries * time.Hour, entries: entryAge(30 * time.Minute), expected: false},
 		{name: "newest entry older than update frequency", purgeInterval: NumTimestampsEntries * time.Hour, entries: entryAge(90 * time.Minute), expected: true},
+		{name: "newest entry exactly update frequency old", purgeInterval: NumTimestampsEntries * time.Hour, entries: entryAge(time.Hour), expected: true},
 		// a purge interval of one hour would give one minute, so the update frequency is raised to the 10 minute minimum
 		{name: "minimum update frequency, entry within it", purgeInterval: time.Hour, entries: entryAge(5 * time.Minute), expected: false},
 		{name: "minimum update frequency, entry older than it", purgeInterval: time.Hour, entries: entryAge(15 * time.Minute), expected: true},
@@ -299,6 +302,34 @@ func TestTimestampsManagerEntryDue(t *testing.T) {
 			})
 			tm.timestampsSeqArray.Store(&TimestampsSeqArray{Timestamps: test.entries})
 			assert.Equal(t, test.expected, tm.entryDue())
+		})
+	}
+}
+
+// TestTimestampsManagerUpdateFrequency makes sure that the update frequency splits the purge interval across
+// NumTimestampsEntries with a 10 minute minimum, and that a test override replaces it.
+func TestTimestampsManagerUpdateFrequency(t *testing.T) {
+	tests := []struct {
+		name          string
+		purgeInterval time.Duration
+		override      *time.Duration
+		expected      time.Duration
+	}{
+		{name: "default window", purgeInterval: base.DefaultClientPartitionWindow, expected: 12 * time.Hour},
+		{name: "one hour per entry", purgeInterval: NumTimestampsEntries * time.Hour, expected: time.Hour},
+		// one hour split across NumTimestampsEntries is one minute, below the minimum
+		{name: "minimum", purgeInterval: time.Hour, expected: 10 * time.Minute},
+		{name: "zero window uses the default window", purgeInterval: 0, expected: 12 * time.Hour},
+		{name: "negative window uses the default window", purgeInterval: -5 * time.Second, expected: 12 * time.Hour},
+		{name: "override ignores the minimum", purgeInterval: base.DefaultClientPartitionWindow, override: new(50 * time.Millisecond), expected: 50 * time.Millisecond},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tm := NewTimestampsManager(TimestampsMgrOpts{
+				purgeIntervalFunc:           func() time.Duration { return test.purgeInterval },
+				testUpdateFrequencyOverride: test.override,
+			})
+			assert.Equal(t, test.expected, tm.updateFrequency())
 		})
 	}
 }
@@ -328,11 +359,14 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 
 	err := tm.Start(ctx)
 	require.NoError(t, err)
+	defer tm.Stop(ctx)
 
 	// cleanupFunc resets the document to an empty array, so that subtests do not depend on each other
 	cleanupFunc := func() {
 		tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{}})
 	}
+	// Start has already added an entry
+	cleanupFunc()
 
 	t.Run("empty array", func(t *testing.T) {
 		defer cleanupFunc()
@@ -549,6 +583,20 @@ func TestTimestampsManagerAddEntry(t *testing.T) {
 		assert.Len(t, tsDoc.Timestamps, 1)
 		assert.Equal(t, tsDoc, *tm.timestampsSeqArray.Load())
 	})
+
+	t.Run("missing document", func(t *testing.T) {
+		defer cleanupFunc()
+		require.NoError(t, tm.addEntry(ctx))
+		inMemory := tm.timestampsSeqArray.Load()
+		require.Len(t, inMemory.Timestamps, 1)
+
+		require.NoError(t, metadataStore.Delete(ctx, metaKeys.TimestampsSeqKey()))
+		require.ErrorContains(t, tm.addEntry(ctx), "timestamps_seq id missing")
+		assert.Same(t, inMemory, tm.timestampsSeqArray.Load(), "a failed entry must leave the in-memory array as it was")
+
+		_, err := metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &TimestampsSeqArray{})
+		assert.True(t, base.IsDocNotFoundError(err), "addEntry must not create the document, got %v", err)
+	})
 }
 
 // TestConcurrentAddEntry makes sure that concurrent addEntry calls on an empty document add exactly one entry, and none of them fail.
@@ -570,6 +618,9 @@ func TestConcurrentAddEntry(t *testing.T) {
 		},
 	})
 	require.NoError(t, tm.Start(ctx))
+	defer tm.Stop(ctx)
+	// Start has already added an entry, so empty the array for the calls to race over
+	tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{}})
 
 	const numGoroutines = 20
 	errs := make(chan error, numGoroutines)
@@ -662,7 +713,7 @@ func TestConcurrentAddEntryMultipleManagers(t *testing.T) {
 // timestamps document untouched and loads it into memory, whether the document exists before Start or is
 // created by another node while Start is running.
 func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
-	newOpts := func(t *testing.T, ctx context.Context, metadataStore base.DataStore, metaKeys *base.MetadataKeys) TimestampsMgrOpts {
+	newOpts := func(t *testing.T, ctx context.Context, metadataStore base.DataStore, metaKeys *base.MetadataKeys, dbName string) TimestampsMgrOpts {
 		return TimestampsMgrOpts{
 			metadataStore: metadataStore,
 			metaKeys:      metaKeys,
@@ -672,7 +723,7 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 			getSequenceFunc: func(ctx context.Context) (uint64, error) {
 				return 0, nil
 			},
-			dbName: t.Name(),
+			dbName: dbName,
 		}
 	}
 	// requireJoinedNode asserts the document still holds node 1's single entry, and that node 2 mirrors it in memory.
@@ -692,12 +743,14 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 		metadataStore := testBucket.GetMetadataStore()
 		metaKeys := base.NewMetadataKeys(t.Name())
 
-		tm1 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys))
+		tm1 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys, t.Name()))
 		require.NoError(t, tm1.Start(ctx))
 		require.NoError(t, tm1.addEntry(ctx))
+		defer tm1.Stop(ctx)
 
-		tm2 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys))
+		tm2 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys, t.Name()))
 		require.NoError(t, tm2.Start(ctx))
+		defer tm2.Stop(ctx)
 		requireJoinedNode(t, ctx, metadataStore, metaKeys, tm2)
 	})
 
@@ -708,7 +761,7 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 		metadataStore := testBucket.GetMetadataStore()
 		metaKeys := base.NewMetadataKeys(t.Name())
 
-		tm1 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys))
+		tm1 := NewTimestampsManager(newOpts(t,ctx, metadataStore, metaKeys, t.Name()))
 		// The callback runs after node 2 sees no document but before it writes, so node 1 wins the race and
 		// node 2's write fails on CAS and retries against node 1's document.
 		var once atomic.Bool
@@ -721,7 +774,7 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 			},
 		})
 
-		tm2 := NewTimestampsManager(newOpts(t, ctx, leakyBucket.GetMetadataStore(), metaKeys))
+		tm2 := NewTimestampsManager(newOpts(t, ctx, leakyBucket.GetMetadataStore(), metaKeys, t.Name()))
 		require.NoError(t, tm2.Start(ctx))
 		requireJoinedNode(t, ctx, metadataStore, metaKeys, tm2)
 	})
@@ -1113,6 +1166,268 @@ func TestTimestampsManagerStop(t *testing.T) {
 
 	// a second Stop must be a no-op rather than panic on a double close
 	require.NotPanics(t, func() { tm.Stop(ctx) })
+}
+
+// TestTimestampsManagerStartCorruptDoc makes sure that Start fails on a timestamps document that is not valid JSON,
+// without overwriting it or starting the background task, and that Stop still returns afterwards.
+func TestTimestampsManagerStartCorruptDoc(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+	metadataStore := testBucket.GetMetadataStore()
+	metaKeys := base.NewMetadataKeys(t.Name())
+
+	corrupt := []byte("not json")
+	require.NoError(t, metadataStore.SetRaw(ctx, metaKeys.TimestampsSeqKey(), 0, nil, corrupt))
+
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     metadataStore,
+		metaKeys:          metaKeys,
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:   func(context.Context) (uint64, error) { return 0, nil },
+		dbName:            t.Name(),
+	})
+	require.Error(t, tm.Start(ctx))
+	assert.Empty(t, tm.backgroundTasks, "a failed Start must not start the background task")
+	assert.True(t, tm.timestampsSeqArray.Load().isEmpty())
+
+	stored, _, err := metadataStore.GetRaw(ctx, metaKeys.TimestampsSeqKey())
+	require.NoError(t, err)
+	assert.Equal(t, corrupt, stored, "Start must not overwrite the document")
+
+	require.NotPanics(t, func() { tm.Stop(ctx) })
+}
+
+// TestTimestampsDatabaseRecordsSequence makes sure that a database's timestamps manager records the sequence of the
+// documents written to it, in the stored document and in memory.
+func TestTimestampsDatabaseRecordsSequence(t *testing.T) {
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	key := db.MetadataKeys.TimestampsSeqKey()
+
+	for i := range 3 {
+		_, doc, err := collection.Put(ctx, fmt.Sprintf("doc%d", i), Body{"val": i})
+		require.NoError(t, err)
+
+		// move the existing entries back a day, so that the next entry is due
+		var before TimestampsSeqArray
+		_, err = db.MetadataStore.Get(ctx, key, &before)
+		require.NoError(t, err)
+		for j := range before.Timestamps {
+			before.Timestamps[j].Timestamp -= int64((24 * time.Hour).Seconds())
+		}
+		db.TimestampsManger.CreateTSDocForTest(t, ctx, before)
+
+		require.NoError(t, db.TimestampsManger.addEntry(ctx))
+
+		var tsDoc TimestampsSeqArray
+		_, err = db.MetadataStore.Get(ctx, key, &tsDoc)
+		require.NoError(t, err)
+		// the entry Start added, plus one per document
+		require.Len(t, tsDoc.Timestamps, i+2)
+		assert.GreaterOrEqual(t, tsDoc.Timestamps[i+1].Seq, doc.Sequence)
+		assert.True(t, slices.IsSortedFunc(tsDoc.Timestamps, func(a, b TimestampsSeqPair) int {
+			return cmp.Compare(a.Seq, b.Seq)
+		}), "sequences must not decrease: %+v", tsDoc.Timestamps)
+		assert.Equal(t, tsDoc, *db.TimestampsManger.timestampsSeqArray.Load())
+	}
+}
+
+// TestTimestampsQuietNodeKeepsOtherNodesEntries makes sure that a node which has written fewer documents than another
+// node records the cluster's sequence, and keeps the other node's entries.
+func TestTimestampsQuietNodeKeepsOtherNodesEntries(t *testing.T) {
+	tb := base.GetTestBucket(t)
+	defer tb.Close(base.TestCtx(t))
+
+	// two database contexts on one bucket share the sequence counter and the timestamps document, like two nodes
+	busyDB, busyCtx := SetupTestDBForBucketWithOptions(t, tb, DatabaseContextOptions{})
+	defer busyDB.Close(busyCtx)
+	quietDB, quietCtx := SetupTestDBForBucketWithOptions(t, tb.NoCloseClone(), DatabaseContextOptions{})
+	defer quietDB.Close(quietCtx)
+	busyCollection, busyCtx := GetSingleDatabaseCollectionWithUser(busyCtx, t, busyDB)
+	quietCollection, quietCtx := GetSingleDatabaseCollectionWithUser(quietCtx, t, quietDB)
+	key := busyDB.MetadataKeys.TimestampsSeqKey()
+
+	// once the quiet node has written a document, its last sequence is its own rather than the counter's
+	_, _, err := quietCollection.Put(quietCtx, "quietDoc", Body{"val": 0})
+	require.NoError(t, err)
+	var busyDoc *Document
+	for i := range 10 {
+		_, busyDoc, err = busyCollection.Put(busyCtx, fmt.Sprintf("busyDoc%d", i), Body{"val": i})
+		require.NoError(t, err)
+	}
+
+	// makeEntryDue moves the stored entries back a day, so that the next addEntry adds one
+	makeEntryDue := func() {
+		var tsDoc TimestampsSeqArray
+		_, err := busyDB.MetadataStore.Get(busyCtx, key, &tsDoc)
+		require.NoError(t, err)
+		for i := range tsDoc.Timestamps {
+			tsDoc.Timestamps[i].Timestamp -= int64((24 * time.Hour).Seconds())
+		}
+		busyDB.TimestampsManger.CreateTSDocForTest(t, busyCtx, tsDoc)
+	}
+
+	makeEntryDue()
+	require.NoError(t, busyDB.TimestampsManger.addEntry(busyCtx))
+	busyEntries := busyDB.TimestampsManger.timestampsSeqArray.Load().Timestamps
+	busySeq := busyEntries[len(busyEntries)-1].Seq
+	require.GreaterOrEqual(t, busySeq, busyDoc.Sequence)
+
+	makeEntryDue()
+	require.NoError(t, quietDB.TimestampsManger.addEntry(quietCtx))
+
+	var tsDoc TimestampsSeqArray
+	_, err = busyDB.MetadataStore.Get(busyCtx, key, &tsDoc)
+	require.NoError(t, err)
+	assert.True(t, slices.ContainsFunc(tsDoc.Timestamps, func(pair TimestampsSeqPair) bool { return pair.Seq == busySeq }),
+		"the busy node's entry at sequence %d must be kept: %+v", busySeq, tsDoc.Timestamps)
+	assert.GreaterOrEqual(t, tsDoc.Timestamps[len(tsDoc.Timestamps)-1].Seq, busySeq, "the quiet node must record the cluster's sequence")
+}
+
+// TestTimestampsNonPositiveClientPartitionWindow makes sure that a client partition window of zero or less is replaced
+// by DefaultClientPartitionWindow, rather than keeping every entry ever added.
+func TestTimestampsNonPositiveClientPartitionWindow(t *testing.T) {
+	const day = 24 * time.Hour
+	for _, window := range []time.Duration{0, -5 * time.Second} {
+		t.Run(window.String(), func(t *testing.T) {
+			db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{ClientPartitionWindow: new(window)})
+			defer db.Close(ctx)
+			require.Equal(t, window, db.ClientPartitionWindow())
+			require.Equal(t, base.DefaultClientPartitionWindow, db.TimestampsManger.purgeInterval())
+
+			// one entry a day, starting 10 days before the default window
+			now := time.Now()
+			pairs := GenerateTimestampsSeqPairs(now.Add(-base.DefaultClientPartitionWindow-10*day), now.Add(-day), day, 0)
+			db.TimestampsManger.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: pairs})
+
+			require.NoError(t, db.TimestampsManger.addEntry(ctx))
+
+			var tsDoc TimestampsSeqArray
+			_, err := db.MetadataStore.Get(ctx, db.MetadataKeys.TimestampsSeqKey(), &tsDoc)
+			require.NoError(t, err)
+			// the 10 entries older than the start of the window are dropped, and a new entry is added
+			require.Len(t, tsDoc.Timestamps, len(pairs)-10+1)
+			assert.Equal(t, pairs[10:], tsDoc.Timestamps[:len(tsDoc.Timestamps)-1])
+		})
+	}
+}
+
+// TestTimestampsEntryGapAfterStart makes sure that when a node starts shortly after another node added an entry, the
+// node's first background entry comes within one check interval of that entry becoming due.
+func TestTimestampsEntryGapAfterStart(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	const freq = 5 * time.Second
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:               testBucket.GetMetadataStore(),
+		metaKeys:                    base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc:           func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:             func(context.Context) (uint64, error) { return 0, nil },
+		testUpdateFrequencyOverride: new(freq),
+		testCheckIntervalOverride:   new(100 * time.Millisecond),
+	})
+	// another node added an entry 3s ago, so the entry Start would add is not due yet
+	tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{{Timestamp: time.Now().Add(-3 * time.Second).Unix()}}})
+	require.NoError(t, tm.Start(ctx))
+	defer tm.Stop(ctx)
+	require.Len(t, tm.timestampsSeqArray.Load().Timestamps, 1)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, tm.timestampsSeqArray.Load().Timestamps, 2)
+	}, 3*freq, 100*time.Millisecond)
+
+	entries := tm.timestampsSeqArray.Load().Timestamps
+	gap := entries[1].Timestamp - entries[0].Timestamp
+	assert.LessOrEqual(t, gap, int64(freq/time.Second)+1, "entries should be about one update frequency (%v) apart", freq)
+}
+
+// TestTimestampsEntryGapAfterNodeStops makes sure that when the node that added the newest entry stops, a node that
+// was already running adds the next entry within one check interval of it becoming due.
+func TestTimestampsEntryGapAfterNodeStops(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	const freq = 5 * time.Second
+	mgrOpts := TimestampsMgrOpts{
+		metadataStore:               testBucket.GetMetadataStore(),
+		metaKeys:                    base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc:           func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:             func(context.Context) (uint64, error) { return 0, nil },
+		testUpdateFrequencyOverride: new(freq),
+		testCheckIntervalOverride:   new(100 * time.Millisecond),
+	}
+
+	// the seeded entry is due in 2s, so node B adds nothing at Start
+	nodeB := NewTimestampsManager(mgrOpts)
+	nodeB.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{{Timestamp: time.Now().Add(-3 * time.Second).Unix()}}})
+	require.NoError(t, nodeB.Start(ctx))
+	defer nodeB.Stop(ctx)
+	require.Len(t, nodeB.timestampsSeqArray.Load().Timestamps, 1)
+
+	// once the seeded entry is due, node A adds the newest entry at Start and stops before its first check,
+	// leaving only node B, whose in-memory array still shows the seeded entry
+	time.Sleep(2 * time.Second)
+	nodeA := NewTimestampsManager(mgrOpts)
+	require.NoError(t, nodeA.Start(ctx))
+	nodeA.Stop(ctx)
+	require.Len(t, nodeA.timestampsSeqArray.Load().Timestamps, 2)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Len(c, nodeB.timestampsSeqArray.Load().Timestamps, 3)
+	}, 3*freq, 100*time.Millisecond)
+
+	entries := nodeB.timestampsSeqArray.Load().Timestamps
+	gap := entries[2].Timestamp - entries[1].Timestamp
+	assert.LessOrEqual(t, gap, int64(freq/time.Second)+1, "entries should be about one update frequency (%v) apart", freq)
+}
+
+// TestTimestampsRecorderSurvivesError makes sure that one failed check does not stop the background task from
+// adding entries on later checks.
+func TestTimestampsRecorderSurvivesError(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	var failNext atomic.Bool
+	var seq atomic.Uint64
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc: func(context.Context) (uint64, error) {
+			if failNext.CompareAndSwap(true, false) {
+				return 0, errors.New("transient error")
+			}
+			return seq.Add(1), nil
+		},
+		// entries are stored in whole seconds, so below a second every check is due
+		testUpdateFrequencyOverride: new(50 * time.Millisecond),
+		testCheckIntervalOverride:   new(10 * time.Millisecond),
+	})
+	require.NoError(t, tm.Start(ctx))
+	defer tm.Stop(ctx)
+	doneChan := tm.backgroundTasks[0].doneChan
+
+	failNext.Store(true)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, failNext.Load(), "a check must hit the error")
+	}, time.Second, 10*time.Millisecond)
+
+	seqAfterError := seq.Load()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Greater(c, seq.Load(), seqAfterError+2, "later checks must keep adding entries")
+	}, time.Second, 10*time.Millisecond)
+
+	select {
+	case <-doneChan:
+		t.Fatal("background task stopped after a single error")
+	default:
+	}
 }
 
 // CreateTSDocForTest writes tsArray to the timestamps document, replacing any existing content.

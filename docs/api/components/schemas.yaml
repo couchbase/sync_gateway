@@ -1210,6 +1210,7 @@ Database:
 
         If this is not set, Sync Gateway uses the metadata purge interval of the bucket. If the bucket has no purge interval of its own, Sync Gateway uses the cluster-wide value.
       type: integer
+      minimum: 0
     compact_interval_days:
       description: |-
         The interval between scheduled tombstone compaction runs (in days). This can be a floating point number.

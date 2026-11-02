@@ -768,6 +768,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			fmt.Sprintf("%g-%g", db.CompactIntervalMinDays, db.CompactIntervalMaxDays)))
 	}
 
+	if val := dbConfig.ClientPartitionWindowSecs; val != nil && *val < 0 {
+		multiError = multiError.Append(fmt.Errorf(minValueErrorMsg, "client_partition_window_secs", 0))
+	}
+
 	// System-scoped metadata relies on N1QL principal queries against _system._mobile and is not
 	// supported with views. Reject the combination at config validation rather than letting a
 	// post-migration principal listing fail at query time.

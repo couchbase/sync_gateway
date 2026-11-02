@@ -149,6 +149,15 @@ func TestConfigValidation(t *testing.T) {
 			name:   "Compact Interval just right",
 			config: `{"databases": {"db":{"compact_interval_days": 0.04}}}`,
 		},
+		{
+			name:   "Client partition window negative",
+			config: `{"databases": {"db":{"client_partition_window_secs": -1}}}`,
+			err:    "minimum value for client_partition_window_secs is: 0",
+		},
+		{
+			name:   "Client partition window zero",
+			config: `{"databases": {"db":{"client_partition_window_secs": 0}}}`,
+		},
 	}
 
 	for _, test := range tests {

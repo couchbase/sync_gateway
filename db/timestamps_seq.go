@@ -112,6 +112,7 @@ type TimestampsManager struct {
 	stopped                     base.AtomicBool
 	dbName                      string
 	testUpdateFrequencyOverride *time.Duration
+	testCheckIntervalOverride   *time.Duration
 }
 
 // TimestampsMgrOpts holds the dependencies of a TimestampsManager.
@@ -123,6 +124,7 @@ type TimestampsMgrOpts struct {
 	nowFunc           func() time.Time // the clock, so that tests can control time. Defaults to time.Now.
 	dbName                      string
 	testUpdateFrequencyOverride *time.Duration
+	testCheckIntervalOverride   *time.Duration
 }
 
 // NewTimestampsManager returns a TimestampsManager with an empty in-memory array. It does not touch the metadata store until Start is called.
@@ -136,6 +138,7 @@ func NewTimestampsManager(opts TimestampsMgrOpts) *TimestampsManager {
 		dbName:                      opts.dbName,
 		terminator:                  make(chan bool),
 		testUpdateFrequencyOverride: opts.testUpdateFrequencyOverride,
+		testCheckIntervalOverride:   opts.testCheckIntervalOverride,
 	}
 	if tm.nowFunc == nil {
 		tm.nowFunc = time.Now
@@ -159,8 +162,18 @@ func (tm *TimestampsManager) updateFrequency() time.Duration {
 	if tm.testUpdateFrequencyOverride != nil {
 		return *tm.testUpdateFrequencyOverride
 	}
-	purgeInterval := tm.purgeInterval()
-	return max(purgeInterval/NumTimestampsEntries, time.Minute*10)
+	return max(tm.purgeInterval()/NumTimestampsEntries, time.Minute*10)
+}
+
+// timestampsCheckInterval is the time between two checks of the in-memory array for a due entry.
+const timestampsCheckInterval = 10 * time.Minute
+
+// checkInterval returns the time between two runs of the background task.
+func (tm *TimestampsManager) checkInterval() time.Duration {
+	if tm.testCheckIntervalOverride != nil {
+		return *tm.testCheckIntervalOverride
+	}
+	return timestampsCheckInterval
 }
 
 // entryDue returns true if the in-memory array is empty, or if its newest entry is at least the update frequency old.
@@ -170,13 +183,26 @@ func (tm *TimestampsManager) entryDue() bool {
 	return tsArray.isDue(now, tm.updateFrequency())
 }
 
+// checkEntry adds an entry if the in-memory array shows that one is due, so that most checks make no KV call. An error
+// is logged rather than returned, because NewBackgroundTask stops on an error; the array still shows the entry as due,
+// so the next check retries.
+func (tm *TimestampsManager) checkEntry(ctx context.Context) error {
+	if !tm.entryDue() {
+		return nil
+	}
+	if err := tm.addEntry(ctx); err != nil {
+		base.WarnfCtx(ctx, "Unable to add timestamps entry, retrying in %v: %v", tm.checkInterval(), err)
+	}
+	return nil
+}
+
 // updateTimestampsArray replaces the in-memory array. The pointer is swapped atomically, so readers never see a partial update.
 func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqArray) {
 	tm.timestampsSeqArray.Store(&timestampArray)
 }
 
 // Start calls addEntry: it loads the document into memory, or writes the in-memory array (empty on a new node)
-// if the document is missing.
+// if the document is missing. It then starts the background task that runs every check interval.
 func (tm *TimestampsManager) Start(ctx context.Context) error {
 	err := tm.addEntry(ctx)
 	if err != nil {
@@ -188,7 +214,6 @@ func (tm *TimestampsManager) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	tm.backgroundTasks = append(tm.backgroundTasks, bgt)
 	return nil
 }
