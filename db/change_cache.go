@@ -921,12 +921,11 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
 			base.InfofCtx(ctx, base.KeyCache, "Oldest entry in pending logs %v (%d, %d) is earlier than cache next sequence (%d), ignoring as sequence has already been cached", base.UD(oldestPending.DocID), oldestPending.Sequence, oldestPending.EndSequence, c.nextSequence)
 			oldestPending = c._popPendingLog(ctx)
 
-			// If the oldestPending was a range that extended past nextSequence, update nextSequence. The
-			// channel cache's high sequence has to move with it, as it does for any other released unused
-			// range, or anything waiting on the cached-sequence watermark stalls below EndSequence.
+			// If the oldestPending was a range that extended past nextSequence, the part past nextSequence is
+			// still unreleased. Release it through _addToCache like any other entry, so nextSequence and the
+			// channel cache's high sequence move together.
 			if oldestPending.IsUnusedRange() && oldestPending.EndSequence >= c.nextSequence {
-				c.nextSequence = oldestPending.EndSequence + 1
-				c.channelCache.AddUnusedSequence(oldestPending)
+				changedChannels = append(changedChannels, c._addToCache(ctx, oldestPending)...)
 			}
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || c.pendingLogs[0].TimeReceived.OlderOrEqual(c.options.CachePendingSeqMaxWait) {
 			//  Skip all sequences up to the oldest Pending
@@ -1075,9 +1074,7 @@ func (c *changeCache) PushSkipped(ctx context.Context, startSeq uint64, endSeq u
 	c.db.BroadcastSlowMode.CompareAndSwap(false, true)
 }
 
-// waitForSequenceNotSkipped will wait until the specified sequence is readable from the channel caches and is no
-// longer in the skipped list. Readability is judged by the cached-sequence watermark rather than the ordering stage's
-// nextSequence, because a sequence can be released by ordering before it has been inserted into the channel caches.
+// waitForSequenceNotSkipped will wait until the specified sequence is no longer in the skipped list.
 func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 

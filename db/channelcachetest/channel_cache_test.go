@@ -420,7 +420,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := db.MakeTestLogEntryForChannels(1, channelNames)
-	cache.AddToCacheForTest(t, ctx, logEntry)
+	cache.AddToCache(ctx, logEntry)
 
 	workerCount := 25
 	getChangesCount := 400
@@ -495,7 +495,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := db.MakeTestLogEntryForChannels(1, channelNames)
-	cache.AddToCacheForTest(t, ctx, logEntry)
+	cache.AddToCache(ctx, logEntry)
 
 	workerCount := 25
 	getChangesCount := 400
@@ -565,7 +565,7 @@ func TestChannelCacheBypass(t *testing.T) {
 
 	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := db.MakeTestLogEntryForChannels(1, channelNames)
-	cache.AddToCacheForTest(t, ctx, logEntry)
+	cache.AddToCache(ctx, logEntry)
 
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
 	for c := 1; c <= channelCount; c++ {

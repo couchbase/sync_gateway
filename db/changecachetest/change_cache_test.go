@@ -3406,8 +3406,6 @@ type notification struct {
 // notifyRecorder collects change notifications. Each one is stamped with the watermark when it fires, so a test can
 // check that nothing was notified before it was readable: a feed woken for a change it cannot yet see reads nothing
 // and goes back to sleep. That check holds however late a notification is delivered, so it needs no timing window.
-// Notification is not guaranteed to happen on the goroutine that drove the feed, nor before DocChanged returns, so
-// reads go through the lock and positive checks wait.
 type notifyRecorder struct {
 	channelCache db.ChannelCache
 	lock         sync.Mutex
@@ -3440,15 +3438,6 @@ func (r *notifyRecorder) waitForCount(t *testing.T, count int, msgAndArgs ...any
 		assert.Len(c, notifications, count, msgAndArgs...)
 	}, 10*time.Second, 10*time.Millisecond)
 	return notifications
-}
-
-// waitForChannel waits until some notification has included channelID.
-func (r *notifyRecorder) waitForChannel(t *testing.T, channelID channels.ID, msgAndArgs ...any) {
-	t.Helper()
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		found := slices.ContainsFunc(r.snapshot(), func(n notification) bool { return n.channels.Contains(channelID) })
-		assert.True(c, found, msgAndArgs...)
-	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // requireNothingNotifiedBefore checks that no notification of any kind - for any channel set, including an empty one
@@ -3544,7 +3533,9 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		// watermark below 102, so checking the stamps once ABC is notified catches either however late it was
 		// delivered.
 		changeCache.DocChanged(feedEventForTest(t, "blockingDoc", collectionID, syncDataFor(101, "XYZ")), db.DocTypeDocument)
-		notified.waitForChannel(t, abcChannel, "the buffered write must be notified once released")
+		notifications := notified.waitForCount(t, 1, "releasing 101 and 102 together is one notification")
+		assert.True(t, notifications[0].channels.Contains(abcChannel), "the buffered write must be notified once released")
+		assert.True(t, notifications[0].channels.Contains(channels.NewID("XYZ", collectionID)))
 		notified.requireNothingNotifiedBefore(t, initialSequence+1)
 		notified.requireNotNotifiedBefore(t, abcChannel, 102)
 		notified.requireNotNotifiedBefore(t, channels.NewID("XYZ", collectionID), 101)
@@ -3577,9 +3568,9 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 			CollectionID: collectionID,
 		}, db.DocTypeUnusedSeq)
 
-		// The unused-sequence marker and the unblocked document's channels may be notified together or
-		// separately; what matters is that a feed on "ABC" is woken.
-		notified.waitForChannel(t, abcChannel,
+		// The unused-sequence marker and the unblocked document's channels go out as one notification.
+		notifications := notified.waitForCount(t, 1, "releasing 101 and unblocking 102 is one notification")
+		assert.True(t, notifications[0].channels.Contains(abcChannel),
 			"the unblocked document's channels must be notified, not only the unused-sequence marker")
 		// Nothing - including the unused-sequence marker - may be notified while 102 is held behind 101.
 		notified.requireNothingNotifiedBefore(t, initialSequence+1)

@@ -1188,10 +1188,8 @@ func (db *DatabaseContext) WaitForSequence(t testing.TB, targetSequence uint64) 
 	db.changeCache.requireWaitForSequence(t, targetSequence)
 }
 
-// requireWaitForSequence blocks until every sequence up to the target is readable from the channel caches. Fails the
-// test harness if cache does not catch up. This waits on the cached-sequence watermark, not the ordering stage's
-// nextSequence: ordering can release a sequence before it has been inserted into the channel caches, and a test that
-// reads a feed straight after waiting needs the insert to have happened.
+// requireWaitForSequence blocks until the change cache has processed up to the target sequence. Fails the test harness
+// if cache does not catch up.
 func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64) {
 	t.Helper()
 	ctx := base.TestCtx(t)
@@ -1874,26 +1872,15 @@ func (c *singleChannelCacheImpl) CountedLateLogCountForTest(_ testing.TB) int64 
 	return c.countedLateLogCount()
 }
 
-// WaitForSequenceForTest blocks until every sequence up to targetSequence is readable from the channel caches. Use it
-// before asserting on channel cache contents after driving entries through the change cache, as caching is not
-// guaranteed to have happened by the time ProcessEntry or DocChanged returns.
+// WaitForSequenceForTest blocks until the change cache has processed up to targetSequence. Fails the test harness if
+// cache does not catch up.
 func (c *changeCache) WaitForSequenceForTest(t testing.TB, targetSequence uint64) {
 	t.Helper()
 	c.requireWaitForSequence(t, targetSequence)
 }
 
-// AddToCacheForTest inserts an entry into a standalone channel cache and advances its cached-sequence watermark past
-// it. In a running database the change cache owns that watermark; a channel cache built without one needs the test to
-// stand in, or channel caches created afterwards start valid from before the entry and miss it.
-func (c *channelCacheImpl) AddToCacheForTest(_ testing.TB, ctx context.Context, change *LogEntry) []channels.ID {
-	updatedChannels := c.AddToCache(ctx, change)
-	// Tests calling this have no watermark to own and advance, so advance it here
-	c.updateHighCacheSequence(change.Sequence)
-	return updatedChannels
-}
-
-// WaitForSequenceNotSkippedForTest blocks until the sequence has been cached and is no longer in the
-// skipped list, or the wait expires.
+// WaitForSequenceNotSkippedForTest blocks until the sequence is no longer in the skipped list, or
+// the wait expires.
 func (c *changeCache) WaitForSequenceNotSkippedForTest(_ testing.TB, ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	return c.waitForSequenceNotSkipped(ctx, sequence, maxWaitTime)
 }
