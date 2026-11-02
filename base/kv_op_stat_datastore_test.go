@@ -415,6 +415,47 @@ func TestKVOpStatDataStoreReportedKVOps(t *testing.T) {
 	}
 }
 
+// TestKVOpStatNilContext checks that a DataStore call made with a nil context does not panic, and that the wrapper
+// still counts its KV operations. Some callers pass a nil context, such as a replicator that is stopped before it
+// connects, and on Couchbase Server every Collection call that makes several KV operations reports them to its context.
+func TestKVOpStatNilContext(t *testing.T) {
+	ctx := TestCtx(t)
+	// A variable rather than a nil literal, which staticcheck rejects as a context.
+	var nilCtx context.Context
+	insert := func([]byte) ([]byte, *uint32, bool, error) {
+		return []byte(`{"v":1}`), nil, false, nil
+	}
+
+	t.Run("addKVOps", func(t *testing.T) {
+		require.NotPanics(t, func() { addKVOps(nilCtx, 1) })
+	})
+
+	t.Run("reported", func(t *testing.T) {
+		stat := &SgwIntStat{}
+		datastore := NewKVOpStatDataStore(&kvOpReportingDataStore{reported: 3}, stat)
+		_, err := datastore.Update(nilCtx, "doc", 0, nil)
+		require.ErrorIs(t, err, errKVOpReportingDataStore)
+		assert.Equal(t, int64(3), stat.Value())
+	})
+
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	underlying := bucket.GetSingleDataStore()
+
+	t.Run("unwrapped", func(t *testing.T) {
+		_, err := underlying.Update(nilCtx, t.Name(), 0, insert)
+		require.NoError(t, err)
+	})
+
+	t.Run("wrapped", func(t *testing.T) {
+		stat := &SgwIntStat{}
+		datastore := NewKVOpStatDataStore(underlying, stat)
+		_, err := datastore.Update(nilCtx, t.Name(), 0, insert)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), stat.Value(), "read and insert")
+	})
+}
+
 // TestKVOpStatDataStoreMetadataStore checks that the reads a MetadataStore makes from its fallback, and the extra
 // work of an Update on a doc that is only in the fallback, are counted.
 func TestKVOpStatDataStoreMetadataStore(t *testing.T) {

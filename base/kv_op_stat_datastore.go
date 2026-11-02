@@ -53,12 +53,21 @@ type kvOpCount struct {
 
 // withKVOpCount returns a context that a DataStore call reports its KV operations to, and the count it reports to.
 func withKVOpCount(ctx context.Context) (context.Context, *kvOpCount) {
+	// Some callers pass a nil context, such as a replicator that is stopped before it connects, and DataStore calls
+	// accepted one before they reported KV operations, so a nil context must not panic here.
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	count := &kvOpCount{}
 	return context.WithValue(ctx, kvOpCountKey{}, count), count
 }
 
 // addKVOps adds n to the KV operation count in ctx, if there is one.
 func addKVOps(ctx context.Context, n int) {
+	// A nil context has no count to add to. See withKVOpCount for why it must not panic.
+	if ctx == nil {
+		return
+	}
 	if count, ok := ctx.Value(kvOpCountKey{}).(*kvOpCount); ok {
 		count.n += n
 		count.reported = true
