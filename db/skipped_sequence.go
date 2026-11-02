@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -26,7 +25,7 @@ const skipListLevel = 12
 // has this covered
 type SkippedSequenceSkiplist struct {
 	list                          *skiplist.SkipList
-	NumCumulativeSkippedSequences atomic.Int64 // written under the change cache lock, read by stats without it
+	NumCumulativeSkippedSequences int64
 }
 
 // SkippedSequenceStats will hold all stats associated with the skipped sequence slice, used for getStats()
@@ -108,7 +107,7 @@ func (s *SkippedSequenceSkiplist) PushSkippedSequenceEntry(entry skiplist.Skippe
 	if elem != nil {
 		// update num current skipped sequences count + the cumulative count of skipped sequences
 		numSequencesIncoming := entry.GetNumSequencesInEntry()
-		s.NumCumulativeSkippedSequences.Add(numSequencesIncoming)
+		s.NumCumulativeSkippedSequences += numSequencesIncoming
 	}
 	return nil
 }
@@ -121,7 +120,7 @@ func (s *SkippedSequenceSkiplist) getOldest() uint64 {
 // getStats will return all associated stats with the skipped sequence list
 func (s *SkippedSequenceSkiplist) getStats() SkippedSequenceStats {
 	return SkippedSequenceStats{
-		NumCumulativeSkippedSequencesStat: s.NumCumulativeSkippedSequences.Load(),
+		NumCumulativeSkippedSequencesStat: s.NumCumulativeSkippedSequences,
 		NumCurrentSkippedSequencesStat:    s.list.GetNumSequencesInList(),
 		ListLengthStat:                    int64(s.list.GetLength()),
 	}
