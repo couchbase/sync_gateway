@@ -4,7 +4,8 @@ pipeline {
     options {
         timeout(time: 60, unit: 'MINUTES')
         buildDiscarder(logRotator(daysToKeepStr: '90', numToKeepStr: '-1', artifactDaysToKeepStr: '30', artifactNumToKeepStr: '-1'))
-        disableConcurrentBuilds(abortPrevious: true)
+        // A new push supersedes an older PR build, but every main commit must finish its run.
+        disableConcurrentBuilds(abortPrevious: env.CHANGE_ID != null)
     }
 
     environment {
