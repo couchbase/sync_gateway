@@ -482,8 +482,10 @@ func (c *singleChannelCacheImpl) _appendChange(ctx context.Context, change *LogE
 	end := len(log) - 1
 	if end >= 0 {
 		if change.Sequence <= log[end].Sequence {
-			base.DebugfCtx(ctx, base.KeyCache, "LogEntries.appendChange: out-of-order sequence #%d (last is #%d) - handling as insert",
-				change.Sequence, log[end].Sequence)
+			if base.LogDebugEnabled(ctx, base.KeyCache) {
+				base.DebugfCtx(ctx, base.KeyCache, "LogEntries.appendChange: out-of-order sequence #%d (last is #%d) - handling as insert",
+					change.Sequence, log[end].Sequence)
+			}
 			// insert the change in the array, ensuring the docID isn't already present
 			c.insertChange(&c.logs, change)
 			return

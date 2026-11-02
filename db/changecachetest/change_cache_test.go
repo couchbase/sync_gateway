@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -2010,6 +2011,8 @@ func TestProcessSkippedEntry(t *testing.T) {
 	for range 10 {
 		en := feed.Next()
 		_ = testChangeCache.ProcessEntryForTest(t, ctx, en)
+		// A late sequence leaves the skipped list only once it has been cached.
+		require.NoError(t, testChangeCache.WaitForSequenceNotSkippedForTest(t, ctx, en.Sequence, db.DefaultWaitForSequence))
 		testChangeCache.UpdateStatsForTest(t, ctx)
 		assert.Equal(t, currNumSkippedSeqs-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
 		currNumSkippedSeqs = dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
@@ -2091,6 +2094,8 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 		}
 
 		_ = testChangeCache.ProcessEntryForTest(t, ctx, newEntry)
+		// A late sequence leaves the skipped list only once it has been cached.
+		require.NoError(t, testChangeCache.WaitForSequenceNotSkippedForTest(t, ctx, newEntry.Sequence, db.DefaultWaitForSequence))
 		// assert on skipped sequence slice stats
 		testChangeCache.UpdateStatsForTest(t, ctx)
 		assert.Equal(t, numSeqsInList-1, dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value())
@@ -3053,6 +3058,7 @@ func TestDocChangedStartupSequenceFilter(t *testing.T) {
 	// One above it is new and must be cached.
 	changeCache.DocChanged(feedEventForTest(t, "aboveInitial", collectionID, syncDataFor(initialSequence+1)), db.DocTypeDocument)
 	assert.Equal(t, uint64(initialSequence+1), changeCache.LastSequence())
+	changeCache.WaitForSequenceForTest(t, initialSequence+1)
 	cached, err = database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
 	require.NoError(t, err)
 	require.Len(t, cached, 1)
@@ -3102,6 +3108,7 @@ func TestDocChangedBeforeStart(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, uint64(initialSequence+1), changeCache.LastSequence())
+	changeCache.WaitForSequenceForTest(t, initialSequence+1)
 	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
 	require.NoError(t, err)
 	require.Len(t, cached, 1)
@@ -3156,6 +3163,7 @@ func TestDocChangedRecentSequences(t *testing.T) {
 
 	// All three sequences are contiguous, so the feed advances past the deduplicated pair.
 	assert.Equal(t, uint64(103), changeCache.LastSequence())
+	changeCache.WaitForSequenceForTest(t, 103)
 
 	// The removal sequence carries the doc and the revision it was removed at; subscribers to "ABC"
 	// need both to emit a removal notice.
@@ -3295,6 +3303,7 @@ func TestDocChangedVersionVector(t *testing.T) {
 	}
 	vvXattr := sgbucket.Xattr{Name: base.VvXattrName, Value: []byte(`{"src":"sourceA","ver":"0x1234"}`)}
 	changeCache.DocChanged(feedEventForTest(t, "hlvDoc", collectionID, syncData, vvXattr), db.DocTypeDocument)
+	changeCache.WaitForSequenceForTest(t, 1)
 
 	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
 	require.NoError(t, err)
@@ -3377,12 +3386,93 @@ func TestDocChangedSkippedRecentSequence(t *testing.T) {
 		History:         db.RevTree{"1-abc": &db.RevInfo{ID: "1-abc", Channels: base.SetOf("ABC")}},
 	}
 	changeCache.DocChanged(feedEventForTest(t, "skippedDoc", collectionID, syncData), db.DocTypeDocument)
+	// 101 is behind the watermark already, so wait for it to leave the skipped list - it only does once cached.
+	require.NoError(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 101, db.DefaultWaitForSequence))
 
 	cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
 	require.NoError(t, err)
 	require.Len(t, cached, 1, "the document must reach its channel, not be consumed as a placeholder")
 	assert.Equal(t, uint64(101), cached[0].Sequence)
 	assert.Equal(t, "skippedDoc", cached[0].DocID)
+}
+
+// notification is one call to the change cache's notify function, stamped with the cached-sequence watermark at the
+// moment it ran.
+type notification struct {
+	channels  channels.Set
+	watermark uint64
+}
+
+// notifyRecorder collects change notifications. Each one is stamped with the watermark when it fires, so a test can
+// check that nothing was notified before it was readable: a feed woken for a change it cannot yet see reads nothing
+// and goes back to sleep. That check holds however late a notification is delivered, so it needs no timing window.
+// Notification is not guaranteed to happen on the goroutine that drove the feed, nor before DocChanged returns, so
+// reads go through the lock and positive checks wait.
+type notifyRecorder struct {
+	channelCache db.ChannelCache
+	lock         sync.Mutex
+	notified     []notification
+}
+
+func newNotifyRecorder(channelCache db.ChannelCache) *notifyRecorder {
+	return &notifyRecorder{channelCache: channelCache}
+}
+
+func (r *notifyRecorder) record(_ context.Context, channelSet channels.Set) {
+	watermark := r.channelCache.GetHighCacheSequence()
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.notified = append(r.notified, notification{channels: channelSet, watermark: watermark})
+}
+
+func (r *notifyRecorder) snapshot() []notification {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	return slices.Clone(r.notified)
+}
+
+// waitForCount waits until exactly count notifications have arrived and returns them.
+func (r *notifyRecorder) waitForCount(t *testing.T, count int, msgAndArgs ...any) []notification {
+	t.Helper()
+	var notifications []notification
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		notifications = r.snapshot()
+		assert.Len(c, notifications, count, msgAndArgs...)
+	}, 10*time.Second, 10*time.Millisecond)
+	return notifications
+}
+
+// waitForChannel waits until some notification has included channelID.
+func (r *notifyRecorder) waitForChannel(t *testing.T, channelID channels.ID, msgAndArgs ...any) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		found := slices.ContainsFunc(r.snapshot(), func(n notification) bool { return n.channels.Contains(channelID) })
+		assert.True(c, found, msgAndArgs...)
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// requireNothingNotifiedBefore checks that no notification of any kind - for any channel set, including an empty one
+// - fired before the watermark reached watermark. While a test holds a sequence back, the watermark cannot pass it,
+// so anything notified during that time carries the lower stamp and fails here however late it was delivered.
+func (r *notifyRecorder) requireNothingNotifiedBefore(t *testing.T, watermark uint64) {
+	t.Helper()
+	for _, n := range r.snapshot() {
+		require.GreaterOrEqual(t, n.watermark, watermark,
+			"%v was notified at watermark %d, before anything after %d was readable", n.channels, n.watermark, watermark-1)
+	}
+}
+
+// requireNotNotifiedBefore checks that every notification for channelID fired once the watermark had reached
+// visibleAt. Call it after the change at visibleAt has been released and notified: an early notification for the
+// channel is in the recording by then, carrying the lower watermark it fired at.
+func (r *notifyRecorder) requireNotNotifiedBefore(t *testing.T, channelID channels.ID, visibleAt uint64) {
+	t.Helper()
+	for _, n := range r.snapshot() {
+		if n.channels.Contains(channelID) {
+			require.GreaterOrEqual(t, n.watermark, visibleAt,
+				"%s was notified at watermark %d, before its change at %d was readable", channelID, n.watermark, visibleAt)
+		}
+	}
 }
 
 // TestChangeCacheNotifiesChangedChannels covers the notification that wakes a changes feed. A
@@ -3414,23 +3504,22 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
-		var notified []channels.Set
-		changeCache.SetNotifyChangeFuncForTest(t, func(_ context.Context, channelSet channels.Set) {
-			notified = append(notified, channelSet)
-		})
+		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
+		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
 		changeCache.DocChanged(feedEventForTest(t, "twoChannelDoc", collectionID, syncDataFor(101, "ABC", "XYZ")), db.DocTypeDocument)
 
-		require.Len(t, notified, 1, "one write is one notification")
-		_, hasABC := notified[0][channels.NewID("ABC", collectionID)]
-		_, hasXYZ := notified[0][channels.NewID("XYZ", collectionID)]
+		notifications := notified.waitForCount(t, 1, "one write is one notification")
+		_, hasABC := notifications[0].channels[channels.NewID("ABC", collectionID)]
+		_, hasXYZ := notifications[0].channels[channels.NewID("XYZ", collectionID)]
 		assert.True(t, hasABC)
 		assert.True(t, hasXYZ)
+		assert.GreaterOrEqual(t, notifications[0].watermark, uint64(101), "the write must be readable when its channels are woken")
 	})
 
-	t.Run("a buffered write notifies nothing", func(t *testing.T) {
+	t.Run("a buffered write is not notified until it is readable", func(t *testing.T) {
 		database, ctx := db.SetupTestDB(t)
 		defer database.Close(ctx)
 		collectionID := db.GetSingleDatabaseCollection(t, database.DatabaseContext).GetCollectionID()
@@ -3440,18 +3529,25 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
-		var notified []channels.Set
-		changeCache.SetNotifyChangeFuncForTest(t, func(_ context.Context, channelSet channels.Set) {
-			notified = append(notified, channelSet)
-		})
+		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
+		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
-		// 102 arrives before 101, so it is held and nothing is visible to a feed yet. Waking every
-		// feed for a change they cannot see is a wasted broadcast across the whole database.
+		// 102 arrives before 101, so it is held and nothing is visible to a feed yet. A feed woken for a
+		// change it cannot see reads nothing and sleeps through it.
+		abcChannel := channels.NewID("ABC", collectionID)
 		changeCache.DocChanged(feedEventForTest(t, "pendingDoc", collectionID, syncDataFor(102, "ABC")), db.DocTypeDocument)
 
-		assert.Empty(t, notified, "a change still buffered notifies nobody")
+		// 101 in another channel releases both. Anything notified while 102 was held - for any channel set -
+		// carries the startup watermark, and a notification for ABC before 102 itself was readable carries a
+		// watermark below 102, so checking the stamps once ABC is notified catches either however late it was
+		// delivered.
+		changeCache.DocChanged(feedEventForTest(t, "blockingDoc", collectionID, syncDataFor(101, "XYZ")), db.DocTypeDocument)
+		notified.waitForChannel(t, abcChannel, "the buffered write must be notified once released")
+		notified.requireNothingNotifiedBefore(t, initialSequence+1)
+		notified.requireNotNotifiedBefore(t, abcChannel, 102)
+		notified.requireNotNotifiedBefore(t, channels.NewID("XYZ", collectionID), 101)
 	})
 
 	t.Run("releasing an unused sequence notifies the channels it unblocks", func(t *testing.T) {
@@ -3464,17 +3560,15 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
-		var notified []channels.Set
-		changeCache.SetNotifyChangeFuncForTest(t, func(_ context.Context, channelSet channels.Set) {
-			notified = append(notified, channelSet)
-		})
+		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
+		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
 		// 102 waits on 101. Releasing 101 as unused lets 102 through, so the notification has to
 		// carry 102's channels - a feed on "ABC" is what needs waking, not just the unused-seq marker.
+		abcChannel := channels.NewID("ABC", collectionID)
 		changeCache.DocChanged(feedEventForTest(t, "blockedDoc", collectionID, syncDataFor(102, "ABC")), db.DocTypeDocument)
-		require.Empty(t, notified)
 
 		unusedSeqKey := database.DatabaseContext.MetadataKeys.UnusedSeqKey(101)
 		changeCache.DocChanged(sgbucket.FeedEvent{
@@ -3483,10 +3577,13 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 			CollectionID: collectionID,
 		}, db.DocTypeUnusedSeq)
 
-		require.Len(t, notified, 1)
-		_, hasABC := notified[0][channels.NewID("ABC", collectionID)]
-		assert.True(t, hasABC,
+		// The unused-sequence marker and the unblocked document's channels may be notified together or
+		// separately; what matters is that a feed on "ABC" is woken.
+		notified.waitForChannel(t, abcChannel,
 			"the unblocked document's channels must be notified, not only the unused-sequence marker")
+		// Nothing - including the unused-sequence marker - may be notified while 102 is held behind 101.
+		notified.requireNothingNotifiedBefore(t, initialSequence+1)
+		notified.requireNotNotifiedBefore(t, abcChannel, 102)
 	})
 }
 
