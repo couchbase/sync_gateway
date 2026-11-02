@@ -57,6 +57,7 @@ type activeReplicatorCommon struct {
 	replicatorConnectFn             func() error                                                // the function called inside reconnect.
 	registerCheckpointerCallbacksFn func(*activeReplicatorCollection) error                     // function to register checkpointer callbacks
 	activeSendChanges               atomic.Int32                                                // Tracks whether sendChanges goroutines are active, there is one per collection.
+	runningCheckpointers            atomic.Int32                                                // Number of running time-based checkpointer goroutines, so tests can check that a failed start stops them.
 	namedCollections                map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
 	defaultCollection               *activeReplicatorCollection                                 // set only if the replicator is not running with collections - access with forEachCollection
 }
@@ -159,7 +160,7 @@ func (arc *activeReplicatorCommon) Start(ctx context.Context) error {
 
 	arc.startStatusReporter(arc.ctx)
 
-	err := arc.replicatorConnectFn()
+	err := arc._connectAndRun()
 	if err != nil {
 		arc.setError(err)
 		base.WarnfCtx(arc.ctx, "Couldn't connect: %s", err)
@@ -204,7 +205,7 @@ func (arc *activeReplicatorCommon) _initCheckpointer(remoteCheckpoints []replica
 			return err
 		}
 
-		c.Checkpointer.Start()
+		c.Checkpointer.Start(&arc.runningCheckpointers)
 		return nil
 	})
 	if err != nil {
@@ -303,7 +304,7 @@ func (arc *activeReplicatorCommon) reconnect() {
 			}
 
 			// set lastError, but don't set an error state inside the reconnect loop
-			err = arc.replicatorConnectFn()
+			err = arc._connectAndRun()
 			arc.setLastError(err)
 			arc._publishStatus()
 
@@ -340,16 +341,6 @@ func (arc *activeReplicatorCommon) reconnect() {
 	}()
 }
 
-// disconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
-func (arc *activeReplicatorCommon) disconnect() error {
-	arc.lock.Lock()
-	base.TracefCtx(arc.ctx, base.KeyReplicate, "Calling disconnect without stopping the replicator")
-	err := arc._disconnect()
-	arc._publishStatus()
-	arc.lock.Unlock()
-	return err
-}
-
 // stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
 func (arc *activeReplicatorCommon) stopAndDisconnect() error {
 	arc.lock.Lock()
@@ -368,6 +359,20 @@ func (arc *activeReplicatorCommon) stopAndDisconnect() error {
 	return err
 }
 
+// _connectAndRun opens a connection and marks the replicator as running.
+func (arc *activeReplicatorCommon) _connectAndRun() error {
+	err := arc.replicatorConnectFn()
+	if err == nil && !arc.blipSyncContext.markConnected() {
+		err = errConnClosedDuringStart
+	}
+	if err != nil {
+		_ = arc._disconnect()
+		return err
+	}
+	arc.setState(ReplicationStateRunning)
+	return nil
+}
+
 // _disconnect aborts any replicator processes used during a connected/running replication (checkpointing, blip contexts, etc.)
 func (arc *activeReplicatorCommon) _disconnect() error {
 	if arc == nil {
@@ -379,6 +384,11 @@ func (arc *activeReplicatorCommon) _disconnect() error {
 		base.TracefCtx(arc.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
 		arc.checkpointerCtxCancel()
 		_ = arc.forEachCollection(func(c *activeReplicatorCollection) error {
+			// A start that fails in _initCheckpointer leaves later collections with no checkpointer on the first start,
+			// or with the already stopped checkpointer of the previous connection on a reconnect.
+			if c.Checkpointer == nil {
+				return nil
+			}
 			c.Checkpointer.closeWg.Wait()
 			c.Checkpointer.CheckpointNow()
 			return nil
@@ -386,6 +396,10 @@ func (arc *activeReplicatorCommon) _disconnect() error {
 	}
 	arc.checkpointerCtx = nil
 
+	// Mark the close as local before closing the sender, which runs the close callback that would otherwise reconnect.
+	if arc.blipSyncContext != nil {
+		arc.blipSyncContext.markLocalDisconnected()
+	}
 	if arc.blipSender != nil {
 		base.TracefCtx(arc.ctx, base.KeyReplicate, "closing blip sender")
 		arc.blipSender.Close()

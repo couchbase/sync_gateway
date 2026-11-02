@@ -206,8 +206,11 @@ func (ar *ActiveReplicator) GetStatus(ctx context.Context) *ReplicationStatus {
 	return status
 }
 
+// errConnClosedDuringStart is returned when the connection closes before an active replicator finishes starting.
+var errConnClosedDuringStart = errors.New("connection closed while the replicator was starting")
+
 // connect establishes a blip connection to a remote host.
-func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
+func connect(arc *activeReplicatorCommon, idSuffix string) (*blip.Sender, *BlipSyncContext, error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	ctx := base.CorrelationIDLogCtx(
@@ -228,16 +231,15 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		return nil, nil, err
 	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
-	blipContext.OnExitCallback = func() {
-		// fall into a reconnect loop only if the connection is unexpectedly closed.
-		if ctx.Err() == nil {
-			arc.reconnect()
-		}
-	}
 
-	bsc, err = NewBlipSyncContext(ctx, blipContext, arc.config.ActiveDB, arc.replicationStats, cancelFunc)
+	bsc, err := NewBlipSyncContext(ctx, blipContext, arc.config.ActiveDB, arc.replicationStats, cancelFunc)
 	if err != nil {
 		return nil, nil, err
+	}
+	blipContext.OnExitCallback = func() {
+		if bsc.markRemoteDisconnected() {
+			arc.reconnect()
+		}
 	}
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
@@ -246,7 +248,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		bsc.sgCanUseDeltas = false
 	}
 
-	blipSender, err = blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
+	blipSender, err := blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -254,6 +256,8 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	// set active subprotocol after handshake
 	err = bsc.SetActiveCBMobileSubprotocol(blipContext.ActiveSubprotocol())
 	if err != nil {
+		blipSender.Close()
+		bsc.Close()
 		return nil, nil, err
 	}
 
