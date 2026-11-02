@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -70,8 +69,6 @@ func (apr *ActivePullReplicator) _connect() error {
 		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
 	}
 
-	apr.setState(ReplicationStateRunning)
-
 	return nil
 }
 
@@ -85,22 +82,12 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(apr.ctx, defaultCollection))
 
 	if err := apr._initCheckpointer(nil); err != nil {
-		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
-		apr.checkpointerCtx = nil
-		apr.blipSender.Close()
-		apr.blipSyncContext.Close()
 		return err
 	}
 
 	since := apr.defaultCollection.Checkpointer.lastCheckpointSeq.String()
 
 	if err := apr._subChanges(nil, since); err != nil {
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
-		apr.checkpointerCtxCancel(fmt.Errorf("error sending subChanges request: %w", err))
-		apr.checkpointerCtx = nil
-		apr.blipSender.Close()
-		apr.blipSyncContext.Close()
 		return err
 	}
 
