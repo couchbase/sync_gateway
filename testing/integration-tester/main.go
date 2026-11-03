@@ -18,9 +18,12 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"maps"
 	"os"
@@ -28,6 +31,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -235,7 +239,7 @@ Environment variables:
     GSI                        Use GSI (global secondary index) for queries (true|false)
     SG_EDITION                 Sync Gateway edition to test (EE|CE)
     TARGET_PACKAGE             Comma-separated package(s) to test (e.g. rest,db or ...)
-    TARGET_TEST                Test name filter passed to -run, or ALL to run everything
+    TARGET_TEST                Test name filter passed to -run, or ALL to run everything. Packages with no matching test are skipped
     TLS_SKIP_VERIFY            Skip TLS certificate verification (true|false)
 
   Optional:
@@ -377,10 +381,18 @@ func run() int {
 		goTestFlags = append(goTestFlags, "-failfast")
 	}
 
-	sgPkgs := buildPackageList(cfg.TargetPackage)
+	sgPkgs := buildPackageList(cfg.TargetPackage, cfg.TargetTest)
+
+	ctx, stop := interruptContext()
+	defer stop()
 
 	if cfg.RunWalrus {
-		runRosmarTests(goTestFlags, sgPkgs)
+		runRosmarTests(ctx, goTestFlags, sgPkgs)
+	}
+	if ctx.Err() != nil {
+		logger.Errorf("skipping integration tests: %v", context.Cause(ctx))
+		nonFatal.report()
+		return 1
 	}
 
 	// Set common CBS test environment variables shared across all package invocations.
@@ -391,7 +403,7 @@ func run() int {
 	extraEnv["SG_TEST_BACKING_STORE"] = "Couchbase"
 	extraEnv["SG_TEST_TLS_SKIP_VERIFY"] = fmt.Sprintf("%v", cfg.TLSSkipVerify)
 
-	testFailed, logFiles := runIntegrationTestsParallel(cfg.SGEdition, goTestFlags, sgPkgs, cfg.CouchbaseServerVersion, cfg.CouchbaseServerProtocol, cfg.MultiNode, cfg.MaxParallelPackages, intLogFileName, cfg.SGCBCollectAlways, cfg.FailFast)
+	testFailed, logFiles := runIntegrationTestsParallel(ctx, cfg.SGEdition, goTestFlags, sgPkgs, cfg.CouchbaseServerVersion, cfg.CouchbaseServerProtocol, cfg.MultiNode, cfg.MaxParallelPackages, intLogFileName, cfg.SGCBCollectAlways, cfg.FailFast)
 
 	// Classnames only need telling apart from the rosmar results when both are reported.
 	classnamePrefix := ""
@@ -520,9 +532,19 @@ func removeEmptyCoverProfile(path string) {
 	}
 }
 
+// interruptContext returns a context cancelled on SIGINT or SIGTERM. Test processes run in their own
+// process groups, so a terminal Ctrl-C reaches them only through this context.
+func interruptContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+}
+
 // runRosmarTests runs EE and CE rosmar (in-memory) tests, ignoring failures (set +e equivalent).
-func runRosmarTests(baseFlags []string, pkgs []pkg) {
+// It stops early if ctx is cancelled.
+func runRosmarTests(ctx context.Context, baseFlags []string, pkgs []pkg) {
 	for _, ed := range []Edition{EditionEE, EditionCE} {
+		if ctx.Err() != nil {
+			return
+		}
 		logger.Infof("Running rosmar (%s) tests...", ed)
 		suffix := strings.ToLower(string(ed))
 		args := goTestArgs{
@@ -535,8 +557,11 @@ func runRosmarTests(baseFlags []string, pkgs []pkg) {
 			packages:         pkgs,
 			goTestFlags:      baseFlags,
 		}
-		if _, err := runGotestsum(context.Background(), args, "verbose_unit_"+suffix+".out"); err != nil {
+		if _, err := runGotestsum(ctx, args, "verbose_unit_"+suffix+".out"); err != nil {
 			nonFatal.add(fmt.Errorf("rosmar gotestsum (%s): %w", ed, err))
+		}
+		if ctx.Err() != nil {
+			return
 		}
 		xmlOut := "verbose_unit_" + suffix + ".xml"
 		if err := prefixTestcaseClassnames("rosmar-"+suffix+".xml", xmlOut, "rosmar-"+string(ed)+"-"); err != nil {
@@ -559,7 +584,7 @@ type result struct {
 // Per-package log and XML files are named after the package. XML files are merged into
 // integration.xml. The first package failure cancels all remaining runs.
 // Returns (anyFailed, logFilePaths).
-func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, serverVersion string, protocol Protocol, multiNode bool, maxParallel int, logFileName string, cbcollectAlways bool, failFast bool) (bool, []string) {
+func runIntegrationTestsParallel(sigCtx context.Context, edition Edition, flags []string, pkgs []pkg, serverVersion string, protocol Protocol, multiNode bool, maxParallel int, logFileName string, cbcollectAlways bool, failFast bool) (bool, []string) {
 	results := make([]result, len(pkgs))
 
 	// Initialize cbdinocluster once; each package invocation allocates its own cluster.
@@ -567,9 +592,6 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 		logger.Fatal(err)
 	}
 
-	// The test processes run in their own process groups, so a terminal Ctrl-C reaches them only through ctx.
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	ctx, cancel := context.WithCancelCause(sigCtx)
 	defer cancel(nil)
 
@@ -593,7 +615,7 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 			default:
 			}
 
-			clusterID, connStr, err := allocateCluster(p.shortName(), serverVersion, protocol, multiNode)
+			clusterID, connStr, err := allocateCluster(ctx, p.shortName(), serverVersion, protocol, multiNode)
 			if err != nil {
 				nonFatal.add(fmt.Errorf("allocate cluster for %s: %w", p, err))
 				results[i] = result{path: p, failed: true}
@@ -637,7 +659,7 @@ func runIntegrationTestsParallel(edition Edition, flags []string, pkgs []pkg, se
 
 	anyFailed := sigCtx.Err() != nil
 	if anyFailed {
-		nonFatal.add(errors.New("integration tests interrupted by signal"))
+		nonFatal.add(fmt.Errorf("integration tests interrupted: %w", context.Cause(sigCtx)))
 	}
 	for _, r := range results {
 		if r.failed {
@@ -810,9 +832,10 @@ func tryLabeledOutput(prefix, name string, args ...string) (string, error) {
 }
 
 // buildPackageList splits a comma-separated TARGET_PACKAGE value and prefixes each entry
-// with the module path. Entries containing "..." are expanded via "go list" to packages with tests, so no
-// cluster is allocated for a package that has nothing to run.
-func buildPackageList(targetPackage string) []pkg {
+// with the module path. Entries containing "..." are expanded via "go list" to packages with tests, and
+// unless targetTest is ALL, packages with no test matching it are dropped, so no cluster is allocated
+// for a package that has nothing to run.
+func buildPackageList(targetPackage, targetTest string) []pkg {
 	parts := strings.Split(targetPackage, ",")
 	pkgs := make([]pkg, 0, len(parts))
 	for _, p := range parts {
@@ -832,7 +855,115 @@ func buildPackageList(targetPackage string) []pkg {
 			pkgs = append(pkgs, pkg(fullPkg))
 		}
 	}
-	return pkgs
+	if targetTest == "ALL" {
+		return pkgs
+	}
+	filtered := filterPackagesByTest(pkgs, targetTest)
+	if len(filtered) == 0 {
+		logger.Fatalf("no package in TARGET_PACKAGE=%q has a test matching TARGET_TEST=%q", targetPackage, targetTest)
+	}
+	return filtered
+}
+
+// filterPackagesByTest returns the packages with a test function that go test -run=runPattern would run.
+// Test files are parsed for every build tag combination, so a package is kept if any edition has a match.
+func filterPackagesByTest(pkgs []pkg, runPattern string) []pkg {
+	re, err := regexp.Compile(topLevelRunPattern(runPattern))
+	if err != nil {
+		logger.Fatalf("parse TARGET_TEST=%q: %v", runPattern, err)
+	}
+	args := []string{"list", "-json=Dir,ImportPath,TestGoFiles,XTestGoFiles,IgnoredGoFiles"}
+	for _, p := range pkgs {
+		args = append(args, string(p))
+	}
+	dec := json.NewDecoder(strings.NewReader(mustOutput("go", args...)))
+	var filtered []pkg
+	for dec.More() {
+		var info struct {
+			Dir, ImportPath                           string
+			TestGoFiles, XTestGoFiles, IgnoredGoFiles []string
+		}
+		if err := dec.Decode(&info); err != nil {
+			logger.Fatalf("parse go list output: %v", err)
+		}
+		files := slices.Concat(info.TestGoFiles, info.XTestGoFiles, info.IgnoredGoFiles)
+		if slices.ContainsFunc(files, func(f string) bool {
+			return strings.HasSuffix(f, "_test.go") && fileHasMatchingTest(filepath.Join(info.Dir, f), re)
+		}) {
+			filtered = append(filtered, pkg(info.ImportPath))
+		}
+	}
+	return filtered
+}
+
+// fileHasMatchingTest reports whether the Go file at path declares a Test, Example or Fuzz function whose name matches re.
+func fileHasMatchingTest(path string, re *regexp.Regexp) bool {
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		logger.Fatalf("parse %s: %v", path, err)
+	}
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil {
+			continue
+		}
+		name := fn.Name.Name
+		isTest := strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Example") || strings.HasPrefix(name, "Fuzz")
+		if isTest && re.MatchString(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// topLevelRunPattern returns a regexp matching the top-level test names that go test -run=run selects.
+// It follows testing.splitRegexp: "|" and "/" outside brackets and parentheses split the pattern into
+// alternatives of slash-separated levels, and only the first level of each alternative applies to top-level tests.
+func topLevelRunPattern(run string) string {
+	var alternatives []string
+	brackets, parens := 0, 0
+	levelEnd := -1 // end of the first level of the current alternative, or -1 if it has no "/" yet
+	start := 0
+	for i := 0; i < len(run); i++ {
+		switch run[i] {
+		case '[':
+			brackets++
+		case ']':
+			brackets = max(brackets-1, 0)
+		case '(':
+			if brackets == 0 {
+				parens++
+			}
+		case ')':
+			if brackets == 0 {
+				parens--
+			}
+		case '\\':
+			i++
+		case '/':
+			if brackets == 0 && parens == 0 && levelEnd < 0 {
+				levelEnd = i
+			}
+		case '|':
+			if brackets == 0 && parens == 0 {
+				alternatives = append(alternatives, firstLevel(run, start, levelEnd, i))
+				start, levelEnd = i+1, -1
+			}
+		}
+	}
+	alternatives = append(alternatives, firstLevel(run, start, levelEnd, len(run)))
+	if len(alternatives) == 1 {
+		return alternatives[0]
+	}
+	return "(?:" + strings.Join(alternatives, ")|(?:") + ")"
+}
+
+// firstLevel returns run[start:end] cut at levelEnd, if the alternative has a "/" level separator.
+func firstLevel(run string, start, levelEnd, end int) string {
+	if levelEnd >= 0 {
+		end = levelEnd
+	}
+	return run[start:end]
 }
 
 // filesContainsAny returns true if any of the given substrings appear in any of the files.

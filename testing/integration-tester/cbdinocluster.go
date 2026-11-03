@@ -9,6 +9,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
@@ -66,9 +68,35 @@ func cbdinoPrefix(label string) string {
 	return labelPrefix(label) + "cbdinocluster: "
 }
 
+// allocateRetryDelay is the initial delay between allocateCluster attempts, doubled after each failure.
+var allocateRetryDelay = 10 * time.Second
+
 // allocateCluster provisions a new Couchbase cluster via start_cbs.py and returns its cluster ID and
-// connection string. cbdinocluster must already be initialized.
-func allocateCluster(label, serverVersion string, protocol Protocol, multiNode bool) (clusterID, connStr string, err error) {
+// connection string, retrying failed allocations unless ctx is cancelled. cbdinocluster must already be initialized.
+func allocateCluster(ctx context.Context, label, serverVersion string, protocol Protocol, multiNode bool) (clusterID, connStr string, err error) {
+	const allocateAttempts = 3
+	delay := allocateRetryDelay
+	for attempt := 1; attempt <= allocateAttempts && ctx.Err() == nil; attempt++ {
+		clusterID, connStr, err = allocateClusterOnce(label, serverVersion, protocol, multiNode)
+		if err == nil || attempt == allocateAttempts || ctx.Err() != nil {
+			break
+		}
+		logger.Warnf("%sallocation attempt %d/%d failed: %v, retrying in %s", cbdinoPrefix(label), attempt, allocateAttempts, err, delay)
+		select {
+		case <-ctx.Done():
+		case <-time.After(delay):
+		}
+		delay *= 2
+	}
+	// Cancelled before the first attempt; a cluster that was allocated is always returned so it gets removed.
+	if clusterID == "" && err == nil {
+		err = context.Cause(ctx)
+	}
+	return clusterID, connStr, err
+}
+
+// allocateClusterOnce makes a single start_cbs.py allocation attempt.
+func allocateClusterOnce(label, serverVersion string, protocol Protocol, multiNode bool) (clusterID, connStr string, err error) {
 	f, err := os.CreateTemp("", "cbs-*.env")
 	if err != nil {
 		return "", "", fmt.Errorf("create env file: %w", err)
