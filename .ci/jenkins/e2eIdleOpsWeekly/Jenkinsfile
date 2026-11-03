@@ -96,13 +96,16 @@ pipeline {
                 // Take integration-test/ and .ci/ whole from main, whatever SG_COMMIT is, unless CI_SCRIPTS_REF names a
                 // branch whose copies have changes that main does not have yet. SG_COMMIT then only supplies the Sync
                 // Gateway source to build, so a release branch older than the test tooling (start_cbs.py and its
-                // cbdinocluster module) can still be tested. The repo is public, so the fetch needs no credentials.
-                sh '''
-                    set -eu
-                    git fetch --depth=1 https://github.com/couchbase/sync_gateway.git "${CI_SCRIPTS_REF:-main}"
-                    rm -rf integration-test .ci
-                    git checkout FETCH_HEAD -- integration-test .ci
-                '''
+                // cbdinocluster module) can still be tested. The agent's git rewrites GitHub https URLs to ssh, so the
+                // fetch needs the same key as the checkout. It is not shallow, so the SG checkout keeps its history.
+                sshagent(credentials: ['CB_SG_Robot_Github_SSH_Key']) {
+                    sh '''
+                        set -eu
+                        git fetch origin "${CI_SCRIPTS_REF:-main}"
+                        rm -rf integration-test .ci
+                        git checkout FETCH_HEAD -- integration-test .ci
+                    '''
+                }
                 script {
                     def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
                     currentBuild.description = [
