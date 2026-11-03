@@ -11,10 +11,13 @@ licenses/APL2.txt.
 package db
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
@@ -76,4 +79,57 @@ func TestBlipSyncErrorUserinfo(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestConnectAndRunConnectionClosedDuringStart asserts that a connection closed by the remote before the replicator
+// finishes starting is cleaned up and does not leave the replicator running.
+func TestConnectAndRunConnectionClosedDuringStart(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	ctx, cancelFunc := context.WithCancelCause(ctx)
+	defer cancelFunc(errors.New("test teardown"))
+
+	arc := &activeReplicatorCommon{ctx: ctx, state: ReplicationStateStopped}
+	arc.replicatorConnectFn = func() error {
+		blipCtx, blipContext, err := NewSGBlipContext(ctx, "", nil, nil)
+		require.NoError(t, err)
+		arc.blipSyncContext, err = NewBlipSyncContext(blipCtx, blipContext, db, nil, cancelFunc)
+		require.NoError(t, err)
+		require.False(t, arc.blipSyncContext.markRemoteDisconnected())
+		return nil
+	}
+
+	require.ErrorIs(t, arc._connectAndRun(), errConnClosedDuringStart)
+	require.Nil(t, arc.blipSyncContext)
+	require.Equal(t, ReplicationStateStopped, arc.getState())
+}
+
+// TestConnectAndRunStopsCheckpointersAfterFailedStart asserts that a start that fails after starting a checkpointer
+// stops that checkpointer before it returns.
+func TestConnectAndRunStopsCheckpointersAfterFailedStart(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	ctx, cancelFunc := context.WithCancelCause(ctx)
+	defer cancelFunc(errors.New("test teardown"))
+
+	replicationStats, err := db.DbStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	config := &ActiveReplicatorConfig{
+		ActiveDB:            db,
+		CheckpointInterval:  time.Minute,
+		ReplicationStatsMap: replicationStats,
+	}
+	arc := &activeReplicatorCommon{ctx: ctx, config: config, state: ReplicationStateStopped, defaultCollection: &activeReplicatorCollection{}}
+	errStart := errors.New("start failed")
+	arc.replicatorConnectFn = func() error {
+		arc.checkpointerCtx, arc.checkpointerCtxCancel = context.WithCancelCause(ctx)
+		arc.defaultCollection.Checkpointer = NewCheckpointer(arc.checkpointerCtx, nil, nil, "", "", nil, config, nil)
+		arc.defaultCollection.Checkpointer.Start(&arc.runningCheckpointers)
+		require.Equal(t, int32(1), arc.runningCheckpointers.Load())
+		return errStart
+	}
+
+	require.ErrorIs(t, arc._connectAndRun(), errStart)
+	require.Equal(t, int32(0), arc.runningCheckpointers.Load())
+	require.Equal(t, ReplicationStateStopped, arc.getState())
 }

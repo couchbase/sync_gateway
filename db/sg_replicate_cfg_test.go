@@ -1261,12 +1261,12 @@ func TestStartReplicationsSkipsInitErrorWhenStopping(t *testing.T) {
 		"a stopping manager persisted an initialization error for a replication it never tried to start")
 }
 
-// TestSGReplicateManagerStopDoesNotPanicOnConcurrentClusterUpdate asserts a cluster config write racing Stop()
+// TestSGReplicateManagerStopDuringConcurrentClusterUpdate asserts a cluster config write racing Stop()
 // does not panic.  Cluster updates run on the caller's goroutine, so tracking them on closeWg - the
 // waitgroup Stop waits on - makes a write arriving during Stop a WaitGroup misuse panic rather than a wait.  In
 // production that is any request writing cluster config during a database close or config reload.  Driven
 // through RegisterNode so it exercises a reachable path, and looped because the window is small.
-func TestSGReplicateManagerStopDoesNotPanicOnConcurrentClusterUpdate(t *testing.T) {
+func TestSGReplicateManagerStopDuringConcurrentClusterUpdate(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelWarn, base.KeyCluster)
 
 	testDB, ctx := SetupTestDB(t)

@@ -211,9 +211,9 @@ func TestIsPermanentRevStatus(t *testing.T) {
 	}
 }
 
-// TestHandleRevPanicHoldsPullCheckpoint checks that a panic while handling a pulled rev does not mark it processed, so
+// TestHandleRevCrashHoldsPullCheckpoint checks that a panic while handling a pulled rev does not mark it processed, so
 // the checkpoint holds before it rather than skipping it.
-func TestHandleRevPanicHoldsPullCheckpoint(t *testing.T) {
+func TestHandleRevCrashHoldsPullCheckpoint(t *testing.T) {
 	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	ctx, cancelFunc := context.WithCancelCause(ctx)

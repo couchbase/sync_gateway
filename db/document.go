@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -277,6 +278,61 @@ func (sd *SyncData) HashRedact(salt string) error {
 	}
 
 	return nil
+}
+
+// CompactHistory removes channel history entries from the document, in one of two modes. If seq is non-zero,
+// it removes entries that ended at or before seq. Otherwise, it removes entries for the channels named in
+// channelsToDelete. Returns the names of the channels that were compacted.
+func (sd *SyncData) CompactHistory(seq uint64, channelsToDelete []string) base.Set {
+	compactedChannels := make(base.Set)
+	channelsToDeleteMap := make(map[string]struct{})
+	for _, chanName := range channelsToDelete {
+		channelsToDeleteMap[chanName] = struct{}{}
+	}
+
+	sd.ChannelSetHistory = slices.DeleteFunc(sd.ChannelSetHistory, func(channel ChannelSetEntry) bool {
+		var del bool
+		if seq != 0 {
+			del = channel.End <= seq
+		} else {
+			_, del = channelsToDeleteMap[channel.Name]
+		}
+		if del {
+			compactedChannels.Add(channel.Name)
+		}
+		return del
+	})
+
+	sd.ChannelSet = slices.DeleteFunc(sd.ChannelSet, func(channel ChannelSetEntry) bool {
+		var del bool
+		if seq != 0 {
+			del = channel.End != 0 && channel.End <= seq
+		} else {
+			_, ok := channelsToDeleteMap[channel.Name]
+			del = channel.End != 0 && ok
+		}
+		if del {
+			compactedChannels.Add(channel.Name)
+		}
+		return del
+	})
+
+	for chanName, chanEntry := range sd.Channels {
+		if chanEntry == nil {
+			continue
+		}
+		var del bool
+		if seq != 0 {
+			del = chanEntry.Seq <= seq
+		} else {
+			_, del = channelsToDeleteMap[chanName]
+		}
+		if del {
+			compactedChannels.Add(chanName)
+			delete(sd.Channels, chanName)
+		}
+	}
+	return compactedChannels
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.

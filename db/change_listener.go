@@ -403,6 +403,12 @@ func (listener *changeListener) Wait(ctx context.Context, keys []channels.ID, co
 	}
 }
 
+func (listener *changeListener) currentCount(keys []channels.ID) uint64 {
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	return listener._currentCount(keys)
+}
+
 func (listener *changeListener) _currentCount(keys []channels.ID) uint64 {
 	var max uint64 = 0
 	for _, key := range keys {
@@ -582,6 +588,21 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 	previousCount := waiter.lastUserCount
 	waiter.lastUserCount = waiter.currentPrincipalCount()
 	return waiter.lastUserCount != previousCount
+}
+
+// RefreshCounts brings the waiter up to date with the listener as Wait does on return, for a caller that waited
+// some other way. Without it, the next Wait returns straight away for changes counted while the caller was away,
+// costing the caller a pass that finds nothing new.
+//
+// The caller must look for changes after calling this, not before. Changes are added to the cache before they are
+// counted, so each one is either counted here and visible to that look, or counted afterwards and caught by the
+// next Wait.
+//
+// The terminate-check counter is deliberately left alone, so a termination check raised meanwhile still reaches
+// the next Wait.
+func (waiter *ChangeWaiter) RefreshCounts() {
+	waiter.lastCounter = waiter.listener.currentCount(waiter.keys)
+	waiter.RefreshUserCount()
 }
 
 // currentPrincipalCount returns the max count across the waiter's user keys, first re-resolving any

@@ -288,8 +288,9 @@ func (c *DatabaseCollection) GetDocChannelHistory(ctx context.Context, docid str
 }
 
 // CompactDocChannelHistory removes channel history entries that ended at or before the given sequence number.
+// If seq is zero, it removes the history entries of the named channels instead.
 // This is used to prune stale channel assignment history to reduce storage overhead.
-func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64) ([]string, error) {
+func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid string, seq uint64, channelsToDelete []string) ([]string, error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -323,30 +324,7 @@ func (c *DatabaseCollection) CompactDocChannelHistory(ctx context.Context, docid
 		cas = doc.Cas
 	}
 
-	compactedChannels := make(base.Set)
-
-	doc.SyncData.ChannelSetHistory = slices.DeleteFunc(doc.SyncData.ChannelSetHistory, func(channel ChannelSetEntry) bool {
-		del := channel.End <= seq
-		if del {
-			compactedChannels.Add(channel.Name)
-		}
-		return del
-	})
-
-	doc.SyncData.ChannelSet = slices.DeleteFunc(doc.SyncData.ChannelSet, func(channel ChannelSetEntry) bool {
-		del := channel.End != 0 && channel.End <= seq
-		if del {
-			compactedChannels.Add(channel.Name)
-		}
-		return del
-	})
-
-	for chanName, chanEntry := range doc.SyncData.Channels {
-		if chanEntry != nil && chanEntry.Seq <= seq {
-			compactedChannels.Add(chanName)
-			delete(doc.SyncData.Channels, chanName)
-		}
-	}
+	compactedChannels := doc.CompactHistory(seq, channelsToDelete)
 
 	// Exit early if no compaction occurred
 	if len(compactedChannels) == 0 {
@@ -1617,8 +1595,9 @@ func (db *DatabaseCollectionWithUser) PutExistingCurrentVersion(ctx context.Cont
 				doc.HLV = NewHybridLogicalVector()
 			}
 			doc.HLV.UpdateWithIncomingHLV(opts.NewDocHLV)
-			// If incoming doc has RTE CV we should check that this isn't derived from our local revID, if so we don't need this rev
-			if doc.HLV.SourceID == encodedRevTreeSourceID {
+			// If incoming doc has RTE CV we should check that this isn't derived from our local revID, if so we don't need this rev.
+			// A doc that doesn't exist locally has no revID to derive from, so there is nothing to compare.
+			if doc.HLV.HasRevEncodedCV() && doc.GetRevTreeID() != "" {
 				// convert our current rev to RTE and compare
 				encodedCV, err := LegacyRevToRevTreeEncodedVersion(doc.GetRevTreeID())
 				if err != nil {

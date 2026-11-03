@@ -233,8 +233,8 @@ func TestHandlerRecoverLog(t *testing.T) {
 		panicArg   any
 		shouldWarn bool
 	}{
-		{name: "string panic", panicArg: "test panic", shouldWarn: true},
-		{name: "error panic", panicArg: fmt.Errorf("test error panic"), shouldWarn: true},
+		{name: "string", panicArg: "test panic", shouldWarn: true},
+		{name: "error", panicArg: fmt.Errorf("test error panic"), shouldWarn: true},
 		{name: "ErrAbortHandler", panicArg: http.ErrAbortHandler, shouldWarn: false},
 	}
 	for _, tc := range testCases {
@@ -256,7 +256,11 @@ func TestHandlerRecoverLog(t *testing.T) {
 			defer server.Close()
 
 			client := server.Client()
-			resp, err := client.Get(server.URL)
+			var resp *http.Response
+			var err error
+			base.PrintLogsOnlyOnFailure(t, func() {
+				resp, err = client.Get(server.URL)
+			})
 			if tc.shouldWarn {
 				require.ErrorIs(t, err, io.EOF)
 				require.Equal(t, startWarnCount+1, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())

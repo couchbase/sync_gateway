@@ -1221,3 +1221,56 @@ func WaitWithTimeout(t testing.TB, wg *sync.WaitGroup, timeout time.Duration) {
 		require.FailNow(t, fmt.Sprintf("Timed out waiting after %.2f sec", timeout.Seconds()))
 	}
 }
+
+// PrintLogsOnlyOnFailure captures console and stdlib log output while f runs, and writes the captured output to stderr
+// at the end of the test only if the test failed, or straight away if f panics. Use it around code that panics on
+// purpose, so the recovered stack traces do not clutter the output of passing tests. A panic in a goroutine that f
+// starts crashes the process before the captured output can be written.
+func PrintLogsOnlyOnFailure(t testing.TB, f func()) {
+	t.Helper()
+	b := &syncBuffer{}
+	t.Cleanup(func() {
+		if t.Failed() {
+			_, _ = os.Stderr.Write(b.Bytes())
+		}
+	})
+
+	logger := consoleLogger.Load()
+	consoleOutput := logger.logger.Writer()
+	// PanicfCtx falls back to the stdlib logger when the file loggers are not set up
+	stdlibOutput := log.Writer()
+	logger.logger.SetOutput(b)
+	log.SetOutput(b)
+	defer func() {
+		FlushLogBuffers()
+		logger.FlushBufferToLog()
+		logger.logger.SetOutput(consoleOutput)
+		log.SetOutput(stdlibOutput)
+		// cleanups run before a panicking test is marked failed, so print here rather than relying on t.Failed()
+		if r := recover(); r != nil {
+			_, _ = os.Stderr.Write(b.Bytes())
+			panic(r)
+		}
+	}()
+	f()
+}
+
+// syncBuffer is a bytes.Buffer that is safe for concurrent writes from multiple loggers.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+// Write appends p to the buffer.
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+// Bytes returns the contents of the buffer.
+func (b *syncBuffer) Bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Bytes()
+}

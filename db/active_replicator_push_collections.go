@@ -10,8 +10,6 @@ package db
 
 import (
 	"fmt"
-
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // _startPullWithCollections starts a push replication with collections enabled
@@ -25,11 +23,6 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 	}
 
 	if err := apr._initCheckpointer(collectionCheckpoints); err != nil {
-		// clean up anything we've opened so far
-		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
-		apr.checkpointerCtx = nil
-		apr.blipSender.Close()
-		apr.blipSyncContext.Close()
 		return err
 	}
 

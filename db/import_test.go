@@ -1020,7 +1020,7 @@ func TestImportFeedInvalidSyncMetadata(t *testing.T) {
 	require.Equal(t, int64(2), db.DbStats.SharedBucketImport().ImportCount.Value())
 }
 
-func TestOnDemandImportPanicInvalidSyncData(t *testing.T) {
+func TestOnDemandImportInvalidSyncData(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyImport, base.KeyMigrate)
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{})
@@ -1966,7 +1966,7 @@ func TestMetadataOnlyUpdateWritePaths(t *testing.T) {
 				return rev2ID
 			},
 			run: func(t *testing.T, ctx context.Context, collection *DatabaseCollectionWithUser, docID, _ string) {
-				compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100)
+				compacted, err := collection.CompactDocChannelHistory(ctx, docID, 100, []string{""})
 				require.NoError(t, err)
 				require.NotEmpty(t, compacted, "compaction should have pruned channel history, or no write happens")
 			},

@@ -1263,6 +1263,8 @@ func TestBlipRevsThrottleUnblockedOnClose(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, int64(numThrottledRevs), revsFinished())
 	}, time.Second*20, time.Millisecond*50, "revs waiting for an inFlightRevsThrottle slot were not released when the connection was closed")
+	// no throttled rev ever got a slot, so all of the recorded wait comes from the close path
+	require.Greater(t, pushStats.WriteThrottledTime.Value(), int64(0), "time spent waiting before the connection closed was not recorded")
 }
 
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
@@ -3193,6 +3195,53 @@ func TestRequestPlusPullDbConfig(t *testing.T) {
 		// The one-shot pull should unblock and replicate the document in the granted channel
 		data := btcRunner.WaitForDoc(client.id, "pbs-1")
 		assert.Equal(t, `{"channel":["PBS"]}`, string(data))
+	})
+}
+
+// TestRequestPlusPullTargetInUnwatchedChannel tests that a one-shot request_plus pull completes once the cache
+// reaches its request_plus sequence, when the document at that sequence is in a channel the user can't see.
+func TestRequestPlusPullTargetInUnwatchedChannel(t *testing.T) {
+	ctx := base.TestCtx(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
+	defer db.SuspendSequenceBatching()() // so the allocated sequence below is the request_plus sequence
+
+	btcRunner := NewBlipTesterClientRunner(t)
+	btcRunner.Run(func(t *testing.T) {
+		rt := NewRestTester(t, &RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
+		})
+		defer rt.Close()
+		database := rt.GetDatabase()
+		pullStats := database.DbStats.CBLReplicationPull()
+
+		const alice = "alice"
+		rt.CreateUser(alice, []string{"ABC"})
+		client := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
+			Username: alice,
+		})
+		defer client.Close()
+
+		rt.PutDoc("abc-1", `{"channels":["ABC"]}`)
+		rt.WaitForPendingChanges()
+
+		// Allocate the request_plus sequence but don't write it yet, so the pull's target is ahead of the cache.
+		targetSeq, err := db.AllocateTestSequence(ctx, database)
+		require.NoError(t, err)
+
+		caughtUpStart := pullStats.NumPullReplCaughtUp.Value()
+		btcRunner.StartPullSince(client.id, BlipTesterPullOptions{Since: "0", RequestPlus: true})
+		btcRunner.WaitForDoc(client.id, "abc-1")
+
+		// The feed has sent everything it can and is waiting for the cache to reach its target.
+		base.RequireStatGreaterThan(t, pullStats.NumPullReplCaughtUp, caughtUpStart)
+		require.Equal(t, int64(1), pullStats.NumPullReplActiveOneShot.Value())
+
+		// The target arrives as a document in a channel alice can't see, so nothing the feed watches changes.
+		collection, _ := rt.GetSingleTestDatabaseCollection()
+		db.WriteDirect(t, collection, []string{"XYZ"}, targetSeq)
+		rt.WaitForPendingChanges()
+
+		base.RequireWaitForStat(t, pullStats.NumPullReplActiveOneShot.Value, 0, "one-shot request_plus pull did not complete after the cache reached its target")
 	})
 }
 

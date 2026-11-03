@@ -123,7 +123,7 @@ func pickDbConfigOperation(rng *rand.Rand, operations []dbConfigOperation) dbCon
 // It then checks that every node and the registry converge on one config. The seed is logged, but goroutine
 // scheduling still varies between runs, so a failure is not guaranteed to reproduce.
 func TestConcurrentDbConfigOperationsAcrossNodes(t *testing.T) {
-	t.Skip("CBG-5935 config writes can panic when a concurrent config write reloads the database")
+	t.Skip("CBG-5935 config writes can crash when a concurrent config write reloads the database")
 	if testing.Short() {
 		t.Skip("skipping randomized concurrency test in short mode")
 	}

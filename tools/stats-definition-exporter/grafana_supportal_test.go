@@ -180,7 +180,7 @@ func TestGrafanaFormatFileOutput(t *testing.T) {
 	var buf bytes.Buffer
 	logger := log.New(&buf, "", 0)
 
-	err := statsToFile(logger, &outputFile, formatSupportalGrafana)
+	err := statsToFile(logger, nil, &outputFile, formatSupportalGrafana)
 	assert.NoError(t, err)
 	assert.Empty(t, buf)
 	assert.FileExists(t, outputFile)

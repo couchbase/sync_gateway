@@ -4221,7 +4221,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 }
 
 // Regression test for CBG-2058.
-func TestImportCompactPanic(t *testing.T) {
+func TestImportCompactTombstone(t *testing.T) {
 	base.LongRunningTest(t)
 
 	// Set the compaction and purge interval unrealistically low to reproduce faster
@@ -4369,7 +4369,7 @@ func Test_stopBackgroundManagers(t *testing.T) {
 	}
 }
 
-func TestUpdateCalculatedStatsPanic(t *testing.T) {
+func TestUpdateCalculatedStatsNilDatabaseContext(t *testing.T) {
 
 	ctx := base.TestCtx(t)
 	var dbc *DatabaseContext

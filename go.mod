@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	dario.cat/mergo v1.0.2
-	github.com/KimMachineGun/automemlimit v1.0.0
+	github.com/KimMachineGun/automemlimit v1.0.1
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.21.0

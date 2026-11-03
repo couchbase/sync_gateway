@@ -959,13 +959,23 @@ func (h *handler) handleGetDocChannelHistory() error {
 }
 
 type CompactDocChannelHistoryRequest struct {
-	Seq uint64 `json:"seq"`
+	Seq      uint64   `json:"seq"`
+	Channels []string `json:"channels"`
+}
+
+func (r *CompactDocChannelHistoryRequest) validate() error {
+	if r.Seq != 0 && len(r.Channels) != 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "channels and seq cannot be used together")
+	} else if r.Seq == 0 && len(r.Channels) == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "must specify channels or sequence")
+	}
+	return nil
 }
 
 // handleCompactDocChannelHistory handles POST /{keyspace}/_channel_history/{docid}/compact.
-// It accepts a JSON body containing a sequence number and removes channel history entries
-// for the specified document that ended at or before that sequence, returning the compacted
-// channel names for that document.
+// It accepts a JSON body containing either a sequence number or a list of channel names, but not both.
+// It removes channel history entries for the specified document that ended at or before that sequence,
+// or that belong to the named channels, and returns the compacted channel names.
 func (h *handler) handleCompactDocChannelHistory() error {
 	h.assertAdminOnly()
 
@@ -978,11 +988,12 @@ func (h *handler) handleCompactDocChannelHistory() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "invalid JSON: %v", err)
 	}
 
-	if req.Seq == 0 {
-		return base.HTTPErrorf(http.StatusBadRequest, "missing seq")
+	err = req.validate()
+	if err != nil {
+		return err
 	}
 
-	channels, err := h.collection.CompactDocChannelHistory(h.ctx(), docid, req.Seq)
+	channels, err := h.collection.CompactDocChannelHistory(h.ctx(), docid, req.Seq, req.Channels)
 	if err != nil {
 		return err
 	}
