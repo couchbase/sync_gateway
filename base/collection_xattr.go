@@ -196,6 +196,7 @@ func (c *Collection) subdocGetBodyAndXattrs(ctx context.Context, k string, xattr
 			ops = append(ops, gocb.GetSpec("", &gocb.GetSpecOptions{}))
 		}
 		res, lookupErr := c.Collection.LookupIn(k, ops, LookupOptsAccessDeleted)
+		addKVOps(ctx, subdocKVOps(lookupErr))
 		// There are two 'partial success' error codes:
 		//   ErrMemdSubDocBadMulti - one of the subdoc operations failed.  Occurs when doc exists but xattr does not
 		//   ErrMemdSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr exists but doc is deleted (tombstone)

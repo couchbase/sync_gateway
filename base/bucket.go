@@ -453,7 +453,7 @@ func retrievePurgeInterval(ctx context.Context, bucket CouchbaseBucketStore, uri
 
 // AsViewStore returns a ViewStore if the underlying dataStore implements ViewStore.
 func AsViewStore(ds DataStore) (sgbucket.ViewStore, bool) {
-	viewStore, ok := ds.(sgbucket.ViewStore)
+	viewStore, ok := withoutKVOpCounting(ds).(sgbucket.ViewStore)
 	return viewStore, ok
 }
 
@@ -465,6 +465,7 @@ func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
 
 // AsRangeScanStore returns a RangeScanStore if the dataStore implements and supports range scan operations.
 func AsRangeScanStore(ds DataStore) (sgbucket.RangeScanStore, bool) {
+	ds = withoutKVOpCounting(ds)
 	rss, ok := ds.(sgbucket.RangeScanStore)
 	return rss, ok && ds.IsSupported(sgbucket.BucketStoreFeatureRangeScan)
 }

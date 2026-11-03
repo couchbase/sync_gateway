@@ -225,6 +225,7 @@ func (c *Collection) WriteUpdateWithXattrs(ctx context.Context, k string, xattrK
 				casOut, writeErr = c.WriteWithXattrs(ctx, k, exp, cas, updatedDoc.Doc, updatedDoc.Xattrs, updatedDoc.XattrsToDelete, opts)
 			}
 		}
+		addKVOps(ctx, subdocKVOps(writeErr))
 
 		if writeErr == nil {
 			return casOut, nil
@@ -336,6 +337,7 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 	// doesn't exist (eg, a tombstoned xattr doc) by just ignoring the "delete body" mutation, rather
 	// than current behavior of returning gocb.ErrKeyNotFound
 	mutateErr := store.deleteBodyAndXattrs(ctx, k, xattrKeys)
+	addKVOps(ctx, subdocKVOps(mutateErr))
 	if IsDocNotFoundError(mutateErr) {
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
@@ -349,6 +351,7 @@ func deleteWithXattrInternal(ctx context.Context, store *Collection, k string, x
 			callback(k, xattrKeys)
 		}
 		// ErrXattrNotFound indicates there is no XATTR.  Try to delete only the body.
+		addKVOps(ctx, 1)
 		return store.Delete(ctx, k)
 	} else {
 		// return error
@@ -376,6 +379,7 @@ func deleteDocXattrOnly(ctx context.Context, store *Collection, k string, xattrK
 	// Cas-safe delete of just the XATTR.  Use SubdocDocFlagAccessDeleted since presumably the document body
 	// has been deleted.
 	deleteXattrErr := store.subdocDeleteXattrs(k, xattrKeys, getCas)
+	addKVOps(ctx, subdocKVOps(deleteXattrErr))
 	if deleteXattrErr != nil {
 		// If the cas-safe delete of XATTR fails, return an error to the caller.
 		// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
