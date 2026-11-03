@@ -513,8 +513,13 @@ func (arc *activeReplicatorCommon) publishStatus() {
 
 // _publishStatus updates the replication status document in the metadata store. Requires holding activeReplicatorCommon.lock before calling.
 func (arc *activeReplicatorCommon) _publishStatus() {
+	arc._publishStatusTo(arc.config.ActiveDB.MetadataStore)
+}
+
+// _publishStatusTo is _publishStatus against the given metadata store, which is the database's or a wrapper around it.
+func (arc *activeReplicatorCommon) _publishStatusTo(metadataStore base.DataStore) {
 	status := arc._getStatusCallback()
-	err := setLocalStatus(arc.ctx, arc.config.ActiveDB.MetadataStore, arc.statusKey, status, int(arc.config.ActiveDB.Options.LocalDocExpirySecs))
+	err := setLocalStatus(arc.ctx, metadataStore, arc.statusKey, status, int(arc.config.ActiveDB.Options.LocalDocExpirySecs))
 	if err != nil {
 		base.WarnfCtx(arc.ctx, "Couldn't set status for replication: %v", err)
 	}
@@ -530,7 +535,8 @@ func (arc *activeReplicatorCommon) startStatusReporter(ctx context.Context) {
 				func() {
 					arc.lock.RLock()
 					defer arc.lock.RUnlock()
-					arc._publishStatus()
+					// The status is written on every tick, even when the replication has nothing to do.
+					arc._publishStatusTo(base.NewIdleKVOpDataStore(arc.config.ActiveDB.MetadataStore))
 				}()
 			case <-ctx.Done():
 				base.DebugfCtx(ctx, base.KeyReplicate, "stats reporter goroutine stopped")

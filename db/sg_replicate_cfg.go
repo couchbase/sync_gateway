@@ -1036,8 +1036,13 @@ func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 
 // Loads the SGReplicate config from the config store
 func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint64, err error) {
+	return m.loadSGRClusterFromCfg(m.cfg)
+}
+
+// loadSGRClusterFromCfg is loadSGRCluster against the given config store, which is m.cfg or a wrapper around it.
+func (m *sgReplicateManager) loadSGRClusterFromCfg(cfg cbgt.Cfg) (sgrCluster *SGRCluster, cas uint64, err error) {
 	var cfgBytes []byte
-	cfgBytes, cas, err = m.cfg.Get(cfgKeySGRCluster, 0)
+	cfgBytes, cas, err = cfg.Get(cfgKeySGRCluster, 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1158,7 +1163,12 @@ func (m *sgReplicateManager) RemoveNode(nodeUUID string) error {
 }
 
 func (m *sgReplicateManager) getNodes() (nodes map[string]*SGNode, err error) {
-	sgrCluster, _, err := m.loadSGRCluster()
+	return m.getNodesFromCfg(m.cfg)
+}
+
+// getNodesFromCfg is getNodes against the given config store, which is m.cfg or a wrapper around it.
+func (m *sgReplicateManager) getNodesFromCfg(cfg cbgt.Cfg) (nodes map[string]*SGNode, err error) {
+	sgrCluster, _, err := m.loadSGRClusterFromCfg(cfg)
 	if err != nil {
 		return nil, err
 	}
