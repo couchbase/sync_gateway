@@ -405,7 +405,7 @@ func GetAllN1QLStores(ctx context.Context, bucket Bucket) ([]N1QLStore, error) {
 // AsN1QLStore tries to return the given DataStore as a N1QLStore.
 func AsN1QLStore(dataStore DataStore) (N1QLStore, bool) {
 
-	switch typedDataStore := dataStore.(type) {
+	switch typedDataStore := withoutKVOpCounting(dataStore).(type) {
 	case *Collection:
 		return typedDataStore, true
 	case *LeakyDataStore:

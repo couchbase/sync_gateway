@@ -20,9 +20,9 @@ import (
 
 // MetadataStore is a wrapper for a primary and fallback metadata store for read operations during metadata migration
 type MetadataStore struct {
-	primary               DataStore // _system._mobile scope/collection
-	fallback              DataStore // _default._default scope/collection
-	fallbackReadsDisabled atomic.Bool
+	primary               DataStore    // _system._mobile scope/collection
+	fallback              DataStore    // _default._default scope/collection
+	fallbackReadsDisabled *atomic.Bool // shared with any MetadataStore made by withDataStores
 }
 
 // Compile-time assertion that *MetadataStore implements DataStore.
@@ -33,8 +33,19 @@ var _ DataStore = &MetadataStore{}
 // All writes are directed to primary only.
 func NewMetadataStore(primary, fallback DataStore) *MetadataStore {
 	return &MetadataStore{
-		primary:  primary,
-		fallback: fallback,
+		primary:               primary,
+		fallback:              fallback,
+		fallbackReadsDisabled: &atomic.Bool{},
+	}
+}
+
+// withDataStores returns a MetadataStore over the given primary and fallback, which wrap this store's own. It shares
+// this store's fallback state, so disabling fallback reads through either one disables them for both.
+func (ms *MetadataStore) withDataStores(primary, fallback DataStore) *MetadataStore {
+	return &MetadataStore{
+		primary:               primary,
+		fallback:              fallback,
+		fallbackReadsDisabled: ms.fallbackReadsDisabled,
 	}
 }
 
