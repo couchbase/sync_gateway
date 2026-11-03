@@ -340,6 +340,10 @@ func (dc *GoCBDCPClient) close() {
 	// Wait for all workers to finish before closing doneChannel
 	go func() {
 		dc.workersWg.Wait()
+		// purge only after the workers stop, because a worker persists its deferred checkpoint on close
+		if dc.oneShot && dc.allVbucketsDeactivated() {
+			dc.metadata.Purge(dc.ctx, len(dc.workers))
+		}
 		dc.doneChannel <- dc.getCloseError()
 		close(dc.doneChannel)
 	}()
@@ -591,17 +595,22 @@ func (dc *GoCBDCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEnt
 }
 
 func (dc *GoCBDCPClient) deactivateVbucket(vbID uint16) {
-	dc.activeVbucketLock.Lock()
-	delete(dc.activeVbuckets, vbID)
-	activeCount := len(dc.activeVbuckets)
-	dc.activeVbucketLock.Unlock()
+	activeCount := func() int {
+		dc.activeVbucketLock.Lock()
+		defer dc.activeVbucketLock.Unlock()
+		delete(dc.activeVbuckets, vbID)
+		return len(dc.activeVbuckets)
+	}()
 	if activeCount == 0 {
 		dc.close()
-		// On successful one-shot feed completion, purge persisted checkpoints
-		if dc.oneShot {
-			dc.metadata.Purge(dc.ctx, len(dc.workers))
-		}
 	}
+}
+
+// allVbucketsDeactivated returns true when every vbucket stream completed, which means a one-shot feed finished.
+func (dc *GoCBDCPClient) allVbucketsDeactivated() bool {
+	dc.activeVbucketLock.Lock()
+	defer dc.activeVbucketLock.Unlock()
+	return len(dc.activeVbuckets) == 0
 }
 
 func (dc *GoCBDCPClient) onStreamEnd(e endStreamEvent) {
