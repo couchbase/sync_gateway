@@ -189,6 +189,7 @@ func TestAddPendingLogs(t *testing.T) {
 			assert.Equal(t, int(testCase.expectedNextSequence), int(testChangeCache.nextSequence), "Cache nextSequence doesn't match expected")
 			testChangeCache.lock.Unlock()
 			if len(testCase.expectedCached) > 0 {
+				testChangeCache.requireWaitForSequence(t, testCase.expectedNextSequence-1)
 				cachedEntries, err := testChangeCache.getChannelCache().GetCachedChanges(ctx, testChannelID)
 				require.NoError(t, err)
 				require.Equal(t, len(testCase.expectedCached), len(cachedEntries))
@@ -212,4 +213,41 @@ func TestAddPendingLogs(t *testing.T) {
 type sequenceRange struct {
 	start uint64
 	end   uint64
+}
+
+// TestAddPendingLogsStaleRangeAdvancesHighCacheSequence covers an unused range left in pending that starts below
+// nextSequence but runs past it. Releasing it moves nextSequence beyond the range, and the cached-sequence watermark
+// has to follow: sequence waits are judged against the watermark, so leaving it behind stalls them until some
+// later sequence happens to be cached.
+func TestAddPendingLogsStaleRangeAdvancesHighCacheSequence(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+
+	testChangeCache := &changeCache{}
+	require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+		CachePendingSeqMaxWait: time.Minute,
+		CacheSkippedSeqMaxWait: 20 * time.Minute,
+		CachePendingSeqMaxNum:  10,
+	}, dbContext.MetadataKeys))
+	require.NoError(t, testChangeCache.Start(0))
+	defer testChangeCache.Stop(ctx)
+
+	// Ordering has released through 4 and expects 5. The range 3-8 overlaps what was already released, so it is
+	// popped as stale rather than cached, but 5-8 are still sequences the feed will never deliver.
+	func() {
+		testChangeCache.lock.Lock()
+		defer testChangeCache.lock.Unlock()
+		testChangeCache.nextSequence = 5
+		testChangeCache.channelCache.AddUnusedSequence(&LogEntry{Sequence: 4})
+		testChangeCache._pushRangeToPending(3, 8, channels.NewFeedTimestampFromNow())
+		_ = testChangeCache._addPendingLogs(ctx)
+		require.Equal(t, uint64(9), testChangeCache.nextSequence)
+	}()
+
+	assert.Equal(t, uint64(8), testChangeCache.channelCache.GetHighCacheSequence())
 }
