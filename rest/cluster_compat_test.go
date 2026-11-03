@@ -1995,6 +1995,11 @@ type fakeVanishingBootstrapConnection struct {
 	knownBuckets []string
 }
 
+// WithKVOpStat returns f, which makes no KV operations to count.
+func (f *fakeVanishingBootstrapConnection) WithKVOpStat(_ *base.SgwIntStat) base.BootstrapConnection {
+	return f
+}
+
 func (f *fakeVanishingBootstrapConnection) GetConfigBuckets(_ context.Context) ([]string, error) {
 	return f.knownBuckets, nil
 }

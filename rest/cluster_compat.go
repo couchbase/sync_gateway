@@ -404,7 +404,7 @@ func (m *clusterCompatManager) PreCCVAwareNodeVersions() map[string]base.Cluster
 }
 
 // Refresh re-registers this node in every tracked bucket and recomputes the cluster compat
-// version. Called from the config polling goroutine.
+// version. Called from the config polling goroutine, so its KV operations are counted as idle.
 //
 // Rate-limited to at most once per refreshInterval(): the heartbeat is well within its
 // (eventual) expiry window if rewritten once per poll cycle, and skipping when the previous
@@ -463,7 +463,8 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	}
 
 	idleKVOps := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps
-	nodeVersion := m.sc.BootstrapContext.clusterCompatVersion
+	bootstrap := m.sc.BootstrapContext.withKVOpStat(idleKVOps)
+	nodeVersion := bootstrap.clusterCompatVersion
 	expiry := m.heartbeatExpiry()
 	// Gate HWM ratchet on per-bucket online state — see ratchetEligibleBuckets. Heartbeat
 	// refresh happens unconditionally so the node entry stays fresh even for buckets whose
@@ -481,7 +482,7 @@ func (m *clusterCompatManager) refreshNodeRegistrations(ctx context.Context) (ma
 	for _, bucket := range buckets {
 		_, ratchet := eligibleBuckets[bucket]
 		preCCVAwarePeers := m.sc.observePreCCVAwarePeersForBucket(ctx, bucket, idleKVOps)
-		registry, err := m.sc.BootstrapContext.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
+		registry, err := bootstrap.RegisterNodeVersion(ctx, RegisterNodeVersionOpts{
 			BucketName:       bucket,
 			NodeUID:          m.sc.NodeUID,
 			GroupID:          m.sc.Config.Bootstrap.ConfigGroupID,
