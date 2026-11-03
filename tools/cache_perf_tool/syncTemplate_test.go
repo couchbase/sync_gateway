@@ -64,8 +64,6 @@ func TestCutAtPlaceholders(t *testing.T) {
 
 // TestSyncTemplateMatchesFileComment keeps the worked example at the top of syncTemplate.go true.
 func TestSyncTemplateMatchesFileComment(t *testing.T) {
-	require.Equal(t, slotSeq0+recentSeqsPerRapidUpdate, slotCas, "a slot is needed for each recent sequence")
-
 	dcp := &dcpDataGen{numChannelsPerDoc: 2, numTotalChannels: 3}
 	templates, err := newSyncTemplates(dcp)
 	require.NoError(t, err)
@@ -265,6 +263,8 @@ func requireGeneratedDocsCached(t *testing.T, generator string, rapidUpdate bool
 	client, err := createDCPClient(t, ctx, &base.GocbV2Bucket{}, dbContext.GetMutationListener(t).ProcessFeedEvent,
 		dbContext.DbStats.Database().CacheFeedMapStats.Map, 1, numVBuckets)
 	require.NoError(t, err)
+	// The workers stop only when the client closes, not on ctx cancellation or dbContext.Close.
+	t.Cleanup(func() { _ = client.Close() })
 	dcp.client = client
 
 	// Written from one goroutine so sequences arrive in order and nothing is held pending; the

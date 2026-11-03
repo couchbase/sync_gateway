@@ -291,6 +291,10 @@ func main() {
 	// duration of test logic
 	time.Sleep(*timeToRun)
 	cancelFunc(errors.New("test duration complete"))
+	// A feed parked in ChangeWaiter.Wait does not observe ctx, and with the writers stopped nothing else
+	// would wake it, so it would never exit or merge its counters into the totals. Waking every waiter
+	// lets each one see the cancelled ctx and return. The key only needs to be non-empty.
+	dbContext.GetMutationListener(t).NotifyCheckForTermination(parentCtx, base.SetOf("cache_perf_tool_shutdown"))
 
 	workerFunc := func() (shouldRetry bool, err error, val any) {
 		return numGoroutines.Load() != int32(0), nil, val

@@ -81,14 +81,11 @@ type slot int
 
 const (
 	// slotSeq0 + i is pendingWrite.seqs[i], the document's i'th recent sequence. A normal write uses
-	// only slotSeq0; a -rapidUpdateDocs write uses all recentSeqsPerRapidUpdate of them.
-	slotSeq0 slot = iota
-	slotSeq1
-	slotSeq2
-	slotSeq3
-	slotSeq4
-	slotCas       // pendingWrite.cas, as base.CasToString formats it
-	slotTimeSaved // the write's time_saved, as time.Time marshals to JSON
+	// only slotSeq0; a -rapidUpdateDocs write uses slotSeq0 .. slotSeq0+recentSeqsPerRapidUpdate-1.
+	slotSeq0 slot = 0
+	// slotCas follows the last sequence slot, so the sequence slots grow with recentSeqsPerRapidUpdate.
+	slotCas       slot = slotSeq0 + recentSeqsPerRapidUpdate // pendingWrite.cas, as base.CasToString formats it
+	slotTimeSaved slot = slotCas + 1                         // the write's time_saved, as time.Time marshals to JSON
 )
 
 func (s slot) String() string {
@@ -250,7 +247,7 @@ func (tmpl *syncTemplate) appendSync(dst []byte, w *pendingWrite, timeSaved time
 			dst = appendCas(dst, w.cas)
 		case slotTimeSaved:
 			dst = timeSaved.AppendFormat(dst, time.RFC3339Nano)
-		default: // slotSeq0..slotSeq4
+		default: // a sequence slot
 			dst = strconv.AppendUint(dst, w.seqs[s-slotSeq0], 10)
 		}
 	}

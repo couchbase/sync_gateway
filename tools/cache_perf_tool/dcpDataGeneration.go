@@ -32,11 +32,16 @@ var hlc = sgbucket.NewHybridLogicalClock()
 // see vBucketCreation.
 const syncSeqVBucket = 520
 
+// mutationSink receives the generated DCP mutations: the DCP client in a run, a recorder in tests.
+type mutationSink interface {
+	Mutation(gocbcore.DcpMutation)
+}
+
 type dcpDataGen struct {
 	seqAlloc          *sequenceAllocator
 	delays            []time.Duration
 	dbCtx             *db.DatabaseContext
-	client            *base.GoCBDCPClient
+	client            mutationSink
 	numChannelsPerDoc int
 	numTotalChannels  int
 	simRapidUpdate    bool
@@ -100,29 +105,36 @@ func (dcp *dcpDataGen) vBucketCreation(ctx context.Context) {
 	}
 }
 
-// startWriterGroups spreads the data vBuckets round-robin over writerGoroutines goroutines. The hot
-// sync-seq vBucket keeps its own goroutine, as in the one-per-vBucket shape. Like vBucketCreation it
-// staggers goroutine starts by 100ms, which here is writerGoroutines*100ms rather than ~100s.
+// startWriterGroups spreads the data vBuckets over writerGoroutines goroutines (see writerGroups). The
+// hot sync-seq vBucket keeps its own goroutine, as in the one-per-vBucket shape. Like vBucketCreation
+// it staggers goroutine starts by 100ms, which here is writerGoroutines*100ms rather than ~100s.
 func (dcp *dcpDataGen) startWriterGroups(ctx context.Context, syncSeqVb int) {
-	groups := make([][]uint16, min(dcp.writerGoroutines, dcp.numVBuckets))
-	next := 0
-	for i := range dcp.numVBuckets {
-		if i == syncSeqVb {
-			continue
-		}
-		groups[next] = append(groups[next], uint16(i))
-		next = (next + 1) % len(groups)
-	}
 	if syncSeqVb >= 0 {
 		go dcp.syncSeqVBucketCreation(ctx, uint16(syncSeqVb), 2*time.Second)
 	}
-	for _, vbs := range groups {
-		if len(vbs) == 0 {
-			continue
-		}
+	for _, vbs := range writerGroups(dcp.numVBuckets, dcp.writerGoroutines, syncSeqVb) {
 		time.Sleep(100 * time.Millisecond)
 		go dcp.flatOutWriter(ctx, vbs)
 	}
+}
+
+// writerGroups deals vBuckets 0..numVBuckets-1, other than syncSeqVb, round-robin into at most writers
+// groups, so every data vBucket has exactly one writer and so one ordered stream of sequence numbers.
+// With fewer data vBuckets than writers, only as many groups as there are vBuckets are returned.
+func writerGroups(numVBuckets, writers, syncSeqVb int) [][]uint16 {
+	groups := make([][]uint16, 0, writers)
+	next := 0
+	for i := range numVBuckets {
+		if i == syncSeqVb {
+			continue
+		}
+		if next == len(groups) {
+			groups = append(groups, nil)
+		}
+		groups[next] = append(groups[next], uint16(i))
+		next = (next + 1) % writers
+	}
+	return groups
 }
 
 // recentSeqsPerRapidUpdate is how many sequences a -rapidUpdateDocs write carries in RecentSequences.
@@ -256,56 +268,55 @@ func (dcp *dcpDataGen) vBucketGoroutine(ctx context.Context, vbNo uint16, delay 
 	}
 }
 
+// syncSeqVBucketCreation writes the hot vBucket that holds _sync:seq: a _sync:seq update for each
+// syncSeqEvent and a one-sequence document write every delay.
 func (dcp *dcpDataGen) syncSeqVBucketCreation(ctx context.Context, vbNo uint16, delay time.Duration) {
 	numGoroutines.Add(1)
 	defer numGoroutines.Add(-1)
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
+	// Both writes are sent from this goroutine so the vBucket's DCP sequence numbers are strictly
+	// increasing, as KV guarantees per vBucket.
 	vbSeq := uint64(0)
 	dw := &docWriter{dcp: dcp}
-	go func() {
-		numGoroutines.Add(1)
-		defer numGoroutines.Add(-1)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case _ = <-dcp.seqAlloc.syncSeqEvent:
-				// channel has cap of 1 so sort of simulates dedupe on kv side
-				vbSeq++
-				dcpMutation := gocbcore.DcpMutation{
-					VbID:     vbNo,
-					SeqNo:    vbSeq,
-					StreamID: vbNo,
-					Flags:    0,
-					RevNo:    1,
-					Expiry:   0,
-					Cas:      hlc.Now(0),
-					Datatype: 5,
-					Key:      []byte("_sync:seq"),
-					Value:    sgbucket.EncodeValueWithXattrs([]byte{50}),
-				}
-				dcp.client.Mutation(dcpMutation)
-			}
-		}
-	}()
-
+	// The document's Sync Gateway sequence is allocated before the delay, as Sync Gateway allocates
+	// before the write lands. It is reallocated only once that write is sent, so a _sync:seq update
+	// arriving in between does not consume one.
+	w := dcp.newSyncSeqVbWrite()
 	for {
-		// only allocate sgw seqno on actual write (not sync seq event) and BEFORE the delay as sgw will have allocated
-		// it's seqno before any delay on vBuckets
-		w := pendingWrite{numSeqs: 1, cas: hlc.Now(0)}
-		w.seqs[0] = dcp.seqAlloc.nextSeq()
 		select {
 		case <-ctx.Done():
 			return
+		case <-dcp.seqAlloc.syncSeqEvent:
+			// syncSeqEvent has a capacity of 1, which stands in for KV deduplicating _sync:seq updates
+			vbSeq++
+			dcp.client.Mutation(gocbcore.DcpMutation{
+				VbID:     vbNo,
+				SeqNo:    vbSeq,
+				StreamID: vbNo,
+				RevNo:    1,
+				Cas:      hlc.Now(0),
+				Datatype: 5,
+				Key:      []byte("_sync:seq"),
+				Value:    sgbucket.EncodeValueWithXattrs([]byte{50}),
+			})
 		case <-ticker.C:
 			vbSeq++
 			if err := dw.send(vbNo, vbSeq, &w); err != nil {
 				log.Printf("Error setting sequence: %v", err)
 				return
 			}
+			w = dcp.newSyncSeqVbWrite()
 		}
 	}
+}
+
+// newSyncSeqVbWrite allocates the next document write for the sync-seq vBucket: one sequence, never a
+// rapid update.
+func (dcp *dcpDataGen) newSyncSeqVbWrite() pendingWrite {
+	w := pendingWrite{numSeqs: 1, cas: hlc.Now(0)}
+	w.seqs[0] = dcp.seqAlloc.nextSeq()
+	return w
 }
 
 // syncDataFor builds the _sync for a write carrying seqs (oldest first, the last being the document's
