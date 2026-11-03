@@ -156,6 +156,9 @@ func TestKVOpStatDataStoreDeleteWithXattrs(t *testing.T) {
 		setup func(t *testing.T, key string)
 		// expectedServerKVOps is the count on Couchbase Server
 		expectedServerKVOps int
+		// rejectedBeforeSending is set for a call whose arguments are rejected before anything is sent, so it makes
+		// no KV operation on rosmar either
+		rejectedBeforeSending bool
 	}{
 		{
 			name: "body and xattrs",
@@ -205,7 +208,8 @@ func TestKVOpStatDataStoreDeleteWithXattrs(t *testing.T) {
 
 // TestKVOpStatDataStoreFailedCalls checks that a call that fails is counted as Couchbase Server counts it in kv_ops. A
 // subdoc command that fails on the whole document is left out, but one that fails on a path is not, and a remove that
-// fails on the CAS is left out, but one of a missing document is not. Rosmar counts each call.
+// fails on the CAS is left out, but one of a missing document is not. Rosmar counts each call, except one whose
+// arguments are rejected before anything is sent, which is left out on both.
 func TestKVOpStatDataStoreFailedCalls(t *testing.T) {
 	ctx := TestCtx(t)
 	bucket := GetTestBucket(t)
@@ -231,6 +235,9 @@ func TestKVOpStatDataStoreFailedCalls(t *testing.T) {
 		call  func(ds DataStore, key string) error
 		// expectedServerKVOps is the count on Couchbase Server
 		expectedServerKVOps int
+		// rejectedBeforeSending is set for a call whose arguments are rejected before anything is sent, so it makes
+		// no KV operation on rosmar either
+		rejectedBeforeSending bool
 	}{
 		{
 			name:  "GetXattrs of a missing doc",
@@ -318,6 +325,36 @@ func TestKVOpStatDataStoreFailedCalls(t *testing.T) {
 			expectedServerKVOps: 0,
 		},
 		{
+			name:  "WriteWithXattrs insert that deletes xattrs",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.WriteWithXattrs(ctx, key, 0, 0, []byte(`{"v":1}`), xattrs, xattrKeys, nil)
+				return err
+			},
+			expectedServerKVOps:   0,
+			rejectedBeforeSending: true,
+		},
+		{
+			name:  "WriteTombstoneWithXattrs with no xattrs",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.WriteTombstoneWithXattrs(ctx, key, 0, 0, nil, nil, false, nil)
+				return err
+			},
+			expectedServerKVOps:   0,
+			rejectedBeforeSending: true,
+		},
+		{
+			name:  "WriteResurrectionWithXattrs with no body",
+			setup: noDoc,
+			call: func(ds DataStore, key string) error {
+				_, err := ds.WriteResurrectionWithXattrs(ctx, key, 0, nil, xattrs, nil)
+				return err
+			},
+			expectedServerKVOps:   0,
+			rejectedBeforeSending: true,
+		},
+		{
 			name:  "Remove with a stale CAS",
 			setup: writeBody,
 			call: func(ds DataStore, key string) error {
@@ -343,7 +380,7 @@ func TestKVOpStatDataStoreFailedCalls(t *testing.T) {
 			stat := &SgwIntStat{}
 			err := testCase.call(NewKVOpStatDataStore(underlying, stat), key)
 			expectedKVOps := testCase.expectedServerKVOps
-			if UnitTestUrlIsWalrus() {
+			if UnitTestUrlIsWalrus() && !testCase.rejectedBeforeSending {
 				// Rosmar lets some of these calls succeed, such as a delete of a missing path.
 				expectedKVOps = 1
 			} else {
@@ -526,4 +563,62 @@ func TestKVOpStatDataStoreMetadataStore(t *testing.T) {
 		datastore.(*MetadataStore).DisableFallbackReads()
 		require.False(t, metadataStore.FallbackReadsEnabled(), "disabling fallback reads through the wrapper must disable them on the MetadataStore")
 	})
+}
+
+// TestKVOpStatDataStoreNonKVInterfaces checks that a query, view or range scan store can still be found through the
+// counting wrapper, on its own and as the primary or fallback of a wrapped MetadataStore, since the wrapper only has
+// the DataStore methods.
+func TestKVOpStatDataStoreNonKVInterfaces(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+	primary := bucket.GetSingleDataStore()
+	fallback := bucket.DefaultDataStore(ctx)
+
+	wrappedMetadataStore, ok := NewKVOpStatDataStore(NewMetadataStore(primary, fallback), &SgwIntStat{}).(*MetadataStore)
+	require.True(t, ok)
+
+	testCases := []struct {
+		name       string
+		underlying DataStore
+		wrapped    DataStore
+	}{
+		{name: "datastore", underlying: primary, wrapped: NewKVOpStatDataStore(primary, &SgwIntStat{})},
+		{name: "metadata store primary", underlying: primary, wrapped: wrappedMetadataStore.Primary()},
+		{name: "metadata store fallback", underlying: fallback, wrapped: wrappedMetadataStore.Fallback()},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, isN1QLStore := AsN1QLStore(testCase.underlying)
+			_, wrappedIsN1QLStore := AsN1QLStore(testCase.wrapped)
+			assert.Equal(t, isN1QLStore, wrappedIsN1QLStore, "AsN1QLStore")
+
+			_, isViewStore := AsViewStore(testCase.underlying)
+			_, wrappedIsViewStore := AsViewStore(testCase.wrapped)
+			assert.Equal(t, isViewStore, wrappedIsViewStore, "AsViewStore")
+
+			_, isRangeScanStore := AsRangeScanStore(testCase.underlying)
+			_, wrappedIsRangeScanStore := AsRangeScanStore(testCase.wrapped)
+			assert.Equal(t, isRangeScanStore, wrappedIsRangeScanStore, "AsRangeScanStore")
+		})
+	}
+}
+
+// TestKVOpCountAllocs checks that counting the KV operations of one DataStore call allocates once, since it is on the
+// hottest KV paths, and that the count's context still gives the parent's values.
+func TestKVOpCountAllocs(t *testing.T) {
+	type parentKey struct{}
+	parent := context.WithValue(TestCtx(t), parentKey{}, "parent")
+
+	allocs := testing.AllocsPerRun(100, func() {
+		ctx, count := withKVOpCount(parent)
+		addKVOps(ctx, 1)
+		if count.n != 1 {
+			t.Fatalf("expected 1 KV op, got %d", count.n)
+		}
+	})
+	assert.Equal(t, float64(1), allocs)
+
+	ctx, _ := withKVOpCount(parent)
+	assert.Equal(t, "parent", ctx.Value(parentKey{}))
 }

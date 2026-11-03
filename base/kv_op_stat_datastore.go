@@ -24,6 +24,9 @@ import (
 // tombstone, counts each of them. A call that fails is counted as Couchbase Server counts it in kv_ops: see
 // subdocKVOps and removeKVOps. For a MetadataStore, the primary and fallback DataStores are wrapped instead of the
 // MetadataStore itself, so its fallback reads and its own retries are counted too.
+//
+// Only KV operations are counted. Queries, views and range scans are not KV operations, so AsN1QLStore, AsViewStore
+// and AsRangeScanStore look through the wrapper to the DataStore it wraps.
 func NewKVOpStatDataStore(ds DataStore, stat *SgwIntStat) DataStore {
 	if stat == nil {
 		return ds
@@ -45,10 +48,22 @@ type kvOpCountKey struct{}
 // kvOpCount holds the KV operations that one DataStore call reports making. Only Couchbase Server's Collection reports
 // them: from the methods that make several KV operations in one call, and from its subdoc reads, whose errors do not
 // show whether the document was missing.
+//
+// It is also the context that the call reports to, so that counting a call on these hot KV paths allocates once
+// rather than twice, as context.WithValue and a separate count would.
 type kvOpCount struct {
+	context.Context
 	n int
 	// reported is set by any report, since a call can report making no KV operations that kv_ops counts.
 	reported bool
+}
+
+// Value returns the kvOpCount itself for kvOpCountKey, and the parent context's value for any other key.
+func (c *kvOpCount) Value(key any) any {
+	if _, ok := key.(kvOpCountKey); ok {
+		return c
+	}
+	return c.Context.Value(key)
 }
 
 // withKVOpCount returns a context that a DataStore call reports its KV operations to, and the count it reports to.
@@ -58,8 +73,8 @@ func withKVOpCount(ctx context.Context) (context.Context, *kvOpCount) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	count := &kvOpCount{}
-	return context.WithValue(ctx, kvOpCountKey{}, count), count
+	count := &kvOpCount{Context: ctx}
+	return count, count
 }
 
 // addKVOps adds n to the KV operation count in ctx, if there is one.
@@ -77,10 +92,13 @@ func addKVOps(ctx context.Context, n int) {
 // subdocKVOps is the number of KV operations that Couchbase Server adds to kv_ops for one subdoc command that returned
 // err. A subdoc command that fails on the whole document, because the document is missing, already exists, or has
 // another CAS, is left out of kv_ops. One that fails only on a path is still counted. ErrNotFound is taken to mean a
-// missing document, which is what Collection's single subdoc commands return it for.
+// missing document, which is what Collection's single subdoc commands return it for. A call whose arguments are
+// rejected before anything is sent makes no KV operation at all.
 func subdocKVOps(err error) int {
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocb.ErrDocumentExists) ||
-		errors.Is(err, gocb.ErrCasMismatch) || errors.Is(err, ErrNotFound) {
+		errors.Is(err, gocb.ErrCasMismatch) || errors.Is(err, ErrNotFound) ||
+		errors.Is(err, sgbucket.ErrNeedXattrs) || errors.Is(err, sgbucket.ErrNeedBody) ||
+		errors.Is(err, sgbucket.ErrDeleteXattrOnDocumentInsert) {
 		return 0
 	}
 	return 1
@@ -99,6 +117,16 @@ func removeKVOps(err error) int {
 type kvOpCountingLeaf struct {
 	DataStore
 	stat *SgwIntStat
+}
+
+// withoutKVOpCounting returns the DataStore that ds counts the KV operations of, or ds itself when it does not count
+// them. The counting wrapper only has the DataStore methods, so a query, view or range scan must go to the DataStore
+// it wraps, and none of those is a KV operation.
+func withoutKVOpCounting(ds DataStore) DataStore {
+	if leaf, ok := ds.(*kvOpCountingLeaf); ok {
+		return leaf.DataStore
+	}
+	return ds
 }
 
 func newKVOpCountingLeaf(ds DataStore, stat *SgwIntStat) DataStore {
