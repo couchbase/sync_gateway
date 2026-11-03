@@ -24,6 +24,41 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
+// TestSetLocalStatusKVOps checks the KV operations of setLocalStatus, which the ISGR status reporter makes on every tick
+// even when a replication has nothing to do.
+func TestSetLocalStatusKVOps(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
+	statusKey := base.NewMetadataKeys(t.Name()).ReplicationStatusKey("repl1")
+
+	for _, name := range []string{"new status doc", "existing status doc"} {
+		t.Run(name, func(t *testing.T) {
+			stat := &base.SgwIntStat{}
+			err := setLocalStatus(ctx, base.NewKVOpStatDataStore(tBucket.GetSingleDataStore(), stat), statusKey, &ReplicationStatus{ID: "repl1", Status: ReplicationStateRunning}, 0)
+			require.NoError(t, err)
+			require.Equal(t, int64(3), stat.Value(), "a read, then an update that reads and writes")
+		})
+	}
+
+	// The read misses the primary and hits the fallback. The update checks the primary, reads the fallback, and
+	// inserts into the primary.
+	t.Run("status doc in fallback", func(t *testing.T) {
+		primary := tBucket.GetSingleDataStore()
+		fallback := tBucket.DefaultDataStore(ctx)
+		if primary.GetName() == fallback.GetName() {
+			t.Skip("needs a named collection to use as the primary")
+		}
+		fallbackKey := statusKey + "_fallback"
+		require.NoError(t, setLocalStatus(ctx, fallback, fallbackKey, &ReplicationStatus{ID: "repl1", Status: ReplicationStateStopped}, 0))
+
+		stat := &base.SgwIntStat{}
+		metadataStore := base.NewKVOpStatDataStore(base.NewMetadataStore(primary, fallback), stat)
+		require.NoError(t, setLocalStatus(ctx, metadataStore, fallbackKey, &ReplicationStatus{ID: "repl1", Status: ReplicationStateRunning}, 0))
+		require.Equal(t, int64(5), stat.Value())
+	})
+}
+
 // TestBlipSyncErrorUserinfo ensures the websocket errors returned by blipSync contain no basic auth component.
 func TestBlipSyncErrorUserinfo(t *testing.T) {
 	tests := []struct {

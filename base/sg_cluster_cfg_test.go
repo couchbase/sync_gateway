@@ -344,3 +344,39 @@ func TestCfgMemoryStorageCasSemantics(t *testing.T) {
 		})
 	}
 }
+
+// TestKVOpStatCfg checks that NewKVOpStatCfg adds the KV operations a bucket-backed CfgSG makes to the stat, and none for
+// an in-memory CfgSG.
+func TestKVOpStatCfg(t *testing.T) {
+	ctx := t.Context()
+	bucket := GetTestBucket(t)
+	t.Cleanup(func() { bucket.Close(ctx) })
+
+	bucketCfg, err := NewCfgSG(ctx, bucket.GetSingleDataStore(), t.Name()+":", false)
+	require.NoError(t, err)
+	memoryCfg, err := NewCbgtCfgMem(ctx)
+	require.NoError(t, err)
+
+	for name, tc := range map[string]struct {
+		cfg           *CfgSG
+		expectedKVOps int64
+	}{
+		"bucket": {cfg: bucketCfg, expectedKVOps: 3},
+		"memory": {cfg: memoryCfg, expectedKVOps: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stat := &SgwIntStat{}
+			cfg := NewKVOpStatCfg(tc.cfg, stat)
+			cas, err := cfg.Set("key1", []byte("val1"), 0)
+			require.NoError(t, err)
+			_, _, err = cfg.Get("key1", 0)
+			require.NoError(t, err)
+			// Answered without a KV read.
+			_, _, err = cfg.Get(cbgt.VERSION_KEY, 0)
+			require.NoError(t, err)
+			require.NoError(t, cfg.Del("key1", cas))
+
+			assert.Equal(t, tc.expectedKVOps, stat.Value(), "a set, a get and a delete")
+		})
+	}
+}

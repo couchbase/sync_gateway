@@ -174,3 +174,43 @@ func TestDCPWorkerCloseWithoutRequestedCheckpoint(t *testing.T) {
 	worker.Close(ctx)
 	require.Equal(t, 0, metadata.persistCount)
 }
+
+// TestDCPWorkerCountsIdleCheckpoints checks that a checkpoint write made when only _sync: docs were seen since the last
+// one is counted as an idle KV op, and that the checkpoint is still written.
+func TestDCPWorkerCountsIdleCheckpoints(t *testing.T) {
+	testCases := []struct {
+		name              string
+		keys              [][]byte // nil is an event with no document, such as a seqno advance
+		idleCheckpointOps bool
+		expectedIdleKVOps int64
+	}{
+		{name: "_sync doc", keys: [][]byte{[]byte("_sync:heartbeat")}, idleCheckpointOps: true, expectedIdleKVOps: 1},
+		{name: "client doc", keys: [][]byte{[]byte("doc1")}, idleCheckpointOps: true, expectedIdleKVOps: 0},
+		{name: "seqno advance", keys: [][]byte{nil}, idleCheckpointOps: true, expectedIdleKVOps: 0},
+		{name: "counting off", keys: [][]byte{[]byte("_sync:heartbeat")}, idleCheckpointOps: false, expectedIdleKVOps: 0},
+		// A zero persist frequency makes each event persist.
+		{name: "_sync then client doc", keys: [][]byte{[]byte("_sync:heartbeat"), []byte("doc1")}, idleCheckpointOps: true, expectedIdleKVOps: 1},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := TestCtx(t)
+			bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			checkpointPrefix := t.Name() + "_"
+			metadata := NewDCPMetadataCS(ctx, bucket.GetSingleDataStore(), 1, 1, checkpointPrefix)
+			worker := NewDCPWorker(0, metadata, nil, nil, make(chan bool), nil, checkpointPrefix, []uint16{0},
+				&DCPWorkerOptions{idleCheckpointOps: testCase.idleCheckpointOps, metaPersistFrequency: new(time.Duration)})
+
+			idleKVOpsBefore := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
+			for i, key := range testCase.keys {
+				worker.updateSeq(ctx, key, 0, uint64(i+1), true)
+			}
+			idleKVOps := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value() - idleKVOpsBefore
+
+			assert.Equal(t, testCase.expectedIdleKVOps, idleKVOps)
+			_, _, err := bucket.GetSingleDataStore().GetRaw(ctx, metadata.getMetadataKey(0))
+			require.NoError(t, err, "checkpoint must be written whether or not it is counted as idle")
+		})
+	}
+}

@@ -49,6 +49,7 @@ type DCPClientOptions struct {
 	FromLatestSequence bool                           // If true, start at latest sequence.
 	FeedContent        sgbucket.FeedContent           // feedContent specifies whether the DCP feed should include values, xattrs, or both
 	MetadataStore      DataStore
+	IdleCheckpointOps  bool // if true, checkpoint writes made only for _sync: docs count as idle KV ops. Ignored by rosmar
 }
 
 // NewDCPClient creates a new DCPClient to receive events from a bucket.
@@ -126,6 +127,7 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		InitialMetadata:   opts.InitialMetadata,
 		FeedContent:       opts.FeedContent,
 		MetadataStore:     opts.MetadataStore,
+		IdleCheckpointOps: opts.IdleCheckpointOps,
 	}
 
 	if opts.FromLatestSequence {
