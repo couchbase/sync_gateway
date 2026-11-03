@@ -921,9 +921,11 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
 			base.InfofCtx(ctx, base.KeyCache, "Oldest entry in pending logs %v (%d, %d) is earlier than cache next sequence (%d), ignoring as sequence has already been cached", base.UD(oldestPending.DocID), oldestPending.Sequence, oldestPending.EndSequence, c.nextSequence)
 			oldestPending = c._popPendingLog(ctx)
 
-			// If the oldestPending was a range that extended past nextSequence, update nextSequence
+			// If the oldestPending was a range that extended past nextSequence, the part past nextSequence is
+			// still unreleased. Release it through _addToCache like any other entry, so nextSequence and the
+			// channel cache's high sequence move together.
 			if oldestPending.IsUnusedRange() && oldestPending.EndSequence >= c.nextSequence {
-				c.nextSequence = oldestPending.EndSequence + 1
+				changedChannels = append(changedChannels, c._addToCache(ctx, oldestPending)...)
 			}
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || c.pendingLogs[0].TimeReceived.OlderOrEqual(c.options.CachePendingSeqMaxWait) {
 			//  Skip all sequences up to the oldest Pending
@@ -1077,7 +1079,7 @@ func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence ui
 	startTime := time.Now()
 
 	worker := func() (bool, error, any) {
-		if c.getNextSequence() >= sequence+1 {
+		if c.channelCache.GetHighCacheSequence() >= sequence {
 			foundInMissing := c.skippedSeqs.Contains(sequence)
 			if !foundInMissing {
 				base.DebugfCtx(ctx, base.KeyCache, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))

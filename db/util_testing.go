@@ -1196,8 +1196,8 @@ func (c *changeCache) requireWaitForSequence(t testing.TB, targetSequence uint64
 	startTime := time.Now()
 	waitForSequenceTimeout := defaultWaitForSequence
 	require.EventuallyWithT(t, func(cT *assert.CollectT) {
-		assert.GreaterOrEqual(cT, c.getNextSequence(), targetSequence+1)
-	}, waitForSequenceTimeout, 10*time.Millisecond, "Waited for %v for sequence %d to be processed", waitForSequenceTimeout, targetSequence)
+		assert.GreaterOrEqual(cT, c.channelCache.GetHighCacheSequence(), targetSequence)
+	}, waitForSequenceTimeout, 10*time.Millisecond, "Waited for %v for sequence %d to be cached", waitForSequenceTimeout, targetSequence)
 	base.DebugfCtx(ctx, base.KeyCache, "waitForSequence(%d) took %v", targetSequence, time.Since(startTime))
 }
 
@@ -1870,6 +1870,13 @@ func (c *singleChannelCacheImpl) LateLogCountForTest(_ testing.TB) int64 {
 // does not count the parked sentinel entry.
 func (c *singleChannelCacheImpl) CountedLateLogCountForTest(_ testing.TB) int64 {
 	return c.countedLateLogCount()
+}
+
+// WaitForSequenceForTest blocks until the change cache has processed up to targetSequence. Fails the test harness if
+// cache does not catch up.
+func (c *changeCache) WaitForSequenceForTest(t testing.TB, targetSequence uint64) {
+	t.Helper()
+	c.requireWaitForSequence(t, targetSequence)
 }
 
 // WaitForSequenceNotSkippedForTest blocks until the sequence is no longer in the skipped list, or
