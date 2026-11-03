@@ -843,16 +843,18 @@ func buildPackageList(targetPackage, targetTest string) []pkg {
 		if p == "" {
 			continue
 		}
-		fullPkg := sgModule + "/" + p
 		if strings.Contains(p, allPackages) {
-			expanded := mustOutput("go", "list", "-f", "{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}", fullPkg)
+			// A relative pattern matches only the main module. An import path pattern also downloads
+			// dependencies, which fails for private EE modules when they are not accessible.
+			moduleDir := strings.TrimSpace(mustOutput("go", "list", "-m", "-f", "{{.Dir}}", sgModule))
+			expanded := mustOutput("go", "-C", moduleDir, "list", "-f", "{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}", "./"+p)
 			for line := range strings.SplitSeq(strings.TrimSpace(expanded), "\n") {
 				if line = strings.TrimSpace(line); line != "" {
 					pkgs = append(pkgs, pkg(line))
 				}
 			}
 		} else {
-			pkgs = append(pkgs, pkg(fullPkg))
+			pkgs = append(pkgs, pkg(sgModule+"/"+p))
 		}
 	}
 	if targetTest == "ALL" {
