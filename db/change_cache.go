@@ -1024,9 +1024,10 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 }
 
 // getPublishedNextSequence returns nextSequence as of the last release of c.lock, without taking the lock.
-// While the ordering code holds the lock this can lag the live value, which is fine for callers outside the
-// lock: a reader that took the read lock instead would have seen the same value. Ordering code must read
-// c.nextSequence directly.
+// Unlike a read-lock read, it doesn't wait for a critical section in progress, it returns the value from
+// before that section, where a read-lock reader would block and then see the value after it. Nothing from
+// that section is visible until the lock is released, so callers can't have observed it yet. Ordering code
+// must read c.nextSequence directly.
 func (c *changeCache) getPublishedNextSequence() uint64 {
 	if publishSeq := c.publishedNextSequence.Load(); publishSeq != 0 {
 		return publishSeq
