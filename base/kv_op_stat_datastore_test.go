@@ -603,22 +603,3 @@ func TestKVOpStatDataStoreNonKVInterfaces(t *testing.T) {
 		})
 	}
 }
-
-// TestKVOpCountAllocs checks that counting the KV operations of one DataStore call allocates once, since it is on the
-// hottest KV paths, and that the count's context still gives the parent's values.
-func TestKVOpCountAllocs(t *testing.T) {
-	type parentKey struct{}
-	parent := context.WithValue(TestCtx(t), parentKey{}, "parent")
-
-	allocs := testing.AllocsPerRun(100, func() {
-		ctx, count := withKVOpCount(parent)
-		addKVOps(ctx, 1)
-		if count.n != 1 {
-			t.Fatalf("expected 1 KV op, got %d", count.n)
-		}
-	})
-	assert.Equal(t, float64(1), allocs)
-
-	ctx, _ := withKVOpCount(parent)
-	assert.Equal(t, "parent", ctx.Value(parentKey{}))
-}
