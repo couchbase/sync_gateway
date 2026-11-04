@@ -76,7 +76,11 @@ func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	[]byte, uint64, error) {
+	return c.get(c.datastore, cfgKey, cas)
+}
 
+// get is Get against the given datastore, which is c.datastore or a wrapper around it.
+func (c *CfgSG) get(datastore DataStore, cfgKey string, cas uint64) ([]byte, uint64, error) {
 	if cfgKey == cbgt.VERSION_KEY {
 		return []byte(SGCbgtMetadataVersion), cas, nil
 	}
@@ -84,7 +88,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
-	casOut, err := c.datastore.Get(c.loggingCtx, bucketKey, &value)
+	casOut, err := datastore.Get(c.loggingCtx, bucketKey, &value)
 	if err != nil && !IsDocNotFoundError(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
@@ -99,14 +103,18 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 }
 
 func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
+	return c.set(c.datastore, cfgKey, val, cas)
+}
 
+// set is Set against the given datastore, which is c.datastore or a wrapper around it.
+func (c *CfgSG) set(datastore DataStore, cfgKey string, val []byte, cas uint64) (uint64, error) {
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
 	if strings.HasPrefix(cfgKey, ":") {
 		return 0, fmt.Errorf("cfg_sg: key cannot start with a colon")
 	}
 
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	casOut, err := c.datastore.WriteCas(c.loggingCtx, bucketKey, 0, cas, val, 0)
+	casOut, err := datastore.WriteCas(c.loggingCtx, bucketKey, 0, cas, val, 0)
 
 	if IsCasMismatch(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
@@ -120,10 +128,14 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 }
 
 func (c *CfgSG) Del(cfgKey string, cas uint64) error {
+	return c.del(c.datastore, cfgKey, cas)
+}
 
+// del is Del against the given datastore, which is c.datastore or a wrapper around it.
+func (c *CfgSG) del(datastore DataStore, cfgKey string, cas uint64) error {
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	_, err := c.datastore.Remove(c.loggingCtx, bucketKey, cas)
+	_, err := datastore.Remove(c.loggingCtx, bucketKey, cas)
 	if IsCasMismatch(err) {
 		return ErrCfgCasError
 	} else if err != nil && !IsDocNotFoundError(err) {
@@ -178,4 +190,33 @@ func (c *CfgSG) Refresh() error {
 	}
 	c.lock.Unlock()
 	return nil
+}
+
+// kvOpStatCfg is a CfgSG whose KV operations are added to a stat. cbgt and SG Replicate read their config through the
+// cbgt.Cfg interface, which has no way to report KV operations, so a caller that needs them counted wraps the Cfg.
+type kvOpStatCfg struct {
+	*CfgSG
+	datastore DataStore // the CfgSG's datastore, wrapped to add its KV operations to the stat
+}
+
+// NewKVOpStatCfg wraps cfg so that every KV operation made through it is added to stat. Returns cfg unchanged when stat
+// is nil, or when cfg is not a CfgSG, since a Cfg held in memory makes no KV operations.
+func NewKVOpStatCfg(cfg cbgt.Cfg, stat *SgwIntStat) cbgt.Cfg {
+	sgCfg, ok := cfg.(*CfgSG)
+	if !ok || stat == nil {
+		return cfg
+	}
+	return &kvOpStatCfg{CfgSG: sgCfg, datastore: NewKVOpStatDataStore(sgCfg.datastore, stat)}
+}
+
+func (c *kvOpStatCfg) Get(cfgKey string, cas uint64) ([]byte, uint64, error) {
+	return c.CfgSG.get(c.datastore, cfgKey, cas)
+}
+
+func (c *kvOpStatCfg) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
+	return c.CfgSG.set(c.datastore, cfgKey, val, cas)
+}
+
+func (c *kvOpStatCfg) Del(cfgKey string, cas uint64) error {
+	return c.CfgSG.del(c.datastore, cfgKey, cas)
 }
