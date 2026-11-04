@@ -1928,10 +1928,18 @@ func (c *singleChannelCacheImpl) AddListenerToNewestLateLogForTest(_ testing.TB)
 	c.lateLogs[len(c.lateLogs)-1].addListener()
 }
 
-// GetNextSequenceForTest reports the next consecutive sequence the change cache expects, taking
-// the read lock as the underlying accessor does.
+// GetNextSequenceForTest reports the live nextSequence, read under the lock, so tests can check the
+// published copy against it.
 func (c *changeCache) GetNextSequenceForTest(_ testing.TB) uint64 {
-	return c.getNextSequence()
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
+}
+
+// GetPublishedNextSequenceForTest reports nextSequence as published at the last lock release, as seen by
+// lock-free readers.
+func (c *changeCache) GetPublishedNextSequenceForTest(_ testing.TB) uint64 {
+	return c.getPublishedNextSequence()
 }
 
 // GetOldestSkippedSequenceForTest reports the oldest sequence still pending on the caching feed.

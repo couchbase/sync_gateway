@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -3927,4 +3928,103 @@ func TestWaitForSequenceNotSkipped(t *testing.T) {
 	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(102, "doc102", "1-a"))
 	assert.NoError(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 102, 5*time.Second),
 		"once delivered, the sequence is resolved")
+}
+
+func TestChangeCacheUpdatePublishNextSequence(t *testing.T) {
+	cacheOptions := db.DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	database, ctx := db.SetupTestDBWithCacheOptions(t, cacheOptions)
+	defer database.Close(ctx)
+
+	changeCache := database.DatabaseContext.ChangeCacheForTest(t)
+
+	// Initial nextSequence and its published copy
+	initialNextSequence := changeCache.GetNextSequenceForTest(t)
+	initialPublishedNextSequence := changeCache.GetPublishedNextSequenceForTest(t)
+	require.Equal(t, initialNextSequence, initialPublishedNextSequence)
+
+	// An in-order entry advances nextSequence by 1. processEntry is synchronous, so no wait is needed.
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"))
+	assert.Equal(t, initialNextSequence+1, changeCache.GetNextSequenceForTest(t))
+	assert.Equal(t, initialPublishedNextSequence+1, changeCache.GetPublishedNextSequenceForTest(t))
+
+	// Add an entry that goes to pending. Only the InsertPendingEntries background task can release it,
+	// skipping 2-9 once the low pending max wait expires.
+	pendingSeq := uint64(10)
+	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(pendingSeq, "doc2", "1-a"))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, pendingSeq+1, changeCache.GetNextSequenceForTest(t))
+		assert.Equal(c, pendingSeq+1, changeCache.GetPublishedNextSequenceForTest(t))
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// An unused range starting at nextSequence is released synchronously through processUnusedRange.
+	changeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 11, 14, channels.NewFeedTimestampFromNow())
+	assert.Equal(t, uint64(15), changeCache.GetNextSequenceForTest(t))
+	assert.Equal(t, uint64(15), changeCache.GetPublishedNextSequenceForTest(t))
+
+	// An unused range below nextSequence only removes 2-5 from the skipped list; nextSequence is unchanged.
+	changeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 2, 5, channels.NewFeedTimestampFromNow())
+	assert.Equal(t, uint64(6), changeCache.GetOldestSkippedSequenceForTest(t, ctx))
+	assert.Equal(t, uint64(15), changeCache.GetNextSequenceForTest(t))
+	assert.Equal(t, uint64(15), changeCache.GetPublishedNextSequenceForTest(t))
+
+	// An unused range above nextSequence goes to pending, then a range filling the gap releases both. The
+	// background task may skip 15-19 before the second range arrives, in which case that range is removed
+	// from skipped instead; either way nextSequence ends up past the first range.
+	changeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 20, 24, channels.NewFeedTimestampFromNow())
+	changeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 15, 19, channels.NewFeedTimestampFromNow())
+	assert.Equal(t, uint64(25), changeCache.GetNextSequenceForTest(t))
+	assert.Equal(t, uint64(25), changeCache.GetPublishedNextSequenceForTest(t))
+
+	// An unused range straddling nextSequence is ignored, so nextSequence is unchanged.
+	changeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 23, 27, channels.NewFeedTimestampFromNow())
+	assert.Equal(t, uint64(25), changeCache.GetNextSequenceForTest(t))
+	assert.Equal(t, uint64(25), changeCache.GetPublishedNextSequenceForTest(t))
+}
+
+func TestChangeCachePublishedNextSequenceConcurrent(t *testing.T) {
+	database, ctx := db.SetupTestDBWithCacheOptions(t, db.DefaultCacheOptions())
+	defer database.Close(ctx)
+
+	changeCache := database.DatabaseContext.ChangeCacheForTest(t)
+
+	// Writers deliver interleaved sequences, so most arrive out of order and go through pending before
+	// being released. Every sequence is delivered, so nothing is left pending or skipped at the end.
+	const numWriters = 4
+	const seqsPerWriter = 250
+	startSequence := changeCache.GetNextSequenceForTest(t)
+	lastSequence := startSequence + numWriters*seqsPerWriter - 1
+
+	// The reader checks the published copy while the writers run: it must never move backwards, and it must
+	// never be ahead of the live value. The live value is read second, as nextSequence only grows.
+	var writersDone atomic.Bool
+	var readerWg sync.WaitGroup
+	readerWg.Go(func() {
+		previous := changeCache.GetPublishedNextSequenceForTest(t)
+		for !writersDone.Load() {
+			published := changeCache.GetPublishedNextSequenceForTest(t)
+			live := changeCache.GetNextSequenceForTest(t)
+			if !assert.GreaterOrEqual(t, published, previous, "published nextSequence moved backwards") ||
+				!assert.LessOrEqual(t, published, live, "published nextSequence is ahead of the live value") {
+				return
+			}
+			previous = published
+		}
+	})
+
+	var writersWg sync.WaitGroup
+	for writer := range numWriters {
+		writersWg.Go(func() {
+			for seq := startSequence + uint64(writer); seq <= lastSequence; seq += numWriters {
+				_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"))
+			}
+		})
+	}
+	writersWg.Wait()
+	writersDone.Store(true)
+	readerWg.Wait()
+
+	assert.Equal(t, lastSequence+1, changeCache.GetNextSequenceForTest(t))
+	assert.Equal(t, lastSequence+1, changeCache.GetPublishedNextSequenceForTest(t))
 }

@@ -63,28 +63,29 @@ const EnableStarChannelLog = true
 //   - Perform sequence buffering to ensure documents are received in sequence order
 //   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	db                 *DatabaseContext
-	logCtx             context.Context                     // fix in sg-bucket to ProcessEvent
-	logsDisabled       bool                                // If true, ignore incoming tap changes
-	nextSequence       uint64                              // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence    atomic.Uint64                       // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
-	receivedSeqs       map[uint64]struct{}                 // Set of all sequences received
-	pendingLogs        LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
-	notifyChangeFunc   func(context.Context, channels.Set) // Client callback that notifies of channel changes
-	started            base.AtomicBool                     // Set by the Start method
-	stopped            base.AtomicBool                     // Set by the Stop method
-	skippedSeqs        *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
-	lock               sync.RWMutex                        // Coordinates access to struct fields
-	options            CacheOptions                        // Cache config
-	terminator         chan bool                           // Signal termination of background goroutines
-	backgroundTasks    []BackgroundTask                    // List of background tasks.
-	initTime           time.Time                           // Cache init time - used for latency calculations
-	channelCache       ChannelCache                        // Underlying channel cache
-	lastAddPendingTime int64                               // The most recent time _addPendingLogs was run, as epoch time
-	internalStats      changeCacheStats                    // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback   base.CfgEventNotifyFunc             // Callback for Cfg updates received over the caching feed
-	sgCfgPrefix        string                              // Prefix for SG Cfg doc keys
-	metaKeys           *base.MetadataKeys                  // Metadata key formatter
+	db                    *DatabaseContext
+	logCtx                context.Context                     // fix in sg-bucket to ProcessEvent
+	logsDisabled          bool                                // If true, ignore incoming tap changes
+	nextSequence          uint64                              // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
+	publishedNextSequence atomic.Uint64                       // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
+	initialSequence       atomic.Uint64                       // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
+	receivedSeqs          map[uint64]struct{}                 // Set of all sequences received
+	pendingLogs           LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
+	notifyChangeFunc      func(context.Context, channels.Set) // Client callback that notifies of channel changes
+	started               base.AtomicBool                     // Set by the Start method
+	stopped               base.AtomicBool                     // Set by the Stop method
+	skippedSeqs           *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
+	lock                  sync.RWMutex                        // Coordinates access to struct fields
+	options               CacheOptions                        // Cache config
+	terminator            chan bool                           // Signal termination of background goroutines
+	backgroundTasks       []BackgroundTask                    // List of background tasks.
+	initTime              time.Time                           // Cache init time - used for latency calculations
+	channelCache          ChannelCache                        // Underlying channel cache
+	lastAddPendingTime    int64                               // The most recent time _addPendingLogs was run, as epoch time
+	internalStats         changeCacheStats                    // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback      base.CfgEventNotifyFunc             // Callback for Cfg updates received over the caching feed
+	sgCfgPrefix           string                              // Prefix for SG Cfg doc keys
+	metaKeys              *base.MetadataKeys                  // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -287,6 +288,7 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	// Trigger _addPendingLogs to process any entries that have been pending too long:
 	c.lock.Lock()
 	changedChannels := c._addPendingLogs(ctx)
+	c._setPublishedNextSequence()
 	c.lock.Unlock()
 
 	c.notifyChange(ctx, changedChannels)
@@ -467,7 +469,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	}
 
 	if len(syncData.RecentSequences) > 0 {
-		nextSequence := c.getNextSequence()
+		nextSequence := c.getPublishedNextSequence()
 		seqsCached := make([]uint64, 0, len(syncData.RecentSequences))
 
 		for _, seq := range syncData.RecentSequences {
@@ -665,6 +667,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) []channels.ID {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	defer c._setPublishedNextSequence()
 
 	var numSkipped int64
 	var changedChannels []channels.ID
@@ -786,6 +789,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 	if c.logsDisabled {
 		return nil
 	}
+	defer c._setPublishedNextSequence()
 
 	sequence := change.Sequence
 	if change.Sequence > c.internalStats.highSeqFeed {
@@ -1000,7 +1004,7 @@ func (c *changeCache) GetChanges(ctx context.Context, channel channels.ID, optio
 // Returns the sequence number the cache is up-to-date with.
 func (c *changeCache) LastSequence() uint64 {
 
-	lastSequence := c.getNextSequence() - 1
+	lastSequence := c.getPublishedNextSequence() - 1
 	return lastSequence
 }
 
@@ -1016,14 +1020,20 @@ func (c *changeCache) getOldestSkippedSequence(ctx context.Context) uint64 {
 func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.initialSequence.Store(initialSequence)
 	c.nextSequence = initialSequence + 1
+	c._setPublishedNextSequence()
 }
 
-// Concurrent-safe get value of nextSequence
-func (c *changeCache) getNextSequence() (nextSequence uint64) {
-	c.lock.RLock()
-	nextSequence = c.nextSequence
-	c.lock.RUnlock()
-	return nextSequence
+// getPublishedNextSequence returns nextSequence as of the last release of c.lock, without taking the lock.
+// While the ordering code holds the lock this can lag the live value, which is fine for callers outside the
+// lock: a reader that took the read lock instead would have seen the same value. Ordering code must read
+// c.nextSequence directly.
+func (c *changeCache) getPublishedNextSequence() uint64 {
+	return c.publishedNextSequence.Load()
+}
+
+// _setPublishedNextSequence sets the atomic copy of nextSequence that is the visible publish version of it. Callers must hold c.lock.
+func (c *changeCache) _setPublishedNextSequence() {
+	c.publishedNextSequence.Store(c.nextSequence)
 }
 
 // ////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
