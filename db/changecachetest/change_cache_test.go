@@ -4028,3 +4028,48 @@ func TestChangeCachePublishedNextSequenceConcurrent(t *testing.T) {
 	assert.Equal(t, lastSequence+1, changeCache.GetNextSequenceForTest(t))
 	assert.Equal(t, lastSequence+1, changeCache.GetPublishedNextSequenceForTest(t))
 }
+
+// TestChangeCacheLastSequenceBeforeStart checks LastSequence while the cache is between Init and Start. Init
+// holds the cache lock until Start sets the initial sequence, and the caching feed is already running in
+// that window, so a caller must wait for Start rather than see a sequence that was never set.
+func TestChangeCacheLastSequenceBeforeStart(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	dbContext, err := db.NewDatabaseContext(ctx, "db", bucket, false, db.DatabaseContextOptions{
+		Scopes: db.GetScopesOptions(t, bucket, 1),
+	})
+	require.NoError(t, err)
+	defer dbContext.Close(ctx)
+	ctx = dbContext.AddDatabaseLogContext(ctx)
+
+	testChangeCache := db.NewChangeCacheForTest(t)
+	require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, nil, dbContext.MetadataKeys))
+
+	lastSequenceCh := make(chan uint64, 1)
+	go func() {
+		lastSequenceCh <- testChangeCache.LastSequence()
+	}()
+
+	// Use assert rather than require until Start has run, so the cache lock is always released.
+	returnedBeforeStart := false
+	select {
+	case lastSequence := <-lastSequenceCh:
+		returnedBeforeStart = true
+		assert.Failf(t, "LastSequence returned before Start", "returned %d", lastSequence)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	const initialSequence = uint64(100)
+	require.NoError(t, testChangeCache.Start(initialSequence))
+	defer testChangeCache.Stop(ctx)
+	if returnedBeforeStart {
+		return
+	}
+
+	select {
+	case lastSequence := <-lastSequenceCh:
+		assert.Equal(t, initialSequence, lastSequence)
+	case <-time.After(5 * time.Second):
+		assert.Fail(t, "LastSequence did not return after Start")
+	}
+}

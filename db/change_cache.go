@@ -1028,7 +1028,14 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 // lock: a reader that took the read lock instead would have seen the same value. Ordering code must read
 // c.nextSequence directly.
 func (c *changeCache) getPublishedNextSequence() uint64 {
-	return c.publishedNextSequence.Load()
+	if publishSeq := c.publishedNextSequence.Load(); publishSeq != 0 {
+		return publishSeq
+	}
+	// Nothing can be published until Start sets initialSequence, Init will hold change cache lock till then so this
+	// blocks until this is released
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
 }
 
 // _setPublishedNextSequence sets the atomic copy of nextSequence that is the visible publish version of it. Callers must hold c.lock.
