@@ -2058,3 +2058,17 @@ func (p *ResyncPauser) release() bool {
 	close(p.blockCh)
 	return true
 }
+
+// ValidFromHooksForTest exposes the validFrom fence hooks to test packages outside db.
+type ValidFromHooksForTest = validFromHooks
+
+// SetValidFromHooksForTest installs hooks into addChannelCache's validFrom fence. Must be called before the cache
+// is used concurrently.
+func (c *channelCacheImpl) SetValidFromHooksForTest(_ testing.TB, hooks ValidFromHooksForTest) {
+	c.validFromHooks = &hooks
+}
+
+// PublishCursorForTest returns the cache's current publish cursor.
+func (c *channelCacheImpl) PublishCursorForTest(_ testing.TB) uint64 {
+	return c.publishCursor.Load()
+}

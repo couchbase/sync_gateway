@@ -14,6 +14,7 @@ import (
 	"context"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -105,7 +106,20 @@ type channelCacheImpl struct {
 	compactRunning       base.AtomicBool               // Whether compact is currently running
 	activeChannels       *channels.ActiveChannels      // Active channel handler
 	cacheStats           *base.CacheStats              // Map used for cache stats
-	validFromLock        sync.RWMutex                  // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
+	publishCursor        atomic.Uint64                 // Highest sequence released for caching. Advanced before dispatch looks up any channel cache; see addChannelCache
+	validFromHooks       *validFromHooks               // Test-only hooks into addChannelCache, nil in production. Set before any concurrent use, so no synchronization is needed
+}
+
+// validFromHooks lets tests interleave work with the steps of addChannelCache's validFrom fence. Each hook is
+// optional and receives the channel being added.
+//
+// AfterInsert and AfterSecondCursorRead run while holding the new cache's lock, so a hook that dispatches into
+// that channel synchronously deadlocks; tests must dispatch from another goroutine.
+type validFromHooks struct {
+	AfterCursorRead       func(channel channels.ID) // After the first cursor read, before the cache is locked and inserted
+	AfterInsert           func(channel channels.ID) // After the insert succeeded (cache created), cache lock held
+	AfterSecondCursorRead func(channel channels.ID) // After the second cursor read, cache lock held, before validFrom is assigned
+	AfterFence            func(channel channels.ID) // After the cache lock is released (cache created)
 }
 
 func NewChannelCacheForContext(ctx context.Context, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
@@ -171,6 +185,17 @@ func (c *channelCacheImpl) Init(initialSequence uint64) {
 	c.seqLock.Lock()
 	c.highCacheSequence = initialSequence
 	c.seqLock.Unlock()
+	c.publishCursor.Store(initialSequence)
+}
+
+// advancePublishCursor raises the publish cursor to seq if seq is higher. It never lowers the cursor, so late or
+// skipped sequences leave it unchanged. Safe for concurrent callers.
+func (c *channelCacheImpl) advancePublishCursor(seq uint64) {
+	for cur := c.publishCursor.Load(); seq > cur; cur = c.publishCursor.Load() {
+		if c.publishCursor.CompareAndSwap(cur, seq) {
+			return
+		}
+	}
 }
 
 func (c *channelCacheImpl) GetHighCacheSequence() uint64 {
@@ -199,14 +224,17 @@ func (c *channelCacheImpl) getSingleChannelCache(ctx context.Context, ch channel
 }
 
 func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
+	c.advancePublishCursor(change.Sequence)
 	c.updateHighCacheSequence(change.Sequence)
 }
 
 // Add unused Sequence notifies the cache of an unused sequence update. Updates the cache's high sequence
 func (c *channelCacheImpl) AddUnusedSequence(change *LogEntry) {
 	if change.EndSequence > 0 {
+		c.advancePublishCursor(change.EndSequence)
 		c.updateHighCacheSequence(change.EndSequence)
 	} else {
+		c.advancePublishCursor(change.Sequence)
 		c.updateHighCacheSequence(change.Sequence)
 	}
 }
@@ -214,6 +242,10 @@ func (c *channelCacheImpl) AddUnusedSequence(change *LogEntry) {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) []channels.ID {
+
+	// The cursor must be at or above this sequence before any channel cache lookup below, so that a cache created
+	// concurrently either is found by the lookup or fences this sequence out via its validFrom. See addChannelCache.
+	c.advancePublishCursor(change.Sequence)
 
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
@@ -230,11 +262,7 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) []c
 		defer c.lateSeqLock.Unlock()
 	}
 
-	// Need to acquire the validFromLock prior to checking for active channel caches, to ensure that
-	// any new caches that are added between the check for c.GetActiveChannelCache and the update of
-	// c.highCacheSequence are initialized with the correct validFrom.
 	var explicitStarChannel bool
-	c.validFromLock.Lock()
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
 			// If the document has been explicitly added to the star channel by the sync function, don't need to recheck below
@@ -267,7 +295,6 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) []c
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
-	c.validFromLock.Unlock()
 	return updatedChannels
 }
 
@@ -414,14 +441,27 @@ func AsSingleChannelCache(ctx context.Context, cacheValue any) *singleChannelCac
 	return singleChannelCache
 }
 
-// Adds a new channel to the channel cache.  Locking seqLock is required here to prevent missed data in the following scenario:
+// Adds a new channel to the channel cache, fencing its validFrom against concurrent dispatch with the publish cursor.
 //
-//	//     1. addChannelCache issued for channel A
-//	//     2. addChannelCache obtains stable sequence, seq=10
-//	//     3. addToCache (from another goroutine) receives sequence 11 in channel A, but detects that it's inactive (not in c.channelCaches)
-//	//     4. addChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
-//	//  This scenario would result in sequence 11 missing from the cache.  Locking seqLock ensures that
-//	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
+// The risk is an entry S that is dispatched while the cache doesn't exist yet (so the dispatcher's
+// getActiveChannelCache lookup misses it) and yet ends up at or above the new cache's validFrom, which would leave
+// S permanently absent from a cache that claims to be complete from validFrom.
+//
+// The cache is built with validFrom = cursor+1 (P+1), then inserted. Once inserted, the cursor is read again (P2)
+// and, if it moved, validFrom is set to P2+1. This is correct because:
+//   - Any S whose lookup missed the new cache did that lookup before GetOrInsert completed (lookup and insert both
+//     go through the collection's valueLock, so they are ordered), and the cursor was advanced to at least S before
+//     the lookup. The P2 read happens after the insert, so P2 >= S, which puts S below validFrom, where the query
+//     path covers it.
+//   - Any entry above P2 is published after the P2 read, so its lookup follows the insert and finds the cache.
+//
+// The new cache's own lock is held from before the insert until validFrom is final. Another feed's Get followed by
+// GetCachedChanges, and any dispatcher that finds the cache, therefore block rather than observe or modify the
+// cache while validFrom is provisional. Nothing can be inserted below the final fence, so validFrom is a plain
+// assignment with no entries to drop.
+//
+// Holding the cache lock while GetOrInsert takes valueLock cannot deadlock: RangeSafeCollection.Range runs its
+// callbacks under iterateLock rather than valueLock, and nobody else can reach the cache until the insert.
 func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels.ID) (*singleChannelCacheImpl, bool) {
 
 	// Return nil if the cache at capacity.
@@ -435,15 +475,19 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 		return nil, false
 	}
 
-	c.validFromLock.Lock()
-
-	// Everything after the current high sequence will be added to the cache via the feed
-	validFrom := c.GetHighCacheSequence() + 1
+	// Everything after the cursor will be added to the cache via the feed
+	published := c.publishCursor.Load()
+	if hooks := c.validFromHooks; hooks != nil && hooks.AfterCursorRead != nil {
+		hooks.AfterCursorRead(channel)
+	}
 
 	singleChannelCache :=
-		newChannelCacheWithOptions(ctx, queryHandler, channel, validFrom, c.options, c.cacheStats)
-	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channel, singleChannelCache)
-	c.validFromLock.Unlock()
+		newChannelCacheWithOptions(ctx, queryHandler, channel, published+1, c.options, c.cacheStats)
+	cacheValue, created, cacheSize := c.insertWithFence(channel, singleChannelCache, published)
+
+	if hooks := c.validFromHooks; created && hooks != nil && hooks.AfterFence != nil {
+		hooks.AfterFence(channel)
+	}
 
 	// If another goroutine won the insert race our freshly-built cache is discarded, but it never contributed to
 	// NumEntriesInLateFeed: initializeLateLogs doesn't count the retained placeholder, and since the discarded
@@ -462,6 +506,33 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 	}
 
 	return singleChannelCache, true
+}
+
+// insertWithFence inserts newCache, built with validFrom = published+1, and finalizes its validFrom against the
+// publish cursor. The cache's lock is held from before the insert until validFrom is final; see addChannelCache.
+// If another goroutine won the insert race, the lock taken is on newCache, which is discarded, and the existing
+// value is returned untouched.
+func (c *channelCacheImpl) insertWithFence(channel channels.ID, newCache *singleChannelCacheImpl, published uint64) (cacheValue any, created bool, cacheSize int) {
+	newCache.lock.Lock()
+	defer newCache.lock.Unlock()
+
+	cacheValue, created, cacheSize = c.channelCaches.GetOrInsert(channel, newCache)
+	if !created {
+		// Someone else beat us to insert the new cache, bailout
+		return cacheValue, false, cacheSize
+	}
+	hooks := c.validFromHooks
+	if hooks != nil && hooks.AfterInsert != nil {
+		hooks.AfterInsert(channel)
+	}
+	republished := c.publishCursor.Load()
+	if hooks != nil && hooks.AfterSecondCursorRead != nil {
+		hooks.AfterSecondCursorRead(channel)
+	}
+	if republished != published {
+		newCache.validFrom = republished + 1
+	}
+	return cacheValue, true, cacheSize
 }
 
 func (c *channelCacheImpl) getActiveChannelCache(ctx context.Context, channel channels.ID) (*singleChannelCacheImpl, bool) {
