@@ -18,7 +18,7 @@ Several releases often run at the same time (for example 3.3.9, 4.0.9 and 4.1.3)
 
 - **No Jira writes without approval.** Show a table with hyperlinks first, and wait for a yes. Interactive answers from the user count as approval for those tickets only.
 - **Labels are American spelling only**: `behavior`, not `behaviour`. The user may type British spelling. Always write the American label.
-- **`labels` in `editJiraIssue` replaces the whole list.** Fetch the current labels first, and send the full list: the existing labels plus the new one. Otherwise you delete labels like `ISGR`, `backport-candidate`, or `goroutine-leak`.
+- **`labels` in `editJiraIssue` replaces the whole list.** Fetch the current labels first, and send the full list: keep every label you are not changing, replace any old behavior label with the new one, and leave out only the labels the user approved removing. Otherwise you delete labels like `ISGR`, `backport-candidate`, or `goroutine-leak`, or you leave two behavior labels on one ticket.
 - **All CBG tickets have the security level Private.** Do not change it. A ticket is public only through the `publicise-at-ga` label.
 - **Never switch branches.** Other sessions share this checkout. Read release code with `git log origin/release/x.y.z` and `git show <sha>`. Run `git fetch origin` first. Never use `git fetch --depth`.
 - **Count from the query result, not from memory.** Re-run the JQL and count the rows before you state a number. Follow `nextPageToken` until there are no more pages.
@@ -42,10 +42,10 @@ Use cloud ID `jira.issues.couchbase.com`. Issue type IDs: Task `10002`, Bug `100
 Ask for the versions if the user did not give them. Then query:
 
 ```
-project = CBG AND fixVersion IN (<versions>) AND resolution NOT IN ("Won't Do", "Won't Fix", Duplicate, "Not a Bug") ORDER BY fixVersion, key
+project = CBG AND fixVersion IN (<versions>) AND (resolution IS EMPTY OR resolution NOT IN ("Won't Do", "Won't Fix", Duplicate, "Not a Bug")) ORDER BY fixVersion, key
 ```
 
-Request `["summary", "issuetype", "labels", "status", "resolution", "fixVersions"]`. Group the tickets by fix: backports of one fix share an original ticket and most of the title, and they differ only in the `[x.y.z backport]` prefix.
+Request `["summary", "issuetype", "labels", "status", "resolution", "fixVersions"]`. Group the tickets by fix: backports of one fix share an original ticket and most of the title, and they differ only in the `[x.y.z backport]` prefix. The prefix can be `backport` or `Backport`, so match it in either case.
 
 ### 1b. Find commits with no matching ticket
 
@@ -90,7 +90,7 @@ Show the test-only tickets in one table and ask for approval. Then, for each one
 
 For each fix, use AskUserQuestion. The user may see only the dialog, so put the context into the question text: the ticket keys, what the bug was, what the fix changes, and what a user would notice. Ask these questions in one call:
 
-1. **Visibility**: Public (keep or add `publicise-at-ga`) or Private (remove it). Recommend Private for fixes that only matter to Capella or to tests. If the user chooses Private for a real bug fix, add a Jira comment that gives the reason.
+1. **Visibility**: Public (keep or add `publicise-at-ga`) or Private (remove it). Recommend Private for fixes that only matter to Capella or to tests. If the user chooses Private for a real bug fix, draft a Jira comment that gives the reason. The comment is written in step 6, after the user sees its text.
 2. **Behavior**: the four labels, with your recommendation first and a reason in its description.
 3. **Title**: your suggested title, keep the current title, or flag it for a rename later.
 4. **Type**: ask only when the current type looks wrong, for example an Improvement that is a bug fix.
@@ -107,17 +107,17 @@ Record each answer. Do not write to Jira between questions, so the user can stil
 
 ### 6. Apply
 
-Fetch the current labels and summaries of all target tickets in one query. Then send all `editJiraIssue` calls in parallel. Each call has the full `labels` list, plus `summary` and `issuetype` when they change.
+Show one table of every change: ticket, labels added and removed, new title, new type, and the text of any Jira comment. Wait for a yes. Then fetch the current labels and summaries of all target tickets in one query, and send all `editJiraIssue` and `addCommentToJiraIssue` calls in parallel. Each `editJiraIssue` call has the full `labels` list, plus `summary` and `issuetype` when they change.
 
 ### 7. Check
 
 Re-run the query for tickets that still need a behavior label:
 
 ```
-project = CBG AND fixVersion IN (<versions>) AND type IN (Bug, Improvement) AND (labels IS EMPTY OR labels NOT IN (no-behavior-change, ok-behavior-change, acceptable-behavior-change, negative-behavior-change)) AND resolution NOT IN ("Won't Do", "Won't Fix", Duplicate, "Not a Bug")
+project = CBG AND fixVersion IN (<versions>) AND (labels IS EMPTY OR labels NOT IN (no-behavior-change, ok-behavior-change, acceptable-behavior-change, negative-behavior-change)) AND (resolution IS EMPTY OR resolution NOT IN ("Won't Do", "Won't Fix", Duplicate, "Not a Bug"))
 ```
 
-Report what is left and why. Then give a short summary table: ticket, type, behavior label, public or private, and the new title.
+Report what is left and why. List release admin Tasks (for example the release ticket itself) apart from the rest, so the user can decide if they need a label. Then give a short summary table: ticket, type, behavior label, public or private, and the new title.
 
 ## Common mistakes
 
