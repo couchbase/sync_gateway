@@ -156,26 +156,6 @@ var (
 		IndexRole:       SeparatePrincipalIndexes,
 	}
 
-	// Queries used to check readiness on startup.  Only required for critical indexes.
-	readinessQueries = map[SGIndexType]string{
-		IndexAccess: "SELECT $sync.access.foo as val " +
-			"FROM %s AS %s " +
-			"USE INDEX ($idx) " +
-			"WHERE ANY op in OBJECT_PAIRS($relativesync.access) SATISFIES op.name = 'foo' end " +
-			"LIMIT 1",
-		IndexRoleAccess: "SELECT $sync.role_access.foo as val " +
-			"FROM %s AS %s " +
-			"USE INDEX ($idx) " +
-			"WHERE ANY op in OBJECT_PAIRS($relativesync.role_access) SATISFIES op.name = 'foo' end " +
-			"LIMIT 1",
-		IndexChannels: "SELECT  [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS `sequence` " +
-			"FROM %s AS %s " +
-			"USE INDEX ($idx) " +
-			"UNNEST OBJECT_PAIRS($relativesync.channels) AS op " +
-			"WHERE [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +
-			"ORDER BY [op.name, LEAST($sync.`sequence`, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
-			"LIMIT 1",
-	}
 	partitionableIndexes = map[SGIndexType]bool{
 		IndexAllDocs:  true,
 		IndexChannels: true,
@@ -204,13 +184,6 @@ func GetSGIndexes() map[SGIndexType]SGIndex {
 			creationMode:     indexCreationModes[i],
 			partitionable:    partitionableIndexes[i],
 		}
-		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
-		readinessQuery, ok := readinessQueries[i]
-		if ok {
-			sgIndex.required = true
-			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.KeyspaceQueryToken, base.KeyspaceQueryAlias)
-		}
-
 		sgIndexes[i] = sgIndex
 	}
 	return sgIndexes
@@ -223,8 +196,6 @@ type SGIndex struct {
 	filterExpression string            // (Optional) Filter expression used to create index
 	Version          int               // Index version.  Must be incremented any time the index definition changes
 	PreviousVersions []int             // Previous versions of the index that will be removed during post_upgrade cleanup
-	required         bool              // Whether SG blocks on startup until this index is ready
-	readinessQuery   string            // Query used to determine view readiness
 	flags            SGIndexFlags      // Additional index options
 	creationMode     indexCreationMode // Signal when to create indexes
 	partitionable    bool              // Whether the index is partitionable
