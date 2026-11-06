@@ -12,7 +12,9 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -46,8 +48,10 @@ type validFromHarness struct {
 	model map[string]map[uint64]struct{}
 	// highestWritten is the highest sequence given to write or seedOnly, across all channels.
 	highestWritten uint64
-	// pending holds the sequences seeded but not yet dispatched, keyed by sequence.
-	pending map[uint64]pendingWrite
+	// pending holds the sequences seeded but not yet dispatched, keyed by sequence. Goroutines started by a
+	// test dispatch concurrently with the test goroutine seeding, so pendingLock guards it.
+	pending     map[uint64]pendingWrite
+	pendingLock sync.Mutex
 }
 
 // pendingWrite is what dispatch needs to build a fresh entry for a sequence that was only seeded.
@@ -105,8 +109,6 @@ func (h *validFromHarness) seedOnly(seq uint64, channelNames ...string) {
 }
 
 func (h *validFromHarness) seedOnlyWithFlags(seq uint64, skipped bool, channelNames ...string) {
-	_, exists := h.pending[seq]
-	require.False(h.t, exists, "sequence %d already seeded", seq)
 	docID := fmt.Sprintf("doc_%d", seq)
 	h.qh.SeedEntries(db.LogEntries{h.entry(seq, docID, channelNames, false)})
 	for _, name := range channelNames {
@@ -115,16 +117,47 @@ func (h *validFromHarness) seedOnlyWithFlags(seq uint64, skipped bool, channelNa
 		}
 		h.model[name][seq] = struct{}{}
 	}
-	h.pending[seq] = pendingWrite{docID: docID, channels: channelNames, skipped: skipped}
+	h.addPending(seq, pendingWrite{docID: docID, channels: channelNames, skipped: skipped})
 	h.highestWritten = max(h.highestWritten, seq)
+}
+
+func (h *validFromHarness) addPending(seq uint64, pending pendingWrite) {
+	h.pendingLock.Lock()
+	defer h.pendingLock.Unlock()
+	_, exists := h.pending[seq]
+	require.False(h.t, exists, "sequence %d already seeded", seq)
+	h.pending[seq] = pending
+}
+
+func (h *validFromHarness) takePending(seq uint64) (pendingWrite, bool) {
+	h.pendingLock.Lock()
+	defer h.pendingLock.Unlock()
+	pending, ok := h.pending[seq]
+	delete(h.pending, seq)
+	return pending, ok
+}
+
+// tryDispatch sends a previously seeded sequence to the channel cache as a fresh entry. It reports a failure as
+// an error rather than failing the test, so it is safe to call from a goroutine other than the test's.
+func (h *validFromHarness) tryDispatch(seq uint64) error {
+	pending, ok := h.takePending(seq)
+	if !ok {
+		return fmt.Errorf("sequence %d was not seeded, or is already dispatched", seq)
+	}
+	h.cache.AddToCache(h.ctx, h.entry(seq, pending.docID, pending.channels, pending.skipped))
+	return nil
 }
 
 // dispatch sends a previously seeded sequence to the channel cache as a fresh entry.
 func (h *validFromHarness) dispatch(seq uint64) {
-	pending, ok := h.pending[seq]
-	require.True(h.t, ok, "sequence %d was not seeded, or is already dispatched", seq)
-	delete(h.pending, seq)
-	h.cache.AddToCache(h.ctx, h.entry(seq, pending.docID, pending.channels, pending.skipped))
+	require.NoError(h.t, h.tryDispatch(seq))
+}
+
+// publish seeds a sequence and advances the publish cursor to it without dispatching, modelling a sequence that
+// has been released but whose dispatch to the channel caches has not happened yet. Send it later with dispatch.
+func (h *validFromHarness) publish(seq uint64, channelNames ...string) {
+	h.seedOnly(seq, channelNames...)
+	h.cache.AdvancePublishCursorForTest(h.t, seq)
 }
 
 // write is publish-and-dispatch: the common case of a write that is both queryable and cached.
@@ -383,4 +416,472 @@ func TestChannelCacheValidFromLateSequenceBelowValidFrom(t *testing.T) {
 	for _, since := range []uint64{0, 89, 99, 100, 105} {
 		h.requireInvariants("A", since)
 	}
+}
+
+// fenceJoinTimeout bounds every wait on a goroutine or on the cursor, so a regression fails the test rather than
+// hanging it.
+const fenceJoinTimeout = 10 * time.Second
+
+// fenceBlockedWindow is how long a goroutine that should be blocked on the cache lock is observed for. A goroutine
+// that is correctly blocked is never done, so the window can only expose the broken case, never false-fail.
+const fenceBlockedWindow = 100 * time.Millisecond
+
+// requireBlocked asserts done is not signalled within the window: the goroutine that would signal it is stuck.
+func requireBlocked[T any](t testing.TB, done <-chan T, window time.Duration, msg string) {
+	t.Helper()
+	select {
+	case <-done:
+		require.Fail(t, "goroutine was not blocked", msg)
+	case <-time.After(window):
+	}
+}
+
+// requireFinished is the counterpart to requireBlocked: it waits for the goroutine behind done to finish, and
+// returns the value it sent.
+func requireFinished[T any](t testing.TB, done <-chan T, msg string) (res T) {
+	t.Helper()
+	select {
+	case v := <-done:
+		return v
+	case <-time.After(fenceJoinTimeout):
+		require.FailNow(t, "timed out waiting for goroutine to finish", msg)
+	}
+	return // not reachable
+}
+
+// waitForCursor waits for the publish cursor to reach seq. AddToCache advances the cursor as its first action, so
+// this tells a hook the dispatching goroutine has published before the hook goes on.
+func waitForCursor(t testing.TB, cache *db.ChannelCacheImplForTest, seq uint64) {
+	t.Helper()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.GreaterOrEqual(c, cache.PublishCursorForTest(t), seq)
+	}, fenceJoinTimeout, time.Millisecond,
+		"publish cursor did not reach %d: AddToCache must advance the cursor before it looks up (and can block on) a channel cache", seq)
+}
+
+// dispatchAsync dispatches a seeded sequence on its own goroutine, delivering the result on the returned channel.
+func (h *validFromHarness) dispatchAsync(seq uint64) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		done <- h.tryDispatch(seq)
+	}()
+	return done
+}
+
+// dispatchBlockedOnLock starts an async dispatch, waits for it to have published, and requires it to be blocked
+// (on the cache lock the calling hook holds).
+func (h *validFromHarness) dispatchBlockedOnLock(seq uint64) <-chan error {
+	done := h.dispatchAsync(seq)
+	waitForCursor(h.t, h.cache, seq)
+	requireBlocked(h.t, done, fenceBlockedWindow, fmt.Sprintf("dispatch of %d should wait for the new cache's lock", seq))
+	return done
+}
+
+func (h *validFromHarness) requireDispatched(done <-chan error, seq uint64) {
+	require.NoError(h.t, requireFinished(h.t, done, fmt.Sprintf("dispatch of %d", seq)))
+}
+
+// hooks installs the fence hooks on the channel cache under test.
+func (h *validFromHarness) hooks(hooks db.ValidFromHooksForTest) {
+	h.cache.SetValidFromHooksForTest(h.t, hooks)
+}
+
+// requireFinal runs both invariants on channel "A" for each since. requireInvariants skips the below-validFrom
+// check when the channel has no cache, so the cache's presence is required first rather than letting that check
+// pass vacuously.
+func (h *validFromHarness) requireFinal(sinces ...uint64) {
+	require.NotNil(h.t, h.activeCache("A"))
+	for _, since := range sinces {
+		h.requireInvariants("A", since)
+	}
+}
+
+// fenceSinces fall below the first cursor read (P=164), between it and the second (P2=170), and above it.
+var fenceSinces = []uint64{0, 150, 164, 166, 168, 170, 171, 180}
+
+// requireValidFrom checks the cache's validFrom and its log; a nil log means the cache must be empty.
+func requireValidFrom(t testing.TB, cache *db.SingleChannelCacheImplForTest, expected uint64, cachedExpected []uint64) {
+	t.Helper()
+	validFrom, cached := cachedSequences(cache)
+	assert.Equal(t, expected, validFrom, "validFrom")
+	if cachedExpected == nil {
+		assert.Empty(t, cached, "cache log")
+	} else {
+		assert.Equal(t, cachedExpected, cached, "cache log")
+	}
+}
+
+// TestChannelCacheValidFromFence drives addChannelCache's publish-cursor fence through each interleaving that
+// matters, using the hooks to place dispatch at an exact point. Each case ends with both invariants: a feed from
+// any since sees every sequence in the channel exactly once, and the cache holds nothing below its validFrom.
+func TestChannelCacheValidFromFence(t *testing.T) {
+	newHarness := func(t *testing.T, mutate func(*db.ChannelCacheOptions)) *validFromHarness {
+		base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+		return newValidFromHarness(t, mutate)
+	}
+	// writeMiddle writes 165..170, with 167 in channel A and the rest in a channel nobody reads.
+	writeMiddle := func(h *validFromHarness) {
+		for seq := uint64(165); seq <= 170; seq++ {
+			if seq == 167 {
+				h.write(seq, "A")
+			} else {
+				h.write(seq, "other")
+			}
+		}
+	}
+
+	t.Run("middle_range_dispatched_before_insert", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		once := false
+		h.hooks(db.ValidFromHooksForTest{AfterCursorRead: func(channels.ID) {
+			if once {
+				return
+			}
+			once = true
+			writeMiddle(h)
+		}})
+		cache := h.singleCache("A")
+		require.True(t, once)
+		requireValidFrom(t, cache, 171, nil)
+		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("middle_range_dispatched_during_window", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		var done <-chan error
+		h.hooks(db.ValidFromHooksForTest{AfterInsert: func(channels.ID) {
+			if done != nil {
+				return
+			}
+			h.seedOnly(168, "A")
+			done = h.dispatchBlockedOnLock(168)
+		}})
+		cache := h.singleCache("A")
+		require.NotNil(t, done)
+		h.requireDispatched(done, 168)
+		requireValidFrom(t, cache, 169, nil)
+		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("published_before_second_read_dispatched_after_fence", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		fired := 0
+		h.hooks(db.ValidFromHooksForTest{
+			AfterInsert: func(channels.ID) {
+				h.publish(168, "other")
+				h.publish(169, "A")
+				h.publish(170, "other")
+			},
+			AfterFence: func(channels.ID) {
+				fired++
+				h.dispatch(168)
+				h.dispatch(169)
+				h.dispatch(170)
+			},
+		})
+		cache := h.singleCache("A")
+		require.Equal(t, 1, fired)
+		requireValidFrom(t, cache, 171, nil)
+		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("top_range_dispatched_inside_window", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		var done <-chan error
+		once := false
+		h.hooks(db.ValidFromHooksForTest{
+			AfterCursorRead: func(channels.ID) {
+				if once {
+					return
+				}
+				once = true
+				writeMiddle(h)
+			},
+			AfterSecondCursorRead: func(channels.ID) {
+				if done != nil {
+					return
+				}
+				h.seedOnly(172, "A")
+				done = h.dispatchBlockedOnLock(172)
+			},
+		})
+		cache := h.singleCache("A")
+		require.NotNil(t, done)
+		h.requireDispatched(done, 172)
+		// 172 is above the second cursor read, so the cache must take it.
+		requireValidFrom(t, cache, 171, []uint64{172})
+		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("bottom_range_in_flight", func(t *testing.T) {
+		h := newHarness(t, nil)
+		// 160 is published, so the cursor already covers it, but its dispatch is still in flight.
+		h.writeRange(1, 159, "A", inEveryThird)
+		h.publish(160, "A")
+		h.writeRange(161, 164, "A", inEveryThird)
+		require.Equal(t, uint64(164), h.cache.PublishCursorForTest(t))
+		var done <-chan error
+		h.hooks(db.ValidFromHooksForTest{AfterInsert: func(channels.ID) {
+			if done == nil {
+				done = h.dispatchBlockedOnLock(160)
+			}
+		}})
+		cache := h.singleCache("A")
+		require.NotNil(t, done)
+		h.requireDispatched(done, 160)
+		requireValidFrom(t, cache, 165, nil)
+		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("late_sequence_below_cursor", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 149, "A", inEveryThird)
+		h.seedOnlyWithFlags(150, true, "A")
+		h.writeRange(151, 164, "A", inEveryThird)
+		var done <-chan error
+		h.hooks(db.ValidFromHooksForTest{AfterInsert: func(channels.ID) {
+			if done == nil {
+				done = h.dispatchBlockedOnLock(150)
+			}
+		}})
+		cache := h.singleCache("A")
+		require.NotNil(t, done)
+		h.requireDispatched(done, 150)
+		requireValidFrom(t, cache, 165, nil)
+		var late []uint64
+		for _, entry := range cache.LateLogsForTest(t) {
+			late = append(late, entry.LogEntryForTest(t).Sequence)
+		}
+		assert.Contains(t, late, uint64(150), "late log %v", late)
+		h.requireExactlyOnce("A", 140, h.feedFrom("A", 140))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("pruning_after_fence", func(t *testing.T) {
+		h := newHarness(t, func(options *db.ChannelCacheOptions) {
+			options.ChannelCacheMaxLength = 5
+			options.ChannelCacheMinLength = 1
+		})
+		h.writeRange(1, 164, "A", inEveryThird)
+		once := false
+		h.hooks(db.ValidFromHooksForTest{AfterCursorRead: func(channels.ID) {
+			if once {
+				return
+			}
+			once = true
+			writeMiddle(h)
+		}})
+		cache := h.singleCache("A")
+		requireValidFrom(t, cache, 171, nil)
+		for seq := uint64(171); seq <= 180; seq++ {
+			h.write(seq, "A")
+		}
+		requireValidFrom(t, cache, 176, []uint64{176, 177, 178, 179, 180})
+		for _, since := range []uint64{150, 170, 175} {
+			h.requireExactlyOnce("A", since, h.feedFrom("A", since))
+		}
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("two_creators_race", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		var (
+			nested                       bool
+			winner                       *db.SingleChannelCacheImplForTest
+			inserts, secondReads, fences int
+			cursorAtFirstRead            uint64
+			cursorAtSecondRead           uint64
+		)
+		h.hooks(db.ValidFromHooksForTest{
+			AfterCursorRead: func(channels.ID) {
+				if nested {
+					return
+				}
+				nested = true
+				cursorAtFirstRead = h.cache.PublishCursorForTest(t)
+				// These miss the absent cache, and fall between the loser's cursor read and the winner's.
+				h.write(165, "other")
+				h.write(166, "A")
+				h.write(167, "other")
+				var ok bool
+				winner, ok = h.cache.AddChannelCacheForTest(t, h.ctx, h.channelID("A"))
+				require.True(t, ok)
+			},
+			AfterInsert: func(channels.ID) {
+				inserts++
+				h.publish(168, "other")
+				h.publish(169, "A")
+			},
+			AfterSecondCursorRead: func(channels.ID) {
+				secondReads++
+				cursorAtSecondRead = h.cache.PublishCursorForTest(t)
+			},
+			AfterFence: func(channels.ID) {
+				fences++
+				h.dispatch(168)
+				h.dispatch(169)
+			},
+		})
+		got, ok := h.cache.AddChannelCacheForTest(t, h.ctx, h.channelID("A"))
+		require.True(t, ok)
+		require.Equal(t, uint64(164), cursorAtFirstRead)
+		assert.Same(t, winner, got, "both creators must end up with the cache that won the insert")
+		assert.Same(t, winner, h.activeCache("A"))
+		assert.Equal(t, 1, inserts, "AfterInsert")
+		assert.Equal(t, 1, secondReads, "AfterSecondCursorRead")
+		assert.Equal(t, 1, fences, "AfterFence")
+		// The winner built its cache at 167+1, then saw the cursor at 169 after the insert, and 169 was dispatched
+		// only after the fence.
+		assert.Equal(t, uint64(169), cursorAtSecondRead)
+		requireValidFrom(t, got, 170, nil)
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("dispatcher_blocked_across_fence", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		var done <-chan error
+		h.hooks(db.ValidFromHooksForTest{
+			AfterInsert: func(channels.ID) {
+				if done == nil {
+					h.publish(168, "A")
+				}
+			},
+			AfterSecondCursorRead: func(channels.ID) {
+				if done == nil {
+					done = h.dispatchBlockedOnLock(168)
+				}
+			},
+		})
+		cache := h.singleCache("A")
+		require.NotNil(t, done)
+		h.requireDispatched(done, 168)
+		// The second read saw 168, so 168 is below validFrom and must never become visible in the cache.
+		requireValidFrom(t, cache, 169, nil)
+		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
+
+	t.Run("evicted_and_recreated_mid_dispatch", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		first := h.singleCache("A")
+		h.writeRange(165, 168, "A", func(seq uint64) bool {
+			return seq%2 == 0
+		})
+		h.evict("A")
+		// Written while the channel has no cache, so they reach only the query path.
+		h.writeRange(169, 170, "A", func(uint64) bool { return true })
+		once := false
+		h.hooks(db.ValidFromHooksForTest{AfterCursorRead: func(channels.ID) {
+			if once {
+				return
+			}
+			once = true
+			h.writeRange(171, 172, "A", func(uint64) bool {
+				return true
+			})
+		}})
+		recreated := h.singleCache("A")
+		require.NotSame(t, first, recreated)
+		requireValidFrom(t, recreated, 173, nil)
+		h.write(173, "A")
+		h.requireFinal(0, 150, 164, 168, 170, 172, 173)
+	})
+
+	t.Run("reader_during_window", func(t *testing.T) {
+		// A reader that sees the cache between its insert and its final validFrom must not act on the provisional
+		// validFrom. With validFrom=165 provisionally, the reader would query only up to 165 and take the rest
+		// from the cache; 167 was dispatched before the insert, so it is in neither, and it would be lost for
+		// that reader for good. The cache lock held across the window makes the reader wait for the final
+		// validFrom (169), so 167 and 168 both come from the query.
+		type readResult struct {
+			sequences []uint64
+			err       error
+		}
+		h := newHarness(t, nil)
+		h.writeRange(1, 164, "A", inEveryThird)
+		var (
+			started     bool
+			dispatched  chan struct{} // closed once the dispatch returns; dispatchErr is set before that
+			dispatchErr error
+			readDone    chan struct{} // closed once the reader returns; read is set before that
+			read        readResult
+		)
+		h.hooks(db.ValidFromHooksForTest{
+			AfterCursorRead: func(channels.ID) {
+				if !started {
+					h.write(167, "A")
+				}
+			},
+			AfterInsert: func(channels.ID) {
+				if started {
+					return
+				}
+				started = true
+				h.seedOnly(168, "A")
+				dispatched = make(chan struct{})
+				go func() {
+					defer close(dispatched)
+					dispatchErr = h.tryDispatch(168)
+				}()
+				waitForCursor(t, h.cache, 168)
+				readDone = make(chan struct{})
+				go func() {
+					defer close(readDone)
+					changes, err := h.cache.GetChanges(h.ctx, h.channelID("A"), db.ChangesOptions{
+						Since:      db.SequenceID{Seq: 150},
+						ChangesCtx: h.ctx,
+					})
+					result := readResult{err: err}
+					for _, change := range changes {
+						result.sequences = append(result.sequences, change.Sequence)
+					}
+					read = result
+				}()
+				// Correctly blocked, neither goroutine finishes; this only gives a broken implementation time to
+				// let them through before the fence is finished.
+				select {
+				case <-dispatched:
+				case <-time.After(fenceBlockedWindow):
+				}
+				select {
+				case <-readDone:
+				case <-time.After(fenceBlockedWindow):
+				}
+			},
+		})
+		cache := h.singleCache("A")
+		require.True(t, started)
+		requireFinished(t, dispatched, "dispatch of 168")
+		require.NoError(t, dispatchErr)
+		requireFinished(t, readDone, "reader")
+		require.NoError(t, read.err)
+		h.requireExactlyOnce("A", 150, read.sequences)
+		assert.Equal(t, []uint64{153, 156, 159, 162, 167, 168}, read.sequences)
+		// The reader's query was cached by prependChanges, so the cache now reaches back below 169; it must still
+		// agree with the model.
+		validFrom, _ := cachedSequences(cache)
+		assert.LessOrEqual(t, validFrom, uint64(169))
+		h.write(173, "A")
+		h.requireFinal(fenceSinces...)
+	})
 }

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -1553,6 +1554,8 @@ func (qh *QueryHandlerForTest) SetError(err error) {
 // [$channelName, $endSeq], and the views path uses startkey/endkey with the default
 // inclusive_end), and endSeq of 0 means unbounded - query.go substitutes N1QLMaxInt64 for it.
 // The bounds are applied before the limit, so entries outside the range do not consume it.
+// Matches are returned in sequence order whatever order they were seeded in, as a real channel query
+// returns them, and the limit is applied to that ordered result.
 func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	// One lock acquisition covers the count and the snapshot. queryCount counts queries issued,
 	// not queries that succeeded, so a test injecting an error can still assert that the caller
@@ -1585,9 +1588,10 @@ func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context,
 			continue
 		}
 		queryEntries = append(queryEntries, entry)
-		if limit > 0 && len(queryEntries) >= limit {
-			break
-		}
+	}
+	slices.SortStableFunc(queryEntries, func(a, b *LogEntry) int { return cmp.Compare(a.Sequence, b.Sequence) })
+	if limit > 0 && len(queryEntries) > limit {
+		queryEntries = queryEntries[:limit]
 	}
 	return queryEntries, nil
 }
@@ -2066,6 +2070,12 @@ type ValidFromHooksForTest = validFromHooks
 // is used concurrently.
 func (c *channelCacheImpl) SetValidFromHooksForTest(_ testing.TB, hooks ValidFromHooksForTest) {
 	c.validFromHooks = &hooks
+}
+
+// AdvancePublishCursorForTest raises the publish cursor to seq without dispatching anything. It models a sequence
+// that has been released for caching but not yet dispatched to the channel caches.
+func (c *channelCacheImpl) AdvancePublishCursorForTest(_ testing.TB, seq uint64) {
+	c.advancePublishCursor(seq)
 }
 
 // PublishCursorForTest returns the cache's current publish cursor.
