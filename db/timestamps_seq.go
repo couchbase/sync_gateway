@@ -11,7 +11,6 @@ package db
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -59,15 +58,17 @@ func (ts *TimestampsSeqArray) append(seq uint64, now int64) {
 	ts.Timestamps = append(ts.Timestamps, TimestampsSeqPair{Seq: seq, Timestamp: now})
 }
 
-// removeInvalidEntries drops every entry whose sequence is greater than seq.
-func (ts *TimestampsSeqArray) removeInvalidEntries(ctx context.Context, seq uint64) {
+// removeInvalidEntries drops every entry whose sequence is greater than seq, and returns the entries it dropped.
+func (ts *TimestampsSeqArray) removeInvalidEntries(seq uint64) []TimestampsSeqPair {
+	var removed []TimestampsSeqPair
 	ts.Timestamps = slices.DeleteFunc(ts.Timestamps, func(pair TimestampsSeqPair) bool {
 		invalid := pair.Seq > seq
 		if invalid {
-			base.WarnfCtx(ctx, "Removing timestamp entry with a sequence greater than %d: %+v", seq, pair)
+			removed = append(removed, pair)
 		}
 		return invalid
 	})
+	return removed
 }
 
 // trim drops the entries older than purgeTimestamp (epoch seconds), but keeps the newest entry at or before it
@@ -88,7 +89,9 @@ func (ts *TimestampsSeqArray) trim(purgeTimestamp int64) {
 // PurgeIntervalFunc returns the interval after which timestamps entries are no longer needed.
 type PurgeIntervalFunc func() time.Duration
 
-// GetSequenceFunc returns the current database sequence.
+// GetSequenceFunc returns the cluster-wide current sequence (the _sync:seq counter), not a node-local value such as
+// the last sequence this node allocated. A node-local value would make removeInvalidEntries delete the valid entries
+// that other nodes added.
 type GetSequenceFunc func(ctx context.Context) (uint64, error)
 
 // TimestampsManager maintains the timestamps document in the metadata store, and keeps an in-memory copy of it.
@@ -99,6 +102,7 @@ type TimestampsManager struct {
 	metaKeys           *base.MetadataKeys
 	purgeIntervalFunc  PurgeIntervalFunc
 	getSequenceFunc    GetSequenceFunc
+	nowFunc            func() time.Time
 }
 
 // TimestampsMgrOpts holds the dependencies of a TimestampsManager.
@@ -108,6 +112,7 @@ type TimestampsMgrOpts struct {
 	metaKeys          *base.MetadataKeys
 	purgeIntervalFunc PurgeIntervalFunc
 	getSequenceFunc   GetSequenceFunc
+	nowFunc           func() time.Time // the clock, so that tests can control time. Defaults to time.Now.
 }
 
 // NewTimestampsManager returns a TimestampsManager with an empty in-memory array. It does not touch the metadata store until Start is called.
@@ -118,25 +123,38 @@ func NewTimestampsManager(opts TimestampsMgrOpts) *TimestampsManager {
 		metaKeys:          opts.metaKeys,
 		purgeIntervalFunc: opts.purgeIntervalFunc,
 		getSequenceFunc:   opts.getSequenceFunc,
+		nowFunc:           opts.nowFunc,
 	}
-	tm.timestampsSeqArray.Store(&TimestampsSeqArray{})
+	if tm.nowFunc == nil {
+		tm.nowFunc = time.Now
+	}
+	tm.timestampsSeqArray.Store(&TimestampsSeqArray{Timestamps: []TimestampsSeqPair{}})
 	return tm
+}
+
+// purgeInterval returns the interval after which entries are no longer needed. A non-positive client partition window
+// would keep every entry, so DefaultClientPartitionWindow is used instead.
+func (tm *TimestampsManager) purgeInterval() time.Duration {
+	if purgeInterval := tm.purgeIntervalFunc(); purgeInterval > 0 {
+		return purgeInterval
+	}
+	return base.DefaultClientPartitionWindow
 }
 
 // updateFrequency returns the minimum time between two entries: the purge interval split across
 // NumTimestampsEntries, but never less than 10 minutes.
 func (tm *TimestampsManager) updateFrequency() time.Duration {
-	purgeInterval := tm.purgeIntervalFunc()
+	purgeInterval := tm.purgeInterval()
 	return max(purgeInterval/NumTimestampsEntries, time.Minute*10)
 }
 
-// entryDue returns true if the in-memory array is empty, or if its newest entry is older than the update frequency.
+// entryDue returns true if the in-memory array is empty, or if its newest entry is at least the update frequency old.
 func (tm *TimestampsManager) entryDue() bool {
-	now := time.Now().Unix()
+	now := tm.nowFunc().Unix()
 	tsArray := tm.timestampsSeqArray.Load()
 	newestEntry := tsArray.newestTimestamp()
 	updateFrequency := tm.updateFrequency()
-	entryDue := tsArray.isEmpty() || now > newestEntry+int64(updateFrequency/time.Second)
+	entryDue := tsArray.isEmpty() || now >= newestEntry+int64(updateFrequency/time.Second)
 	return entryDue
 }
 
@@ -147,21 +165,8 @@ func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqA
 
 // Start creates the timestamps document with an empty array, unless another node already created it.
 func (tm *TimestampsManager) Start() error {
-	key := tm.metaKeys.TimestampsSeqKey()
-	// TODO: Add this operation to KV Idle Ops
-	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(currentBytes []byte) ([]byte, *uint32, bool, error) {
-		if currentBytes != nil {
-			// another node has already created the document
-			return nil, nil, false, base.ErrUpdateCancel
-		}
-		newVal := tm.timestampsSeqArray.Load()
-		newBytes, marshalErr := base.JSONMarshal(newVal)
-		return newBytes, nil, false, marshalErr
-	})
 	// TODO: Add BackgroundTask here
-	if errors.Is(err, base.ErrUpdateCancel) {
-		return nil
-	}
+	err := tm.addEntry()
 	return err
 }
 
@@ -172,37 +177,53 @@ func (tm *TimestampsManager) addEntry() error {
 	updateFrequency := tm.updateFrequency()
 	// the bytes of the last successful write, used to refresh the in-memory array
 	var newValBytes []byte
-	now := time.Now().Unix()
+	// the entries dropped by the latest attempt of the Update callback, logged once after a successful write
+	var removedEntries []TimestampsSeqPair
+	now := tm.nowFunc().Unix()
 	// TODO: Add this operation to KV Idle Ops
 	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		var timestampsSeqArray TimestampsSeqArray
 		if current == nil {
-			err := fmt.Errorf("timestamps_seq id missing")
-			base.ErrorfCtx(tm.ctx, "could not add entry, %v", err)
-			return nil, nil, false, err
+			newVal := tm.timestampsSeqArray.Load()
+			var marshalErr error
+			newValBytes, marshalErr = base.JSONMarshal(newVal)
+			return newValBytes, nil, false, marshalErr
 		}
 		if err := base.JSONUnmarshal(current, &timestampsSeqArray); err != nil {
 			return nil, nil, false, err
 		}
 
-		withinUpdateFrequency := !timestampsSeqArray.isEmpty() &&
-			(now < timestampsSeqArray.newestTimestamp()+int64(updateFrequency/time.Second))
-		if withinUpdateFrequency {
-			// not due, or another node added an entry first
-			newValBytes = current
-			return nil, nil, false, base.ErrUpdateCancel
-		}
 		lastSeq, err := tm.getSequenceFunc(tm.ctx)
 		if err != nil {
 			return nil, nil, false, err
 		}
 
-		// an entry can not be ahead of the current sequence
-		timestampsSeqArray.removeInvalidEntries(tm.ctx, lastSeq)
-		timestampsSeqArray.append(lastSeq, now)
-		// trim after the append, so that the new entry counts when the array is trimmed
-		purgeTimestamp := now - int64(tm.purgeIntervalFunc()/time.Second)
-		timestampsSeqArray.trim(purgeTimestamp)
+		// Runs before the update-frequency check so entries left ahead of a rolled-back sequence are removed
+		// on the next call, not after a full update interval.
+		removedEntries = timestampsSeqArray.removeInvalidEntries(lastSeq)
+		removed := len(removedEntries) > 0
+
+		// Timestamps come from each node's local clock. Skip the update if this node's clock is behind the newest
+		// entry, since appending would break the sorted order that trim relies on.
+		if now < timestampsSeqArray.newestTimestamp() {
+			newValBytes = current
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		// If entries were removed, persist the cleaned array without appending. The next call adds an entry.
+		if !removed {
+			withinUpdateFrequency := !timestampsSeqArray.isEmpty() &&
+				(now < timestampsSeqArray.newestTimestamp()+int64(updateFrequency/time.Second))
+			if withinUpdateFrequency {
+				// not due, or another node added an entry first
+				newValBytes = current
+				return nil, nil, false, base.ErrUpdateCancel
+			}
+			timestampsSeqArray.append(lastSeq, now)
+			// trim after the append, so that the new entry counts when the array is trimmed
+			purgeTimestamp := now - int64(tm.purgeInterval()/time.Second)
+			timestampsSeqArray.trim(purgeTimestamp)
+		}
 
 		newValBytes, err = base.JSONMarshal(timestampsSeqArray)
 		if err != nil {
@@ -213,6 +234,9 @@ func (tm *TimestampsManager) addEntry() error {
 	})
 	if err != nil && !errors.Is(err, base.ErrUpdateCancel) {
 		return err
+	}
+	if err == nil && len(removedEntries) > 0 {
+		base.WarnfCtx(tm.ctx, "Removed %d timestamp entries with a sequence greater than the current sequence: %+v", len(removedEntries), removedEntries)
 	}
 
 	var updatedTimestampsSeqArray TimestampsSeqArray
