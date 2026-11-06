@@ -106,8 +106,8 @@ const keyUseSigning = "sig"
 type JSONWebKeys []jose.JSONWebKey
 
 func (j JSONWebKeys) VerifySignature(ctx context.Context, jwt string) (payload []byte, err error) {
-	// Parse using the full list of supported algorithms, prior to restricting based on JWKS
-	jws, err := jose.ParseSigned(jwt, SupportedAlgorithmsSlice)
+	// Parse using the full list of supported algorithms, prior to restricting based on JWKS.
+	jws, err := jose.ParseSignedCompact(jwt, SupportedAlgorithmsSlice)
 	if err != nil {
 		return nil, err
 	}
