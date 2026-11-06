@@ -434,7 +434,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 				assert.NoError(t, err)
 			}
 		}
-		return false
+		return true
 	}
 
 	// Add documents
@@ -1019,6 +1019,72 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		_, _, err := metadataStore.GetRaw(ctx, key)
 		require.Error(t, err, "Expected checkpoint document %s to be deleted", key)
 		RequireDocNotFoundError(t, err)
+	}
+}
+
+// TestDCPCallbackControlsCheckpoint makes sure that GoCBDCPClient only persists checkpoints when the callback
+// returns true.
+func TestDCPCallbackControlsCheckpoint(t *testing.T) {
+	TestRequiresGocbDCPClient(t)
+	for _, persist := range []bool{true, false} {
+		t.Run(fmt.Sprintf("persist=%t", persist), func(t *testing.T) {
+			ctx := TestCtx(t)
+			bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			dataStore := bucket.GetSingleDataStore()
+			docIDs := sgtest.DocPerVBucket(t, bucket.Bucket)
+			expected := make(map[string]struct{}, len(docIDs))
+			for _, docID := range docIDs {
+				expected[docID] = struct{}{}
+			}
+
+			var seenLock sync.Mutex
+			seen := make(map[string]struct{}, len(expected))
+			foundDocs := make(chan struct{})
+			callback := func(event sgbucket.FeedEvent) bool {
+				seenLock.Lock()
+				defer seenLock.Unlock()
+				if _, ok := expected[string(event.Key)]; ok {
+					seen[string(event.Key)] = struct{}{}
+					if len(seen) == len(expected) {
+						close(foundDocs)
+					}
+				}
+				return persist
+			}
+
+			checkpointPrefix := DefaultMetadataKeys.DCPCheckpointPrefix(t.Name())
+			dcpClient := newDCPClientWithFastCheckpointing(t, bucket, DCPClientOptions{
+				FeedID:            "testfeed",
+				CollectionNames:   NewCollectionNameSet(dataStore),
+				CheckpointPrefix:  checkpointPrefix,
+				Callback:          callback,
+				MetadataStoreType: DCPMetadataStoreCS,
+				MetadataStore:     bucket.GetMetadataStore(),
+			})
+			doneChan, err := dcpClient.Start()
+			require.NoError(t, err)
+
+			for _, docID := range docIDs {
+				require.NoError(t, dataStore.Set(ctx, docID, 0, nil, map[string]any{"foo": "bar"}))
+			}
+			RequireChanClosed(t, foundDocs)
+			require.NoError(t, dcpClient.Close())
+			RequireChanClosed(t, doneChan)
+
+			metadata, ok := dcpClient.(*GoCBDCPClient).metadata.(*DCPMetadataCS)
+			require.True(t, ok)
+			for i := range DefaultNumWorkers {
+				key := metadata.getMetadataKey(i)
+				_, _, err := bucket.GetMetadataStore().GetRaw(ctx, key)
+				if persist {
+					require.NoError(t, err, "checkpoint document %q not found", key)
+				} else {
+					RequireDocNotFoundError(t, err)
+				}
+			}
+		})
 	}
 }
 
