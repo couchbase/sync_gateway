@@ -199,4 +199,18 @@ func TestJWTVerifyToken(t *testing.T) {
 		"iss": "nonsense",
 		"aud": []string{testClientID},
 	}), "id token issued by a different provider"))
+
+	// A correctly signed token in JWS JSON Serialization instead of Compact Serialization. go-oidc's own parsing accepts
+	// this form, so it reaches JSONWebKeys.VerifySignature, which must reject it because a JWT is always compact.
+	jsonSigner, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: testRSAKeypair},
+		new(jose.SignerOptions).WithHeader("kid", testRSAJWK.KeyID))
+	require.NoError(t, err)
+	jsonClaims, err := base.JSONMarshal(map[string]any{
+		"iss": testIssuer,
+		"aud": []string{testClientID},
+	})
+	require.NoError(t, err)
+	jsonJWS, err := jsonSigner.Sign(jsonClaims)
+	require.NoError(t, err)
+	t.Run("valid RSA in JSON serialization", test(baseProvider, jsonJWS.FullSerialize(), "compact JWS format must have three parts"))
 }

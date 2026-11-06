@@ -105,6 +105,9 @@ const keyUseSigning = "sig"
 // JSONWebKeys implements oidc.KeySet for an in-memory JSONWebKey array.
 type JSONWebKeys []jose.JSONWebKey
 
+// VerifySignature verifies jwt against the configured keys and returns its payload. jwt must be in JWS Compact
+// Serialization (header.payload.signature), the only form RFC 7519 permits for a JWT. A JWS in JSON Serialization is
+// rejected, even though go-oidc's verifier, which calls this through the oidc.KeySet interface, will parse one.
 func (j JSONWebKeys) VerifySignature(ctx context.Context, jwt string) (payload []byte, err error) {
 	// Parse using the full list of supported algorithms, prior to restricting based on JWKS.
 	jws, err := jose.ParseSignedCompact(jwt, SupportedAlgorithmsSlice)
