@@ -113,6 +113,20 @@ const (
 
 type ChangeByVersionType map[ChangesVersionType]string // Keyed by the type of version in the value
 
+// newRevTreeChange returns a ChangeByVersionType holding only a revtree ID.
+func newRevTreeChange(revID string) ChangeByVersionType {
+	change := make(ChangeByVersionType, 1)
+	change[ChangesVersionTypeRevTreeID] = revID
+	return change
+}
+
+// newCVChange returns a ChangeByVersionType holding only a current version.
+func newCVChange(cv string) ChangeByVersionType {
+	change := make(ChangeByVersionType, 1)
+	change[ChangesVersionTypeCV] = cv
+	return change
+}
+
 type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
@@ -202,7 +216,7 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 					entry.Deleted = false
 				}
 				if !(options.ActiveOnly && leaf.Deleted) {
-					entry.Changes = append(entry.Changes, ChangeByVersionType{"rev": leaf.ID})
+					entry.Changes = append(entry.Changes, newRevTreeChange(leaf.ID))
 				}
 			}
 		})
@@ -557,7 +571,7 @@ func makeChangeEntry(ctx context.Context, logEntry *LogEntry, seqID SequenceID, 
 		Seq:          seqID,
 		ID:           logEntry.DocID,
 		Deleted:      (logEntry.Flags & channels.Deleted) != 0,
-		Changes:      []ChangeByVersionType{{ChangesVersionTypeRevTreeID: logEntry.RevID}},
+		Changes:      []ChangeByVersionType{newRevTreeChange(logEntry.RevID)},
 		branched:     (logEntry.Flags & channels.Branched) != 0,
 		principalDoc: logEntry.IsPrincipal,
 		collectionID: logEntry.CollectionID,
@@ -566,7 +580,7 @@ func makeChangeEntry(ctx context.Context, logEntry *LogEntry, seqID SequenceID, 
 	switch versionType {
 	case ChangesVersionTypeCV:
 		if logEntry.SourceID != "" {
-			change.Changes[0] = ChangeByVersionType{versionType: Version{SourceID: logEntry.SourceID, Value: logEntry.Version}.String()}
+			change.Changes[0] = newCVChange(Version{SourceID: logEntry.SourceID, Value: logEntry.Version}.String())
 		}
 	case ChangesVersionTypeRevTreeID:
 		fallthrough
@@ -1438,9 +1452,9 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 
 	switch versionRequested {
 	case ChangesVersionTypeCV:
-		row.Changes = []ChangeByVersionType{{ChangesVersionTypeCV: cvString}}
+		row.Changes = []ChangeByVersionType{newCVChange(cvString)}
 	case "", ChangesVersionTypeRevTreeID:
-		row.Changes = []ChangeByVersionType{{ChangesVersionTypeRevTreeID: populatedDoc.GetRevTreeID()}}
+		row.Changes = []ChangeByVersionType{newRevTreeChange(populatedDoc.GetRevTreeID())}
 	default:
 		base.AssertfCtx(ctx, "createChangeEntry called with an unsupported VersionType: %q", options.VersionType)
 	}

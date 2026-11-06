@@ -40,7 +40,7 @@ var SupportedAlgorithms = map[jose.SignatureAlgorithm]bool{
 	jose.PS384: true,
 	jose.PS512: true,
 	jose.EdDSA: true,
-}
+} //exhaustive:ignore
 
 // Full list of supported algorithms is used to initially parse the JWT.  The more restricted list (based
 // on the provider) is used to verify
