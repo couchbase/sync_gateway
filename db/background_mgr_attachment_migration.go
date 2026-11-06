@@ -198,7 +198,7 @@ func (a *AttachmentMigrationManager) Run(ctx context.Context, options Attachment
 	base.TracefCtx(ctx, base.KeyAll, "[%s] DCP client started for Attachment Migration.", migrationLoggingID)
 
 	select {
-	case <-doneChan:
+	case _ = <-doneChan:
 		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close attachment migration DCP client after attachment migration process was finished %v", migrationLoggingID, err)

@@ -1411,7 +1411,7 @@ func TestResyncUnregisterFeedStoppedDest(t *testing.T) {
 			if stopDest {
 				require.Empty(t, r.completedvBuckets.m)
 				select {
-				case <-r.completedvBuckets.done():
+				case _ = <-r.completedvBuckets.done():
 					require.FailNow(t, "resync completed even though the dest was stopped")
 				default:
 				}

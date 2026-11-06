@@ -145,9 +145,9 @@ func NewDCPClient(ctx context.Context, bucket Bucket, opts DCPClientOptions) (DC
 		gocbBucket)
 }
 
-// StartDCPFeed creates and starts a DCP feed. This function will return as soon as the feed is started. doneChan is
-// sent a single error value when the feed terminates.
-func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (doneChan <-chan error, err error) {
+// StartDCPFeed creates and starts a DCP feed. This function will return as soon as the feed is started. The returned
+// channel is sent the feed's terminal error (nil on a requested close) and then closed.
+func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (<-chan error, error) {
 	client, err := NewDCPClient(ctx, bucket, opts)
 	if err != nil {
 		return nil, err
@@ -155,35 +155,38 @@ func StartDCPFeed(ctx context.Context, bucket Bucket, opts DCPClientOptions) (do
 	bucketName := bucket.GetName()
 	feedName := opts.FeedID
 
-	doneChan, err = client.Start()
+	doneChan, err := client.Start()
 	if err != nil {
 		ErrorfCtx(ctx, "Failed to start DCP Feed %q for bucket %q: %v", feedName, MD(bucketName), err)
 		_ = client.Close()
 		ErrorfCtx(ctx, "Finished calling async close error from DCP Feed %q for bucket %q", feedName, MD(bucketName))
 		if doneChan != nil {
-			<-doneChan
+			_ = <-doneChan
 		}
 		return nil, err
 	}
 	InfofCtx(ctx, KeyDCP, "Started DCP Feed %q for bucket %q", feedName, MD(bucketName))
+	// buffered so the send completes when the caller never reads
+	feedDone := make(chan error, 1)
 	go func() {
+		defer close(feedDone)
+		var feedErr error
 		select {
-		case err := <-doneChan:
-			if err != nil {
-				WarnfCtx(ctx, "DCP Feed %q for bucket %q closed unexpectedly: %v", feedName, MD(bucketName), err)
+		case feedErr = <-doneChan:
+			if feedErr != nil {
+				WarnfCtx(ctx, "DCP Feed %q for bucket %q closed unexpectedly: %v", feedName, MD(bucketName), feedErr)
 				// FIXME: close dbContext here
 			}
-			break
 		case <-opts.Terminator:
 			InfofCtx(ctx, KeyDCP, "Closing DCP Feed %q for bucket %q based on termination notification", feedName, MD(bucketName))
 			// client.Close will always show error over doneChan
 			_ = client.Close()
-			dcpCloseErr := <-doneChan
-			if dcpCloseErr != nil {
-				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), dcpCloseErr)
+			feedErr = <-doneChan
+			if feedErr != nil {
+				WarnfCtx(ctx, "Error on closing DCP Feed %q for %q: %v", feedName, MD(bucketName), feedErr)
 			}
-			break
 		}
+		feedDone <- feedErr
 	}()
-	return doneChan, err
+	return feedDone, nil
 }
