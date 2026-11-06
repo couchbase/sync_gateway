@@ -309,7 +309,7 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 
 // Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
 func (dc *GoCBDCPClient) Close() error {
-	dc.close()
+	dc.close(false)
 	return dc.getCloseError()
 }
 
@@ -323,8 +323,8 @@ func (dc *GoCBDCPClient) GetMetadata() []DCPMetadata {
 }
 
 // close is used internally to stop the DCP client.  Sends any fatal errors to the client's done channel, and
-// closes that channel.
-func (dc *GoCBDCPClient) close() {
+// closes that channel. purgeCheckpoints deletes the persisted checkpoints after the workers stop.
+func (dc *GoCBDCPClient) close(purgeCheckpoints bool) {
 
 	// set dc.closing to true, avoid re-triggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
@@ -345,7 +345,7 @@ func (dc *GoCBDCPClient) close() {
 	go func() {
 		dc.workersWg.Wait()
 		// purge only after the workers stop, because a worker persists its deferred checkpoint on close
-		if dc.oneShot && dc.allVbucketsDeactivated() {
+		if purgeCheckpoints {
 			dc.metadata.Purge(dc.ctx, len(dc.workers))
 		}
 		dc.doneChannel <- dc.getCloseError()
@@ -607,15 +607,9 @@ func (dc *GoCBDCPClient) deactivateVbucket(vbID uint16) {
 		return len(dc.activeVbuckets)
 	}()
 	if activeCount == 0 {
-		dc.close()
+		// a one-shot feed that streamed every vbucket is complete, so its checkpoints are no longer needed
+		dc.close(dc.oneShot)
 	}
-}
-
-// allVbucketsDeactivated returns true when every vbucket stream completed, which means a one-shot feed finished.
-func (dc *GoCBDCPClient) allVbucketsDeactivated() bool {
-	dc.activeVbucketLock.Lock()
-	defer dc.activeVbucketLock.Unlock()
-	return len(dc.activeVbuckets) == 0
 }
 
 func (dc *GoCBDCPClient) onStreamEnd(e endStreamEvent) {
@@ -656,7 +650,7 @@ func (dc *GoCBDCPClient) onStreamEnd(e endStreamEvent) {
 
 func (dc *GoCBDCPClient) fatalError(err error) {
 	dc.setCloseError(err)
-	dc.close()
+	dc.close(false)
 }
 
 func (dc *GoCBDCPClient) setCloseError(err error) {
