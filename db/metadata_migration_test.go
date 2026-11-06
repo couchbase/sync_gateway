@@ -818,6 +818,8 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 
 			// heartbeater — deleted, never moved
 			{"own heartbeater", def.HeartbeaterPrefix("") + "heartbeat_timeout:node1", dispDeleted},
+			// a groupID equal to a singleton key name must not divert the heartbeat into that key's arm
+			{"own heartbeater (groupID timestamps_seq)", def.HeartbeaterPrefix(base.MetaKeyTimestampsSeq.String()) + "heartbeat_timeout:nodeA", dispDeleted},
 
 			// the seq counter is NEVER range-scan migrated (the orchestrator promotes it
 			// out-of-band) — out-of-scope even for the owning DB
