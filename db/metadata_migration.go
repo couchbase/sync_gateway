@@ -299,7 +299,7 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		isOurs(keys.BackgroundProcessStatusPrefix("")),
 		isOurs(keys.ResyncHeartbeaterPrefix()),
 		isOurs(keys.ResyncCfgPrefix()),
-		isOurs(keys.TimestampsSeqKey()):
+		key == keys.TimestampsSeqKey():
 		// JSON-bodied metadata. moveFallbackDoc(binary=false) preserves the JSON
 		// datatype flag so strict readers (auth, RawJSONTranscoder) can decode the
 		// migrated doc on primary.
