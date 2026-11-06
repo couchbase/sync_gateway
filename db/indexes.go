@@ -130,6 +130,11 @@ var (
 		IndexSyncDocs: fmt.Sprintf("META().id LIKE '%s'", SyncDocWildcard),
 		IndexUser:     fmt.Sprintf("META().id LIKE '%s'", SyncUserWildcard),
 		IndexRole:     fmt.Sprintf("META().id LIKE '%s'", SyncRoleWildcard),
+		// No filter expression, so these indexes cover every document.
+		IndexAccess:     "",
+		IndexRoleAccess: "",
+		IndexChannels:   "",
+		IndexTombstones: "",
 	}
 
 	// Index flags - used to identify any custom handling
@@ -157,8 +162,14 @@ var (
 	}
 
 	partitionableIndexes = map[SGIndexType]bool{
-		IndexAllDocs:  true,
-		IndexChannels: true,
+		IndexAllDocs:    true,
+		IndexChannels:   true,
+		IndexAccess:     false,
+		IndexRoleAccess: false,
+		IndexTombstones: false,
+		IndexSyncDocs:   false,
+		IndexUser:       false,
+		IndexRole:       false,
 	}
 )
 
