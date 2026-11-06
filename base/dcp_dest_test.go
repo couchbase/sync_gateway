@@ -61,7 +61,7 @@ func TestDCPDestCloseWaitsForActiveCallbacks(t *testing.T) {
 	// Callbacks that start after Close are skipped, while Close still waits for the in-flight one.
 	require.NoError(t, dest.DataUpdate(partition, []byte("doc2"), 2, []byte(`{}`), 2, cbgt.DEST_EXTRAS_TYPE_NIL, nil))
 	select {
-	case <-closeDone:
+	case _ = <-closeDone:
 		require.FailNow(t, "Close returned while a callback was still in progress")
 	case <-time.After(100 * time.Millisecond):
 	}
