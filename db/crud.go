@@ -2624,10 +2624,10 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 	}
 
 	if len(doc.RecentSequences) >= kMaxRecentSequences {
-		// Prune recent sequences that are earlier than the nextSequence.  The dedup window
-		// on the feed is small - sub-second, so we usually shouldn't care about more than
-		// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
-		// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
+		// Prune recent sequences that are earlier than what the cache has seen on the feed. The dedup
+		// window on the feed is small - sub-second, so we usually shouldn't care about more than
+		// a few recent sequences.  However, pruning isn't free (it walks and rewrites the slice)
+		// so we allow more 'recent sequences' on the doc (20) before attempting to prune
 		stableSequence := db.changeCache.GetStableSequence(doc.ID).Seq
 		count := 0
 		// we want to keep at least kMinRecentSequences recent sequences in the recent sequences list to reduce likelihood
