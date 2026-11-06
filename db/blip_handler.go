@@ -946,9 +946,9 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 			var err error
 			revTreeHistory, err = toHistory(redactedRev.History, knownRevs, maxHistory)
 			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
-				base.WarnfCtx(ctx, "%s", err)
-				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+				base.WarnfCtx(ctx, "Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %v, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
+				// The peer logs the noRev reason as is, so keep the doc ID out of it. The noRev already carries the doc ID and rev ID.
+				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, fmt.Errorf("could not get rev tree history for replacement rev: %w", err))
 			}
 		}
 
@@ -1732,7 +1732,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, docVersion strin
 		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attMeta, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", base.UD(attMeta), base.UD(bsc.allowedAttachments))
 }
 
 func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
@@ -1756,7 +1756,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attMeta, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", base.UD(attMeta), base.UD(bsc.allowedAttachments))
 }
 
 func allowedAttachmentKey(docID, digest string, activeCBMobileSubprotocol CBMobileSubprotocolVersion) string {
