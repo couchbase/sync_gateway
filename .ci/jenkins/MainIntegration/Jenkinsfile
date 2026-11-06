@@ -20,6 +20,9 @@ def slackDetails(helpers) {
 // absent if the build failed before that point - fall back to a bare message rather than throwing out of the
 // post block, which would leave the failure unreported entirely.
 def notifySlack(String status) {
+    // TODO: DO NOT MERGE - re-enable once this branch stops running on the integration-tester clones.
+    echo("Slack notification disabled on integration-tester (${status})")
+    return
     def color = ['passed': 'good', 'aborted': 'warning'].get(status, 'danger')
     if (!fileExists('.ci/jenkinsHelpers.groovy')) {
         slackSend(channel: 'syncgatewaybot', color: color, message: ":x: *MainIntegration ${status}* - ${currentBuild.fullDisplayName}\n${env.BUILD_URL}")
@@ -44,6 +47,9 @@ def notifySlack(String status) {
 // failed before that point - skip rather than throwing out of a post block, which would leave the result
 // unreported entirely.
 def notifyGitHub(String status) {
+    // TODO: DO NOT MERGE - re-enable once this branch stops running on the integration-tester clones.
+    echo("GitHub commit status disabled on integration-tester (${status})")
+    return
     if (!fileExists('.ci/jenkinsHelpers.groovy')) {
         echo('.ci/jenkinsHelpers.groovy not present - skipping GitHub commit status')
         return
@@ -62,12 +68,14 @@ pipeline {
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
 
-    // Only the two parameters the run actually honours. The -m block in .ci/jenkins/integration-build.sh
+    // Only the parameters the run actually honours. The -m block in .ci/jenkins/integration-build.sh
     // hardcodes the server version, edition, target test and package, GSI and TLS settings, overwriting
     // whatever this job sets - change those there, not here, and don't report them in Slack from here.
     parameters {
-        string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        // TODO: DO NOT MERGE - change the SG_COMMIT default back to main.
+        string(name: 'SG_COMMIT', defaultValue: 'integration-tester', description: 'Revision of Sync Gateway to build.')
         string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness.')
+        string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '3', description: 'Maximum packages tested at the same time against separate Couchbase Server clusters.')
     }
 
     stages {
@@ -88,15 +96,16 @@ pipeline {
                 }
                 // SG_COMMIT can in principle be overridden to an arbitrary branch, whose copies of these
                 // helpers and of the test runner may be stale or missing what the steps below need -
-                // always fetch the current ones from main instead.
+                // always fetch the current ones from integration-tester instead.
+                // TODO: DO NOT MERGE - point these raw.githubusercontent.com URLs back at main.
                 sh '''
                     set -eu
                     mkdir -p .ci/jenkins
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkins/integration-build.sh -o .ci/jenkins/integration-build.sh
-                    # integration-build.sh calls this, and SG_COMMIT may predate it, so take it from main too
-                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/retry.sh -o .ci/retry.sh
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/integration-tester/.ci/jenkinsHelpers.groovy -o .ci/jenkinsHelpers.groovy
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/integration-tester/.ci/slack_usernames.yaml -o .ci/slack_usernames.yaml
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/integration-tester/.ci/jenkins/integration-build.sh -o .ci/jenkins/integration-build.sh
+                    # integration-build.sh calls this, and SG_COMMIT may predate it, so take it from integration-tester too
+                    curl -sSf https://raw.githubusercontent.com/couchbase/sync_gateway/integration-tester/.ci/retry.sh -o .ci/retry.sh
                     chmod +x .ci/jenkins/integration-build.sh .ci/retry.sh
                 '''
                 script {
@@ -133,7 +142,7 @@ pipeline {
             // Empty archives/results are tolerated so that a failure before the tests produce any output
             // (checkout, curl, Couchbase Server startup) doesn't throw here, skip the rest of this block,
             // and mask the real cause.
-            archiveArtifacts artifacts: 'verbose*', allowEmptyArchive: true, fingerprint: false
+            archiveArtifacts artifacts: 'verbose*.out,cbcollect_*.zip', allowEmptyArchive: true, fingerprint: false
             junit testResults: 'verbose*.xml', allowEmptyResults: true
             recordCoverage(tools: [[parser: 'GO_COV', pattern: 'coverage_*.out']])
         }
