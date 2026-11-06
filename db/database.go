@@ -187,6 +187,7 @@ type DatabaseContext struct {
 	numVBuckets                        uint16                            // Number of vbuckets in the bucket
 	SameSiteCookieMode                 http.SameSite
 	DBStateManager                     *DatabaseStateMgr // Manager used to manage the state of processes across nodes
+	TimestampsManger                   *TimestampsManager
 
 	scopeName string // name of the single scope for the database
 }
@@ -819,6 +820,9 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	}
 	if db.CfgSG != nil {
 		db.CfgSG.Stop()
+	}
+	if db.TimestampsManger != nil {
+		db.TimestampsManger.Stop(ctx)
 	}
 }
 
@@ -2620,6 +2624,20 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 	db.AttachmentCompactionManager = NewAttachmentCompactionManager(db)
 
 	db.startReplications(ctx)
+
+	timestampsMgrOpts := TimestampsMgrOpts{
+		metadataStore:     db.MetadataStore,
+		metaKeys:          db.MetadataKeys,
+		purgeIntervalFunc: db.ClientPartitionWindow,
+		getSequenceFunc:   db.GetRequestPlusSequence,
+		dbName:            db.Name,
+	}
+	db.TimestampsManger = NewTimestampsManager(timestampsMgrOpts)
+
+	err = db.TimestampsManger.Start(ctx)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
