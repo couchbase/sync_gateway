@@ -2774,7 +2774,7 @@ func TestRecentSequenceHandlingForSkippedSequences(t *testing.T) {
 	assert.Equal(t, int64(0), db.DbStats.Cache().PendingSeqLen.Value())
 	assert.Equal(t, uint64(6), db.DbStats.Cache().HighSeqCached.Value())
 	assert.Equal(t, uint64(2), db.DbStats.Cache().HighSeqStable.Value())
-	assert.Equal(t, uint64(7), db.changeCache.getNextSequence())
+	assert.Equal(t, uint64(7), db.changeCache.getPublishedNextSequence())
 
 	// alter sync data on doc2 to create recent sequence history to plug gap in sequences that have been pushed to skipped
 	xattrs, cas, err = collection.dataStore.GetXattrs(ctx, docID2, []string{base.SyncXattrName})
