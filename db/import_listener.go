@@ -242,7 +242,8 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 	}
 }
 
-// Stop triggers closing the import listener DCP feed and removes the node from shared DCP feed. This function is asynchronous.
+// Stop closes the import listener DCP feed and removes the node from shared DCP feed. For a non-sharded feed, it waits up
+// to ImportFeedStopMaxWait for the feed to persist its final checkpoints.
 func (il *importListener) Stop(ctx context.Context) {
 	if il != nil {
 		if il.cbgtContext != nil {

@@ -165,6 +165,27 @@ func TestDCPWorkerCheckpointPersistFrequency(t *testing.T) {
 	require.Equal(t, 2, metadata.persistCount)
 }
 
+func TestDCPWorkerCheckpointPersistAfterInterval(t *testing.T) {
+	ctx := TestCtx(t)
+	callback := func(sgbucket.FeedEvent) bool { return true }
+	worker, metadata := newTestDCPWorker(t, callback, "_sync:dcp_ck:test:", time.Hour, false)
+
+	worker.handleEvent(ctx, mutationEvent{key: []byte("doc1"), seq: 1})
+	require.Equal(t, 1, metadata.persistCount)
+	worker.handleEvent(ctx, mutationEvent{key: []byte("doc2"), seq: 2})
+	require.Equal(t, 1, metadata.persistCount)
+	require.True(t, worker.pendingPersist)
+
+	// simulate the persist interval expiring
+	worker.lastMetaPersistTime = time.Now().Add(-2 * time.Hour)
+	worker.handleEvent(ctx, mutationEvent{key: []byte("doc3"), seq: 3})
+	require.Equal(t, 2, metadata.persistCount)
+	require.False(t, worker.pendingPersist)
+
+	worker.Close(ctx)
+	require.Equal(t, 2, metadata.persistCount)
+}
+
 func TestDCPWorkerCloseWithoutRequestedCheckpoint(t *testing.T) {
 	ctx := TestCtx(t)
 	callback := func(sgbucket.FeedEvent) bool { return false }
