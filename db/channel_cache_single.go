@@ -198,8 +198,11 @@ func (c *singleChannelCacheImpl) addToCache(ctx context.Context, change *LogEntr
 	defer c.lock.Unlock()
 
 	if c.wouldBeImmediatelyPruned(change) {
-		base.InfofCtx(ctx, base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
-			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelID))
+		c.cacheStats.ChannelCachePrunedOnInsert.Add(1)
+		if base.LogDebugEnabled(ctx, base.KeyCache) {
+			base.DebugfCtx(ctx, base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
+				change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelID))
+		}
 		return
 	}
 

@@ -531,6 +531,7 @@ func (c *channelCacheImpl) insertWithFence(channel channels.ID, newCache *single
 	}
 	if republished != published {
 		newCache.validFrom = republished + 1
+		c.cacheStats.ChannelCacheValidFromFixups.Add(1)
 	}
 	return cacheValue, true, cacheSize
 }

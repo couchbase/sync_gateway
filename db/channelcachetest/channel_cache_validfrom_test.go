@@ -310,6 +310,7 @@ func TestChannelCacheValidFromNoRace(t *testing.T) {
 	validFrom, cached := cachedSequences(cache)
 	assert.Equal(t, uint64(165), validFrom)
 	assert.Empty(t, cached, "nothing dispatched after creation yet")
+	h.requireFenceCounters(0, 0)
 
 	for seq := uint64(165); seq <= 175; seq++ {
 		h.write(seq, "A")
@@ -496,6 +497,14 @@ func (h *validFromHarness) requireFinal(sinces ...uint64) {
 	}
 }
 
+// requireFenceCounters checks the validFrom fix-up and pruned-on-insert counters. Call it straight after the cache
+// is created and the dispatches are joined, before later writes change them.
+func (h *validFromHarness) requireFenceCounters(fixups, pruned int64) {
+	h.t.Helper()
+	assert.Equal(h.t, fixups, h.stats.ChannelCacheValidFromFixups.Value(), "chan_cache_validfrom_fixups")
+	assert.Equal(h.t, pruned, h.stats.ChannelCachePrunedOnInsert.Value(), "chan_cache_pruned_on_insert")
+}
+
 // fenceSinces fall below the first cursor read (P=164), between it and the second (P2=170), and above it.
 var fenceSinces = []uint64{0, 150, 164, 166, 168, 170, 171, 180}
 
@@ -544,6 +553,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		cache := h.singleCache("A")
 		require.True(t, once)
 		requireValidFrom(t, cache, 171, nil)
+		h.requireFenceCounters(1, 0)
 		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
@@ -564,6 +574,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		require.NotNil(t, done)
 		h.requireDispatched(done, 168)
 		requireValidFrom(t, cache, 169, nil)
+		h.requireFenceCounters(1, 1)
 		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
@@ -589,6 +600,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		cache := h.singleCache("A")
 		require.Equal(t, 1, fired)
 		requireValidFrom(t, cache, 171, nil)
+		h.requireFenceCounters(1, 1)
 		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
@@ -620,6 +632,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		h.requireDispatched(done, 172)
 		// 172 is above the second cursor read, so the cache must take it.
 		requireValidFrom(t, cache, 171, []uint64{172})
+		h.requireFenceCounters(1, 0)
 		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
@@ -642,6 +655,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		require.NotNil(t, done)
 		h.requireDispatched(done, 160)
 		requireValidFrom(t, cache, 165, nil)
+		h.requireFenceCounters(0, 1)
 		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
@@ -662,6 +676,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		require.NotNil(t, done)
 		h.requireDispatched(done, 150)
 		requireValidFrom(t, cache, 165, nil)
+		h.requireFenceCounters(0, 1)
 		var late []uint64
 		for _, entry := range cache.LateLogsForTest(t) {
 			late = append(late, entry.LogEntryForTest(t).Sequence)
@@ -688,6 +703,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		}})
 		cache := h.singleCache("A")
 		requireValidFrom(t, cache, 171, nil)
+		h.requireFenceCounters(1, 0)
 		for seq := uint64(171); seq <= 180; seq++ {
 			h.write(seq, "A")
 		}
@@ -750,6 +766,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		// only after the fence.
 		assert.Equal(t, uint64(169), cursorAtSecondRead)
 		requireValidFrom(t, got, 170, nil)
+		h.requireFenceCounters(1, 1)
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
 	})
@@ -775,6 +792,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		h.requireDispatched(done, 168)
 		// The second read saw 168, so 168 is below validFrom and must never become visible in the cache.
 		requireValidFrom(t, cache, 169, nil)
+		h.requireFenceCounters(1, 1)
 		h.requireExactlyOnce("A", 150, h.feedFrom("A", 150))
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
@@ -803,6 +821,7 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		recreated := h.singleCache("A")
 		require.NotSame(t, first, recreated)
 		requireValidFrom(t, recreated, 173, nil)
+		h.requireFenceCounters(1, 0)
 		h.write(173, "A")
 		h.requireFinal(0, 150, 164, 168, 170, 172, 173)
 	})

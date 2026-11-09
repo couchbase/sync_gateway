@@ -90,7 +90,9 @@ const (
 
 	ChanCacheActiveRevsDesc = "The total number of active revisions in the channel cache."
 
-	ChanCacheBypassCountDesc = "The total number of transient bypass channel caches created to serve requests when the channel cache was at capacity."
+	ChanCacheBypassCountDesc     = "The total number of transient bypass channel caches created to serve requests when the channel cache was at capacity."
+	ChanCacheValidFromFixupsDesc = "The number of times a newly created channel cache had its starting sequence raised because changes were being cached while it was created."
+	ChanCachePrunedOnInsertDesc  = "The number of changes not added to a channel cache because they were older than the earliest sequence the cache covers. These changes are served from a query instead."
 
 	ChanCacheChannelsAddedDesc = "The total number of channel caches added. The metric doesn't decrease when a channel is removed. That is, it is similar to chan_cache_num_channels but doesn't track removals."
 
