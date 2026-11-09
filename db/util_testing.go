@@ -1589,7 +1589,9 @@ func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context,
 		}
 		queryEntries = append(queryEntries, entry)
 	}
-	slices.SortStableFunc(queryEntries, func(a, b *LogEntry) int { return cmp.Compare(a.Sequence, b.Sequence) })
+	slices.SortStableFunc(queryEntries, func(a, b *LogEntry) int {
+		return cmp.Compare(a.Sequence, b.Sequence)
+	})
 	if limit > 0 && len(queryEntries) > limit {
 		queryEntries = queryEntries[:limit]
 	}
