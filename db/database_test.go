@@ -4159,6 +4159,73 @@ func Test_resyncDocument(t *testing.T) {
 	}
 }
 
+// TestResyncDocumentSyncFunctionExpiry makes sure that ResyncDocument writes an expiry set by the sync function.
+func TestResyncDocumentSyncFunctionExpiry(t *testing.T) {
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	const syncExpirySeconds = 1000
+	testCases := []struct {
+		name           string
+		syncFn         string
+		initialExpiry  time.Duration // expiry set on the document before resync, zero means no expiry
+		expectedExpiry time.Duration // zero means no expiry
+	}{
+		{
+			name:   "no expiry",
+			syncFn: `function(doc, oldDoc) { channel("DEF"); }`,
+		},
+		{
+			name:           "sync function sets expiry",
+			syncFn:         fmt.Sprintf(`function(doc, oldDoc) { channel("DEF"); expiry(%d); }`, syncExpirySeconds),
+			expectedExpiry: syncExpirySeconds * time.Second,
+		},
+		{
+			// TODO(CBG-6136): resync drops an existing expiry that the sync function does not set.
+			name:          "existing expiry, sync function does not set expiry",
+			syncFn:        `function(doc, oldDoc) { channel("DEF"); }`,
+			initialExpiry: 100 * time.Second,
+		},
+		{
+			// a relative expiry is computed from the time of the resync, not the time of the original write
+			name:           "relative expiry restarts on resync",
+			syncFn:         fmt.Sprintf(`function(doc, oldDoc) { channel("DEF"); expiry(%d); }`, syncExpirySeconds),
+			initialExpiry:  100 * time.Second,
+			expectedExpiry: syncExpirySeconds * time.Second,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) { channel("ABC"); }`)
+			require.NoError(t, err)
+			docID := t.Name()
+			_, _, err = collection.Put(ctx, docID, Body{"val": "value"})
+			require.NoError(t, err)
+			if tc.initialExpiry != 0 {
+				_, err = collection.dataStore.Touch(ctx, docID, uint32(time.Now().Add(tc.initialExpiry).Unix()))
+				require.NoError(t, err)
+			}
+
+			_, err = collection.UpdateSyncFun(ctx, tc.syncFn)
+			require.NoError(t, err)
+			start := time.Now()
+			require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+
+			exp, err := collection.dataStore.GetExpiry(ctx, docID)
+			require.NoError(t, err)
+			if tc.expectedExpiry == 0 {
+				require.Zero(t, exp)
+				return
+			}
+			// Couchbase Server converts a relative expiry to absolute, which can round down by a second.
+			require.WithinRange(t, time.Unix(int64(exp), 0),
+				start.Add(tc.expectedExpiry).Truncate(time.Second).Add(-time.Second),
+				time.Now().Add(tc.expectedExpiry))
+		})
+	}
+}
+
 func Test_getUpdatedDocument(t *testing.T) {
 	t.Run("Non Sync document is not processed", func(t *testing.T) {
 		db, ctx := SetupTestDB(t)
@@ -4177,7 +4244,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		require.NoError(t, err)
 
 		collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-		_, _, err = collection.getResyncedDocument(ctx, doc, false)
+		_, err = collection.getResyncedDocument(ctx, doc, false)
 		require.ErrorIs(t, err, base.ErrUpdateCancel)
 	})
 
@@ -4208,12 +4275,12 @@ func Test_getUpdatedDocument(t *testing.T) {
 		_, err = collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
-		updatedDoc, _, err := collection.getResyncedDocument(ctx, doc, false)
+		updatedDoc, err := collection.getResyncedDocument(ctx, doc, false)
 		require.NoError(t, err)
 		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 
 		// Rerunning same resync function should mark doc not to be updated
-		_, _, err = collection.getResyncedDocument(ctx, updatedDoc, false)
+		_, err = collection.getResyncedDocument(ctx, updatedDoc.doc, false)
 		require.ErrorIs(t, err, base.ErrUpdateCancel)
 		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))
 	})
