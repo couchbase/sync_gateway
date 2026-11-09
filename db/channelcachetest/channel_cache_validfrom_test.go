@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -903,4 +904,169 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 		h.write(173, "A")
 		h.requireFinal(fenceSinces...)
 	})
+}
+
+// TestChannelCacheValidFromAfterInit checks that a cache created before any dispatch is valid from the sequence
+// the channel cache was initialised at, plus one. The cache holds nothing from before Init, so a lower validFrom
+// would let a feed from an earlier since be served from the empty cache instead of falling back to a query.
+func TestChannelCacheValidFromAfterInit(t *testing.T) {
+	h := newValidFromHarness(t, nil)
+	h.cache.Init(100)
+
+	cache := h.singleCache("A")
+	requireValidFrom(t, cache, 101, nil)
+}
+
+const (
+	fenceBenchHotChannels  = 8  // channels with a pre-created cache that entries are dispatched to
+	fenceBenchColdChannels = 50 // pool of channels that never have a cache, so lookups of absent caches happen
+	fenceBenchColdPerEntry = 3  // cold channels each entry is also in
+)
+
+// BenchmarkChannelCacheFenceContention measures how long AddToCache callers stall while hot channels' caches are
+// evicted and recreated at a fixed, paced rate (as compaction followed by a new request would). Each entry is in one
+// hot channel plus a few cold ones. It reports per-AddToCache latency percentiles and per-creation latency. It uses
+// only test APIs that also exist before the publish cursor was introduced, so the same file runs against older code.
+func BenchmarkChannelCacheFenceContention(b *testing.B) {
+	for _, dispatchers := range []int{1, 8} {
+		for _, rate := range []int{0, 100, 1000} {
+			b.Run(fmt.Sprintf("dispatchers=%d/recreateRate=%d", dispatchers, rate), func(b *testing.B) {
+				benchChannelCacheFence(b, dispatchers, rate)
+			})
+		}
+	}
+}
+
+func percentile(sorted []time.Duration, p float64) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	idx := int(float64(len(sorted)-1) * p)
+	return float64(sorted[idx].Nanoseconds())
+}
+
+func benchChannelCacheFence(b *testing.B, numDispatchers, recreateRate int) {
+	b.ReportAllocs()
+	// Each cache creation logs; keep that out of the benchmark output.
+	base.SetUpBenchmarkLogging(b, base.LevelError, base.KeyNone)
+
+	options := db.DefaultCacheOptions().ChannelCacheOptions
+	stats, err := base.NewSyncGatewayStats()
+	require.NoError(b, err)
+	dbstats, err := stats.NewDBStats("", false, false, false, false, nil, nil)
+	require.NoError(b, err)
+	qh := &db.QueryHandlerForTest{}
+	ctx := base.TestCtx(b)
+	cache, err := db.NewChannelCacheForTest(b, ctx, "testDb", options, qh.AsFactory,
+		channels.NewActiveChannels(&base.SgwIntStat{}), dbstats.Cache())
+	require.NoError(b, err)
+	defer cache.Stop(ctx)
+
+	hotIDs := make([]channels.ID, fenceBenchHotChannels)
+	hotNames := make([]string, fenceBenchHotChannels)
+	for i := range hotIDs {
+		hotNames[i] = fmt.Sprintf("hot_%d", i)
+		hotIDs[i] = channels.NewID(hotNames[i], base.DefaultCollectionID)
+		_, err = db.GetSingleChannelCacheForTest(b, ctx, cache, hotIDs[i])
+		require.NoError(b, err)
+	}
+
+	// Entries are built up front: AddToCache clears Channels, so they can't be reused.
+	n := uint64(b.N)
+	entries := make([]*db.LogEntry, n)
+	for i := range entries {
+		names := make([]string, 0, 1+fenceBenchColdPerEntry)
+		names = append(names, hotNames[i%fenceBenchHotChannels])
+		for j := range fenceBenchColdPerEntry {
+			names = append(names, fmt.Sprintf("cold_%d", (i*fenceBenchColdPerEntry+j)%fenceBenchColdChannels))
+		}
+		entries[i] = db.MakeLogEntry(0, fmt.Sprintf("doc_%d", i), "1-abc", names, base.DefaultCollectionID)
+	}
+
+	var nextIndex, nextSeq atomic.Uint64
+	next := func() uint64 {
+		return nextIndex.Add(1) - 1
+	}
+
+	// Per-dispatcher latency slices, pre-allocated so the hot loop touches no shared state.
+	latencies := make([][]time.Duration, numDispatchers)
+	for d := range latencies {
+		latencies[d] = make([]time.Duration, 0, int(n)/numDispatchers+4096)
+	}
+
+	recCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	var recreateDone sync.WaitGroup
+	var creationLat []time.Duration // owned by the recreator until recreateDone.Wait()
+	if recreateRate > 0 {
+		creationLat = make([]time.Duration, 0, recreateRate*30)
+		recreateDone.Add(1)
+		go func() {
+			defer recreateDone.Done()
+			caches := cache.ChannelCachesForTest(b)
+			ticker := time.NewTicker(time.Second / time.Duration(recreateRate))
+			defer ticker.Stop()
+			round := 0
+			for recCtx.Err() == nil {
+				select {
+				case <-recCtx.Done():
+				case <-ticker.C:
+					id := hotIDs[round%fenceBenchHotChannels]
+					round++
+					caches.Remove(id)
+					start := time.Now()
+					_, getErr := db.GetSingleChannelCacheForTest(b, ctx, cache, id)
+					if getErr == nil {
+						creationLat = append(creationLat, time.Since(start))
+					}
+				}
+			}
+		}()
+	}
+
+	var dispatchers sync.WaitGroup
+	b.ResetTimer()
+	for d := range numDispatchers {
+		dispatchers.Add(1)
+		go func() {
+			defer dispatchers.Done()
+			lat := latencies[d]
+			for i := next(); i < n; i = next() {
+				entry := entries[i]
+				entry.Sequence = nextSeq.Add(1)
+				start := time.Now()
+				cache.AddToCache(ctx, entry)
+				lat = append(lat, time.Since(start))
+			}
+			latencies[d] = lat
+		}()
+	}
+	dispatchers.Wait()
+	b.StopTimer()
+	elapsed := b.Elapsed()
+	cancel(nil)
+	recreateDone.Wait()
+
+	all := make([]time.Duration, 0, n)
+	for _, l := range latencies {
+		all = append(all, l...)
+	}
+	slices.Sort(all)
+	b.ReportMetric(percentile(all, 0.50), "p50-ns")
+	b.ReportMetric(percentile(all, 0.99), "p99-ns")
+	b.ReportMetric(percentile(all, 0.999), "p99.9-ns")
+	b.ReportMetric(percentile(all, 1.0), "max-ns")
+
+	if recreateRate > 0 {
+		var sum, maxLat time.Duration
+		for _, l := range creationLat {
+			sum += l
+			maxLat = max(maxLat, l)
+		}
+		if len(creationLat) > 0 {
+			b.ReportMetric(float64(sum.Nanoseconds())/float64(len(creationLat)), "create-mean-ns")
+		}
+		b.ReportMetric(float64(maxLat.Nanoseconds()), "create-max-ns")
+		b.ReportMetric(float64(len(creationLat))/elapsed.Seconds(), "recreations/sec")
+	}
 }
