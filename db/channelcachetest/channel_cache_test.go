@@ -1342,6 +1342,15 @@ func TestChannelCacheAddUnusedSequence(t *testing.T) {
 		})
 		return cache
 	}
+	// validFromOfNewCache creates a cache for a channel nothing has been dispatched to and returns its validFrom.
+	validFromOfNewCache := func(t *testing.T, cache *db.ChannelCacheImplForTest) uint64 {
+		single, err := db.GetSingleChannelCacheForTest(t, base.TestCtx(t), cache, channels.NewID("A", base.DefaultCollectionID))
+		require.NoError(t, err)
+		impl, ok := db.AsSingleChannelCacheImplForTest(t, single)
+		require.True(t, ok)
+		validFrom, _ := impl.GetCachedChanges(db.ChangesOptions{})
+		return validFrom
+	}
 
 	t.Run("range advances to its end sequence", func(t *testing.T) {
 		cache := newCache(t)
@@ -1355,6 +1364,7 @@ func TestChannelCacheAddUnusedSequence(t *testing.T) {
 		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5})
 		assert.Equal(t, uint64(5), cache.GetHighCacheSequence())
 		assert.Equal(t, uint64(5), cache.PublishCursorForTest(t))
+		assert.Equal(t, uint64(6), validFromOfNewCache(t, cache))
 	})
 
 	t.Run("principal advances to itself", func(t *testing.T) {
@@ -1362,20 +1372,15 @@ func TestChannelCacheAddUnusedSequence(t *testing.T) {
 		cache.AddPrincipal(&db.LogEntry{Sequence: 7})
 		assert.Equal(t, uint64(7), cache.GetHighCacheSequence())
 		assert.Equal(t, uint64(7), cache.PublishCursorForTest(t))
+		assert.Equal(t, uint64(8), validFromOfNewCache(t, cache))
 	})
 
 	// A cache created after a released range starts after the range, so it doesn't claim to cover
 	// sequences that were released before it existed.
 	t.Run("cache created after a range is valid from after its end", func(t *testing.T) {
 		cache := newCache(t)
-		ctx := base.TestCtx(t)
 		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
-		single, err := db.GetSingleChannelCacheForTest(t, ctx, cache, channels.NewID("A", base.DefaultCollectionID))
-		require.NoError(t, err)
-		impl, ok := db.AsSingleChannelCacheImplForTest(t, single)
-		require.True(t, ok)
-		validFrom, _ := impl.GetCachedChanges(db.ChangesOptions{})
-		assert.Equal(t, uint64(10), validFrom)
+		assert.Equal(t, uint64(10), validFromOfNewCache(t, cache))
 	})
 }
 

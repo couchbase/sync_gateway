@@ -503,8 +503,6 @@ type CacheStats struct {
 	ChannelCacheRevsActive *SgwIntStat `json:"chan_cache_active_revs"`
 	// The total number of transient bypass channel caches created to serve requests when the channel cache was at capacity.
 	ChannelCacheBypassCount *SgwIntStat `json:"chan_cache_bypass_count"`
-	// The number of times a newly created channel cache had its starting sequence raised because changes were being cached while it was created.
-	ChannelCacheValidFromFixups *SgwIntStat `json:"chan_cache_validfrom_fixups"`
 	// The number of changes not added to a channel cache because they were older than the earliest sequence the cache covers. These changes are served from a query instead.
 	ChannelCachePrunedOnInsert *SgwIntStat `json:"chan_cache_pruned_on_insert"`
 	// The total number of channel caches added.
@@ -1558,10 +1556,6 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.ChannelCacheValidFromFixups, err = NewIntStat(SubsystemCacheKey, "chan_cache_validfrom_fixups", StatUnitNoUnits, ChanCacheValidFromFixupsDesc, StatAddedVersion4dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
-	if err != nil {
-		return err
-	}
 	resUtil.ChannelCachePrunedOnInsert, err = NewIntStat(SubsystemCacheKey, "chan_cache_pruned_on_insert", StatUnitNoUnits, ChanCachePrunedOnInsertDesc, StatAddedVersion4dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1699,7 +1693,6 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.AbandonedSeqs)
 	prometheus.Unregister(d.CacheStats.ChannelCacheRevsActive)
 	prometheus.Unregister(d.CacheStats.ChannelCacheBypassCount)
-	prometheus.Unregister(d.CacheStats.ChannelCacheValidFromFixups)
 	prometheus.Unregister(d.CacheStats.ChannelCachePrunedOnInsert)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsAdded)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedInactive)
