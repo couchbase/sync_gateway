@@ -459,8 +459,10 @@ func AsSingleChannelCache(ctx context.Context, cacheValue any) *singleChannelCac
 // dispatcher that finds the cache, therefore block rather than observe or modify the cache before validFrom is
 // set. Nothing can be inserted below the final fence, so validFrom is a plain assignment with no entries to drop.
 //
-// Holding the cache lock while GetOrInsert takes valueLock cannot deadlock: RangeSafeCollection.Range runs its
-// callbacks under iterateLock rather than valueLock, and nobody else can reach the cache until the insert.
+// Holding the cache lock while GetOrInsert takes valueLock cannot deadlock: nobody can be waiting on the cache's
+// lock until the insert has made it reachable. After the insert, other goroutines can wait on that lock, including
+// a Range callback holding iterateLock, so the rest of the critical section must not take a collection lock (Range,
+// Remove, compaction or eviction). The caller must not hold any channel cache's lock.
 func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels.ID) (*singleChannelCacheImpl, bool) {
 
 	// Return nil if the cache at capacity.
@@ -474,9 +476,8 @@ func (c *channelCacheImpl) addChannelCache(ctx context.Context, channel channels
 		return nil, false
 	}
 
-	// validFrom is a placeholder: insertWithFence assigns it under the cache lock before anyone can see the cache.
-	singleChannelCache :=
-		newChannelCacheWithOptions(ctx, queryHandler, channel, 0, c.options, c.cacheStats)
+	// insertWithFence assigns validFrom under the cache lock, before anyone can see the cache.
+	singleChannelCache := newChannelCacheWithOptions(ctx, queryHandler, channel, c.options, c.cacheStats)
 	if hooks := c.validFromHooks; hooks != nil && hooks.BeforeInsert != nil {
 		hooks.BeforeInsert(channel)
 	}

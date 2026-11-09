@@ -1746,7 +1746,9 @@ func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkippedForTest(_ t
 // NewSingleChannelCacheForTest builds a single channel cache directly, bypassing the channel
 // cache that would normally own it.
 func NewSingleChannelCacheForTest(_ testing.TB, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	return newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
+	cache := newSingleChannelCache(queryHandler, channel, cacheStats)
+	cache.validFrom = validFrom
+	return cache
 }
 
 // AsSingleChannelCacheImplForTest asserts a SingleChannelCache to the concrete implementation. Tests
@@ -1808,7 +1810,9 @@ func NewChannelCacheForTest(_ testing.TB, ctx context.Context, dbName string, op
 // options rather than the defaults.
 func NewSingleChannelCacheWithOptionsForTest(_ testing.TB, ctx context.Context, queryHandler ChannelQueryHandler,
 	channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	return newChannelCacheWithOptions(ctx, queryHandler, channel, validFrom, options, cacheStats)
+	cache := newChannelCacheWithOptions(ctx, queryHandler, channel, options, cacheStats)
+	cache.validFrom = validFrom
+	return cache
 }
 
 // NewBypassChannelCacheForTest builds the bypass cache used when the channel cache is at capacity.

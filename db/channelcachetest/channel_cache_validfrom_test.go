@@ -906,6 +906,57 @@ func TestChannelCacheValidFromFence(t *testing.T) {
 	})
 }
 
+// TestChannelCacheValidFromFenceLockOrder checks that the fence's critical section never waits on the channel cache
+// collection while holding the new cache's lock. Once the cache is inserted, a Range callback can be waiting on that
+// lock while holding iterateLock, and an eviction can be queued behind the Range for iterateLock. If the creator then
+// took iterateLock (through Range, Remove, compaction or eviction) it would wait on the eviction, which waits on the
+// Range, which waits on the creator. The test sets up that state and requires all three to finish.
+func TestChannelCacheValidFromFenceLockOrder(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+	h := newValidFromHarness(t, nil)
+	// "other" is created first, so the Range reaches it before A, and it is what the eviction removes.
+	h.singleCache("other")
+
+	paused := make(chan struct{})
+	release := make(chan struct{})
+	h.hooks(db.ValidFromHooksForTest{AfterCursorRead: func(channel channels.ID) {
+		if channel != h.channelID("A") {
+			return
+		}
+		close(paused)
+		<-release
+	}})
+
+	created := make(chan error, 1)
+	go func() {
+		_, err := db.GetSingleChannelCacheForTest(t, h.ctx, h.cache, h.channelID("A"))
+		created <- err
+	}()
+	requireFinished(t, paused, "creator should reach AfterCursorRead holding A's lock")
+
+	// Range over every cache: the callback for A waits on A's lock while the Range holds iterateLock.
+	ranged := make(chan int, 1)
+	go func() {
+		ranged <- h.cache.Remove(h.ctx, base.DefaultCollectionID, []string{"doc"}, time.Now())
+	}()
+	requireBlocked(t, ranged, fenceBlockedWindow, "Remove's Range should wait on A's lock")
+
+	// Evict another channel: it queues for iterateLock behind the Range, which blocks any new iterateLock reader.
+	evicted := make(chan struct{})
+	go func() {
+		h.cache.ChannelCachesForTest(t).Remove(h.channelID("other"))
+		close(evicted)
+	}()
+	requireBlocked(t, evicted, fenceBlockedWindow, "eviction should wait for the Range to finish")
+
+	close(release)
+	require.NoError(t, requireFinished(t, created, "creator deadlocked: the fence's critical section must not take a collection lock"))
+	requireFinished(t, ranged, "Remove's Range should finish once A's lock is released")
+	requireFinished(t, evicted, "eviction should finish once the Range is done")
+	require.NotNil(t, h.activeCache("A"))
+	require.Nil(t, h.activeCache("other"))
+}
+
 // TestChannelCacheValidFromAfterInit checks that a cache created before any dispatch is valid from the sequence
 // the channel cache was initialised at, plus one. The cache holds nothing from before Init, so a lower validFrom
 // would let a feed from an earlier since be served from the empty cache instead of falling back to a query.

@@ -118,8 +118,8 @@ type singleChannelCacheImpl struct {
 	cacheStats       *base.CacheStats     // Map used for cache stats
 }
 
-func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelID: channel, validFrom: validFrom}
+func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelID: channel}
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.cacheStats = cacheStats
 	cache.initializeLateLogs()
@@ -136,8 +136,8 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID
 	return cache
 }
 
-func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	cache := newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
+func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHandler, channel channels.ID, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	cache := newSingleChannelCache(queryHandler, channel, cacheStats)
 
 	// Update cache options when present
 	if options.ChannelCacheMinLength > 0 {
