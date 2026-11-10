@@ -60,8 +60,8 @@ func TestCollectionSyncFunctionKeyWithGroupID(t *testing.T) {
 func TestMetaKeyNames(t *testing.T) {
 
 	// Validates that metadata keys aren't prefixed with MetadataIdPrefix
-	for _, metaKeyName := range metadataKeyNames {
-		assert.False(t, strings.HasPrefix(metaKeyName, MetadataIdPrefix))
+	for metaKey := range AllMetadataKeys() {
+		assert.False(t, strings.HasPrefix(metaKey.String(), MetadataIdPrefix))
 	}
 }
 
@@ -677,6 +677,53 @@ func TestIsHeartbeaterKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
 			assert.Equalf(t, tt.want, IsHeartbeaterKey(tt.key), "IsHeartbeaterKey(%v)", tt.key)
+		})
+	}
+}
+
+// TestMetadataKeysGolden pins every key and prefix that MetadataKeys builds. A change here changes the keys of
+// existing metadata documents.
+func TestMetadataKeysGolden(t *testing.T) {
+	long := strings.Repeat("a", 45)
+	type keyCase struct {
+		name string
+		key  func(m *MetadataKeys) string
+		def  string
+		db1  string
+	}
+	cases := []keyCase{
+		{"SyncSeqKey", func(m *MetadataKeys) string { return m.SyncSeqKey() }, "_sync:seq", "_sync:m_db1:seq"},
+		{"UnusedSeqKey", func(m *MetadataKeys) string { return m.UnusedSeqKey(5) }, "_sync:unusedSeq:5", "_sync:m_db1:unusedSeq:5"},
+		{"UnusedSeqPrefix", func(m *MetadataKeys) string { return m.UnusedSeqPrefix() }, "_sync:unusedSeq:", "_sync:m_db1:unusedSeq:"},
+		{"UnusedSeqRangeKey", func(m *MetadataKeys) string { return m.UnusedSeqRangeKey(5, 9) }, "_sync:unusedSeqs:5:9", "_sync:m_db1:unusedSeqs:5:9"},
+		{"UnusedSeqRangePrefix", func(m *MetadataKeys) string { return m.UnusedSeqRangePrefix() }, "_sync:unusedSeqs:", "_sync:m_db1:unusedSeqs:"},
+		{"ReplicationStatusKey", func(m *MetadataKeys) string { return m.ReplicationStatusKey("r1") }, "_sync:sgrStatus:r1", "_sync:m_db1:sgrStatus:r1"},
+		{"ReplicationStatusKey long", func(m *MetadataKeys) string { return m.ReplicationStatusKey(long) }, "_sync:sgrStatus:" + long, "_sync:m_db1:sgrStatus:4642fe68c57cd01fc68fc11b7f22b940328a7cc4"},
+		{"HeartbeaterPrefix", func(m *MetadataKeys) string { return m.HeartbeaterPrefix("") }, "_sync:", "_sync:m_db1:hb:"},
+		{"HeartbeaterPrefix group", func(m *MetadataKeys) string { return m.HeartbeaterPrefix("g") }, "_sync:g:", "_sync:m_db1:hb:g:"},
+		{"SGCfgPrefix", func(m *MetadataKeys) string { return m.SGCfgPrefix("") }, "_sync:cfg", "_sync:m_db1:cfg"},
+		{"SGCfgPrefix group", func(m *MetadataKeys) string { return m.SGCfgPrefix("g") }, "_sync:cfgg:", "_sync:m_db1:cfgg:"},
+		{"ResyncHeartbeaterPrefix", func(m *MetadataKeys) string { return m.ResyncHeartbeaterPrefix() }, "_sync:resync_hb:", "_sync:m_db1:resync_hb:"},
+		{"ResyncCfgPrefix", func(m *MetadataKeys) string { return m.ResyncCfgPrefix() }, "_sync:resync_cfg:", "_sync:m_db1:resync_cfg:"},
+		{"DCPCheckpointPrefix", func(m *MetadataKeys) string { return m.DCPCheckpointPrefix("") }, "_sync:dcp_ck:", "_sync:dcp_ck:db1:"},
+		{"DCPCheckpointPrefix group", func(m *MetadataKeys) string { return m.DCPCheckpointPrefix("g") }, "_sync:dcp_ck:g:", "_sync:dcp_ck:db1:g:"},
+		{"DCPVersionedCheckpointPrefix", func(m *MetadataKeys) string { return m.DCPVersionedCheckpointPrefix("g", 2) }, "_sync:dcp_ck:g:2:", "_sync:dcp_ck:db1:g:2:"},
+		{"UserKey", func(m *MetadataKeys) string { return m.UserKey("alice") }, "_sync:user:alice", "_sync:user:db1:alice"},
+		{"UserKey long", func(m *MetadataKeys) string { return m.UserKey(long) }, "_sync:user:" + long, "_sync:user:db1:4642fe68c57cd01fc68fc11b7f22b940328a7cc4"},
+		{"UserKeyPrefix", func(m *MetadataKeys) string { return m.UserKeyPrefix() }, "_sync:user:", "_sync:user:db1:"},
+		{"RoleKey", func(m *MetadataKeys) string { return m.RoleKey("admins") }, "_sync:role:admins", "_sync:role:db1:admins"},
+		{"RoleKeyPrefix", func(m *MetadataKeys) string { return m.RoleKeyPrefix() }, "_sync:role:", "_sync:role:db1:"},
+		{"UserEmailKey", func(m *MetadataKeys) string { return m.UserEmailKey("alice") }, "_sync:useremail:alice", "_sync:useremail:db1:alice"},
+		{"SessionKey", func(m *MetadataKeys) string { return m.SessionKey("s1") }, "_sync:session:s1", "_sync:session:db1:s1"},
+		{"BackgroundProcessHeartbeatPrefix", func(m *MetadataKeys) string { return m.BackgroundProcessHeartbeatPrefix("p") }, "_sync:background_process:heartbeat:p", "_sync:m_db1:background_process:heartbeat:p"},
+		{"BackgroundProcessStatusPrefix", func(m *MetadataKeys) string { return m.BackgroundProcessStatusPrefix("p") }, "_sync:background_process:status:p", "_sync:m_db1:background_process:status:p"},
+		{"DatabaseStateKey", func(m *MetadataKeys) string { return m.DatabaseStateKey() }, "_sync:state", "_sync:m_db1:state"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.def, tc.key(NewMetadataKeys("")))
+			assert.Equal(t, tc.def, tc.key(NewMetadataKeys(DefaultMetadataID)))
+			assert.Equal(t, tc.db1, tc.key(NewMetadataKeys("db1")))
 		})
 	}
 }

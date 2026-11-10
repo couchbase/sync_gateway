@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"strconv"
 	"strings"
 
@@ -38,49 +39,105 @@ const (
 	SyncInfoTypeV1
 )
 
-// Sync Gateway Metadata document types
-type metadataKey int
+// MetadataKey is a Sync Gateway metadata document type. Each MetadataKey has an entry in metadataKeyDefs, which
+// defines how its keys are built.
+type MetadataKey int
 
 const (
-	MetaKeySeq                              metadataKey = iota // "seq"
-	MetaKeyUnusedSeq                                           // "unusedSeq:"
-	MetaKeyUnusedSeqRange                                      // "unusedSeqs:"
-	MetaKeySGRStatus                                           // "sgrStatus:"
-	MetaKeySGCfg                                               // "cfg"
-	MetaKeyHeartbeaterPrefix                                   // "hb:"
-	MetaKeyDCPCheckpoint                                       // "dcp_ck:"
-	MetaKeyBackgroundProcessHeartbeatPrefix                    // "background_process:heartbeat:"
-	MetaKeyBackgroundProcessStatusPrefix                       // "background_process:status:"
-	MetaKeyUserPrefix                                          // "user:"
-	MetaKeyRolePrefix                                          // "role:"
-	MetaKeyUserEmailPrefix                                     // "useremail:"
-	MetaKeySessionPrefix                                       // "session:"
-	MetaKeyResyncHeartBeaterPrefix                             // "resync_hb:"
-	MetaKeyResyncCfgPrefix                                     // "resync_cfg:"
-	MetaKeyDatabaseState                                       // "state"
+	MetaKeySeq MetadataKey = iota
+	MetaKeyUnusedSeq
+	MetaKeyUnusedSeqRange
+	MetaKeySGRStatus
+	MetaKeySGCfg
+	MetaKeyHeartbeaterPrefix
+	MetaKeyDCPCheckpoint
+	MetaKeyBackgroundProcessHeartbeatPrefix
+	MetaKeyBackgroundProcessStatusPrefix
+	MetaKeyUserPrefix
+	MetaKeyRolePrefix
+	MetaKeyUserEmailPrefix
+	MetaKeySessionPrefix
+	MetaKeyResyncHeartBeaterPrefix
+	MetaKeyResyncCfgPrefix
+	MetaKeyDatabaseState
+	metaKeyCount // number of MetadataKey values, not a key type
 )
 
-var metadataKeyNames = []string{
-	"seq",                           // counter document storing the sequence number for a database
-	"unusedSeq:",                    // stores a sequence that was reserved by SG but was unused
-	"unusedSeqs:",                   // stores a sequence range that was reserved by SG but was unused
-	"sgrStatus:",                    // document prefix used to store ISGR status documents
-	"cfg",                           // document prefix used to store CfgSG/cbgt data
-	"hb:",                           // document prefix used to store SG node heartbeat documents
-	DCPCheckpointPrefix,             // stores a DCP checkpoint
-	"background_process:heartbeat:", // stores a background process heartbeat
-	"background_process:status:",    // stores a background process status
-	"user:",                         // stores a user
-	"role:",                         // stores a role
-	"useremail:",                    // stores a role
-	"session:",                      // stores a session
-	"resync_hb:",                    // document prefix used to store resync data
-	"resync_cfg:",                   // document prefix used to store resync cfg data
-	"state",                         // stores the database state
+// metadataKeyDef defines the name and the key format of a MetadataKey.
+type metadataKeyDef struct {
+	name string
+	// inverted puts the metadataID after the name (formatInvertedMetadataKey), so that one prefix matches the docs
+	// of every database, for indexing or key filtering
+	inverted bool
+	// defaultPrefix replaces the formatDefaultMetadataKey prefix for the default metadataID
+	defaultPrefix string
 }
 
-func (m metadataKey) String() string {
-	return metadataKeyNames[m]
+// metadataKeyDefs has one entry per MetadataKey. The exhaustive linter flags a MetadataKey with no entry.
+var metadataKeyDefs = map[MetadataKey]metadataKeyDef{
+	MetaKeySeq:            {name: "seq"},         // counter document storing the sequence number for a database
+	MetaKeyUnusedSeq:      {name: "unusedSeq:"},  // stores a sequence that was reserved by SG but was unused
+	MetaKeyUnusedSeqRange: {name: "unusedSeqs:"}, // stores a sequence range that was reserved by SG but was unused
+	MetaKeySGRStatus:      {name: "sgrStatus:"},  // document prefix used to store ISGR status documents
+	MetaKeySGCfg:          {name: "cfg"},         // document prefix used to store CfgSG/cbgt data
+	// SG node heartbeat documents. The default prefix has no "hb:", for compatibility with 3.0 and earlier.
+	MetaKeyHeartbeaterPrefix:                {name: "hb:", defaultPrefix: SyncDocPrefix},
+	MetaKeyDCPCheckpoint:                    {name: DCPCheckpointPrefix, inverted: true}, // stores a DCP checkpoint
+	MetaKeyBackgroundProcessHeartbeatPrefix: {name: "background_process:heartbeat:"},     // stores a background process heartbeat
+	MetaKeyBackgroundProcessStatusPrefix:    {name: "background_process:status:"},        // stores a background process status
+	MetaKeyUserPrefix:                       {name: "user:", inverted: true},             // stores a user
+	MetaKeyRolePrefix:                       {name: "role:", inverted: true},             // stores a role
+	MetaKeyUserEmailPrefix:                  {name: "useremail:", inverted: true},        // stores a user email
+	MetaKeySessionPrefix:                    {name: "session:", inverted: true},          // stores a session
+	MetaKeyResyncHeartBeaterPrefix:          {name: "resync_hb:"},                        // stores resync heartbeat data
+	MetaKeyResyncCfgPrefix:                  {name: "resync_cfg:"},                       // stores resync cfg data
+	MetaKeyDatabaseState:                    {name: "state"},                             // stores the database state
+}
+
+func (m MetadataKey) String() string {
+	return metadataKeyDefs[m].name
+}
+
+// prefix returns the key prefix of m for metadataID. For a single-document type, this is the full key.
+func (m MetadataKey) prefix(metadataID string) string {
+	def := metadataKeyDefs[m]
+	switch {
+	case metadataID == "" && def.defaultPrefix != "":
+		return def.defaultPrefix
+	case metadataID == "":
+		return formatDefaultMetadataKey(m)
+	case def.inverted:
+		return formatInvertedMetadataKey(metadataID, m)
+	default:
+		return formatMetadataKey(metadataID, m)
+	}
+}
+
+// AllMetadataKeys returns every MetadataKey, in declaration order.
+func AllMetadataKeys() iter.Seq[MetadataKey] {
+	return func(yield func(MetadataKey) bool) {
+		for metaKey := range metaKeyCount {
+			if !yield(metaKey) {
+				return
+			}
+		}
+	}
+}
+
+// HasMetadataKeyPrefix reports whether key is `_sync:<name>…` for any MetadataKey name. This matches every inverted
+// namespaced key for any metadataID, and every default (legacy) key except heartbeats, whose default prefix has no
+// name (see IsHeartbeaterKey).
+func HasMetadataKeyPrefix(key string) bool {
+	rest, ok := strings.CutPrefix(key, SyncDocPrefix)
+	if !ok {
+		return false
+	}
+	for metaKey := range AllMetadataKeys() {
+		if strings.HasPrefix(rest, metaKey.String()) {
+			return true
+		}
+	}
+	return false
 }
 
 const (
@@ -114,24 +171,9 @@ const (
 // uses a unique metadataID, but may share the same MetadataStore.  MetadataKeys implements key namespacing for that
 // MetadataStore.
 type MetadataKeys struct {
-	metadataID                string
-	syncSeq                   string
-	unusedSeqPrefix           string
-	unusedSeqRangePrefix      string
-	sgrStatusPrefix           string
-	heartbeaterPrefix         string
-	persistentConfigPrefix    string
-	sgCfgPrefix               string
-	dcpCheckpoint             string
-	backgroundHeartbeatPrefix string
-	backgroundStatusPrefix    string
-	userPrefix                string
-	rolePrefix                string
-	userEmailPrefix           string
-	sessionPrefix             string
-	resyncHeartbeaterPrefix   string
-	resyncCfgPrefix           string
-	databaseState             string
+	metadataID             string
+	persistentConfigPrefix string
+	prefixes               []string // indexed by MetadataKey
 }
 
 // sha1HashLength is the number of characters in a sha1
@@ -139,53 +181,27 @@ const sha1HashLength = 40
 
 // DefaultMetadataKeys defines the legacy metadata keys and prefixes.  These are used when the metadata collection is the only
 // defined collection, including upgrade scenarios.
-var DefaultMetadataKeys = &MetadataKeys{
-	metadataID:                "",
-	syncSeq:                   formatDefaultMetadataKey(MetaKeySeq),
-	unusedSeqPrefix:           formatDefaultMetadataKey(MetaKeyUnusedSeq),
-	unusedSeqRangePrefix:      formatDefaultMetadataKey(MetaKeyUnusedSeqRange),
-	sgrStatusPrefix:           formatDefaultMetadataKey(MetaKeySGRStatus),
-	sgCfgPrefix:               formatDefaultMetadataKey(MetaKeySGCfg),
-	heartbeaterPrefix:         SyncDocPrefix, // Default heartbeater prefix does not use MetaKeyHeartbeaterPrefix for backward compatibility with 3.0 and earlier
-	dcpCheckpoint:             formatDefaultMetadataKey(MetaKeyDCPCheckpoint),
-	backgroundHeartbeatPrefix: formatDefaultMetadataKey(MetaKeyBackgroundProcessHeartbeatPrefix),
-	backgroundStatusPrefix:    formatDefaultMetadataKey(MetaKeyBackgroundProcessStatusPrefix),
-	userPrefix:                formatDefaultMetadataKey(MetaKeyUserPrefix),
-	rolePrefix:                formatDefaultMetadataKey(MetaKeyRolePrefix),
-	userEmailPrefix:           formatDefaultMetadataKey(MetaKeyUserEmailPrefix),
-	sessionPrefix:             formatDefaultMetadataKey(MetaKeySessionPrefix),
-	resyncHeartbeaterPrefix:   formatDefaultMetadataKey(MetaKeyResyncHeartBeaterPrefix),
-	resyncCfgPrefix:           formatDefaultMetadataKey(MetaKeyResyncCfgPrefix),
-	databaseState:             formatDefaultMetadataKey(MetaKeyDatabaseState),
-}
+var DefaultMetadataKeys = newMetadataKeys("")
 
 // NewMetadataKeys returns MetadataKeys for the specified MetadataID. If metadataID is empty string or DefaultMetadataID,
 // returns the default (legacy) metadata keys with no prefix.
-// Key and prefix formatting is done in this constructor to minimize the work done per retrieval.
 func NewMetadataKeys(metadataID string) *MetadataKeys {
 	if metadataID == "" || metadataID == DefaultMetadataID {
 		return DefaultMetadataKeys
-	} else {
-		return &MetadataKeys{
-			metadataID:                metadataID,
-			syncSeq:                   formatMetadataKey(metadataID, MetaKeySeq),
-			unusedSeqPrefix:           formatMetadataKey(metadataID, MetaKeyUnusedSeq),
-			unusedSeqRangePrefix:      formatMetadataKey(metadataID, MetaKeyUnusedSeqRange),
-			sgrStatusPrefix:           formatMetadataKey(metadataID, MetaKeySGRStatus),
-			heartbeaterPrefix:         formatMetadataKey(metadataID, MetaKeyHeartbeaterPrefix),
-			sgCfgPrefix:               formatMetadataKey(metadataID, MetaKeySGCfg),
-			dcpCheckpoint:             formatInvertedMetadataKey(metadataID, MetaKeyDCPCheckpoint),
-			backgroundHeartbeatPrefix: formatMetadataKey(metadataID, MetaKeyBackgroundProcessHeartbeatPrefix),
-			backgroundStatusPrefix:    formatMetadataKey(metadataID, MetaKeyBackgroundProcessStatusPrefix),
-			userPrefix:                formatInvertedMetadataKey(metadataID, MetaKeyUserPrefix),
-			rolePrefix:                formatInvertedMetadataKey(metadataID, MetaKeyRolePrefix),
-			userEmailPrefix:           formatInvertedMetadataKey(metadataID, MetaKeyUserEmailPrefix),
-			sessionPrefix:             formatInvertedMetadataKey(metadataID, MetaKeySessionPrefix),
-			resyncHeartbeaterPrefix:   formatMetadataKey(metadataID, MetaKeyResyncHeartBeaterPrefix),
-			resyncCfgPrefix:           formatMetadataKey(metadataID, MetaKeyResyncCfgPrefix),
-			databaseState:             formatMetadataKey(metadataID, MetaKeyDatabaseState),
-		}
 	}
+	return newMetadataKeys(metadataID)
+}
+
+// newMetadataKeys formats every prefix once, to minimize the work done per retrieval.
+func newMetadataKeys(metadataID string) *MetadataKeys {
+	m := &MetadataKeys{
+		metadataID: metadataID,
+		prefixes:   make([]string, metaKeyCount),
+	}
+	for metaKey := range AllMetadataKeys() {
+		m.prefixes[metaKey] = metaKey.prefix(metadataID)
+	}
+	return m
 }
 
 func (m *MetadataKeys) serializeIfLonger(key string) string {
@@ -195,12 +211,19 @@ func (m *MetadataKeys) serializeIfLonger(key string) string {
 	return SerializeIfLonger(key, sha1HashLength)
 }
 
+// Prefix returns the key prefix of metaKey for this database. For a single-document type, this is the full key.
+// For the default database, Prefix(MetaKeyHeartbeaterPrefix) is the bare SyncDocPrefix, which matches every sync doc:
+// use IsHeartbeaterKey to match heartbeat docs.
+func (m *MetadataKeys) Prefix(metaKey MetadataKey) string {
+	return m.prefixes[metaKey]
+}
+
 // SyncSeqKey returns the key for the sequence counter document for a database
 //
 //	format: _sync:{m_$}:seq (collections aware)
 //	format: _sync:seq  (default)
 func (m *MetadataKeys) SyncSeqKey() string {
-	return m.syncSeq
+	return m.Prefix(MetaKeySeq)
 }
 
 // UnusedSeqKey returns the key used to store an unused sequence document for sequence seq.
@@ -210,7 +233,7 @@ func (m *MetadataKeys) SyncSeqKey() string {
 //	format: _sync:{m_$}:unusedSeq:{seq} (collections aware)
 //	format: _sync:unusedSeq:{seq}  (default)
 func (m *MetadataKeys) UnusedSeqKey(seq uint64) string {
-	return m.unusedSeqPrefix + strconv.FormatUint(seq, 10)
+	return m.Prefix(MetaKeyUnusedSeq) + strconv.FormatUint(seq, 10)
 }
 
 // UnusedSeqPrefix returns just the prefix used for UnusedSeqKey documents (used for DCP filtering)
@@ -218,7 +241,7 @@ func (m *MetadataKeys) UnusedSeqKey(seq uint64) string {
 //	format: _sync:{m_$}:unusedSeq: (collections aware)
 //	format: _sync:unusedSeq:  (default)
 func (m *MetadataKeys) UnusedSeqPrefix() string {
-	return m.unusedSeqPrefix
+	return m.Prefix(MetaKeyUnusedSeq)
 }
 
 // ReplicationStatusKey generates the key used to store status information for an ISGR replication.  If replicationID
@@ -229,7 +252,7 @@ func (m *MetadataKeys) UnusedSeqPrefix() string {
 //	format: _sync:{m_$}:sgrStatus:[aGroupID]{replicationID} (collections aware)
 //	format: _sync:sgrStatus:[aGroupID]{replicationID}  (default)
 func (m *MetadataKeys) ReplicationStatusKey(replicationID string) string {
-	return m.sgrStatusPrefix + m.serializeIfLonger(replicationID)
+	return m.Prefix(MetaKeySGRStatus) + m.serializeIfLonger(replicationID)
 }
 
 // HeartbeaterPrefix returns a document prefix to use for heartbeat documents. For compatibility, an empty metadataID
@@ -239,9 +262,9 @@ func (m *MetadataKeys) ReplicationStatusKey(replicationID string) string {
 //	format: _sync:[groupID:]   (default)
 func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 	if groupID != "" {
-		return m.heartbeaterPrefix + groupID + ":"
+		return m.Prefix(MetaKeyHeartbeaterPrefix) + groupID + ":"
 	}
-	return m.heartbeaterPrefix
+	return m.Prefix(MetaKeyHeartbeaterPrefix)
 }
 
 // IsHeartbeaterKey reports whether key is a heartbeater timeout document written under
@@ -249,7 +272,7 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 // `<heartbeaterPrefix>heartbeat_timeout:<nodeUUID>` (see heartbeat.go heartbeatTimeoutDocID),
 // where heartbeaterPrefix is the value returned by HeartbeaterPrefix(groupID) — i.e. it
 // already includes the configured groupID when one is set. The full on-disk shape is
-// therefore `<m.heartbeaterPrefix>(<groupID>:)?heartbeat_timeout:<nodeUUID>`, where the
+// therefore `<heartbeaterPrefix>(<groupID>:)?heartbeat_timeout:<nodeUUID>`, where the
 // inner groupID segment is present only for EE-with-import deployments configured with a
 // non-empty groupID.
 //
@@ -257,10 +280,10 @@ func (m *MetadataKeys) HeartbeaterPrefix(groupID string) string {
 // heartbeaterPrefix is bare `_sync:`, which would otherwise classify every unrecognised
 // `_sync:` key as a heartbeater and risk deletion during metadata migration.
 func (m *MetadataKeys) IsHeartbeaterKey(key string) bool {
-	if !strings.HasPrefix(key, m.heartbeaterPrefix) {
+	rest, ok := strings.CutPrefix(key, m.Prefix(MetaKeyHeartbeaterPrefix))
+	if !ok {
 		return false
 	}
-	rest := key[len(m.heartbeaterPrefix):]
 	// No groupID: matches immediately after the heartbeater prefix.
 	if strings.HasPrefix(rest, "heartbeat_timeout:") {
 		return true
@@ -304,9 +327,9 @@ func IsHeartbeaterKey(key string) bool {
 //	format: _sync:cfg[groupID:]   (default)
 func (m *MetadataKeys) SGCfgPrefix(groupID string) string {
 	if groupID != "" {
-		return m.sgCfgPrefix + groupID + ":"
+		return m.Prefix(MetaKeySGCfg) + groupID + ":"
 	}
-	return m.sgCfgPrefix
+	return m.Prefix(MetaKeySGCfg)
 }
 
 // ResyncHeartbeaterPrefix returns a document prefix to use for resync heartbeat documents.
@@ -314,7 +337,7 @@ func (m *MetadataKeys) SGCfgPrefix(groupID string) string {
 //	format: _sync:{m_$}:resync_hb:   (collections)
 //	format: _sync:resync_hb:   (default)
 func (m *MetadataKeys) ResyncHeartbeaterPrefix() string {
-	return m.resyncHeartbeaterPrefix
+	return m.Prefix(MetaKeyResyncHeartBeaterPrefix)
 }
 
 // ResyncCfgPrefix returns a document prefix to use for resync cfg documents
@@ -322,7 +345,7 @@ func (m *MetadataKeys) ResyncHeartbeaterPrefix() string {
 //	format: _sync:{m_$}:resync_cfg:   (collections)
 //	format: _sync:resync_cfg:   (default)
 func (m *MetadataKeys) ResyncCfgPrefix() string {
-	return m.resyncCfgPrefix
+	return m.Prefix(MetaKeyResyncCfgPrefix)
 }
 
 // PersistentConfigKey returns a document key to use for persisted database configurations
@@ -344,7 +367,7 @@ func (m *MetadataKeys) PersistentConfigKey(groupID string) (string, error) {
 //	format: _sync:unusedSeqs:[fromSeq]:[toSeq]  (default)
 func (m *MetadataKeys) UnusedSeqRangeKey(fromSeq, toSeq uint64) string {
 
-	return m.unusedSeqRangePrefix + strconv.FormatUint(fromSeq, 10) + ":" + strconv.FormatUint(toSeq, 10)
+	return m.Prefix(MetaKeyUnusedSeqRange) + strconv.FormatUint(fromSeq, 10) + ":" + strconv.FormatUint(toSeq, 10)
 }
 
 // UnusedSeqRangePrefix returns just the prefix used for UnusedSeqRangeKey documents (used for DCP filtering)
@@ -352,7 +375,7 @@ func (m *MetadataKeys) UnusedSeqRangeKey(fromSeq, toSeq uint64) string {
 //	format: _sync:{m_$}:unusedSeqs: (collections aware)
 //	format: _sync:unusedSeqs:  (default)
 func (m *MetadataKeys) UnusedSeqRangePrefix() string {
-	return m.unusedSeqRangePrefix
+	return m.Prefix(MetaKeyUnusedSeqRange)
 }
 
 // DCPCheckpointPrefix returns the prefix used to store DCP checkpoints.
@@ -361,9 +384,9 @@ func (m *MetadataKeys) UnusedSeqRangePrefix() string {
 //	format: _sync:dcp_ck:[groupID:] (default)
 func (m *MetadataKeys) DCPCheckpointPrefix(groupID string) string {
 	if groupID != "" {
-		return m.dcpCheckpoint + groupID + ":"
+		return m.Prefix(MetaKeyDCPCheckpoint) + groupID + ":"
 	}
-	return m.dcpCheckpoint
+	return m.Prefix(MetaKeyDCPCheckpoint)
 }
 
 // DCPVersionedCheckpointPrefix returns the prefix used to store versioned DCP checkpoints.
@@ -371,7 +394,7 @@ func (m *MetadataKeys) DCPCheckpointPrefix(groupID string) string {
 //	format: _sync:dcp_ck:{m_$}:[{groupID:]{version:} (collections aware)
 //	format: _sync:dcp_ck:[{groupID:]{version:} (default)
 func (m *MetadataKeys) DCPVersionedCheckpointPrefix(groupID string, version uint64) string {
-	checkpointPrefix := m.dcpCheckpoint
+	checkpointPrefix := m.Prefix(MetaKeyDCPCheckpoint)
 	if groupID != "" {
 		checkpointPrefix = checkpointPrefix + groupID + ":"
 	}
@@ -386,7 +409,7 @@ func (m *MetadataKeys) DCPVersionedCheckpointPrefix(groupID string, version uint
 //	format: _sync:user:{m_$}:{username} (collections aware)
 //	format: _sync:user:{username}  (default)
 func (m *MetadataKeys) UserKey(username string) string {
-	return m.userPrefix + m.serializeIfLonger(username)
+	return m.Prefix(MetaKeyUserPrefix) + m.serializeIfLonger(username)
 }
 
 // UserKeyPrefix returns the prefix used to store a user document
@@ -394,7 +417,7 @@ func (m *MetadataKeys) UserKey(username string) string {
 //	format: _sync:user:{m_$}: (collections aware)
 //	format: _sync:user:  (default)
 func (m *MetadataKeys) UserKeyPrefix() string {
-	return m.userPrefix
+	return m.Prefix(MetaKeyUserPrefix)
 }
 
 // RoleKey returns the key used to store a role document
@@ -402,7 +425,7 @@ func (m *MetadataKeys) UserKeyPrefix() string {
 //	format: _sync:role:{m_$}:{rolename} (collections aware)
 //	format: _sync:role:{rolename}  (default)
 func (m *MetadataKeys) RoleKey(name string) string {
-	return m.rolePrefix + m.serializeIfLonger(name)
+	return m.Prefix(MetaKeyRolePrefix) + m.serializeIfLonger(name)
 }
 
 // RoleKeyPrefix returns the prefix used to store a role document
@@ -410,7 +433,7 @@ func (m *MetadataKeys) RoleKey(name string) string {
 //	format: _sync:role:{m_$}: (collections aware)
 //	format: _sync:role:  (default)
 func (m *MetadataKeys) RoleKeyPrefix() string {
-	return m.rolePrefix
+	return m.Prefix(MetaKeyRolePrefix)
 }
 
 // UserEmailKey returns the key used to store a user email document
@@ -418,7 +441,7 @@ func (m *MetadataKeys) RoleKeyPrefix() string {
 //	format: _sync:useremail:{m_$}:{username} (collections aware)
 //	format: _sync:useremail:{username}  (default)
 func (m *MetadataKeys) UserEmailKey(username string) string {
-	return m.userEmailPrefix + m.serializeIfLonger(username)
+	return m.Prefix(MetaKeyUserEmailPrefix) + m.serializeIfLonger(username)
 }
 
 // SessionKey returns the key used to store a session document
@@ -426,7 +449,7 @@ func (m *MetadataKeys) UserEmailKey(username string) string {
 //	format: _sync:session:{m_$}:{sessionID} (collections aware)
 //	format: _sync:session:{sessionID}  (default)
 func (m *MetadataKeys) SessionKey(sessionID string) string {
-	return m.sessionPrefix + sessionID
+	return m.Prefix(MetaKeySessionPrefix) + sessionID
 }
 
 // BackgroundProcessHeartbeatPrefix returns the prefix used to store background process heartbeats.
@@ -434,7 +457,7 @@ func (m *MetadataKeys) SessionKey(sessionID string) string {
 //	format: _sync:{m_$}:background_process:heartbeat:[processSuffix] (collections aware)
 //	format: _sync:background_process:heartbeat:[processSuffix]  (default)
 func (m *MetadataKeys) BackgroundProcessHeartbeatPrefix(processSuffix string) string {
-	return m.backgroundHeartbeatPrefix + processSuffix
+	return m.Prefix(MetaKeyBackgroundProcessHeartbeatPrefix) + processSuffix
 }
 
 // BackgroundProcessStatusPrefix returns the prefix used to store background process status documents.
@@ -442,7 +465,7 @@ func (m *MetadataKeys) BackgroundProcessHeartbeatPrefix(processSuffix string) st
 //	format: _sync:{m_$}:background_process:status:[processSuffix] (collections aware)
 //	format: _sync:background_process:status:[processSuffix]  (default)
 func (m *MetadataKeys) BackgroundProcessStatusPrefix(processSuffix string) string {
-	return m.backgroundStatusPrefix + processSuffix
+	return m.Prefix(MetaKeyBackgroundProcessStatusPrefix) + processSuffix
 }
 
 // DatabaseStateKey returns the key used to store the database state document.
@@ -450,23 +473,23 @@ func (m *MetadataKeys) BackgroundProcessStatusPrefix(processSuffix string) strin
 //	format: _sync:{m_$}:state (collections aware)
 //	format: _sync:state       (default)
 func (m *MetadataKeys) DatabaseStateKey() string {
-	return m.databaseState
+	return m.Prefix(MetaKeyDatabaseState)
 }
 
 // formatMetadataKey formats key into the form _sync:m_[metadataID]:[metaKey]
-func formatMetadataKey(metadataPrefix string, metaKey metadataKey) string {
+func formatMetadataKey(metadataPrefix string, metaKey MetadataKey) string {
 	return SyncDocMetadataPrefix + metadataPrefix + ":" + metaKey.String()
 }
 
 // formatInvertedMetadataKey formats key into the form _sync:[metaKey][m_metadataID]:
 // Used for documents that require consistent prefixing across databases, typically
 // for indexing or key filtering
-func formatInvertedMetadataKey(metadataPrefix string, metaKey metadataKey) string {
+func formatInvertedMetadataKey(metadataPrefix string, metaKey MetadataKey) string {
 	return SyncDocPrefix + metaKey.String() + metadataPrefix + ":"
 }
 
 // formatDefaultMetadataKey formats key into the form _sync:[metaKey]
-func formatDefaultMetadataKey(metaKey metadataKey) string {
+func formatDefaultMetadataKey(metaKey MetadataKey) string {
 	return SyncDocPrefix + metaKey.String()
 }
 

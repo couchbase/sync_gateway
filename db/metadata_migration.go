@@ -189,7 +189,7 @@ func migrateSeqCounter(ctx context.Context, ms *base.MetadataStore, seqKey strin
 // by this database — one per configured collection. Unlike the rest of SG's metadata, these
 // docs are NOT namespaced by metadataID (see base.CollectionSyncFunctionKeyWithGroupID): they
 // are keyed by groupID + scope.collection, so handleMigrationKey's metadataID-prefix matching
-// (isOurs) can't classify them. Precomputing the exact owned-key set from the DB's configured
+// can't classify them. Precomputing the exact owned-key set from the DB's configured
 // collections lets us decide ownership by exact match, distinguishing our _sync:syncdata
 // docs from a sibling DB's.
 func syncFunctionKeysForDB(groupID string, collectionNames map[string]map[string]struct{}) map[string]struct{} {
@@ -202,126 +202,104 @@ func syncFunctionKeysForDB(groupID string, collectionNames map[string]map[string
 	return out
 }
 
-// handleMigrationKey is the per-key dispatcher. It owns both the in-scope/out-of-scope
-// decision and the per-family policy. The switch cases use the database's own
-// MetadataKeys prefix accessors so namespacing (the `m_<id>:` infix) is part of the prefix
-// match for namespaced metadataIDs. For the legacy `_default` metadataID, where each
-// inverted-form prefix (e.g. `_sync:user:`) overlaps with sibling DBs' inverted-form keys
-// (`_sync:user:<metaID>:…`), isOursInverted handles this case by doing a prefix match, and for the default
-// metadataID DB it also checks the registry-supplied sibling metadataIDs — this keeps a legacy default user literally
-// named `m_alice` correctly classified as ours.
+// ownedMetadataKeyAction reports whether key is a MetadataKey doc of the database with keys and metadataID, and the
+// migration action for it from metadataKeyMigrations.
+func ownedMetadataKeyAction(keys *base.MetadataKeys, metadataID string, siblingMetadataIDs []string, key string) (migrationAction, bool) {
+	for metaKey := range base.AllMetadataKeys() {
+		m := metadataKeyMigrations[metaKey]
+		prefix := keys.Prefix(metaKey)
+		var matched bool
+		switch m.match {
+		case ownershipMatchExact:
+			matched = key == prefix
+		case ownershipMatchPrefix:
+			matched = strings.HasPrefix(key, prefix)
+		case ownershipMatchInverted:
+			matched = isOursInverted(metadataID, siblingMetadataIDs, key, prefix)
+		case ownershipMatchHeartbeat:
+			// matched after the loop
+		}
+		if matched {
+			return m.action, true
+		}
+	}
+	// The default database's heartbeat prefix is the bare `_sync:`, so heartbeats are matched after every family
+	// with a more specific prefix.
+	if keys.IsHeartbeaterKey(key) {
+		return metadataKeyMigrations[base.MetaKeyHeartbeaterPrefix].action, true
+	}
+	return migrationActionSkip, false
+}
+
+// isOursInverted reports whether key, of an inverted family (formatInvertedMetadataKey), belongs to the database with
+// metadataID. The keys are `_sync:<type>:[<id>:]<body>`. For a namespaced database, invertedPrefix already embeds our
+// `<id>:`, so a prefix match is enough. For the default database, invertedPrefix (for example `_sync:user:`) is also a
+// prefix of every sibling's `_sync:user:<id>:…` key, so a key whose body starts with `<siblingID>:` belongs to that
+// sibling.
 //
-// Sync-function ("syncdata") docs are the exception to the metadataID-prefix scheme: they are
-// keyed by groupID + scope.collection, so ownership is decided by exact match against the
-// precomputed dbSyncFunctionKeys set rather than by isOurs. Our collections' syncdata docs are
-// migrated; any other `_sync:syncdata*` key belongs to a sibling DB and is out-of-scope.
+// The default database accepts one ambiguity: a family whose body can itself start with `<siblingID>:` looks like
+// that sibling's key. useremail bodies are emails (the validator permits ':') and dcp_ck bodies start with the config
+// group ID, so such an own key stays out-of-scope rather than risk moving a sibling's doc. Names are ':'-free
+// (ValidatePrincipalName) and session IDs are hex, so user, role and session keys are not ambiguous.
+func isOursInverted(metadataID string, siblingMetadataIDs []string, key, invertedPrefix string) bool {
+	rest, ok := strings.CutPrefix(key, invertedPrefix)
+	if !ok {
+		return false
+	}
+	if metadataID != "" && metadataID != base.DefaultMetadataID {
+		return true
+	}
+	for _, siblingID := range siblingMetadataIDs {
+		if strings.HasPrefix(rest, siblingID+":") {
+			return false
+		}
+	}
+	return true
+}
+
+// handleMigrationKey moves, deletes or leaves one fallback key of the database with keys and metadataID:
 //
-// Anything else that doesn't match a known family is split between out-of-scope (sibling-DB
-// standard form, bucket-level bootstrap docs, and `_sync:syncInfo` which the design plan keeps
-// in the source collection) and genuinely unknown.
+//   - This database's sync function docs move. They are keyed by groupID and scope.collection, not by metadataID, so
+//     ownership is an exact match against dbSyncFunctionKeys (syncFunctionKeysForDB).
+//   - This database's MetadataKey docs get the action from metadataKeyMigrations (see ownedMetadataKeyAction).
+//     siblingMetadataIDs are the metadataIDs of the other databases in the bucket, from the gateway registry.
+//   - Sibling databases' docs, bucket-level docs and collection-scoped data docs stay on the fallback, as
+//     out-of-scope.
+//   - Any other key stays on the fallback, as unknown-prefix.
 //
 // It returns a non-nil error only for a fatal, non-retryable condition — currently a fallback
 // collection dropped mid-migration — which the caller must propagate to abort the whole pass.
 // Ordinary per-doc failures are recorded in stats and return nil so the run can continue.
 func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, key string, stats *MigrationStats) error {
-	// Ownership of a fallback key is decided by two helpers, chosen per key family:
-	//
-	//   isOurs         — plain prefix match. Used for the non-inverted families
-	//                    (seq / unusedSeq / sgcfg / heartbeat / resync / state / replication
-	//                    status), whose keys are `_sync:[m_<id>:]<type>`. A sibling DB's keys
-	//                    carry a distinct `m_<id>:` infix, so they never share our prefix and
-	//                    no sibling check is needed.
-	//
-	//   isOursInverted — prefix match plus a sibling-DB exclusion. Used for the inverted
-	//                    families (user / role / useremail / session / dcp_ck), whose keys are
-	//                    `_sync:<type>:[<id>:]<body>`. For a namespaced migrating DB the prefix
-	//                    already embeds our `<id>:`, so a prefix match alone is unambiguous
-	//                    (early return). For the legacy default DB the prefix is bare
-	//                    (e.g. `_sync:user:`) and is therefore also a prefix of every sibling's
-	//                    `_sync:user:<id>:…` key, so we subtract the siblings: the key is a
-	//                    sibling's (not ours) iff its body begins with `<siblingID>:` for some
-	//                    metadataID in the registry-supplied siblingMetadataIDs.
-	//
-	// The sibling list comes from the gateway registry (ServerContext.SiblingMetadataIDFunc) and
-	// is authoritative — unlike the `m_`-shape heuristic this replaced, which never matched real
-	// inverted keys (formatInvertedMetadataKey embeds the bare metadataID, no `m_`) and so let
-	// the default DB migrate siblings' inverted docs.
-	//
-	// Accepted residual ambiguity (default DB only): a family whose own body can itself begin
-	// with `<siblingID>:` is indistinguishable from that sibling's key. useremail bodies are
-	// emails (the validator permits ':') and dcp_ck bodies begin with the config group id, so an
-	// own key colliding with a sibling metadataID is conservatively left out-of-scope rather than
-	// risk migrating a sibling's doc. Names are ':'-free (ValidatePrincipalName) and session IDs
-	// are hex, so user/role/session are not exposed.
-	isOurs := func(prefix string) bool {
-		return strings.HasPrefix(key, prefix)
+	if _, isOurSyncFunctionDoc := dbSyncFunctionKeys[key]; isOurSyncFunctionDoc {
+		return moveFallbackDoc(ctx, ms, key, false, stats)
 	}
-	isOursInverted := func(invertedPrefix string) bool {
-		if !strings.HasPrefix(key, invertedPrefix) {
-			return false
+	if action, owned := ownedMetadataKeyAction(keys, metadataID, siblingMetadataIDs, key); owned {
+		switch action {
+		case migrationActionSkip:
+			stats.DocsOutOfScope.Add(1)
+			return nil
+		case migrationActionMoveJSON:
+			// moveFallbackDoc(binary=false) preserves the JSON datatype flag so strict readers (auth,
+			// RawJSONTranscoder) can decode the migrated doc on primary.
+			return moveFallbackDoc(ctx, ms, key, false, stats)
+		case migrationActionMoveBinary:
+			return moveFallbackDoc(ctx, ms, key, true, stats)
+		case migrationActionDelete:
+			return deleteFallbackDoc(ctx, ms, key, stats)
 		}
-		if metadataID != "" && metadataID != base.DefaultMetadataID {
-			return true // namespaced migrating DB: prefix already embeds our id, unambiguous
-		}
-		rest := key[len(invertedPrefix):]
-		for _, siblingID := range siblingMetadataIDs {
-			if strings.HasPrefix(rest, siblingID+":") {
-				return false
-			}
-		}
-		return true
 	}
-	// thisMetadataID is `_sync:m_<id>:` for namespaced metadataIDs — used to exclude OUR
-	// standard-form keys from the sibling-DB out-of-scope check. Empty for default mode
-	// (default DB has no `_sync:m_*` keys, so any `_sync:m_…` is necessarily a sibling).
+
+	// thisMetadataID is `_sync:m_<id>:` for a namespaced database, and empty for the default database, which has no
+	// `_sync:m_` keys
 	var thisMetadataID string
 	if metadataID != "" && metadataID != base.DefaultMetadataID {
 		thisMetadataID = base.SyncDocMetadataPrefix + metadataID + ":"
 	}
 
-	// Sync-function docs aren't metadataID-namespaced, so isOurs can't classify them — ownership
-	// is an exact match against the keys precomputed from this DB's configured collections.
-	_, isOurSyncFunctionDoc := dbSyncFunctionKeys[key]
-
 	switch {
-	// matching sync docs for this database
-	case
-		isOurSyncFunctionDoc,
-		isOursInverted(keys.UserKeyPrefix()),
-		isOursInverted(keys.RoleKeyPrefix()),
-		isOursInverted(keys.UserEmailKey("")),
-		isOursInverted(keys.SessionKey("")),
-		isOursInverted(keys.DCPCheckpointPrefix("")),
-		key == keys.DatabaseStateKey(),
-		isOurs(keys.ReplicationStatusKey("")),
-		isOurs(keys.SGCfgPrefix("")),
-		isOurs(keys.BackgroundProcessHeartbeatPrefix("")),
-		isOurs(keys.BackgroundProcessStatusPrefix("")),
-		isOurs(keys.ResyncHeartbeaterPrefix()),
-		isOurs(keys.ResyncCfgPrefix()):
-		// JSON-bodied metadata. moveFallbackDoc(binary=false) preserves the JSON
-		// datatype flag so strict readers (auth, RawJSONTranscoder) can decode the
-		// migrated doc on primary.
-		return moveFallbackDoc(ctx, ms, key, false, stats)
-
-	// matching binary sync docs for this database
-	case
-		isOurs(keys.UnusedSeqPrefix()),
-		isOurs(keys.UnusedSeqRangePrefix()):
-		// Binary-bodied metadata (8/16-byte little-endian uint64 payload written by
-		// sequenceAllocator.releaseSequence / releaseSequenceRange). Must preserve
-		// the Binary datatype flag — change_listener.go relies on these docs.
-		return moveFallbackDoc(ctx, ms, key, true, stats)
-
-	// heartbeater - don't migrate just cleanup
-	case
-		keys.IsHeartbeaterKey(key):
-		return deleteFallbackDoc(ctx, ms, key, stats)
-
 	// never migrate using range scan
-	case key == keys.SyncSeqKey(),
-		key == base.SyncDocPrefix+"seq",
-		key == base.SGRegistryKey,
+	case key == base.SGRegistryKey,
 		key == base.SGSyncInfo,
 		// sync-function docs not in our owned set belong to a sibling DB (different
 		// collection, or same collection under another groupID) — left on the source
@@ -344,31 +322,12 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		strings.HasPrefix(key, base.SyncDocPrefix+"local:"): // _sync:local: (RealSpecialDocID(DocTypeLocal, …))
 		stats.DocsOutOfScope.Add(1)
 
-	// non-matching sync docs (metadata prefix before sync doc type - formatInvertedMetadataKey)
+	// sibling DB keys: `_sync:m_<other>:…` (formatMetadataKey), or any other `_sync:<metaKey>…` that did not match
+	// an in-scope arm above (a sibling's inverted key, or a default-form key seen by a namespaced DB)
 	case
 		strings.HasPrefix(key, base.SyncDocMetadataPrefix) &&
 			(thisMetadataID == "" || !strings.HasPrefix(key, thisMetadataID)),
-		// inverted but default ("") metadata prefix
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyDCPCheckpoint.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUserPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyRolePrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUserEmailPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySessionPrefix.String()):
-		stats.DocsOutOfScope.Add(1)
-
-	// non-matching sync docs (from other databases - metadata _after_ sync doc type - formatMetadataKey)
-	case
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySeq.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUnusedSeq.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyUnusedSeqRange.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySGRStatus.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyHeartbeaterPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeySGCfg.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyBackgroundProcessHeartbeatPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyBackgroundProcessStatusPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncHeartBeaterPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncCfgPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyDatabaseState.String()),
+		base.HasMetadataKeyPrefix(key),
 		base.IsHeartbeaterKey(key):
 		stats.DocsOutOfScope.Add(1)
 
@@ -377,6 +336,54 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		stats.DocsUnknownPrefix.Add(1)
 	}
 	return nil
+}
+
+// migrationAction is how handleMigrationKey treats a fallback doc owned by the migrating database.
+type migrationAction int
+
+const (
+	migrationActionSkip       migrationAction = iota // never moved by the range scan
+	migrationActionMoveJSON                          // move to primary with the JSON datatype
+	migrationActionMoveBinary                        // move to primary with the Binary datatype
+	migrationActionDelete                            // transient doc: delete from fallback, do not move
+)
+
+// ownershipMatch is how a fallback key is compared with MetadataKeys.Prefix for its MetadataKey.
+type ownershipMatch int
+
+const (
+	ownershipMatchExact     ownershipMatch = iota // key equals Prefix
+	ownershipMatchPrefix                          // key starts with Prefix
+	ownershipMatchInverted                        // isOursInverted(Prefix)
+	ownershipMatchHeartbeat                       // MetadataKeys.IsHeartbeaterKey, after every other match
+)
+
+// metadataKeyMigration defines how the migrating database recognizes and migrates its own docs of one MetadataKey.
+type metadataKeyMigration struct {
+	action migrationAction
+	match  ownershipMatch
+}
+
+// metadataKeyMigrations has one entry per MetadataKey. The exhaustive linter flags a MetadataKey with no entry.
+var metadataKeyMigrations = map[base.MetadataKey]metadataKeyMigration{
+	// the migration orchestrator promotes the seq counter separately (migrateSeqCounter)
+	base.MetaKeySeq: {migrationActionSkip, ownershipMatchExact},
+	// 8 and 16-byte little-endian payloads from sequenceAllocator, which change_listener.go reads
+	base.MetaKeyUnusedSeq:                        {migrationActionMoveBinary, ownershipMatchPrefix},
+	base.MetaKeyUnusedSeqRange:                   {migrationActionMoveBinary, ownershipMatchPrefix},
+	base.MetaKeySGRStatus:                        {migrationActionMoveJSON, ownershipMatchPrefix},
+	base.MetaKeySGCfg:                            {migrationActionMoveJSON, ownershipMatchPrefix},
+	base.MetaKeyHeartbeaterPrefix:                {migrationActionDelete, ownershipMatchHeartbeat},
+	base.MetaKeyDCPCheckpoint:                    {migrationActionMoveJSON, ownershipMatchInverted},
+	base.MetaKeyBackgroundProcessHeartbeatPrefix: {migrationActionMoveJSON, ownershipMatchPrefix},
+	base.MetaKeyBackgroundProcessStatusPrefix:    {migrationActionMoveJSON, ownershipMatchPrefix},
+	base.MetaKeyUserPrefix:                       {migrationActionMoveJSON, ownershipMatchInverted},
+	base.MetaKeyRolePrefix:                       {migrationActionMoveJSON, ownershipMatchInverted},
+	base.MetaKeyUserEmailPrefix:                  {migrationActionMoveJSON, ownershipMatchInverted},
+	base.MetaKeySessionPrefix:                    {migrationActionMoveJSON, ownershipMatchInverted},
+	base.MetaKeyResyncHeartBeaterPrefix:          {migrationActionMoveJSON, ownershipMatchPrefix},
+	base.MetaKeyResyncCfgPrefix:                  {migrationActionMoveJSON, ownershipMatchPrefix},
+	base.MetaKeyDatabaseState:                    {migrationActionMoveJSON, ownershipMatchExact},
 }
 
 // moveFallbackDoc moves a single doc from the fallback collection to the primary

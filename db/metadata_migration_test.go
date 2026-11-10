@@ -681,6 +681,99 @@ func TestHandleMigrationKeyScoping(t *testing.T) {
 	})
 }
 
+// TestHandleMigrationKeyAllMetadataKeyNames makes sure that every MetadataKey is classified by handleMigrationKey,
+// so that a new key type cannot fall through to the unknown-prefix branch.
+func TestHandleMigrationKeyAllMetadataKeyNames(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close(ctx)
+	ms := newMigrationTestStore(t, bucket)
+
+	// The action of the default DB for its own `_sync:<name>` doc. A MetadataKey with no entry is not owned by the
+	// default DB: default heartbeats are `_sync:heartbeat_timeout:`, without `hb:`.
+	defaultDBActions := map[base.MetadataKey]migrationAction{
+		base.MetaKeySeq:                              migrationActionSkip, // promoted by migrateSeqCounter
+		base.MetaKeyUnusedSeq:                        migrationActionMoveBinary,
+		base.MetaKeyUnusedSeqRange:                   migrationActionMoveBinary,
+		base.MetaKeySGRStatus:                        migrationActionMoveJSON,
+		base.MetaKeySGCfg:                            migrationActionMoveJSON,
+		base.MetaKeyDCPCheckpoint:                    migrationActionMoveJSON,
+		base.MetaKeyBackgroundProcessHeartbeatPrefix: migrationActionMoveJSON,
+		base.MetaKeyBackgroundProcessStatusPrefix:    migrationActionMoveJSON,
+		base.MetaKeyUserPrefix:                       migrationActionMoveJSON,
+		base.MetaKeyRolePrefix:                       migrationActionMoveJSON,
+		base.MetaKeyUserEmailPrefix:                  migrationActionMoveJSON,
+		base.MetaKeySessionPrefix:                    migrationActionMoveJSON,
+		base.MetaKeyResyncHeartBeaterPrefix:          migrationActionMoveJSON,
+		base.MetaKeyResyncCfgPrefix:                  migrationActionMoveJSON,
+		base.MetaKeyDatabaseState:                    migrationActionMoveJSON,
+	}
+
+	defaultKeys := base.NewMetadataKeys(base.DefaultMetadataID)
+	db2Keys := base.NewMetadataKeys("db2")
+	defaultSiblings := []string{"db2"}
+	db2Siblings := []string{base.DefaultMetadataID}
+
+	for metaKey := range base.AllMetadataKeys() {
+		name := metaKey.String()
+		t.Run(name, func(t *testing.T) {
+			defaultKey := base.SyncDocPrefix + name
+			siblingKey := db2Keys.Prefix(metaKey)
+
+			wantAction, owned := defaultDBActions[metaKey]
+			gotAction, gotOwned := ownedMetadataKeyAction(defaultKeys, base.DefaultMetadataID, defaultSiblings, defaultKey)
+			require.Equal(t, owned, gotOwned, "default DB ownership of %q", defaultKey)
+			if owned {
+				require.Equal(t, wantAction, gotAction, "default DB action for %q", defaultKey)
+			}
+
+			_, err := ms.Fallback().AddRaw(ctx, defaultKey, 0, []byte(`{"x":1}`))
+			require.NoError(t, err)
+			stats := classifyKnownMigrationKey(t, ms, base.DefaultMetadataID, defaultSiblings, defaultKey)
+			// a key that the default DB does not own has the zero value, migrationActionSkip
+			switch wantAction {
+			case migrationActionSkip:
+				assert.Equal(t, int64(1), stats.DocsOutOfScope.Load(), "%q must be out-of-scope", defaultKey)
+				assert.True(t, dataStoreHasDoc(t, ms.Fallback(), defaultKey), "%q must stay on fallback", defaultKey)
+			case migrationActionMoveJSON, migrationActionMoveBinary:
+				assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "%q must migrate", defaultKey)
+				assert.False(t, dataStoreHasDoc(t, ms.Fallback(), defaultKey), "%q must leave fallback", defaultKey)
+				assert.True(t, dataStoreHasDoc(t, ms.Primary(), defaultKey), "%q must be on primary", defaultKey)
+			case migrationActionDelete:
+				assert.Equal(t, int64(1), stats.DocsMigrated.Load(), "%q delete is counted as migrated", defaultKey)
+				assert.False(t, dataStoreHasDoc(t, ms.Fallback(), defaultKey), "%q must leave fallback", defaultKey)
+				assert.False(t, dataStoreHasDoc(t, ms.Primary(), defaultKey), "%q must not be copied to primary", defaultKey)
+			} // exhaustive:enforce
+
+			stats = classifyKnownMigrationKey(t, ms, base.DefaultMetadataID, defaultSiblings, siblingKey)
+			assert.Equal(t, int64(1), stats.DocsOutOfScope.Load(), "%q belongs to sibling db2", siblingKey)
+
+			stats = classifyKnownMigrationKey(t, ms, "db2", db2Siblings, defaultKey)
+			assert.Equal(t, int64(1), stats.DocsOutOfScope.Load(), "%q belongs to the sibling default DB", defaultKey)
+		})
+	}
+}
+
+// classifyKnownMigrationKey runs handleMigrationKey for a key that it must recognize and handle without error, and
+// returns its stats.
+func classifyKnownMigrationKey(t *testing.T, ms *base.MetadataStore, metadataID string, siblingMetadataIDs []string, key string) *MigrationStats {
+	stats := &MigrationStats{}
+	require.NoError(t, handleMigrationKey(base.TestCtx(t), ms, base.NewMetadataKeys(metadataID), metadataID, siblingMetadataIDs, nil, key, stats))
+	require.Zero(t, stats.DocsUnknownPrefix.Load(), "%q must not be an unknown prefix", key)
+	require.Zero(t, stats.Errors.Load(), "%q must not fail", key)
+	return stats
+}
+
+// dataStoreHasDoc reports whether ds holds a doc with key.
+func dataStoreHasDoc(t *testing.T, ds base.DataStore, key string) bool {
+	_, _, err := ds.GetRaw(base.TestCtx(t), key)
+	if base.IsDocNotFoundError(err) {
+		return false
+	}
+	require.NoError(t, err)
+	return true
+}
+
 // migrationDisposition is the per-key routing decision handleMigrationKey makes for a
 // single fallback key. It is the unit of coverage for TestHandleMigrationKeyClassification.
 type migrationDisposition int

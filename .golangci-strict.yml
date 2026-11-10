@@ -35,6 +35,7 @@ linters:
         - auditdSyncGatewayEndID$
         - levelCount$
         - indexTypeCount$
+        - metaKeyCount$
     forbidigo:
       # Listed explicitly rather than relying on forbidigo's defaults, which don't cover log.Print*.
       forbid:
