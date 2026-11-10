@@ -118,8 +118,8 @@ type singleChannelCacheImpl struct {
 	cacheStats       *base.CacheStats     // Map used for cache stats
 }
 
-func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelID: channel, validFrom: validFrom}
+func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelID: channel}
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.cacheStats = cacheStats
 	cache.initializeLateLogs()
@@ -136,8 +136,8 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID
 	return cache
 }
 
-func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	cache := newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
+func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHandler, channel channels.ID, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	cache := newSingleChannelCache(queryHandler, channel, cacheStats)
 
 	// Update cache options when present
 	if options.ChannelCacheMinLength > 0 {
@@ -156,8 +156,8 @@ func newChannelCacheWithOptions(ctx context.Context, queryHandler ChannelQueryHa
 		cache.options.MaxNumChannels = options.MaxNumChannels
 	}
 
-	base.DebugfCtx(ctx, base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
-		base.UD(cache.channelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
+	base.DebugfCtx(ctx, base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v",
+		base.UD(cache.channelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge)
 
 	if options.LateLogAge > 0 {
 		cache.options.LateLogAge = options.LateLogAge
@@ -198,8 +198,11 @@ func (c *singleChannelCacheImpl) addToCache(ctx context.Context, change *LogEntr
 	defer c.lock.Unlock()
 
 	if c.wouldBeImmediatelyPruned(change) {
-		base.InfofCtx(ctx, base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
-			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelID))
+		c.cacheStats.ChannelCachePrunedOnInsert.Add(1)
+		if base.LogDebugEnabled(ctx, base.KeyCache) {
+			base.DebugfCtx(ctx, base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
+				change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelID))
+		}
 		return
 	}
 

@@ -1439,3 +1439,22 @@ func TestSingleChannelCacheGetCachedChangesValidFrom(t *testing.T) {
 	assert.True(t, verifyChannelSequences(changes, []uint64{1, 2, 3, 4, 5}))
 	assert.Equal(t, uint64(1), validFrom)
 }
+
+// TestSingleChannelCachePrunedOnInsertStat pins that an entry below the cache's validFrom is counted once in
+// chan_cache_pruned_on_insert and never reaches the log, while an entry at validFrom is cached and not counted.
+func TestSingleChannelCachePrunedOnInsertStat(t *testing.T) {
+	ctx := base.TestCtx(t)
+	stats := newTestCacheStats(t)
+	cache := db.NewSingleChannelCacheForTest(t, &db.QueryHandlerForTest{},
+		channels.NewID("chanA", base.DefaultCollectionID), 10, stats)
+	require.Empty(t, cache.LogsForTest(t))
+	assert.Equal(t, int64(0), stats.ChannelCachePrunedOnInsert.Value())
+
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(5, "doc5", "1-a"), false)
+	assert.Equal(t, int64(1), stats.ChannelCachePrunedOnInsert.Value())
+	assert.Empty(t, cache.LogsForTest(t), "an entry below validFrom must not be cached")
+
+	cache.AddToCacheForTest(t, ctx, db.MakeTestLogEntry(10, "doc10", "1-a"), false)
+	assert.Equal(t, int64(1), stats.ChannelCachePrunedOnInsert.Value(), "an entry at validFrom is cached, not pruned")
+	assert.Len(t, cache.LogsForTest(t), 1)
+}
