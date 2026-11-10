@@ -201,7 +201,7 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		statsContext:        &statsContext{heapProfileEnabled: !config.HeapProfileDisableCollection},
 		BootstrapContext:    &bootstrapContext{sgVersion: *base.ProductVersion, clusterCompatVersion: base.NodeClusterCompatVersion},
 		hasStarted:          make(chan struct{}),
-		_httpServers:        map[serverType]*serverInfo{},
+		_httpServers:        make(map[serverType]*serverInfo),
 		SGCollect:           newSGCollect(ctx),
 		serverCtx:           serverCtx,
 		serverCtxCancel:     serverCtxCancel,
