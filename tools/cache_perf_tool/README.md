@@ -50,12 +50,17 @@ and channel-cache write cost.
 - **stderr** — a per-second CSV of cumulative counters, plus interleaved Sync Gateway log lines.
 - **stdout** — the end-of-run summary (see below).
 
-In `-mode dcp` one writer goroutine is started per vBucket, 100 ms apart, so startup takes
-`-numVBuckets` × 100 ms — a **~100 s ramp** at the default 1024 — and that ramp runs to completion
-*before* the `-duration` timer starts. A default `-duration 10m` run therefore takes about 11m40s
-wall-clock, and the per-second CSV covers the ramp as well as the measured period. Lowering
-`-numVBuckets` shortens the ramp proportionally, which is useful for smoke tests (64 vBuckets ramps
-in ~6 s) — but it also lowers the offered load, so see the flag table below.
+In `-mode dcp` writer goroutines are started 100 ms apart, and that ramp runs to completion *before*
+the `-duration` timer starts, so the per-second CSV covers the ramp as well as the measured period.
+How long the ramp takes depends on `-writerGoroutines`:
+
+- **`-writerGoroutines 0`** (the default) starts one writer per vBucket, so startup takes
+  `-numVBuckets` × 100 ms — a **~100 s ramp** at the default 1024. A default `-duration 10m` run
+  therefore takes about 11m40s wall-clock. Lowering `-numVBuckets` shortens the ramp proportionally,
+  which is useful for smoke tests (64 vBuckets ramps in ~6 s) — but it also lowers the offered load,
+  so see the flag table below.
+- **`-writerGoroutines N`** starts N writers (plus the hot sync-seq vBucket's own writer, which is not
+  staggered), so the ramp is N × 100 ms: `-writerGoroutines 4` ramps in ~400 ms at any vBucket count.
 
 `seqs_cached_per_sec_steady` is ramp-aware: its window never reaches back past the point the last
 writer started, so it is never contaminated. But that also means a short run leaves it a short window
@@ -77,7 +82,11 @@ writer started, so it is never contaminated. But that also means a short run lea
 | `-channelsPerClient` | `0` | dcp | Channels each simulated feed watches, allocated round-robin from the channel population. |
 | `-rapidUpdateDocs` | `false` | dcp | Simulate KV-side deduplication on alternating mutations in every vBucket: allocate 5 sequences, then deliver a single event carrying all of them via `RecentSequences`. |
 | `-numDCPWorkers` | `8` | dcp | DCP client worker goroutines. |
-| `-numVBuckets` | `1024` | dcp | Number of vBuckets, **1–1024**. Sizes both the DCP client (worker routing, metadata) and the generator, which starts **one writer goroutine per vBucket** — so this is the offered write concurrency. **Runs with different values are not comparable with each other**, and every result in `cacheTestResults.md` was taken at 1024. Startup takes `numVBuckets` × 100 ms before `-duration` begins. |
+| `-numVBuckets` | `1024` | dcp | Number of vBuckets, **1–1024**. Sizes both the DCP client (worker routing, metadata) and the set of vBuckets the generator writes to. With `-writerGoroutines 0` the generator starts **one writer goroutine per vBucket**, so this is also the offered write concurrency; otherwise `-writerGoroutines` sets the writer count. **Runs with different values are not comparable with each other.** See [Running](#running) for the startup ramp. |
+| `-writerGoroutines` | `0` | dcp | Number of goroutines driving the data vBuckets, each writing a round-robin share flat out. `0` starts one writer per vBucket. Fewer writers remove generator-side contention so the cache, not the generator, is measured, but they also reduce arrival disorder (fewer allocated-but-undelivered sequences), so **only compare runs at the same value**. Requires `-writeDelay 0`. The hot sync-seq vBucket always keeps its own writer. |
+| `-generator` | `template` | dcp | How each document's `_sync` is built. `template` fills per-write values into pre-marshalled templates, allocating only the value the feed receives. `marshal` marshals every document from scratch; its garbage is collected in the same process as the cache, so it lowers measured throughput. |
+| `-starChannel` | `false` | both | Activate the `*` channel cache, so every change is also inserted into it, as in production when any user with `*` access has a feed open. Off by default, which leaves the star cache inactive and never inserted into. |
+| `-starChannelFeeds` | `0` | dcp | Number of simulated changes feeds watching only `*`, reading the star cache on every wake. Implies `-starChannel`. |
 | `-profileInterval` | `0` | both | If > 1 s, enable profiling: a whole-run CPU + fgprof profile, plus heap/mutex/block/goroutine profiles written to the working directory at this interval. Must be less than `-duration`. **Profiling perturbs throughput — do not quote numbers from a profiled run.** |
 
 ## Output
@@ -114,6 +123,15 @@ seqs_cached_per_sec_steady_window_secs,300
 dcp_received_count,1834561
 seqs_per_event,3.000000
 seqs_cached_per_event,1.000000
+avg_time_per_seq_ms_steady,0.004321
+feed_wakes,52000
+feed_wakes_with_data,48000
+feed_entries_read,910000
+feed_newest_entry_age_ms_per_channel_read,1.234567
+star_feed_wakes,0
+star_feed_wakes_with_data,0
+star_feed_entries_read,0
+star_feed_newest_entry_age_ms_per_channel_read,0.000000
 ```
 
 - **`seqs_cached_per_sec_steady`** is the headline throughput number: sequences cached per second
@@ -135,6 +153,23 @@ seqs_cached_per_event,1.000000
   `processEntry` calls are cheap ordering ops that skip the channel dispatch entirely. **Read
   `dcp_caching_count` as sequences cached, not sequences processed.**
 - Both ratios are `0` in `processEntry` mode, which bypasses DCP delivery.
+- `avg_time_per_seq_ms_steady` is the mean time to cache one sequence over the same steady window as
+  `seqs_cached_per_sec_steady`. Unlike `avg_time_per_seq_ms`, which averages over the whole run, it
+  excludes the ramp. `0` when there is no steady window.
+- The `feed_*` lines are summed over the `-numChangesFeeds` feeds and the `star_feed_*` lines over the
+  `-starChannelFeeds` feeds. The cache-side numbers say how fast entries were cached, not whether
+  feeds were woken for them, so a change to when notify fires is only visible here:
+  - `*_wakes` — wakes that reported changes.
+  - `*_wakes_with_data` — of those, wakes where at least one watched channel had a new entry.
+    `*_wakes` minus this is the number of wasted wakes.
+  - `*_entries_read` — channel-cache entries returned to the feeds.
+  - `*_newest_entry_age_ms_per_channel_read` — over per-channel reads that returned at least one
+    entry, the mean age of the newest entry since DCP receipt: how stale the feed's view was when it
+    read.
+
+  These lines are always printed, as `0` when no feeds of that kind ran, so a parser always finds
+  them. Each feed merges its counters once on exit, so they are complete only if every feed shut down
+  before the summary was printed.
 
 To grab throughput from a script:
 
@@ -154,8 +189,9 @@ awk -F, '$1=="seqs_cached_per_sec_steady"{print $2}' run_summary.csv
   any sequence is on the skipped list, which moves throughput substantially. A run that accumulates
   skipped sequences part-way through is measuring two different regimes; check
   `num_skipped_seqs` before averaging.
-- **`-numVBuckets` is the offered write concurrency, not just a client setting.** Lowering it makes
-  runs start much faster, but it is a different workload — reduce it for smoke tests and debugging,
-  leave it at 1024 for any number you intend to compare or publish.
+- **`-numVBuckets` is part of the workload, not just a client setting.** With the default
+  `-writerGoroutines 0` it is the offered write concurrency. Lowering it makes runs start much faster,
+  but it is a different workload — reduce it for smoke tests and debugging, leave it at 1024 for any
+  number you intend to compare or publish.
 - The tool exits by cancelling its context and waiting for writer goroutines to drain, so the
   summary appears a moment after `-duration` elapses.
