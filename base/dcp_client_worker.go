@@ -37,7 +37,7 @@ type DCPWorker struct {
 	metadata              DCPMetadataStore
 	pendingSnapshot       map[uint16]snapshotEvent
 	lastMetaPersistTime   time.Time
-	pendingPersist        bool // a requested checkpoint was deferred by metaPersistFrequency
+	pendingPersist        bool // a requested checkpoint was deferred by metaPersistFrequency, or its write failed
 	metaPersistFrequency  time.Duration
 	assignedVbs           []uint16
 	idleCheckpointOps     bool // Whether a checkpoint write made only for _sync: doc events is counted as an idle KV op
@@ -183,18 +183,25 @@ func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq 
 }
 
 func (w *DCPWorker) persist(ctx context.Context) {
-	w.metadata.Persist(ctx, w.ID, w.assignedVbs)
+	err := w.metadata.Persist(ctx, w.ID, w.assignedVbs)
+	if err != nil {
+		InfofCtx(ctx, KeyDCP, "%v", err)
+	}
 	// Background work such as heartbeats writes _sync: docs even on a node with no clients. When only those were
 	// seen, the checkpoint write is idle work too.
 	if w.idleCheckpointOps && !w.sawNonSyncDoc {
 		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 	}
-	w.sawNonSyncDoc = false
+	// keep sawNonSyncDoc after a failed write, so that the retry is not counted as idle
+	if err == nil {
+		w.sawNonSyncDoc = false
+	}
+	// a failed write still starts the persist interval, so a struggling cluster is not sent a write on every event
 	w.lastMetaPersistTime = time.Now()
-	w.pendingPersist = false
+	w.pendingPersist = err != nil
 }
 
-// Close persists any checkpoint that was deferred by metaPersistFrequency.
+// Close persists any checkpoint that was deferred by metaPersistFrequency or that failed to write.
 func (w *DCPWorker) Close(ctx context.Context) {
 	if w.pendingPersist {
 		w.persist(ctx)

@@ -62,7 +62,7 @@ func TestResyncRollback(t *testing.T) {
 	var garbageVBUUID gocbcore.VbUUID = 1234
 	vbMeta.VbUUID = garbageVBUUID
 	meta.SetMeta(0, vbMeta)
-	meta.Persist(rt.Context(), 0, []uint16{0})
+	require.NoError(t, meta.Persist(rt.Context(), 0, []uint16{0}))
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)

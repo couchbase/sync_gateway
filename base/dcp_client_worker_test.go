@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -20,14 +21,16 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// persistCountingMetadata is an in-memory DCPMetadataStore that counts Persist calls.
+// persistCountingMetadata is an in-memory DCPMetadataStore that counts Persist calls and returns persistErr from them.
 type persistCountingMetadata struct {
 	*DCPMetadataMem
 	persistCount int
+	persistErr   error
 }
 
-func (m *persistCountingMetadata) Persist(_ context.Context, _ int, _ []uint16) {
+func (m *persistCountingMetadata) Persist(_ context.Context, _ int, _ []uint16) error {
 	m.persistCount++
+	return m.persistErr
 }
 
 func newTestDCPWorker(t *testing.T, callback sgbucket.FeedEventCallbackFunc, checkpointPrefix string, persistFrequency time.Duration, ignoreDeletes bool) (*DCPWorker, *persistCountingMetadata) {
@@ -184,6 +187,32 @@ func TestDCPWorkerCheckpointPersistAfterInterval(t *testing.T) {
 
 	worker.Close(ctx)
 	require.Equal(t, 2, metadata.persistCount)
+}
+
+// TestDCPWorkerRetriesFailedCheckpointOnClose makes sure that a failed checkpoint write still starts the persist
+// interval, and that Close tries the write again without counting the retry as an idle KV op.
+func TestDCPWorkerRetriesFailedCheckpointOnClose(t *testing.T) {
+	ctx := TestCtx(t)
+	callback := func(sgbucket.FeedEvent) bool { return true }
+	worker, metadata := newTestDCPWorker(t, callback, "_sync:dcp_ck:test:", time.Hour, false)
+	worker.idleCheckpointOps = true
+	idleKVOpsBefore := SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()
+
+	metadata.persistErr = errors.New("persist failed")
+	worker.handleEvent(ctx, mutationEvent{key: []byte("doc1"), seq: 1})
+	require.Equal(t, 1, metadata.persistCount)
+	require.True(t, worker.pendingPersist)
+
+	// within the persist interval, so the failed write is not tried again
+	worker.handleEvent(ctx, mutationEvent{key: []byte("_sync:heartbeat"), seq: 2})
+	require.Equal(t, 1, metadata.persistCount)
+
+	metadata.persistErr = nil
+	worker.Close(ctx)
+	require.Equal(t, 2, metadata.persistCount)
+	require.False(t, worker.pendingPersist)
+	// the retry includes doc1 from the failed write, so it is not idle work
+	require.Equal(t, int64(0), SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Value()-idleKVOpsBefore)
 }
 
 func TestDCPWorkerCloseWithoutRequestedCheckpoint(t *testing.T) {

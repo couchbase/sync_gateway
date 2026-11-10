@@ -58,7 +58,7 @@ type DCPMetadataStore interface {
 	SetFailoverEntries(vbID uint16, entries []gocbcore.FailoverEntry)
 
 	// Persist writes the metadata for the specified workerID and vbucket IDs to the backing store
-	Persist(ctx context.Context, workerID int, vbIDs []uint16)
+	Persist(ctx context.Context, workerID int, vbIDs []uint16) error
 
 	// Purge removes all metadata associated with the metadata store from the bucket.  It does not remove the
 	// in-memory metadata.
@@ -176,7 +176,8 @@ func (m *dcpMetadataBase) setEndSeqNo(vbID uint16, endSeqNo gocbcore.SeqNo) {
 }
 
 // Persist is no-op for in-memory metadata store
-func (md *DCPMetadataMem) Persist(_ context.Context, workerID int, vbIDs []uint16) {
+func (md *DCPMetadataMem) Persist(_ context.Context, workerID int, vbIDs []uint16) error {
+	return nil
 }
 
 // Purge is no-op for in-memory metadata store
@@ -240,7 +241,7 @@ func NewDCPMetadataCS(ctx context.Context, store DataStore, numVbuckets uint16, 
 
 // Persist is called by worker.  Triggers persistence of metadata for all listed vbuckets.  This set must be the same
 // set that has been assigned to the worker.  Each vbucket is copied under its lock, and the write happens outside it.
-func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint16) {
+func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint16) error {
 
 	meta := WorkerMetadata{}
 	meta.DCPMeta = make(map[uint16]DCPMetadata, len(vbIDs))
@@ -249,10 +250,10 @@ func (m *DCPMetadataCS) Persist(ctx context.Context, workerID int, vbIDs []uint1
 	}
 	err := m.dataStore.Set(ctx, m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
-		InfofCtx(ctx, KeyDCP, "Unable to persist DCP metadata: %v", err)
-	} else {
-		TracefCtx(ctx, KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
+		return fmt.Errorf("unable to persist DCP metadata for worker %d: %w", workerID, err)
 	}
+	TracefCtx(ctx, KeyDCP, "Persisted metadata for worker %d: %v", workerID, meta)
+	return nil
 }
 
 func (m *DCPMetadataCS) load(ctx context.Context, workerID int) {
