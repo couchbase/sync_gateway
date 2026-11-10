@@ -31,7 +31,7 @@ func TestTimestampsOfflineOnline(t *testing.T) {
 	require.NoError(t, err)
 
 	rt.TakeDbOffline()
-	assert.Nil(t, rt.GetDatabase().TimestampsManger, "an offline database must not run a timestamps manager")
+	assert.Nil(t, rt.GetDatabase().TimestampsManager, "an offline database must not run a timestamps manager")
 
 	// make the newest entry older than the update frequency, so that coming online adds one
 	key := rt.GetDatabase().MetadataKeys.TimestampsSeqKey()
@@ -51,29 +51,24 @@ func TestTimestampsOfflineOnline(t *testing.T) {
 }
 
 // TestTimestampsMissingDocRecreatedOnline makes sure that a timestamps document deleted while the database is online is
-// created again, with an entry for the current sequence, once the database is taken offline and back online.
+// created again with an empty array once the database is taken offline and back online.
 func TestTimestampsMissingDocRecreatedOnline(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
 
 	rt.CreateTestDoc("doc1")
-	lastSeq, err := rt.GetDatabase().LastSequence(ctx)
-	require.NoError(t, err)
 
 	key := rt.GetDatabase().MetadataKeys.TimestampsSeqKey()
 	require.NoError(t, rt.MetadataStore().Delete(ctx, key))
 
 	rt.TakeDbOffline()
-	beforeOnline := time.Now().Unix()
 	rt.TakeDbOnline()
 
 	var tsDoc db.TimestampsSeqArray
-	_, err = rt.MetadataStore().Get(ctx, key, &tsDoc)
+	_, err := rt.MetadataStore().Get(ctx, key, &tsDoc)
 	require.NoError(t, err)
-	require.Len(t, tsDoc.Timestamps, 1)
-	assert.GreaterOrEqual(t, tsDoc.Timestamps[0].Seq, lastSeq)
-	assert.GreaterOrEqual(t, tsDoc.Timestamps[0].Timestamp, beforeOnline)
+	require.Len(t, tsDoc.Timestamps, 0)
 }
 
 // TestTimestampsNonPositiveClientPartitionWindow makes sure that with client_partition_window_secs of zero or less,

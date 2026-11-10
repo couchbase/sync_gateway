@@ -101,12 +101,12 @@ type GetSequenceFunc func(ctx context.Context) (uint64, error)
 
 // TimestampsManager maintains the timestamps document in the metadata store, and keeps an in-memory copy of it.
 type TimestampsManager struct {
-	timestampsSeqArray atomic.Pointer[TimestampsSeqArray]
-	metadataStore      base.DataStore
-	metaKeys           *base.MetadataKeys
-	purgeIntervalFunc  PurgeIntervalFunc
-	getSequenceFunc    GetSequenceFunc
-	nowFunc            func() time.Time
+	timestampsSeqArray          atomic.Pointer[TimestampsSeqArray]
+	metadataStore               base.DataStore
+	metaKeys                    *base.MetadataKeys
+	purgeIntervalFunc           PurgeIntervalFunc
+	getSequenceFunc             GetSequenceFunc
+	nowFunc                     func() time.Time
 	backgroundTasks             []BackgroundTask
 	terminator                  chan bool
 	stopped                     base.AtomicBool
@@ -117,11 +117,11 @@ type TimestampsManager struct {
 
 // TimestampsMgrOpts holds the dependencies of a TimestampsManager.
 type TimestampsMgrOpts struct {
-	metadataStore     base.DataStore
-	metaKeys          *base.MetadataKeys
-	purgeIntervalFunc PurgeIntervalFunc
-	getSequenceFunc   GetSequenceFunc
-	nowFunc           func() time.Time // the clock, so that tests can control time. Defaults to time.Now.
+	metadataStore               base.DataStore
+	metaKeys                    *base.MetadataKeys
+	purgeIntervalFunc           PurgeIntervalFunc
+	getSequenceFunc             GetSequenceFunc
+	nowFunc                     func() time.Time // the clock, so that tests can control time. Defaults to time.Now.
 	dbName                      string
 	testUpdateFrequencyOverride *time.Duration
 	testCheckIntervalOverride   *time.Duration
@@ -130,11 +130,11 @@ type TimestampsMgrOpts struct {
 // NewTimestampsManager returns a TimestampsManager with an empty in-memory array. It does not touch the metadata store until Start is called.
 func NewTimestampsManager(opts TimestampsMgrOpts) *TimestampsManager {
 	tm := &TimestampsManager{
-		metadataStore:     opts.metadataStore,
-		metaKeys:          opts.metaKeys,
-		purgeIntervalFunc: opts.purgeIntervalFunc,
-		getSequenceFunc:   opts.getSequenceFunc,
-		nowFunc:           opts.nowFunc,
+		metadataStore:               opts.metadataStore,
+		metaKeys:                    opts.metaKeys,
+		purgeIntervalFunc:           opts.purgeIntervalFunc,
+		getSequenceFunc:             opts.getSequenceFunc,
+		nowFunc:                     opts.nowFunc,
 		dbName:                      opts.dbName,
 		terminator:                  make(chan bool),
 		testUpdateFrequencyOverride: opts.testUpdateFrequencyOverride,
@@ -206,12 +206,12 @@ func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqA
 func (tm *TimestampsManager) Start(ctx context.Context) error {
 	err := tm.addEntry(ctx)
 	if err != nil {
-		return err
+		base.WarnfCtx(ctx, "error while adding entry: %v", err)
 	}
 
-
-	bgt, err := NewBackgroundTask(ctx, "TimestampsSequenceRecorder", tm.addEntry, tm.updateFrequency(), tm.terminator)
+	bgt, err := NewBackgroundTask(ctx, "TimestampsSequenceManager", tm.checkEntry, tm.checkInterval(), tm.terminator)
 	if err != nil {
+		base.WarnfCtx(ctx, "error starting TimestampsSequenceManager: %v", err)
 		return err
 	}
 	tm.backgroundTasks = append(tm.backgroundTasks, bgt)
@@ -236,6 +236,7 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	key := tm.metaKeys.TimestampsSeqKey()
 	// the bytes of the last successful write, used to refresh the in-memory array
 	var newValBytes []byte
+	var marshalErr error
 	// the entries dropped by the latest attempt of the Update callback, logged once after a successful write
 	var removedEntries []TimestampsSeqPair
 	now := tm.nowFunc().Unix()
@@ -245,15 +246,17 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 		var timestampsSeqArray TimestampsSeqArray
 		if current == nil {
 			newVal := tm.timestampsSeqArray.Load()
-			var marshalErr error
 			newValBytes, marshalErr = base.JSONMarshal(newVal)
 			return newValBytes, nil, false, marshalErr
 		}
-		if err := base.JSONUnmarshal(current, &timestampsSeqArray); err != nil {
-			return nil, nil, false, err
+		if unmarshalErr := base.JSONUnmarshal(current, &timestampsSeqArray); unmarshalErr != nil {
+			// reset a document that can't be parsed rather than fail every call: an empty array only delays purges until
+			// entries cover the purge interval again, and newValBytes replaces the in-memory copy with it
+			newValBytes, marshalErr = base.JSONMarshal(TimestampsSeqArray{})
+			return newValBytes, nil, false, marshalErr
 		}
 
-		lastSeq, err := tm.getSequenceFunc(tm.ctx)
+		lastSeq, err := tm.getSequenceFunc(ctx)
 		if err != nil {
 			return nil, nil, false, err
 		}

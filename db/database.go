@@ -186,8 +186,8 @@ type DatabaseContext struct {
 	CachedCCVEnabled                   atomic.Bool                       // If set, the cached value of the CCV Enabled flag (this is not expected to transition from true->false, but could go false->true)
 	numVBuckets                        uint16                            // Number of vbuckets in the bucket
 	SameSiteCookieMode                 http.SameSite
-	DBStateManager                     *DatabaseStateMgr // Manager used to manage the state of processes across nodes
-	TimestampsManger                   *TimestampsManager
+	DBStateManager                     *DatabaseStateMgr  // Manager used to manage the state of processes across nodes
+	TimestampsManager                  *TimestampsManager // Records the cluster sequence over time in the timestamps_seq document, set when online processes start
 
 	scopeName string // name of the single scope for the database
 }
@@ -821,8 +821,8 @@ func (db *DatabaseContext) _stopOnlineProcesses(ctx context.Context) {
 	if db.CfgSG != nil {
 		db.CfgSG.Stop()
 	}
-	if db.TimestampsManger != nil {
-		db.TimestampsManger.Stop(ctx)
+	if db.TimestampsManager != nil {
+		db.TimestampsManager.Stop(ctx)
 	}
 }
 
@@ -2637,9 +2637,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		getSequenceFunc:   db.GetRequestPlusSequence,
 		dbName:            db.Name,
 	}
-	db.TimestampsManger = NewTimestampsManager(timestampsMgrOpts)
+	db.TimestampsManager = NewTimestampsManager(timestampsMgrOpts)
 
-	err = db.TimestampsManger.Start(ctx)
+	err = db.TimestampsManager.Start(ctx)
 	if err != nil {
 		return err
 	}
