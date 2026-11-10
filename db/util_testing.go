@@ -1068,10 +1068,34 @@ func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *Backg
 
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(ctx, mgr.clusterAwareOptions.HeartbeatDocID())
-		require.NoError(c, ok)
+		exists, err := mgr.clusterAwareOptions.metadataStore.Exists(ctx, mgr.clusterAwareOptions.HeartbeatDocID())
+		assert.NoError(c, err)
 		assert.False(c, exists, "BackgroundManager heartbeat document was not removed in expected time")
-	}, 10*time.Second, 10*time.Millisecond)
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+}
+
+// synchronousStop stops a BackgroundManager and waits for it to reach a terminal state and finish its terminal status
+// write, or fails the test. Stop only signals the process, so call this before closing the bucket.
+func synchronousStop[O any](t testing.TB, mgr *BackgroundManager[O]) {
+	t.Helper()
+	ctx := base.TestCtx(t)
+	require.NoError(t, mgr.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, isBackgroundManagerStopped(mgr.GetRunState()), "BackgroundManager %s did not stop, state: %s", mgr.GetName(), mgr.GetRunState())
+		// Best effort in multi node mode: the status doc is shared, so another node's terminal write can satisfy
+		// this before this node's write lands.
+		rawStatus, err := mgr.GetStatus(ctx)
+		if !assert.NoError(c, err) {
+			return
+		}
+		var status BackgroundManagerStatus
+		if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
+			return
+		}
+		assert.True(c, isBackgroundManagerStopped(status.State), "BackgroundManager %s persisted status did not stop: %s", mgr.GetName(), string(rawStatus))
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+	// In single node mode the heartbeat doc removal is the last write of the terminal status update.
+	WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr)
 }
 
 // GetState returns the current process state. This method lets response types embedding
