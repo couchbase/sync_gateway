@@ -242,7 +242,7 @@ func (listener *changeListener) Stop(ctx context.Context) {
 	// Wait for mutation feed worker to terminate.
 	waitTime := MutationFeedStopMaxWait
 	select {
-	case <-listener.doneChan:
+	case _ = <-listener.doneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.
 	case <-time.After(waitTime):
 		base.WarnfCtx(ctx, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)

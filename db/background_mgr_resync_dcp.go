@@ -474,7 +474,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options ResyncOptions, persi
 		r.SetVBUUIDs(base.GetVBUUIDs(dcpClient.GetMetadata()))
 	}
 	select {
-	case <-doneChan:
+	case _ = <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "Finished running resync. %d/%d docs changed", r.DocsChanged(), r.DocsProcessed())
 		err := dcpClientClose.shutdown()
 		if err != nil {

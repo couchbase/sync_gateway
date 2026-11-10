@@ -166,7 +166,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP feed started.", compactionLoggingID)
 
 	select {
-	case <-doneChan:
+	case _ = <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Mark phase of attachment compaction completed. Marked %d attachments", compactionLoggingID, markedAttachmentCount.Value())
 		err = dcpClient.Close()
 	case <-terminator.Done():
@@ -397,7 +397,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", compactionLoggingID)
 
 	select {
-	case <-doneChan:
+	case _ = <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Sweep phase of attachment compaction completed. Deleted %d attachments", compactionLoggingID, purgedAttachmentCount.Value())
 		err = dcpClient.Close()
 	case <-terminator.Done():
@@ -533,7 +533,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	}
 
 	select {
-	case <-doneChan:
+	case _ = <-doneChan:
 		base.InfofCtx(ctx, base.KeyAll, "[%s] Cleanup phase of attachment compaction completed", compactionLoggingID)
 		// simplify close in CBG-2234
 		err = dcpClient.Close()
