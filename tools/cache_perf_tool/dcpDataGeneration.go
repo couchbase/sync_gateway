@@ -45,7 +45,9 @@ type dcpDataGen struct {
 	numChannelsPerDoc int
 	numTotalChannels  int
 	simRapidUpdate    bool
-	numVBuckets       int // number of vBucket writer goroutines to create; also the DCP client's vBucket count
+	// numVBuckets is the number of vBuckets written to and the DCP client's vBucket count; also the
+	// writer count when writerGoroutines is 0.
+	numVBuckets int
 	// writerGoroutines, when > 0, drives the data vBuckets from this many goroutines, each owning a
 	// round-robin share, instead of one goroutine per vBucket. Only valid with every write delay at 0
 	// (checked in main).
@@ -66,13 +68,16 @@ type dcpDataGen struct {
 	templates *syncTemplates
 }
 
-// vBucketCreation starts one writer goroutine per vBucket and returns once they are all running.
+// vBucketCreation starts the writer goroutines and returns once they are all running: one per vBucket
+// when writerGoroutines is 0, otherwise writerGoroutines data writers plus one for the hot sync-seq
+// vBucket (see startWriterGroups).
 //
-// Writers are staggered by 100ms, so this BLOCKS for numVBuckets*100ms before the caller's -duration
-// timer starts: ~100s at the default 1024 vBuckets, proportionally less below that.
+// Writers are staggered by 100ms, so this BLOCKS before the caller's -duration timer starts: for
+// numVBuckets*100ms with one writer per vBucket (~100s at the default 1024), or writerGoroutines*100ms
+// otherwise.
 //
-// numVBuckets is the offered write concurrency, so lowering it lowers the load the run applies. Runs
-// with different vBucket counts are not comparable with each other.
+// With one writer per vBucket, numVBuckets is the offered write concurrency, so lowering it lowers the
+// load the run applies. Runs with different vBucket counts are not comparable with each other.
 func (dcp *dcpDataGen) vBucketCreation(ctx context.Context) {
 	delayIndex := 0
 	// The hot sync-seq vBucket has a fixed ID, so with fewer vBuckets than that ID it is clamped to the
@@ -145,8 +150,8 @@ const recentSeqsPerRapidUpdate = 5
 // before it waits, as Sync Gateway does: the gap between the two is what produces arrival disorder.
 type pendingWrite struct {
 	// seqs[:numSeqs] are the document's recent sequences, oldest first; the last is its current sequence.
-	// One for a normal write, recentSeqsPerRapidUpdate for a -rapidUpdateDocs write. A fixed array so a
-	// normal write allocates nothing here.
+	// One for a normal write, recentSeqsPerRapidUpdate for a -rapidUpdateDocs write. A fixed array,
+	// filled in place, so allocating a write's sequences allocates nothing on the heap.
 	seqs    [recentSeqsPerRapidUpdate]uint64
 	numSeqs int
 	cas     uint64
@@ -162,7 +167,8 @@ func (w *pendingWrite) recentSeqs() []uint64 {
 func (dcp *dcpDataGen) allocateWrite(vbSeq uint64) pendingWrite {
 	var w pendingWrite
 	if dcp.simRapidUpdate && vbSeq%2 == 0 {
-		w.numSeqs = copy(w.seqs[:], dcp.seqAlloc.nextNSequences(recentSeqsPerRapidUpdate))
+		dcp.seqAlloc.nextSequencesInto(w.seqs[:])
+		w.numSeqs = recentSeqsPerRapidUpdate
 	} else {
 		w.seqs[0] = dcp.seqAlloc.nextSeq()
 		w.numSeqs = 1

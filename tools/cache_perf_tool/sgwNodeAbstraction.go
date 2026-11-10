@@ -50,15 +50,18 @@ func newSequenceAllocator(batchSize int, syncSeq *syncSeqMock) *sequenceAllocato
 }
 
 func (s *sequenceAllocator) nextSeq() uint64 {
-	seq := s.nextNSequences(1)
+	var seq [1]uint64
+	s.nextSequencesInto(seq[:])
 	return seq[0]
 }
 
-func (s *sequenceAllocator) nextNSequences(n int) []uint64 {
+// nextSequencesInto fills dst with the next len(dst) sequences. It writes into a caller-owned slice
+// rather than returning one so the per-write allocation path stays allocation-free: dst does not escape,
+// so callers can pass a stack or struct array.
+func (s *sequenceAllocator) nextSequencesInto(dst []uint64) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	sequences := make([]uint64, n)
-	for i := range n {
+	for i := range dst {
 		if s.lastSeq >= s.maxSeqInBatch {
 			maxSeq := s.syncSeqMock.nextBatch(uint64(s.batchSize))
 			s.maxSeqInBatch = maxSeq
@@ -71,7 +74,6 @@ func (s *sequenceAllocator) nextNSequences(n int) []uint64 {
 			}
 		}
 		s.lastSeq++
-		sequences[i] = s.lastSeq
+		dst[i] = s.lastSeq
 	}
-	return sequences
 }

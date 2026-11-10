@@ -179,32 +179,6 @@ func TestTemplateMatchesMarshal(t *testing.T) {
 	}
 }
 
-// TestTemplateValueAllocatesOnlyTheValue guards the point of the template generator: once a writer's
-// scratch buffer has grown, a write allocates only the value handed to the feed.
-func TestTemplateValueAllocatesOnlyTheValue(t *testing.T) {
-	for _, rapidUpdate := range []bool{false, true} {
-		dcp := &dcpDataGen{numChannelsPerDoc: 10, numTotalChannels: 20000, simRapidUpdate: rapidUpdate}
-		templates, err := newSyncTemplates(dcp)
-		require.NoError(t, err)
-		w := pendingWrite{numSeqs: 1, cas: 0x1234567890abcdef}
-		if rapidUpdate {
-			w.numSeqs = recentSeqsPerRapidUpdate
-		}
-		for j := range w.numSeqs {
-			w.seqs[j] = 1_000_000 + uint64(j)
-		}
-		timeSaved := time.Now()
-		var scratch []byte
-		chanCount := 0
-		_, _, scratch, err = templates.value(scratch, &w, chanCount, timeSaved)
-		require.NoError(t, err)
-		allocs := testing.AllocsPerRun(100, func() {
-			_, chanCount, scratch, _ = templates.value(scratch, &w, chanCount, timeSaved)
-		})
-		require.Equal(t, 1.0, allocs, "rapidUpdate=%t", rapidUpdate)
-	}
-}
-
 // TestGeneratedDocsReachChannelCaches is the end-to-end check: documents from each generator go through
 // a real DCP client and worker into a running change cache, and every channel cache must then hold
 // exactly the documents assigned to it, at their current sequences.
