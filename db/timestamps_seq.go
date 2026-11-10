@@ -86,6 +86,12 @@ func (ts *TimestampsSeqArray) trim(purgeTimestamp int64) {
 	ts.Timestamps = ts.Timestamps[idx-1:]
 }
 
+func (ts *TimestampsSeqArray) isDue(now int64, updateFrequency time.Duration) bool {
+	newestEntry := ts.newestTimestamp()
+	entryDue := ts.isEmpty() || now >= newestEntry+int64(updateFrequency/time.Second)
+	return entryDue
+}
+
 // PurgeIntervalFunc returns the interval after which timestamps entries are no longer needed.
 type PurgeIntervalFunc func() time.Duration
 
@@ -152,10 +158,7 @@ func (tm *TimestampsManager) updateFrequency() time.Duration {
 func (tm *TimestampsManager) entryDue() bool {
 	now := tm.nowFunc().Unix()
 	tsArray := tm.timestampsSeqArray.Load()
-	newestEntry := tsArray.newestTimestamp()
-	updateFrequency := tm.updateFrequency()
-	entryDue := tsArray.isEmpty() || now >= newestEntry+int64(updateFrequency/time.Second)
-	return entryDue
+	return tsArray.isDue(now, tm.updateFrequency())
 }
 
 // updateTimestampsArray replaces the in-memory array. The pointer is swapped atomically, so readers never see a partial update.
@@ -163,18 +166,18 @@ func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqA
 	tm.timestampsSeqArray.Store(&timestampArray)
 }
 
-// Start creates the timestamps document with an empty array, unless another node already created it.
+// Start calls addEntry: it creates the document with an empty array if it is missing, and otherwise loads it,
+// removing invalid entries or appending an entry if one is due.
 func (tm *TimestampsManager) Start() error {
 	// TODO: Add BackgroundTask here
 	err := tm.addEntry()
 	return err
 }
 
-// addEntry adds an entry for the current sequence to the timestamps document, unless the newest entry is
-// within the update frequency. It then drops entries that are ahead of the sequence or past the purge interval.
+// addEntry creates the timestamps document if it is missing. Otherwise it removes entries ahead of the current
+// sequence or, if none were removed and an entry is due, appends one and drops entries past the purge interval.
 func (tm *TimestampsManager) addEntry() error {
 	key := tm.metaKeys.TimestampsSeqKey()
-	updateFrequency := tm.updateFrequency()
 	// the bytes of the last successful write, used to refresh the in-memory array
 	var newValBytes []byte
 	// the entries dropped by the latest attempt of the Update callback, logged once after a successful write
@@ -182,6 +185,7 @@ func (tm *TimestampsManager) addEntry() error {
 	now := tm.nowFunc().Unix()
 	// TODO: Add this operation to KV Idle Ops
 	_, err := tm.metadataStore.Update(tm.ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
+		removedEntries = nil
 		var timestampsSeqArray TimestampsSeqArray
 		if current == nil {
 			newVal := tm.timestampsSeqArray.Load()
@@ -212,10 +216,7 @@ func (tm *TimestampsManager) addEntry() error {
 
 		// If entries were removed, persist the cleaned array without appending. The next call adds an entry.
 		if !removed {
-			withinUpdateFrequency := !timestampsSeqArray.isEmpty() &&
-				(now < timestampsSeqArray.newestTimestamp()+int64(updateFrequency/time.Second))
-			if withinUpdateFrequency {
-				// not due, or another node added an entry first
+			if !timestampsSeqArray.isDue(now, tm.updateFrequency()) {
 				newValBytes = current
 				return nil, nil, false, base.ErrUpdateCancel
 			}
