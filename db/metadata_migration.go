@@ -224,13 +224,16 @@ func syncFunctionKeysForDB(groupID string, collectionNames map[string]map[string
 // collection dropped mid-migration — which the caller must propagate to abort the whole pass.
 // Ordinary per-doc failures are recorded in stats and return nil so the run can continue.
 func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.MetadataKeys, metadataID string, siblingMetadataIDs []string, dbSyncFunctionKeys map[string]struct{}, key string, stats *MigrationStats) error {
-	// Ownership of a fallback key is decided by two helpers, chosen per key family:
+	// Ownership of a fallback key is decided per key family, by one of:
 	//
 	//   isOurs         — plain prefix match. Used for the non-inverted families
-	//                    (seq / unusedSeq / sgcfg / heartbeat / resync / state / replication
-	//                    status / timestamps_seq), whose keys are `_sync:[m_<id>:]<type>`. A sibling DB's keys
+	//                    (seq / unusedSeq / sgcfg / heartbeat / resync / replication status),
+	//                    whose keys are `_sync:[m_<id>:]<type>`. A sibling DB's keys
 	//                    carry a distinct `m_<id>:` infix, so they never share our prefix and
 	//                    no sibling check is needed.
+	//
+	//   key ==         — exact match for the singleton keys (state / timestamps_seq). A prefix match
+	//                    would also claim a default-DB heartbeater key whose groupID is that name.
 	//
 	//   isOursInverted — prefix match plus a sibling-DB exclusion. Used for the inverted
 	//                    families (user / role / useremail / session / dcp_ck), whose keys are
@@ -369,8 +372,8 @@ func handleMigrationKey(ctx context.Context, ms *base.MetadataStore, keys *base.
 		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyBackgroundProcessStatusPrefix.String()),
 		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncHeartBeaterPrefix.String()),
 		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyResyncCfgPrefix.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyDatabaseState.String()),
-		strings.HasPrefix(key, base.SyncDocPrefix+base.MetaKeyTimestampsSeq.String()),
+		key == base.SyncDocPrefix+base.MetaKeyDatabaseState.String(),
+		key == base.SyncDocPrefix+base.MetaKeyTimestampsSeq.String(),
 		base.IsHeartbeaterKey(key):
 		stats.DocsOutOfScope.Add(1)
 
