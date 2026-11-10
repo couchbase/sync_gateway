@@ -169,3 +169,38 @@ func TestSyncSeqVBucketKeepsStreamInOrder(t *testing.T) {
 	require.Positive(t, recorder.syncSeqs, "no _sync:seq updates were sent")
 	require.NotEmpty(t, recorder.keys, "no documents were written")
 }
+
+// TestAllocateWriteSequences checks the sequences allocateWrite hands out, which every DCP-mode write
+// is built from. The end-to-end cache test cannot catch a wrong count or a gap here: it derives its
+// expected cache contents from the same pendingWrite, and the cache tolerates gaps by eventually
+// skipping them. So the contract is checked directly: across consecutive writes the recent sequences
+// are exactly 1, 2, 3, ... with no gap or repeat, and a write carries recentSeqsPerRapidUpdate of them
+// when -rapidUpdateDocs applies to it, otherwise one. Batch sizes below and above
+// recentSeqsPerRapidUpdate make rapid-update writes cross allocator batch boundaries.
+func TestAllocateWriteSequences(t *testing.T) {
+	const numWrites = 40
+	for _, batchSize := range []int{1, 3, 10} {
+		for _, rapidUpdate := range []bool{false, true} {
+			t.Run(fmt.Sprintf("batchSize=%d,rapidUpdate=%t", batchSize, rapidUpdate), func(t *testing.T) {
+				dcp := &dcpDataGen{
+					seqAlloc:       newSequenceAllocator(batchSize, newSyncSeq()),
+					simRapidUpdate: rapidUpdate,
+				}
+				wantSeq := uint64(1)
+				for vbSeq := range uint64(numWrites) {
+					w := dcp.allocateWrite(vbSeq)
+					fmt.Println(w.recentSeqs())
+					wantNumSeqs := 1
+					if rapidUpdate && vbSeq%2 == 0 {
+						wantNumSeqs = recentSeqsPerRapidUpdate
+					}
+					require.Equal(t, wantNumSeqs, w.numSeqs, "vbSeq %d", vbSeq)
+					for i, seq := range w.recentSeqs() {
+						require.Equal(t, wantSeq, seq, "vbSeq %d, recent sequence %d", vbSeq, i)
+						wantSeq++
+					}
+				}
+			})
+		}
+	}
+}
