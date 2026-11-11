@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -1067,10 +1068,34 @@ func WaitForBackgroundManagerHeartbeatDocRemoval[O any](t testing.TB, mgr *Backg
 
 	ctx := base.TestCtx(t)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		exists, ok := mgr.clusterAwareOptions.metadataStore.Exists(ctx, mgr.clusterAwareOptions.HeartbeatDocID())
-		require.NoError(c, ok)
+		exists, err := mgr.clusterAwareOptions.metadataStore.Exists(ctx, mgr.clusterAwareOptions.HeartbeatDocID())
+		assert.NoError(c, err)
 		assert.False(c, exists, "BackgroundManager heartbeat document was not removed in expected time")
-	}, 10*time.Second, 10*time.Millisecond)
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+}
+
+// synchronousStop stops a BackgroundManager and waits for it to reach a terminal state and finish its terminal status
+// write, or fails the test. Stop only signals the process, so call this before closing the bucket.
+func synchronousStop[O any](t testing.TB, mgr *BackgroundManager[O]) {
+	t.Helper()
+	ctx := base.TestCtx(t)
+	require.NoError(t, mgr.Stop(ctx))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, isBackgroundManagerStopped(mgr.GetRunState()), "BackgroundManager %s did not stop, state: %s", mgr.GetName(), mgr.GetRunState())
+		// Best effort in multi node mode: the status doc is shared, so another node's terminal write can satisfy
+		// this before this node's write lands.
+		rawStatus, err := mgr.GetStatus(ctx)
+		if !assert.NoError(c, err) {
+			return
+		}
+		var status BackgroundManagerStatus
+		if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
+			return
+		}
+		assert.True(c, isBackgroundManagerStopped(status.State), "BackgroundManager %s persisted status did not stop: %s", mgr.GetName(), string(rawStatus))
+	}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
+	// In single node mode the heartbeat doc removal is the last write of the terminal status update.
+	WaitForBackgroundManagerHeartbeatDocRemoval(t, mgr)
 }
 
 // GetState returns the current process state. This method lets response types embedding
@@ -1553,6 +1578,8 @@ func (qh *QueryHandlerForTest) SetError(err error) {
 // [$channelName, $endSeq], and the views path uses startkey/endkey with the default
 // inclusive_end), and endSeq of 0 means unbounded - query.go substitutes N1QLMaxInt64 for it.
 // The bounds are applied before the limit, so entries outside the range do not consume it.
+// Matches are returned in sequence order whatever order they were seeded in, as a real channel query
+// returns them, and the limit is applied to that ordered result.
 func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	// One lock acquisition covers the count and the snapshot. queryCount counts queries issued,
 	// not queries that succeeded, so a test injecting an error can still assert that the caller
@@ -1585,9 +1612,12 @@ func (qh *QueryHandlerForTest) getChangesInChannelFromQuery(ctx context.Context,
 			continue
 		}
 		queryEntries = append(queryEntries, entry)
-		if limit > 0 && len(queryEntries) >= limit {
-			break
-		}
+	}
+	slices.SortStableFunc(queryEntries, func(a, b *LogEntry) int {
+		return cmp.Compare(a.Sequence, b.Sequence)
+	})
+	if limit > 0 && len(queryEntries) > limit {
+		queryEntries = queryEntries[:limit]
 	}
 	return queryEntries, nil
 }
@@ -1740,7 +1770,9 @@ func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkippedForTest(_ t
 // NewSingleChannelCacheForTest builds a single channel cache directly, bypassing the channel
 // cache that would normally own it.
 func NewSingleChannelCacheForTest(_ testing.TB, queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	return newSingleChannelCache(queryHandler, channel, validFrom, cacheStats)
+	cache := newSingleChannelCache(queryHandler, channel, cacheStats)
+	cache.validFrom = validFrom
+	return cache
 }
 
 // AsSingleChannelCacheImplForTest asserts a SingleChannelCache to the concrete implementation. Tests
@@ -1802,7 +1834,9 @@ func NewChannelCacheForTest(_ testing.TB, ctx context.Context, dbName string, op
 // options rather than the defaults.
 func NewSingleChannelCacheWithOptionsForTest(_ testing.TB, ctx context.Context, queryHandler ChannelQueryHandler,
 	channel channels.ID, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	return newChannelCacheWithOptions(ctx, queryHandler, channel, validFrom, options, cacheStats)
+	cache := newChannelCacheWithOptions(ctx, queryHandler, channel, options, cacheStats)
+	cache.validFrom = validFrom
+	return cache
 }
 
 // NewBypassChannelCacheForTest builds the bypass cache used when the channel cache is at capacity.
@@ -2065,4 +2099,24 @@ func (p *ResyncPauser) release() bool {
 	p.ds.SetWriteUpdateWithXattrsCallback(nil)
 	close(p.blockCh)
 	return true
+}
+
+// ValidFromHooksForTest exposes the validFrom fence hooks to test packages outside db.
+type ValidFromHooksForTest = validFromHooks
+
+// SetValidFromHooksForTest installs hooks into addChannelCache's validFrom fence. Must be called before the cache
+// is used concurrently.
+func (c *channelCacheImpl) SetValidFromHooksForTest(_ testing.TB, hooks ValidFromHooksForTest) {
+	c.validFromHooks = &hooks
+}
+
+// AdvancePublishCursorForTest raises the publish cursor to seq without dispatching anything. It models a sequence
+// that has been released for caching but not yet dispatched to the channel caches.
+func (c *channelCacheImpl) AdvancePublishCursorForTest(_ testing.TB, seq uint64) {
+	c.advancePublishCursor(seq)
+}
+
+// PublishCursorForTest returns the cache's current publish cursor.
+func (c *channelCacheImpl) PublishCursorForTest(_ testing.TB) uint64 {
+	return c.publishCursor.Load()
 }

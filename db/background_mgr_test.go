@@ -22,7 +22,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
-	"github.com/couchbase/sync_gateway/testing/sgtest"
 	"github.com/couchbaselabs/rosmar"
 )
 
@@ -145,6 +144,7 @@ func TestBackgroundManagerModes(t *testing.T) {
 
 			err := mgr.Start(ctx, MockProcessOptions{})
 			require.NoError(t, err)
+			defer synchronousStop(t, mgr)
 
 			require.EventuallyWithT(t, func(c *assert.CollectT) {
 				assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
@@ -189,7 +189,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	// 1. Start mgr1
 	err := mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, mgr1.Stop(ctx)) }()
+	defer synchronousStop(t, mgr1)
 
 	// 2. Try to start mgr1 again
 	err = mgr1.Start(ctx, MockProcessOptions{})
@@ -204,7 +204,7 @@ func TestBackgroundManagerMultiNodeTransitions(t *testing.T) {
 	}
 	err = mgr2.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
+	defer synchronousStop(t, mgr2)
 
 	// Both should be running
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -266,7 +266,7 @@ func TestBackgroundManagerMultiNodeSimultaneousTransitions(t *testing.T) {
 			defer wg.Done()
 			assert.NoError(t, managers[i].Start(ctx, MockProcessOptions{}))
 		}(i)
-		defer func(i int) { assert.NoError(t, managers[i].Stop(ctx)) }(i)
+		defer synchronousStop(t, managers[i])
 	}
 	wg.Wait()
 
@@ -342,7 +342,7 @@ func TestBackgroundManagerStartTimePreservedOnJoin(t *testing.T) {
 	}
 	err = mgr2.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
+	defer synchronousStop(t, mgr2)
 
 	require.NotEqual(t, origStartTime, mgr2.getStartTime())
 }
@@ -371,7 +371,7 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 	// 1. Start mgr1
 	err := mgr1.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, mgr1.Stop(ctx)) }()
+	defer synchronousStop(t, mgr1)
 
 	// Wait for mgr1 to be running and have a start time
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -395,7 +395,7 @@ func TestBackgroundManagerMultiNodeStartTimePreserved(t *testing.T) {
 
 	err = mgr2.Start(ctx, MockProcessOptions{})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, mgr2.Stop(ctx)) }()
+	defer synchronousStop(t, mgr2)
 
 	assert.Equal(t, origStartTime, mgr2.getStartTime(), "mgr2 should have inherited mgr1's start time")
 }
@@ -547,6 +547,7 @@ func TestBackgroundManagerJoin(t *testing.T) {
 
 	// Start mgr — this writes the options into the status document and sets cluster state to running.
 	require.NoError(t, mgr.Start(ctx, startOptions))
+	defer synchronousStop(t, mgr)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
@@ -561,13 +562,11 @@ func TestBackgroundManagerJoin(t *testing.T) {
 	}
 
 	require.NoError(t, mgr2.Join(ctx))
+	defer synchronousStop(t, mgr2)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr2.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
 	require.Equal(t, startOptions, process2.ReceivedOptions())
-
-	require.NoError(t, mgr.Stop(ctx))
-	require.NoError(t, mgr2.Stop(ctx))
 }
 
 // TestBackgroundManagerJoinNoDoc verifies that Join returns errBackgroundManagerStatusNotRunning when
@@ -645,6 +644,7 @@ func TestBackgroundManagerJoinWhileRunning(t *testing.T) {
 
 	startOptions := MockProcessOptions{Key: "value"}
 	require.NoError(t, mgr.Start(ctx, startOptions))
+	defer synchronousStop(t, mgr)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
@@ -653,8 +653,6 @@ func TestBackgroundManagerJoinWhileRunning(t *testing.T) {
 	require.NoError(t, mgr.Join(ctx))
 	require.Equal(t, BackgroundProcessStateRunning, mgr.GetRunState())
 	require.Equal(t, startOptions, process.ReceivedOptions())
-
-	require.NoError(t, mgr.Stop(ctx))
 }
 
 // TestBackgroundManagerJoinWhenNotRunning verifies that Join returns nil without starting the local process
@@ -753,7 +751,7 @@ func TestBackgroundManagerUpdateDatabaseStateRunning(t *testing.T) {
 	}
 
 	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
-	defer func() { assert.NoError(t, mgr.Stop(ctx)) }()
+	defer synchronousStop(t, mgr)
 
 	// UpdateStatusClusterAware is called synchronously at the end of Start, so by the time
 	// Start returns, updateDatabaseState must have been called with running=true.
@@ -798,6 +796,7 @@ func TestBackgroundManagerUpdateDatabaseStateOnCompletion(t *testing.T) {
 	}
 
 	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	defer synchronousStop(t, mgr)
 
 	// Stopping the manager causes the run goroutine to exit, which transitions the state to
 	// Stopped and then calls UpdateStatusClusterAware — which must call updateDatabaseState(false).
@@ -989,7 +988,7 @@ func TestUpdateDatabaseStateRapidCycles(t *testing.T) {
 		require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
 		assertResyncRunningEventually(t, dbStateMgr, true, ctx)
 
-		require.NoError(t, mgr.Stop(ctx))
+		synchronousStop(t, mgr)
 		assertResyncRunningEventually(t, dbStateMgr, false, ctx)
 	}
 }
@@ -1010,6 +1009,7 @@ func TestUpdateDatabaseStateProcessCompletesBeforeStartReturns(t *testing.T) {
 	// immediateCallbackProcess returns from Run immediately, making the goroutine cleanup race
 	// with the synchronous UpdateStatusClusterAware call at the end of Start.
 	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	defer synchronousStop(t, mgr)
 
 	// Regardless of ordering, the final state must settle to false because the process completed.
 	assertResyncRunningEventually(t, dbStateMgr, false, ctx)
@@ -1055,6 +1055,7 @@ func TestUpdateDatabaseStateConcurrentManagersSharedStateDoc(t *testing.T) {
 			defer startWG.Done()
 			assert.NoError(t, managers[i].Start(ctx, MockProcessOptions{}))
 		}(i)
+		defer synchronousStop(t, managers[i])
 	}
 	startWG.Wait()
 
@@ -1102,7 +1103,7 @@ func TestUpdateDatabaseStateJoinOverwritesRunningState(t *testing.T) {
 	// Manager A is the running node.
 	mgrA, dbStateMgr := newTestManagerWithStateDoc(metadataStore, metaKeys, "join-overwrite", &ResumableMockProcess{})
 	require.NoError(t, mgrA.Start(ctx, MockProcessOptions{}))
-	defer func() { assert.NoError(t, mgrA.Stop(ctx)) }()
+	defer synchronousStop(t, mgrA)
 
 	assertResyncRunningEventually(t, dbStateMgr, true, ctx)
 
@@ -1219,6 +1220,7 @@ func TestBackgroundManagerJoinConcurrentWhileStopping(t *testing.T) {
 		terminator:          base.NewSafeTerminator(),
 	}
 	require.NoError(t, mgr1.Start(ctx, startOptions))
+	defer synchronousStop(t, mgr1)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
@@ -1281,7 +1283,7 @@ func TestBackgroundManagerJoinConcurrentWhileStopping(t *testing.T) {
 	for i := range numJoinCallers {
 		if joinErrors[i] == nil {
 			// Join succeeded → process may be running; stop it.
-			_ = joinManagers[i].Stop(ctx)
+			synchronousStop(t, joinManagers[i])
 		}
 	}
 
@@ -1329,6 +1331,7 @@ func TestBackgroundManagerStartAfterCompletedSucceeds(t *testing.T) {
 
 	// Start and wait for the process to run to completion.
 	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	defer synchronousStop(t, mgr)
 	RequireBackgroundManagerState(t, mgr, BackgroundProcessStateCompleted)
 
 	err := mgr.Start(ctx, MockProcessOptions{})
@@ -1380,6 +1383,7 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 	}
 
 	require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
+	defer synchronousStop(t, mgr1)
 	RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
 
 	// Ensure the running status is written to the cluster.
@@ -1394,6 +1398,7 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 	}
 
 	require.NoError(t, mgr2.Join(ctx))
+	defer synchronousStop(t, mgr2)
 	RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
 
 	// Assert that process2 received the previous status in its GetProcessStatus call,
@@ -1407,9 +1412,6 @@ func TestBackgroundManagerJoinPreservesPreviousStatus(t *testing.T) {
 	err := json.Unmarshal(process2.LastPreviousStatus(), &clusterStatus)
 	require.NoError(t, err)
 	require.Equal(t, BackgroundProcessStateRunning, clusterStatus.Status.State)
-
-	require.NoError(t, mgr1.Stop(ctx))
-	require.NoError(t, mgr2.Stop(ctx))
 }
 
 // TestBackgroundManagerMultiNodePollingConverges verifies that when another node moves the shared
@@ -1458,10 +1460,10 @@ func TestBackgroundManagerMultiNodePollingConverges(t *testing.T) {
 
 			// Start both managers. Both should run.
 			require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
-			defer func() { _ = mgr1.Stop(ctx) }()
+			defer synchronousStop(t, mgr1)
 
 			require.NoError(t, mgr2.Start(ctx, MockProcessOptions{}))
-			defer func() { _ = mgr2.Stop(ctx) }()
+			defer synchronousStop(t, mgr2)
 
 			RequireBackgroundManagerState(t, mgr1, BackgroundProcessStateRunning)
 			RequireBackgroundManagerState(t, mgr2, BackgroundProcessStateRunning)
@@ -1549,10 +1551,10 @@ func TestBackgroundManagerMultiNodeStopConvergesToStopped(t *testing.T) {
 
 	// Start both managers. Both should run.
 	require.NoError(t, mgr1.Start(ctx, MockProcessOptions{}))
-	defer func() { _ = mgr1.Stop(ctx) }()
+	defer synchronousStop(t, mgr1)
 
 	require.NoError(t, mgr2.Start(ctx, MockProcessOptions{}))
-	defer func() { _ = mgr2.Stop(ctx) }()
+	defer synchronousStop(t, mgr2)
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr1.GetRunState())
@@ -1631,10 +1633,10 @@ func TestBackgroundManagerStartReturnsErrorWhileProcessKeepsRunning(t *testing.T
 	}, 5*time.Second, 100*time.Millisecond)
 
 	require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
+	defer synchronousStop(t, mgr)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, BackgroundProcessStateRunning, mgr.GetRunState())
 	}, 5*time.Second, 100*time.Millisecond)
-	require.NoError(t, mgr.Stop(ctx))
 }
 
 // TestUpdateStatusClusterAware checks that UpdateStatusClusterAware surfaces the underlying bucket-closed
@@ -1715,27 +1717,8 @@ func TestBackgroundManagerConcurrentStopStartRace(t *testing.T) {
 	}
 
 	// Depending on how the goroutines below interleave, the manager can be left running or mid-stop when
-	// they finish, which would leave its goroutines using the bucket after it has been closed. Registered
-	// after the testBucket.Close defer above, so it runs before the bucket is closed.
-	defer func() {
-		terminalStates := []BackgroundProcessState{BackgroundProcessStateStopped, BackgroundProcessStateCompleted, BackgroundProcessStateError}
-		require.EventuallyWithT(t, func(c *assert.CollectT) {
-			// Stop is a no-op if the process is already stopped or stopping.
-			assert.NoError(c, mgr.Stop(ctx))
-			assert.Contains(c, terminalStates, mgr.GetRunState())
-			// Also wait for the persisted status, which the process goroutine writes after transitioning
-			// to a terminal state, to ensure it is done with the bucket.
-			rawStatus, err := mgr.GetStatus(ctx)
-			if !assert.NoError(c, err) {
-				return
-			}
-			var status BackgroundManagerStatus
-			if !assert.NoError(c, base.JSONUnmarshal(rawStatus, &status)) {
-				return
-			}
-			assert.Contains(c, terminalStates, status.State, "BackgroundManager did not reach a terminal state: %s", string(rawStatus))
-		}, sgtest.GetBackgroundManagerStatusTransitionTimeout(t), 10*time.Millisecond)
-	}()
+	// they finish. Registered after the testBucket.Close defer above, so it runs before the bucket is closed.
+	defer synchronousStop(t, mgr)
 
 	numGoroutines := 10
 	iterations := 20
@@ -1816,7 +1799,7 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 				// time; this must count as the most recent successful heartbeat even though
 				// UpdateHeartbeatDocClusterAware itself has not yet been called.
 				require.NoError(t, mgr.Start(ctx, MockProcessOptions{}))
-				t.Cleanup(func() { _ = mgr.Stop(ctx) })
+				t.Cleanup(func() { synchronousStop(t, mgr) })
 			},
 		},
 	}
@@ -1839,7 +1822,8 @@ func TestUpdateHeartbeatDocClusterAwareTransientError(t *testing.T) {
 					return nil
 				},
 			})
-			defer leakyBucket.Close(ctx)
+			// Registered as a cleanup so it runs after the manager is stopped by a cleanup in setup.
+			t.Cleanup(func() { leakyBucket.Close(ctx) })
 			metadataStore := leakyBucket.DefaultDataStore(ctx)
 
 			mgr := &BackgroundManager[MockProcessOptions]{

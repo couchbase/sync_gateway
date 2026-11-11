@@ -503,6 +503,8 @@ type CacheStats struct {
 	ChannelCacheRevsActive *SgwIntStat `json:"chan_cache_active_revs"`
 	// The total number of transient bypass channel caches created to serve requests when the channel cache was at capacity.
 	ChannelCacheBypassCount *SgwIntStat `json:"chan_cache_bypass_count"`
+	// The number of changes not added to a channel cache because they were older than the earliest sequence the cache covers. These changes are served from a query instead.
+	ChannelCachePrunedOnInsert *SgwIntStat `json:"chan_cache_pruned_on_insert"`
 	// The total number of channel caches added.
 	//
 	// The metric doesn't decrease when a channel is removed. That is, it is similar to chan_cache_num_channels but doesn’t track removals.
@@ -1554,6 +1556,10 @@ func (d *DbStats) initCacheStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.ChannelCachePrunedOnInsert, err = NewIntStat(SubsystemCacheKey, "chan_cache_pruned_on_insert", StatUnitNoUnits, ChanCachePrunedOnInsertDesc, StatAddedVersion4dot2dot0, StatDeprecatedVersionNotDeprecated, StatStabilityInternal, labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ChannelCacheChannelsAdded, err = NewIntStat(SubsystemCacheKey, "chan_cache_channels_added", StatUnitNoUnits, ChanCacheChannelsAddedDesc, StatAddedVersion3dot0dot0, StatDeprecatedVersionNotDeprecated, StatStabilityCommitted, labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1687,6 +1693,7 @@ func (d *DbStats) unregisterCacheStats() {
 	prometheus.Unregister(d.CacheStats.AbandonedSeqs)
 	prometheus.Unregister(d.CacheStats.ChannelCacheRevsActive)
 	prometheus.Unregister(d.CacheStats.ChannelCacheBypassCount)
+	prometheus.Unregister(d.CacheStats.ChannelCachePrunedOnInsert)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsAdded)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedInactive)
 	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedNRU)

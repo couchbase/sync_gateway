@@ -38,6 +38,9 @@ var numGoroutines atomic.Int32
 const (
 	processEntry = "processEntry"
 	dcp          = "dcp"
+
+	generatorTemplate = "template"
+	generatorMarshal  = "marshal"
 )
 
 func main() {
@@ -53,7 +56,11 @@ func main() {
 	channelsPerClient := flag.Int("channelsPerClient", 0, "Number of channels per client to wait on. Used only for DCP mode.")
 	rapidUpdateDocs := flag.Bool("rapidUpdateDocs", false, "Have documents rapidly updated (use of recent sequences). Used only for DCP mode.")
 	numDCPWorkers := flag.Int("numDCPWorkers", 8, "Number of DCP workers to create. Default is 8. Used only for DCP mode.")
-	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets (1-1024). Used only for DCP mode. This sizes the DCP client AND the generator, which starts one writer goroutine per vBucket - so it is the offered write concurrency, and runs with different values are not comparable with each other. Writers are staggered by 100ms, so startup takes numVBuckets*100ms before -duration begins. Default is 1024.")
+	writerGoroutines := flag.Int("writerGoroutines", 0, "Number of goroutines to drive the data vBuckets from, each writing to a round-robin share. 0 (the default) starts one writer goroutine per vBucket. Fewer writers remove generator-side contention so the cache, not the generator, is measured, but they also reduce arrival disorder, so only compare runs at the same value. Requires -writeDelay 0. Used only for DCP mode.")
+	numVBuckets := flag.Int("numVBuckets", 1024, "Number of vBuckets (1-1024). Used only for DCP mode. This sizes the DCP client AND the set of vBuckets the generator writes to, so runs with different values are not comparable with each other. With -writerGoroutines 0 the generator starts one writer goroutine per vBucket, so this is also the offered write concurrency; otherwise -writerGoroutines sets the writer count. Writer starts are staggered by 100ms before -duration begins: numVBuckets*100ms with one writer per vBucket, writerGoroutines*100ms otherwise. Default is 1024.")
+	starChannel := flag.Bool("starChannel", false, "Activate the \"*\" channel cache, so every change is also inserted into that one cache, as it is in production when any user with \"*\" access has a feed open. Off by default, which leaves the star cache inactive and never inserted into.")
+	starChannelFeeds := flag.Int("starChannelFeeds", 0, "Number of changes feeds watching only the \"*\" channel, reading the star cache on every wake. Implies -starChannel. Used only for DCP mode.")
+	generator := flag.String("generator", generatorTemplate, "How DCP mode builds each document's _sync: \""+generatorTemplate+"\" fills per-write values into pre-marshalled templates, allocating only the value the feed receives; \""+generatorMarshal+"\" marshals every document from scratch. The marshal generator's garbage is collected in the same process as the cache, so it lowers measured throughput; use it to measure what templates save.")
 	flag.Parse()
 
 	if *nodes < 1 {
@@ -103,6 +110,30 @@ func main() {
 		log.Printf("invalid number of delays, number of input delays should match number of nodes: "+
 			"Delays=%d and number of nodes=%d", len(delayList), *nodes)
 		return
+	}
+	if *generator != generatorTemplate && *generator != generatorMarshal {
+		log.Fatalf("Invalid generator: %q, must be %q or %q", *generator, generatorTemplate, generatorMarshal)
+	}
+	if *starChannelFeeds < 0 {
+		log.Fatalf("Invalid number of star channel feeds: %d", *starChannelFeeds)
+	}
+	if *starChannelFeeds > 0 && *mode != dcp {
+		log.Fatalf("-starChannelFeeds is only supported in %s mode", dcp)
+	}
+	// Fatal rather than ignored: a run that silently fell back to one writer per vBucket would measure a
+	// different workload from the one requested.
+	if *writerGoroutines < 0 {
+		log.Fatalf("Invalid number of writer goroutines: %d", *writerGoroutines)
+	}
+	if *writerGoroutines > 0 {
+		if *mode != dcp {
+			log.Fatalf("-writerGoroutines is only supported in %s mode", dcp)
+		}
+		for _, d := range delayList {
+			if d != 0 {
+				log.Fatalf("-writerGoroutines requires -writeDelay 0 for every vBucket, got %v", delayList)
+			}
+		}
 	}
 
 	parentCtx := context.Background()
@@ -198,9 +229,22 @@ func main() {
 		}
 	}
 
+	// The star cache only receives entries once it is active, and nothing else in the tool activates it.
+	// Activated here, alongside the test-N caches, so it is active before the first write.
+	if *starChannel || *starChannelFeeds > 0 {
+		err = dbContext.InitChannel(ctx, t, channels.UserStarChannel)
+		if err != nil {
+			log.Printf("Error initializing channel %s: %v", channels.UserStarChannel, err)
+			return
+		}
+	}
+
 	// build change waiters (spoofing running changes feeds)
 	if *numOfChangesFeeds > 0 && *mode == dcp {
 		go startChanges(ctx, t, dbContext, *channelsPerClient, *numOfChangesFeeds, *totalNumberOfChans)
+	}
+	if *starChannelFeeds > 0 {
+		go startStarFeeds(ctx, t, dbContext, *starChannelFeeds)
 	}
 
 	// mode selection logic
@@ -209,7 +253,15 @@ func main() {
 		// setup dcp generator object and create fake dcp client
 		seqAlloc := newSequenceAllocator(*batchSize, seqAllocator)
 		dcpGen := &dcpDataGen{seqAlloc: seqAlloc, delays: delayList, dbCtx: dbContext, numChannelsPerDoc: *numChannelsPerDoc,
-			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs, numVBuckets: *numVBuckets}
+			numTotalChannels: *totalNumberOfChans, simRapidUpdate: *rapidUpdateDocs, numVBuckets: *numVBuckets,
+			writerGoroutines: *writerGoroutines}
+		if *generator == generatorTemplate {
+			dcpGen.templates, err = newSyncTemplates(dcpGen)
+			if err != nil {
+				log.Printf("Error building _sync templates: %v", err)
+				return
+			}
+		}
 		mutationListener := dbContext.GetMutationListener(t)
 		cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
 		client, err := createDCPClient(t, ctx, bucket, mutationListener.ProcessFeedEvent, cacheFeedStatsMap.Map, *numDCPWorkers, uint16(*numVBuckets))
@@ -219,9 +271,9 @@ func main() {
 		}
 		dcpGen.client = client
 
-		// create vBucket mutations. This blocks until every vBucket writer is running - the writers are
-		// staggered by 100ms each, so it takes numVBuckets*100ms (~100s at the default 1024), and only
-		// then does the -duration timer below start.
+		// create vBucket mutations. This blocks until every writer is running - the writers are staggered
+		// by 100ms each (~100s by default, see vBucketCreation), and
+		// only then does the -duration timer below start.
 		dcpGen.vBucketCreation(ctx)
 		runThroughput.markGeneratorReady()
 	} else if *mode == processEntry {
@@ -239,6 +291,10 @@ func main() {
 	// duration of test logic
 	time.Sleep(*timeToRun)
 	cancelFunc(errors.New("test duration complete"))
+	// A feed parked in ChangeWaiter.Wait does not observe ctx, and with the writers stopped nothing else
+	// would wake it, so it would never exit or merge its counters into the totals. Waking every waiter
+	// lets each one see the cancelled ctx and return. The key only needs to be non-empty.
+	dbContext.GetMutationListener(t).NotifyCheckForTermination(parentCtx, base.SetOf("cache_perf_tool_shutdown"))
 
 	workerFunc := func() (shouldRetry bool, err error, val any) {
 		return numGoroutines.Load() != int32(0), nil, val
@@ -271,41 +327,66 @@ func startChanges(ctx context.Context, t *testing.T, dbContext *db.DatabaseConte
 		}
 		chanIDList = make([]channels.ID, 0, clientChans) // overwrite the list for next client
 		waiter := mutationListener.NewWaiterWithChannels(chans, nil, true)
+		go runFeed(ctx, t, dbContext, waiter, chans, &feedTotals)
+	}
+}
 
-		go func(ctx context.Context, wait *db.ChangeWaiter, chanMap channels.Set) {
-			numGoroutines.Add(1)
-			defer numGoroutines.Add(-1)
-			// Per-feed cursor: remember the last sequence each watched channel has been read up to, so each
-			// wake reads only the delta (like a real changes feed passing `since`), not the whole channel log.
-			sinceByChan := make(map[channels.ID]uint64, len(chanMap))
-			for {
-				if ctx.Err() != nil {
+// startStarFeeds starts numFeeds simulated changes feeds that each watch only the "*" channel, the way
+// an admin or all-channels user's feed does. They read the star cache on every wake, so they add
+// read-side contention on the one cache every change is inserted into. Their counters are kept apart
+// from the per-channel feeds' so the two kinds of feed can be compared.
+func startStarFeeds(ctx context.Context, t *testing.T, dbContext *db.DatabaseContext, numFeeds int) {
+	mutationListener := dbContext.GetMutationListener(t)
+	chans := channels.SetOfNoValidate(channels.NewID(channels.UserStarChannel, base.DefaultCollectionID))
+	for range numFeeds {
+		waiter := mutationListener.NewWaiterWithChannels(chans, nil, true)
+		go runFeed(ctx, t, dbContext, waiter, chans, &starFeedTotals)
+	}
+}
+
+// runFeed simulates one changes feed: wait for a notification on any watched channel, then read each
+// watched channel's cache from where this feed last read it. It runs until ctx is cancelled and merges
+// its counters into totals on exit.
+func runFeed(ctx context.Context, t *testing.T, dbContext *db.DatabaseContext, wait *db.ChangeWaiter, chanMap channels.Set, totals *feedTotalsAccumulator) {
+	numGoroutines.Add(1)
+	defer numGoroutines.Add(-1)
+	var counters feedCounters
+	defer totals.merge(&counters)
+	// Per-feed cursor: remember the last sequence each watched channel has been read up to, so each
+	// wake reads only the delta (like a real changes feed passing `since`), not the whole channel log.
+	sinceByChan := make(map[channels.ID]uint64, len(chanMap))
+	for ctx.Err() == nil {
+		num := wait.Wait(ctx)
+		if num == db.WaiterClosed {
+			return
+		} else if num == db.WaiterHasChanges {
+			counters.wakes++
+			readAny := false
+			// get cached changes for map, simulating changes feeds actually using the channel cache
+			for id := range chanMap {
+				changes, err := dbContext.GetCachedChangesSince(t, ctx, id, sinceByChan[id])
+				if err != nil {
+					log.Printf("Error getting cached changes: %v", err)
 					return
 				}
-				num := wait.Wait(ctx)
-				if num == db.WaiterClosed {
-					return
-				} else if num == db.WaiterHasChanges {
-					// get cached changes for map, simulating changes feeds actually using the channel cache
-					for id := range chanMap {
-						changes, err := dbContext.GetCachedChangesSince(t, ctx, id, sinceByChan[id])
-						if err != nil {
-							log.Printf("Error getting cached changes: %v", err)
-							return
-						}
-						if n := len(changes); n > 0 {
-							sinceByChan[id] = changes[n-1].Sequence
-						}
-					}
+				if n := len(changes); n > 0 {
+					sinceByChan[id] = changes[n-1].Sequence
+					counters.entriesRead += int64(n)
+					counters.newestAgeNs += changes[n-1].TimeReceived.Since()
+					counters.nonEmptyReads++
+					readAny = true
 				}
 			}
-		}(ctx, waiter, chans)
+			if readAny {
+				counters.wakesWithData++
+			}
+		}
 	}
 }
 
 // steadyWindowSecs is the trailing window the steady-state throughput figure is taken over. 300s is
-// long enough to average out the notify cadence and short enough to exclude the ~100s vBucket ramp,
-// during which throughput is still climbing and would drag the whole-run average down.
+// long enough to average out the notify cadence and short enough to exclude the writer ramp (~100s by
+// default), during which throughput is still climbing and would drag the whole-run average down.
 const steadyWindowSecs = 300
 
 // throughputSample is one reading of the cumulative cached-sequence counter, taken at the same
@@ -313,6 +394,9 @@ const steadyWindowSecs = 300
 type throughputSample struct {
 	unixSec int64
 	count   int64
+	// cachingTimeNs is DCPCachingTime at the same moment, so the mean caching time over any window is
+	// the change in cachingTimeNs over the change in count.
+	cachingTimeNs int64
 }
 
 // runThroughput accumulates the per-second series csvStats already reads, so the end-of-run summary
@@ -325,10 +409,11 @@ type throughputSeries struct {
 	// samples is the per-second series, oldest first.
 	samples []throughputSample
 	// readyUnixSec is when the write generator reached full offered load; samples before it are
-	// excluded from the steady-state window. In DCP mode the 1024 vBucket writers are started 100ms
-	// apart, so the run spends its first ~100s ramping - and that ramp happens BEFORE the -duration
-	// timer starts, which is exactly the trap this guards: without it, a run given a -duration shorter
-	// than the steady window would report a steady figure that silently averages in the ramp.
+	// excluded from the steady-state window. In DCP mode the writers are started 100ms apart, so by
+	// default (one writer for each of 1024 vBuckets) the run spends its first ~100s ramping - and that
+	// ramp happens BEFORE the -duration timer starts, which is exactly the trap this guards: without
+	// it, a run given a -duration shorter than the steady window would report a steady figure that
+	// silently averages in the ramp.
 	readyUnixSec int64
 }
 
@@ -340,10 +425,10 @@ func (s *throughputSeries) markGeneratorReady() {
 	s.readyUnixSec = time.Now().Unix()
 }
 
-func (s *throughputSeries) record(unixSec int64, count int64) {
+func (s *throughputSeries) record(unixSec int64, count int64, cachingTimeNs int64) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.samples = append(s.samples, throughputSample{unixSec: unixSec, count: count})
+	s.samples = append(s.samples, throughputSample{unixSec: unixSec, count: count, cachingTimeNs: cachingTimeNs})
 }
 
 // rates returns sequences cached per second over the whole sampled run, and over the steady-state
@@ -364,22 +449,43 @@ func (s *throughputSeries) rates(windowSecs int64) (overall, steady float64, win
 		overall = float64(last.count-first.count) / float64(last.unixSec-first.unixSec)
 	}
 
-	cutoff := last.unixSec - windowSecs
-	if s.readyUnixSec > cutoff {
-		cutoff = s.readyUnixSec
-	}
-	// Walk back to the earliest sample still inside the window.
-	var start throughputSample
-	found := false
-	for i := n - 1; i >= 0 && s.samples[i].unixSec >= cutoff; i-- {
-		start = s.samples[i]
-		found = true
-	}
-	if found && last.unixSec > start.unixSec {
+	if start, ok := s._steadyBounds(windowSecs); ok {
 		window = last.unixSec - start.unixSec
 		steady = float64(last.count-start.count) / float64(window)
 	}
 	return overall, steady, window
+}
+
+// steadyAvgCachingTimeMs is the mean time to cache one sequence over the same steady window rates
+// uses. Unlike avg_time_per_seq_ms, which averages over the whole run, it excludes the ramp and earlier
+// parts of the run, so it reflects the run's steady state. 0 when there is no steady window.
+func (s *throughputSeries) steadyAvgCachingTimeMs(windowSecs int64) float64 {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	start, ok := s._steadyBounds(windowSecs)
+	if !ok {
+		return 0
+	}
+	last := s.samples[len(s.samples)-1]
+	return avgCachingTimeMs(last.cachingTimeNs-start.cachingTimeNs, last.count-start.count)
+}
+
+// _steadyBounds returns the first sample of the steady window: the last windowSecs of the run, never
+// reaching back past the point the generator came up to full load. ok is false when the run was too
+// short after ramp to give a window at all. The caller must hold s.lock.
+func (s *throughputSeries) _steadyBounds(windowSecs int64) (start throughputSample, ok bool) {
+	n := len(s.samples)
+	if n < 2 {
+		return throughputSample{}, false
+	}
+	last := s.samples[n-1]
+	cutoff := max(last.unixSec-windowSecs, s.readyUnixSec)
+	// Walk back to the earliest sample still inside the window.
+	for i := n - 1; i >= 0 && s.samples[i].unixSec >= cutoff; i-- {
+		start = s.samples[i]
+		ok = true
+	}
+	return start, ok && last.unixSec > start.unixSec
 }
 
 // avgCachingTimeMs is the running mean time to cache one sequence, in ms - DCPCachingTime and
@@ -439,8 +545,8 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	// RecentSequences are marked UnusedSequence unless they are channel removals, so they are ordered
 	// but never cached, and do not appear in these rates. seqs_per_event below reports that fan-out.
 	//
-	//   - _overall covers every sample of the run, so it INCLUDES the ~100s vBucket ramp during which
-	//     throughput is still climbing. Use it only for whole-run accounting.
+	//   - _overall covers every sample of the run, so it INCLUDES the writer ramp (~100s by default)
+	//     during which throughput is still climbing. Use it only for whole-run accounting.
 	//   - _steady covers the last steadyWindowSecs of post-ramp run and is the figure to compare
 	//     between runs.
 	//   - _steady_window_secs is the window that was actually measured. It is less than
@@ -474,6 +580,12 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	_, _ = fmt.Fprintf(os.Stdout, "dcp_received_count,%d\n", received)
 	_, _ = fmt.Fprintf(os.Stdout, "seqs_per_event,%f\n", seqsPerEvent)
 	_, _ = fmt.Fprintf(os.Stdout, "seqs_cached_per_event,%f\n", seqsCachedPerEvent)
+
+	// The mean time to cache a sequence over the steady window, alongside avg_time_per_seq_ms above,
+	// which is the mean over the whole run, ramp included.
+	_, _ = fmt.Fprintf(os.Stdout, "avg_time_per_seq_ms_steady,%f\n", runThroughput.steadyAvgCachingTimeMs(steadyWindowSecs))
+
+	printFeedTotals(os.Stdout)
 }
 
 func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
@@ -508,7 +620,7 @@ func csvStats(ctx context.Context, dbContext *db.DatabaseContext) {
 			now := time.Now().Unix()
 			// Keep the series for the end-of-run seqs-cached-per-second lines, using the same timestamp
 			// and counter value printed below so the summary and the CSV cannot disagree.
-			runThroughput.record(now, count)
+			runThroughput.record(now, count, timeNano)
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", now)
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Database().HighSeqFeed.Value())
 			_, _ = fmt.Fprintf(os.Stderr, "%d,", dbStats.Cache().PendingSeqLen.Value())

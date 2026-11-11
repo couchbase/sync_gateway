@@ -29,10 +29,12 @@ linters:
     exhaustive:
       check:
         - switch
-        - map
+        - mapliteral
       default-signifies-exhaustive: true
-      explicit-exhaustive-map: true
-      ignore-enum-members: "(auditdSyncGatewayEndID|levelCount)" # these mark end of an enum
+      ignore-constants: # these mark the end of an enum
+        - auditdSyncGatewayEndID$
+        - levelCount$
+        - indexTypeCount$
     forbidigo:
       # Listed explicitly rather than relying on forbidigo's defaults, which don't cover log.Print*.
       forbid:
@@ -135,7 +137,7 @@ linters:
       - text: "ST1022:" # comment on exported type should be of the form "TypeName ..."
         linters:
           - staticcheck
-      - text:  "missing cases in switch"
+      - text: "missing (cases in .*switch|keys in map literal)"
         linters:
           - exhaustive
         path: (_test.go)

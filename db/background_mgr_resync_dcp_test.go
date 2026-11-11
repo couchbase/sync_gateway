@@ -1176,8 +1176,9 @@ func TestResyncManagerDCPJoinRoundTripsOptions(t *testing.T) {
 		}
 	}
 
+	// These managers are not registered on db, so db.Close will not wait for them.
 	mgr1 := newMgr()
-	defer func() { _ = mgr1.Stop(ctx) }()
+	defer synchronousStop(t, mgr1)
 
 	// Empty Collections means "all collections" (no per-collection lookup in Init).
 	// RegenerateSequences is non-zero so a silent field drop would be caught. Reset must not round trip.
@@ -1198,17 +1199,20 @@ func TestResyncManagerDCPJoinRoundTripsOptions(t *testing.T) {
 	// Init is called synchronously inside Join before Run is spawned, so startOptions is already set
 	// by the time Join returns.
 	mgr2 := newMgr()
-	defer func() { _ = mgr2.Stop(ctx) }()
+	defer synchronousStop(t, mgr2)
 
 	require.NoError(t, mgr2.Join(ctx))
 
 	// Read startOptions from mgr2's process. The field is unexported but accessible within the package.
 	resync2 := mgr2.Process.(*ResyncManagerDCP)
-	resync2.lock.RLock()
-	defer resync2.lock.RUnlock()
+	startOptions := func() ResyncOptions {
+		resync2.lock.RLock()
+		defer resync2.lock.RUnlock()
+		return resync2.startOptions
+	}()
 	expectedOptions := inputOptions
 	expectedOptions.Reset = false
-	require.Equal(t, expectedOptions, resync2.startOptions)
+	require.Equal(t, expectedOptions, startOptions)
 }
 
 // TestNewResyncManagerDCPUpdateDatabaseState verifies that NewResyncManagerDCP wires updateDatabaseState
@@ -1411,7 +1415,7 @@ func TestResyncUnregisterFeedStoppedDest(t *testing.T) {
 			if stopDest {
 				require.Empty(t, r.completedvBuckets.m)
 				select {
-				case <-r.completedvBuckets.done():
+				case _ = <-r.completedvBuckets.done():
 					require.FailNow(t, "resync completed even though the dest was stopped")
 				default:
 				}

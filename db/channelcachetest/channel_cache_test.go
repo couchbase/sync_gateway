@@ -1328,28 +1328,59 @@ func TestChannelCacheRemoveByCollection(t *testing.T) {
 }
 
 // TestChannelCacheAddUnusedSequence covers which sequence a released range advances the cache's
-// high sequence to. A range reports its end; a single released sequence has no end and reports
-// itself. Getting either wrong leaves the high sequence behind, which stalls changes feeds.
+// high sequence and publish cursor to. Getting either wrong leaves the high sequence behind, which stalls changes
+// feeds, and leaves the cursor behind, which gives a channel cache created afterwards a looser
+// validFrom than the sequences already released justify.
 func TestChannelCacheAddUnusedSequence(t *testing.T) {
-	newCache := func(t *testing.T) db.ChannelCache {
+	newCache := func(t *testing.T) *db.ChannelCacheImplForTest {
 		ctx := base.TestCtx(t)
 		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
 			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
 		require.NoError(t, err)
-		t.Cleanup(func() { cache.Stop(ctx) })
+		t.Cleanup(func() {
+			cache.Stop(ctx)
+		})
 		return cache
+	}
+	// validFromOfNewCache creates a cache for a channel nothing has been dispatched to and returns its validFrom.
+	validFromOfNewCache := func(t *testing.T, cache *db.ChannelCacheImplForTest) uint64 {
+		single, err := db.GetSingleChannelCacheForTest(t, base.TestCtx(t), cache, channels.NewID("A", base.DefaultCollectionID))
+		require.NoError(t, err)
+		impl, ok := db.AsSingleChannelCacheImplForTest(t, single)
+		require.True(t, ok)
+		validFrom, _ := impl.GetCachedChanges(db.ChangesOptions{})
+		return validFrom
 	}
 
 	t.Run("range advances to its end sequence", func(t *testing.T) {
 		cache := newCache(t)
 		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
 		assert.Equal(t, uint64(9), cache.GetHighCacheSequence())
+		assert.Equal(t, uint64(9), cache.PublishCursorForTest(t))
 	})
 
 	t.Run("single sequence advances to itself", func(t *testing.T) {
 		cache := newCache(t)
 		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5})
 		assert.Equal(t, uint64(5), cache.GetHighCacheSequence())
+		assert.Equal(t, uint64(5), cache.PublishCursorForTest(t))
+		assert.Equal(t, uint64(6), validFromOfNewCache(t, cache))
+	})
+
+	t.Run("principal advances to itself", func(t *testing.T) {
+		cache := newCache(t)
+		cache.AddPrincipal(&db.LogEntry{Sequence: 7})
+		assert.Equal(t, uint64(7), cache.GetHighCacheSequence())
+		assert.Equal(t, uint64(7), cache.PublishCursorForTest(t))
+		assert.Equal(t, uint64(8), validFromOfNewCache(t, cache))
+	})
+
+	// A cache created after a released range starts after the range, so it doesn't claim to cover
+	// sequences that were released before it existed.
+	t.Run("cache created after a range is valid from after its end", func(t *testing.T) {
+		cache := newCache(t)
+		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
+		assert.Equal(t, uint64(10), validFromOfNewCache(t, cache))
 	})
 }
 

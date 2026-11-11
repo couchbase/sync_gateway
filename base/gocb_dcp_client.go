@@ -239,7 +239,7 @@ func (dc *GoCBDCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64,
 			}
 		case <-time.After(getVbSeqnoTimeout):
 			op.Cancel()
-			<-highSeqNoError
+			_ = <-highSeqNoError
 			return nil, ErrTimeout
 		}
 	}
@@ -573,7 +573,7 @@ func (dc *GoCBDCPClient) openStreamRequest(vbID uint16) error {
 		return err
 	case <-time.After(openStreamTimeout):
 		op.Cancel()
-		<-openStreamError
+		_ = <-openStreamError
 		return ErrTimeout
 	}
 }
