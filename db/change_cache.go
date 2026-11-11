@@ -72,6 +72,7 @@ type changeCache struct {
 	receivedSeqs          map[uint64]struct{}                 // Set of all sequences received
 	pendingLogs           LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
 	notifyChangeFunc      func(context.Context, channels.Set) // Client callback that notifies of channel changes
+	manualNotify          bool                                // True when notification delivery is driven by the test flush seam. Set only by the test setters.
 	started               base.AtomicBool                     // Set by the Start method
 	stopped               base.AtomicBool                     // Set by the Stop method
 	skippedSeqs           *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
