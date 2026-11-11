@@ -793,6 +793,16 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	return nil
 }
 
+// sendNoRevForInvalidRevTree sends a noRev to skip a revision whose rev tree history toHistory could not build. The only
+// way toHistory fails is an encoded history splitRevisionList rejects, which means the document's rev tree could not be
+// expressed on the wire - a metadata problem with the document rather than a replication problem.
+func (bsc *BlipSyncContext) sendNoRevForInvalidRevTree(ctx context.Context, sender *blip.Sender, collection *DatabaseCollectionWithUser, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
+	collection.dbStats().Database().InvalidRevTreeCount.Add(1)
+	base.WarnfCtx(ctx, "Could not get rev tree history for %s %s: %v, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
+	// The peer logs the noRev reason as is, so keep the doc ID out of it. The noRev already carries the doc ID and rev ID.
+	return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, fmt.Errorf("could not get rev tree history: %w", err))
+}
+
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int, remoteIsLegacyRev bool) error {
 
@@ -843,8 +853,10 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), originalErr)
 	}
 
-	base.TracefCtx(ctx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(docRev.Attachments))
 	attachmentStorageMeta := ToAttachmentStorageMeta(docRev.Attachments)
+	if base.LogTraceEnabled(ctx, base.KeySync) {
+		base.TracefCtx(ctx, base.KeySync, "sendRevision, rev attachment digests for %s/%s are %v", base.UD(docID), revID, digests(attachmentStorageMeta))
+	}
 	var bodyBytes []byte
 	if docRev.Deleted {
 		// A stored tombstone body can carry an internal _deleted property, which the peer would reject. Deletion
@@ -891,13 +903,7 @@ func (bsc *BlipSyncContext) sendRevision(ctx context.Context, sender *blip.Sende
 		var err error
 		revTreeHistory, err = toHistory(docRev.History, knownRevs, maxHistory)
 		if err != nil {
-			// The only way toHistory fails is an encoded history splitRevisionList rejects, which means
-			// the document's rev tree could not be expressed on the wire - a metadata problem with the
-			// document rather than a replication problem.
-			handleChangesResponseCollection.dbStats().Database().InvalidRevTreeCount.Add(1)
-			base.WarnfCtx(ctx, "Could not get rev tree history for %s %s: %v, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
-			// The peer logs the noRev reason as is, so keep the doc ID out of it. The noRev already carries the doc ID and rev ID.
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, fmt.Errorf("could not get rev tree history: %w", err))
+			return bsc.sendNoRevForInvalidRevTree(ctx, sender, handleChangesResponseCollection, docID, revID, collectionIdx, seq, err)
 		}
 	}
 
