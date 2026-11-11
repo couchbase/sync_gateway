@@ -301,14 +301,10 @@ func (s *SubChangesParams) String() string {
 	filter := s.filter()
 	if len(filter) > 0 {
 		buffer.WriteString(fmt.Sprintf("Filter:%v ", filter))
-		channels, found := s.channels()
+		channelString, found := s.channels()
 		if found {
 			// Redact each channel on its own, so a channel's hash in redacted logs matches its hash in other log lines.
-			channelNames := strings.Split(channels, ",")
-			for i, name := range channelNames {
-				channelNames[i] = base.UD(name).Redact()
-			}
-			buffer.WriteString(fmt.Sprintf("Channels:%s ", strings.Join(channelNames, ",")))
+			buffer.WriteString(fmt.Sprintf("Channels:%s ", base.UD(strings.Split(channelString, ",")).Redact()))
 		}
 	}
 
