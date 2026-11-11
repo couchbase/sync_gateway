@@ -1168,7 +1168,7 @@ func TestTimestampsManagerStop(t *testing.T) {
 	require.NotPanics(t, func() { tm.Stop(ctx) })
 }
 
-// TestTimestampsManagerStartCorruptDoc makes sure that Start resets a timestamps document that is not valid JSON to an
+// TestTimestampsManagerStartCorruptDoc makes sure that Start resets a timestamps document that can't be parsed to an
 // empty array, replaces the in-memory copy with it, and starts the background task, so that recording heals by itself.
 func TestTimestampsManagerStartCorruptDoc(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
@@ -1177,7 +1177,10 @@ func TestTimestampsManagerStartCorruptDoc(t *testing.T) {
 	metadataStore := testBucket.GetMetadataStore()
 	metaKeys := base.NewMetadataKeys(t.Name())
 
-	require.NoError(t, metadataStore.SetRaw(ctx, metaKeys.TimestampsSeqKey(), 0, nil, []byte("not json")))
+	// a JSON document whose timestamps field is not an array of entries
+	require.NoError(t, metadataStore.Set(ctx, metaKeys.TimestampsSeqKey(), 0, nil, map[string]any{"timestamps": "not an array"}))
+	_, err := metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &TimestampsSeqArray{})
+	require.Error(t, err, "the seeded document must not parse")
 
 	tm := NewTimestampsManager(TimestampsMgrOpts{
 		metadataStore:     metadataStore,
@@ -1191,8 +1194,8 @@ func TestTimestampsManagerStartCorruptDoc(t *testing.T) {
 	assert.Len(t, tm.backgroundTasks, 1, "the background task must start after the document is reset")
 
 	var tsDoc TimestampsSeqArray
-	_, err := metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
-	require.NoError(t, err, "the document must be reset to valid JSON")
+	_, err = metadataStore.Get(ctx, metaKeys.TimestampsSeqKey(), &tsDoc)
+	require.NoError(t, err, "the document must be reset to a parseable array")
 	assert.Empty(t, tsDoc.Timestamps)
 	assert.Equal(t, tsDoc, *tm.timestampsSeqArray.Load(), "the in-memory copy must match the reset document")
 
