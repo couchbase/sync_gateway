@@ -254,7 +254,7 @@ func (il *importListener) Stop(ctx context.Context) {
 		close(il.terminator)
 		if il.dcpDoneChan != nil {
 			select {
-			case <-il.dcpDoneChan:
+			case _ = <-il.dcpDoneChan:
 			case <-time.After(ImportFeedStopMaxWait):
 				base.WarnfCtx(ctx, "Timeout after %v of waiting for import feed to stop", ImportFeedStopMaxWait)
 			}
