@@ -344,13 +344,13 @@ func (bsc *BlipSyncContext) handleChangesResponse(ctx context.Context, sender *b
 	}
 
 	if response.Type() == blip.ErrorType {
-		return fmt.Errorf("Client returned error in changesResponse: %s", respBody)
+		return base.RedactErrorf("Client returned error in changesResponse: %s", base.UD(respBody))
 	}
 
 	var answer []any
 	if len(respBody) > 0 {
 		if err := base.JSONUnmarshal(respBody, &answer); err != nil {
-			base.ErrorfCtx(ctx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
+			base.ErrorfCtx(ctx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, base.UD(respBody))
 			return nil
 		}
 	} else {
@@ -533,7 +533,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(ctx context.Context, send
 			processed := resp.Type() != blip.ErrorType
 			if resp.Type() == blip.ErrorType {
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
-				base.InfofCtx(ctx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
+				base.InfofCtx(ctx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], base.UD(respBody))
 
 				if errorDomainIsHTTP(resp) {
 					status, _ := strconv.Atoi(resp.Properties["Error-Code"])
