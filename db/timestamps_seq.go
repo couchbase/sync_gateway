@@ -130,7 +130,7 @@ type TimestampsMgrOpts struct {
 // NewTimestampsManager returns a TimestampsManager with an empty in-memory array. It does not touch the metadata store until Start is called.
 func NewTimestampsManager(opts TimestampsMgrOpts) *TimestampsManager {
 	tm := &TimestampsManager{
-		metadataStore:               opts.metadataStore,
+		metadataStore:               base.NewIdleKVOpDataStore(opts.metadataStore),
 		metaKeys:                    opts.metaKeys,
 		purgeIntervalFunc:           opts.purgeIntervalFunc,
 		getSequenceFunc:             opts.getSequenceFunc,
@@ -240,7 +240,6 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	// the entries dropped by the latest attempt of the Update callback, logged once after a successful write
 	var removedEntries []TimestampsSeqPair
 	now := tm.nowFunc().Unix()
-	// TODO: Add this operation to KV Idle Ops
 	_, err := tm.metadataStore.Update(ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		removedEntries = nil
 		var timestampsSeqArray TimestampsSeqArray
@@ -258,6 +257,7 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 		}
 
 		lastSeq, err := tm.getSequenceFunc(ctx)
+		base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
 		if err != nil {
 			return nil, nil, false, err
 		}
