@@ -46,6 +46,7 @@ package changecachetest
 import (
 	"fmt"
 	"math/rand/v2"
+	"strings"
 )
 
 const (
@@ -245,12 +246,49 @@ func (o fuzzOp) feedIndex() int {
 	return int(o.Args[0]) % fuzzNumFeeds
 }
 
+// String prints the op by what its operands decode to, so a failure reads without the byte format at hand. It is for
+// humans only and is not part of the format.
 func (o fuzzOp) String() string {
-	n := 0
-	if o.Code < numDefinedOps {
-		n = opArity[o.Code]
+	switch o.Code {
+	case opNop:
+		return "Nop"
+	case opWrite:
+		extra := ""
+		if o.writeExtraSeq() {
+			extra = ",extra"
+		}
+		return fmt.Sprintf("Write(doc%d,{%s}%s)", o.writeDoc(), strings.Join(channelsInMask(o.writeMask()), ","), extra)
+	case opDeliver:
+		return fmt.Sprintf("Deliver(window %d,pick %d)", o.deliverWindow(), o.deliverPick())
+	case opWithhold:
+		return "Withhold"
+	case opDeliverLate:
+		return "DeliverLate"
+	case opDuplicate:
+		return fmt.Sprintf("Duplicate(%d)", o.Args[0])
+	case opUnused:
+		return "Unused"
+	case opUnusedRange:
+		return fmt.Sprintf("UnusedRange(%d)", o.unusedRangeLen())
+	case opPrincipal:
+		if o.principalIsUser() {
+			return "Principal(user)"
+		}
+		return "Principal(role)"
+	case opTimeoutPending:
+		return "TimeoutPending"
+	case opCleanSkipped:
+		return "CleanSkipped"
+	case opCreateCache:
+		return fmt.Sprintf("CreateCache(%s)", fuzzChannelNames[o.channelIndex()])
+	case opFeedRead:
+		return fmt.Sprintf("FeedRead(feed %d)", o.feedIndex())
+	case opFlush:
+		return "Flush"
+	case opStall:
+		return fmt.Sprintf("Stall(%d)", o.Args[0])
 	}
-	return fmt.Sprintf("%v%v", o.Code, o.Args[:n])
+	return o.Code.String()
 }
 
 // decodeScript decodes a byte slice into a config and ops. It never fails: see the format notes above.
