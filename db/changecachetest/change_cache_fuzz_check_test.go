@@ -1,0 +1,392 @@
+/*
+Copyright 2026-Present Couchbase, Inc.
+
+Use of this software is governed by the Business Source License included in
+the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+file, in accordance with the Business Source License, use of this software will
+be governed by the Apache License, Version 2.0, included in the file
+licenses/APL2.txt.
+*/
+
+package changecachetest
+
+import (
+	"slices"
+
+	"github.com/couchbase/sync_gateway/db"
+)
+
+// Properties checked against the model. Every cache read goes through an accessor that takes the cache's own lock:
+// the race detector does not treat synctest's fake sleeps as synchronisation with the cache's background tasks.
+
+// existingCache returns a channel's cache without creating it.
+func (h *fuzzHarness) existingCache(name string) (db.SingleChannelCache, bool) {
+	value, ok := h.channelCache.ChannelCachesForTest(h.t).Get(h.channelID(name))
+	if !ok {
+		return nil, false
+	}
+	cache, ok := value.(db.SingleChannelCache)
+	if !ok {
+		h.failf("channel cache for %s has unexpected type %T", name, value)
+	}
+	return cache, true
+}
+
+// snapshot reads one channel's cache if it exists, or returns nil.
+func (h *fuzzHarness) snapshot(name string) *fuzzCacheSnapshot {
+	cache, ok := h.existingCache(name)
+	if !ok {
+		return nil
+	}
+	// A read since sequence 0 returns the whole log together with validFrom, both under one lock.
+	validFrom, entries := cache.GetCachedChanges(db.ChangesOptions{})
+	return &fuzzCacheSnapshot{name: name, validFrom: validFrom, entries: entries}
+}
+
+// snapshots reads every channel cache that exists, keyed by channel name.
+func (h *fuzzHarness) snapshots() map[string]*fuzzCacheSnapshot {
+	snaps := make(map[string]*fuzzCacheSnapshot, len(allChannelNames))
+	for _, name := range allChannelNames {
+		if snap := h.snapshot(name); snap != nil {
+			snaps[name] = snap
+		}
+	}
+	return snaps
+}
+
+// checkAfterOp checks the properties that hold after every op.
+func (h *fuzzHarness) checkAfterOp() {
+	h.t.Helper()
+	h.pinLateLogs()
+	next, stable, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	h.recordTrace(next, stable, skipped)
+
+	// I6: the cache only moves forward.
+	if next < h.lastNext {
+		h.failf("I6: nextSequence went backwards from %d to %d", h.lastNext, next)
+	}
+	if stable < h.lastStable {
+		h.failf("I6: high_seq_stable went backwards from %d to %d", h.lastStable, stable)
+	}
+	h.lastNext, h.lastStable = next, stable
+
+	snaps := h.snapshots()
+
+	// I3: a channel cache vouches for nothing below validFrom, so it must not hold anything there.
+	for _, name := range allChannelNames {
+		snap, ok := snaps[name]
+		if !ok {
+			continue
+		}
+		for _, e := range snap.entries {
+			if e.Sequence < snap.validFrom {
+				h.failf("I3: channel %s holds %s for %s below validFrom %d\ncache: %s", name, describeEntry(e), e.DocID, snap.validFrom, snap)
+			}
+		}
+	}
+
+	// I1: once a document's newest delivered revision has been processed, every channel cache that covers it holds
+	// its entry. Processed means below nextSequence and not skipped, whatever the stable sequence: a real changes
+	// feed reads up to the cache's high sequence and sends what is above the stable sequence with compound
+	// sequences, so it relies on everything processed being in the cache, not only what is stable.
+	for docIndex := range h.model.revs {
+		rev := h.model.highestDelivered(docIndex)
+		// A newest revision that is not cached yet (pending or skipped) says nothing about the cache, and neither
+		// does one the cache gave up on. Older delivered revisions are not checked because the newest may already
+		// have superseded them.
+		if rev == nil || h.model.abandoned[rev.seq] || rev.seq >= next || slices.Contains(skipped, rev.seq) {
+			continue
+		}
+		for _, name := range rev.entriesPutBy() {
+			snap, ok := snaps[name]
+			if !ok || snap.validFrom > rev.seq {
+				continue
+			}
+			want, _ := rev.channelState(name)
+			got := snap.entryFor(rev.docID)
+			switch {
+			case want.matches(rev.docID, got):
+			case got == nil && h.model.viewOmittedState(name, rev):
+			case got != nil && got.Sequence > rev.seq:
+				// The cache backfilled this channel from the bucket after the document was rewritten, so it holds the
+				// state of a later write, which the cache has not necessarily been sent yet.
+				if !h.model.isLaterState(rev, name, got) {
+					h.failf("I1: channel %s holds %s for %s, which is neither %s (delivered and processed) nor the state of any later write\ncache: %s",
+						name, describeEntry(got), rev.docID, want, snap)
+				}
+			default:
+				h.failf("I1: channel %s (validFrom %d) holds %s for %s, want %s (delivered and processed, nextSequence %d, stable %d)\ncache: %s",
+					name, snap.validFrom, describeEntry(got), rev.docID, want, next, stable, snap)
+			}
+		}
+	}
+}
+
+// fuzzLateEntry is one entry the harness expects in a channel's late log, with the number of late-feed clients it has
+// registered on it.
+type fuzzLateEntry struct {
+	seq       uint64
+	listeners int
+}
+
+// pinLateLogs registers a late-feed client on every channel cache that exists and has not been pinned yet, and
+// seeds the harness's model of its late log. Caches only come into being inside harness ops (CreateCache, a feed's
+// GetChanges, start), on the harness goroutine, and none is ever evicted or replaced here: there are only six
+// channels against a limit of 50000, so compaction cannot run. The background tasks only prune existing caches. So
+// pinning after every op, and again before every delivery, covers every cache before any late entry is added to it.
+func (h *fuzzHarness) pinLateLogs() {
+	for _, name := range allChannelNames {
+		cache, ok := h.existingCache(name)
+		if !ok {
+			continue
+		}
+		if pinned, ok := h.pinned[name]; ok {
+			if pinned != cache {
+				h.failf("channel cache %s was replaced after it was pinned", name)
+			}
+			continue
+		}
+		log := h.lateLog(name)
+		if len(log) == 0 {
+			// Registering on an evicted cache returns 0 without pinning anything; a live cache always keeps an entry.
+			h.failf("channel cache %s has no late log to pin", name)
+		}
+		model := make([]fuzzLateEntry, len(log))
+		for i, seq := range log {
+			model[i].seq = seq
+		}
+		h.pinned[name] = cache
+		h.lateModel[name] = model
+		h.registerLateClient(name)
+	}
+}
+
+// registerLateClient registers one more late-feed client on a channel's newest late log entry and never releases
+// it. Doing this after every delivery models stalled feeds parked at many positions, so late logs stay populated and
+// the length cap has to force out entries that still have listeners.
+func (h *fuzzHarness) registerLateClient(name string) {
+	model := h.lateModel[name]
+	newest := &model[len(model)-1]
+	if got := h.pinned[name].RegisterLateSequenceClient(); got != newest.seq {
+		h.failf("late log: registering on channel %s's newest entry returned %d, model expects %d (model %v)", name, got, newest.seq, model)
+	}
+	newest.listeners++
+}
+
+// resyncLateLogs brings the model back in line after the harness slept. The age-based prune runs on a timer, so it
+// can only have fired during a sleep, and it only drops entries from the front, regardless of listeners. The cache's
+// log must therefore be a suffix of the model's; the surviving entries keep their listener counts.
+func (h *fuzzHarness) resyncLateLogs() {
+	for name := range h.pinned {
+		model, actual := h.lateModel[name], h.lateLog(name)
+		if len(actual) > len(model) || len(actual) == 0 {
+			h.failf("late log: after a sleep channel %s's late log is %v, which is not a suffix of the model's %v", name, actual, model)
+		}
+		model = model[len(model)-len(actual):]
+		for i, seq := range actual {
+			if model[i].seq != seq {
+				h.failf("late log: after a sleep channel %s's late log is %v, which is not a suffix of the model's %v", name, actual, h.lateModel[name])
+			}
+		}
+		h.lateModel[name] = model
+	}
+}
+
+func (h *fuzzHarness) lateLog(name string) []uint64 {
+	cache, ok := h.existingCache(name)
+	if !ok {
+		h.failf("channel cache %s disappeared", name)
+	}
+	impl, ok := db.AsSingleChannelCacheImplForTest(h.t, cache)
+	if !ok {
+		h.failf("channel cache %s is not a single channel cache", name)
+	}
+	return impl.LateLogSequencesForTest(h.t)
+}
+
+// lateAdds works out, from the sequences the cache reported leaving its skipped list during a delivery, which
+// late sequences the delivery added to each channel cache's late log, in order. The cache reports every sequence that
+// arrived late, but only some reach the channel caches, so each is classified by what the event carries:
+//   - the document's own sequence is added to the channels the revision is active in or was removed from at that
+//     sequence, and to "*";
+//   - an older sequence replayed from recent_sequences is a removal entry if the document left a channel there,
+//     which is added to those channels and "*", and otherwise an unused sequence, which adds nothing;
+//   - the event's own unused sequences add nothing.
+//
+// The cache processes an event's unused sequences, then the replayed sequences in ascending order, then the own
+// sequence, so the reported order must follow that.
+func (h *fuzzHarness) lateAdds(ev *fuzzEvent, arrived []uint64) map[string][]uint64 {
+	added := map[string][]uint64{}
+	if ev.kind != eventDoc {
+		// Only the event's own sequence can arrive: a range is released without going through the skipped removal.
+		for _, seq := range arrived {
+			if seq < ev.fromSeq || seq > ev.toSeq {
+				h.failf("late log: delivering %s reported sequence %d leaving the skipped list, which it does not carry", ev.docID, seq)
+			}
+		}
+		return added
+	}
+	rev := ev.rev
+	lastRank, lastSeq := 0, uint64(0)
+	for _, seq := range arrived {
+		var names []string
+		rank := 1
+		switch {
+		case seq == rev.seq:
+			names, rank = rev.entriesPutBy(), 2
+		case slices.Contains(rev.unusedSeqs, seq):
+			rank = 0
+		case slices.Contains(rev.recentSeqs, seq) && seq < rev.currentSequence():
+			names = rev.removedAt(seq)
+		default:
+			h.failf("late log: delivering %s reported sequence %d leaving the skipped list, which the revision does not carry (recent %v, unused %v)",
+				rev, seq, rev.recentSeqs, rev.unusedSeqs)
+		}
+		if rank < lastRank || (rank == lastRank && seq <= lastSeq) {
+			h.failf("late log: delivering %s reported sequences %v leaving the skipped list out of processing order", rev, arrived)
+		}
+		lastRank, lastSeq = rank, seq
+		for _, name := range names {
+			if _, ok := h.pinned[name]; ok {
+				added[name] = append(added[name], seq)
+			}
+		}
+	}
+	return added
+}
+
+// checkLateLog applies a delivery's late adds to the model of each late log, with the cache's own purge rule, and
+// checks every channel's late log against it. On each add the cache drops entries from the front while more than one
+// remains and either the front has no listener or the log is longer than the channel cache's maximum length (the
+// leading sentinel counts). A listener does not protect an entry from the length cap. No time passes during a
+// delivery, so the age-based prune cannot fire between the delivery and this check.
+func (h *fuzzHarness) checkLateLog(ev *fuzzEvent) {
+	h.t.Helper()
+	arrived := h.takeSkippedRemoved()
+	added := h.lateAdds(ev, arrived)
+	for name, seqs := range added {
+		log := h.lateModel[name]
+		for _, seq := range seqs {
+			log = append(log, fuzzLateEntry{seq: seq})
+			for len(log) > 1 && (log[0].listeners == 0 || len(log) > h.cfg.ChannelMaxLen) {
+				log = log[1:]
+			}
+		}
+		h.lateModel[name] = log
+	}
+	for _, name := range allChannelNames {
+		model, ok := h.lateModel[name]
+		if !ok {
+			continue
+		}
+		want := make([]uint64, len(model))
+		for i, e := range model {
+			want[i] = e.seq
+		}
+		if got := h.lateLog(name); !slices.Equal(got, want) {
+			h.failf("late log: after delivering %s (late adds %v), channel %s's late log is %v, want %v (model %v)", ev.rev, added, name, got, want, model)
+		}
+	}
+	for name := range h.pinned {
+		h.registerLateClient(name)
+	}
+}
+
+// checkEnd checks the end state, once everything has been delivered and the cache has timed out what it was waiting
+// for. Every sequence the model allocated is accounted for, so the cache can be compared exactly.
+func (h *fuzzHarness) checkEnd() {
+	h.t.Helper()
+	next, stable, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	if next != h.nextSeq {
+		h.failf("end: nextSequence is %d, want %d", next, h.nextSeq)
+	}
+	if stable != h.nextSeq-1 {
+		h.failf("end: high_seq_stable is %d, want %d", stable, h.nextSeq-1)
+	}
+	if len(skipped) != 0 {
+		h.failf("end: skipped list is not empty: %v", skipped)
+	}
+
+	snaps := h.snapshots()
+	for _, name := range allChannelNames {
+		snap, ok := snaps[name]
+		if !ok {
+			continue
+		}
+		h.checkEndCache(snap)
+		h.endCaches = append(h.endCaches, snap.String())
+	}
+	for i, feed := range h.feeds {
+		h.checkEndFeed(i, feed)
+	}
+}
+
+// checkEndCache compares one channel cache with the bucket's final state. A document whose final state sits at an
+// abandoned sequence is skipped: the cache never saw that write, so it can legitimately hold an older state of it or
+// none.
+func (h *fuzzHarness) checkEndCache(snap *fuzzCacheSnapshot) {
+	h.t.Helper()
+	for _, e := range snap.entries {
+		if e.Sequence < snap.validFrom {
+			h.failf("I3: channel %s holds %s for %s below validFrom %d\ncache: %s", snap.name, describeEntry(e), e.DocID, snap.validFrom, snap)
+		}
+	}
+	for docIndex := range h.model.revs {
+		latest := h.model.latestRev(docIndex)
+		if latest == nil {
+			continue
+		}
+		got := snap.entryFor(latest.docID)
+		want, inChannel := latest.channelState(snap.name)
+		if inChannel && h.model.abandoned[want.seq] {
+			continue
+		}
+		switch {
+		case !inChannel && got != nil:
+			h.failf("end: channel %s holds %s for %s, which was never in it\ncache: %s", snap.name, describeEntry(got), latest.docID, snap)
+		case inChannel && want.seq >= snap.validFrom && !want.matches(latest.docID, got):
+			h.failf("end: channel %s (validFrom %d) holds %s for %s, want %s\ncache: %s", snap.name, snap.validFrom, describeEntry(got), latest.docID, want, snap)
+		case inChannel && want.seq < snap.validFrom && got != nil:
+			h.failf("end: channel %s (validFrom %d) holds %s for %s, whose final state %s is below validFrom\ncache: %s", snap.name, snap.validFrom, describeEntry(got), latest.docID, want, snap)
+		}
+	}
+}
+
+// checkEndFeed checks what a feed was sent: no entry twice, and for every document its last entry in each channel is
+// the final state, unless the final state is at an abandoned sequence.
+func (h *fuzzHarness) checkEndFeed(feedIndex int, feed *fuzzFeed) {
+	h.t.Helper()
+	type key struct {
+		channel string
+		seq     uint64
+	}
+	seen := map[key]bool{}
+	last := map[string]map[string]fuzzReceived{}
+	for _, r := range feed.received {
+		k := key{r.channel, r.seq}
+		if seen[k] {
+			h.failf("feed %d received channel %s sequence %d twice", feedIndex, r.channel, r.seq)
+		}
+		seen[k] = true
+		if last[r.channel] == nil {
+			last[r.channel] = map[string]fuzzReceived{}
+		}
+		last[r.channel][r.docID] = r
+	}
+	for _, name := range feed.channels {
+		for docIndex := range h.model.revs {
+			latest := h.model.latestRev(docIndex)
+			if latest == nil {
+				continue
+			}
+			want, inChannel := latest.channelState(name)
+			if !inChannel || h.model.abandoned[want.seq] {
+				continue
+			}
+			got, received := last[name][latest.docID]
+			if !received || got.seq != want.seq || got.revID != want.revID || got.removed != want.removed {
+				h.failf("feed %d (channels %v): last entry received in channel %s for %s is %v, want %s", feedIndex, feed.channels, name, latest.docID, got, want)
+			}
+		}
+	}
+}

@@ -1967,6 +1967,44 @@ func (c *changeCache) GetNextSequenceForTest(_ testing.TB) uint64 {
 	return c.nextSequence
 }
 
+// SequenceStateForTest returns nextSequence, the max stable cached sequence and every sequence in the skipped list
+// as one snapshot taken under the cache's read lock. Unlike GetMaxStableCachedForTest it is safe to call while the
+// cache's background tasks may be running.
+func (c *changeCache) SequenceStateForTest(_ testing.TB, ctx context.Context) (nextSequence, maxStable uint64, skipped []uint64) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	nextSequence = c.nextSequence
+	maxStable = c._getMaxStableCached(ctx)
+	// The oldest skipped sequence bounds the scan: nothing below maxStable+1 is skipped, and nothing at or above
+	// nextSequence can be.
+	for seq := maxStable + 1; seq < nextSequence; seq++ {
+		if c.skippedSeqs.Contains(seq) {
+			skipped = append(skipped, seq)
+		}
+	}
+	return nextSequence, maxStable, skipped
+}
+
+// SetRemoveSkippedHookForTest installs a function called with each sequence that leaves the skipped list because it
+// arrived late. It runs on the delivering goroutine with the cache's write lock held, so it must not call back into
+// the cache. Install it between Init and Start: Init leaves the cache locked until Start, and the cache reads the hook
+// only under that lock, so installing it after Start would race.
+func (c *changeCache) SetRemoveSkippedHookForTest(_ testing.TB, hook func(seq uint64)) {
+	c.removeSkippedHook = hook
+}
+
+// LateLogSequencesForTest returns the sequences in the late log, oldest first, read under the late log's lock. The
+// first entry may be the seq-0 sentinel.
+func (c *singleChannelCacheImpl) LateLogSequencesForTest(_ testing.TB) []uint64 {
+	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
+	seqs := make([]uint64, 0, len(c.lateLogs))
+	for _, entry := range c.lateLogs {
+		seqs = append(seqs, entry.logEntry.Sequence)
+	}
+	return seqs
+}
+
 // GetPublishedNextSequenceForTest reports nextSequence as published at the last lock release, as seen by
 // lock-free readers.
 func (c *changeCache) GetPublishedNextSequenceForTest(_ testing.TB) uint64 {

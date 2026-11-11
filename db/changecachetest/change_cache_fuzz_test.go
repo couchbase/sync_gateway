@@ -13,6 +13,7 @@ package changecachetest
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -49,6 +50,7 @@ type fuzzCache interface {
 	GetNextSequenceForTest(t testing.TB) uint64
 	GetMaxStableCachedForTest(t testing.TB, ctx context.Context) uint64
 	SkippedSeqsForTest(t testing.TB) *db.SkippedSequenceSkiplist
+	SequenceStateForTest(t testing.TB, ctx context.Context) (nextSequence, maxStable uint64, skipped []uint64)
 	Start(initialSequence uint64) error
 	Stop(ctx context.Context)
 }
@@ -97,6 +99,7 @@ type fuzzEvent struct {
 	toSeq    uint64 // last sequence; equal to fromSeq except for a range
 	docID    string
 	feed     sgbucket.FeedEvent // eventDoc, eventUnused and eventUnusedRange
+	rev      *fuzzRev           // eventDoc: the write this event carries
 	json     []byte             // eventPrincipal body
 	isUser   bool               // eventPrincipal
 	delivery int                // times delivered so far
@@ -109,9 +112,14 @@ type fuzzDoc struct {
 	channels   channels.ChannelMap // active channels map to nil; channels it left map to their removal
 }
 
-// fuzzFeed is a simulated changes feed reading a fixed set of channels.
+// fuzzFeed is a simulated changes feed reading a fixed set of channels. It keeps a since per channel and only
+// ever advances it to the stable sequence, so it relies on the cache never adding an entry at or below a
+// stable sequence it has reported. This is a simplification of the harness: a real feed also reads above the stable
+// sequence, and the cache's invariants do not depend on this feed's bound.
 type fuzzFeed struct {
 	channels []string
+	since    map[string]uint64
+	received []fuzzReceived // everything received, in receipt order
 }
 
 // fuzzHarness drives a real change cache from a script. It is built and used only inside a synctest
@@ -121,7 +129,7 @@ type fuzzHarness struct {
 	env          *fuzzEnv
 	cfg          fuzzConfig
 	cache        fuzzCache
-	channelCache db.ChannelCache
+	channelCache *db.ChannelCacheImplForTest
 	feeds        [fuzzNumFeeds]*fuzzFeed
 
 	nextSeq     uint64 // next sequence the simulated server will allocate
@@ -130,6 +138,27 @@ type fuzzHarness struct {
 	withheld    []*fuzzEvent // oldest first
 	delivered   []*fuzzEvent // in first-delivery order, one entry per event
 	principals  int
+
+	model        *fuzzModel
+	ops          []fuzzOp // the script being run, for failure messages
+	opIndex      int
+	curOp        fuzzOp
+	phase        string // set for the harness's own steps after the ops, which have no op
+	trace        []fuzzTraceStep
+	stepEvent    *fuzzEvent // the event the current step allocated, withheld or delivered
+	stepNote     string     // why the current step did nothing, if it did
+	stepDelivery int        // how many times stepEvent has been delivered, counting this step
+	stopped      bool
+	armed        *fuzzQuery                       // the cache state a feed read started from, which the query it triggers records
+	pinned       map[string]db.SingleChannelCache // channel caches with late clients registered; see pinLateLogs
+	lateModel    map[string][]fuzzLateEntry       // the late log the harness expects each pinned cache to hold
+	lastNext     uint64                           // nextSequence at the previous check
+	lastStable   uint64                           // max stable sequence at the previous check
+
+	endCaches []string // each channel cache's contents after the end-state checks
+
+	skippedLock    sync.Mutex
+	skippedRemoved []uint64 // sequences that left the skipped list on arrival since the last reset, in order
 
 	notifyLock    sync.Mutex
 	notifications []string // each notification's channel names, sorted and comma-joined, in arrival order
@@ -142,12 +171,15 @@ type fuzzResult struct {
 	MaxStable     uint64
 	Skipped       [][2]uint64
 	Notifications []string
+	Abandoned     []uint64
+	Caches        []string               // each existing channel cache's contents at the end of the run
+	Feeds         [fuzzNumFeeds][]string // everything each feed received
 }
 
 func newFuzzHarness(t *testing.T, env *fuzzEnv, cfg fuzzConfig) *fuzzHarness {
-	h := &fuzzHarness{t: t, env: env, cfg: cfg, nextSeq: 1}
+	h := &fuzzHarness{t: t, env: env, cfg: cfg, nextSeq: 1, model: newFuzzModel(), lastNext: 1, pinned: map[string]db.SingleChannelCache{}, lateModel: map[string][]fuzzLateEntry{}}
 	for i := range h.feeds {
-		h.feeds[i] = &fuzzFeed{channels: cfg.feedChannels(i)}
+		h.feeds[i] = &fuzzFeed{channels: cfg.feedChannels(i), since: map[string]uint64{}}
 	}
 	return h
 }
@@ -161,8 +193,18 @@ func (h *fuzzHarness) start() {
 	options.CacheSkippedSeqMaxWait = fuzzSkippedSeqMaxWait
 	options.ChannelCacheMaxLength = h.cfg.ChannelMaxLen
 
-	// The query handler is empty: these scripts never need a channel's history from the bucket.
+	// A channel cache created after sequences were cached backfills from the bucket's channel view, which
+	// the model answers from every write, delivered or not.
 	queryHandler := &db.QueryHandlerForTest{}
+	queryHandler.SetQueryCallback(func(channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (db.LogEntries, error) {
+		if h.armed == nil {
+			h.failf("channel view query for %s [%d,%d] outside a feed read", channel, startSeq, endSeq)
+		}
+		q := *h.armed
+		q.channel, q.startSeq, q.endSeq, q.allocated = channel, startSeq, endSeq, h.nextSeq
+		h.model.queries = append(h.model.queries, q)
+		return h.model.channelView(h.env.collectionID, channel, startSeq, endSeq, limit, activeOnly), nil
+	})
 	channelCache, err := db.NewChannelCacheForTest(t, ctx, "db", options.ChannelCacheOptions, queryHandler.AsFactory,
 		channels.NewActiveChannels(h.env.dbContext.DbStats.Cache().NumActiveChannels), h.env.dbContext.DbStats.Cache())
 	require.NoError(t, err)
@@ -173,6 +215,8 @@ func (h *fuzzHarness) start() {
 	// Init leaves the cache locked until Start, and its background tasks take that lock before they read the
 	// notify callback, so installing it here is ordered before every read. After Start it would race them.
 	cache.SetManualNotifyChangeFuncForTest(t, h.recordNotification)
+	// The hook runs under the same lock, so it is installed here for the same reason.
+	cache.SetRemoveSkippedHookForTest(t, h.recordSkippedRemoved)
 	require.NoError(t, cache.Start(0))
 	h.cache = cache
 
@@ -181,8 +225,13 @@ func (h *fuzzHarness) start() {
 	}
 }
 
-// stop shuts down everything start created, so no goroutine outlives the bubble.
+// stop shuts down everything start created, so no goroutine outlives the bubble. It is safe to call twice, since a
+// failed check unwinds through a deferred stop.
 func (h *fuzzHarness) stop() {
+	if h.stopped || h.cache == nil {
+		return
+	}
+	h.stopped = true
 	h.cache.Stop(h.env.ctx)
 	h.channelCache.Stop(h.env.ctx)
 }
@@ -196,6 +245,26 @@ func (h *fuzzHarness) recordNotification(_ context.Context, chans channels.Set) 
 	h.notifyLock.Lock()
 	defer h.notifyLock.Unlock()
 	h.notifications = append(h.notifications, strings.Join(names, ","))
+}
+
+// recordSkippedRemoved is the cache's hook for a sequence leaving the skipped list on arrival. It is called from
+// cache code with the cache's lock held, so it only records.
+func (h *fuzzHarness) recordSkippedRemoved(seq uint64) {
+	h.skippedLock.Lock()
+	defer h.skippedLock.Unlock()
+	h.skippedRemoved = append(h.skippedRemoved, seq)
+}
+
+func (h *fuzzHarness) resetSkippedRemoved() {
+	h.skippedLock.Lock()
+	defer h.skippedLock.Unlock()
+	h.skippedRemoved = nil
+}
+
+func (h *fuzzHarness) takeSkippedRemoved() []uint64 {
+	h.skippedLock.Lock()
+	defer h.skippedLock.Unlock()
+	return slices.Clone(h.skippedRemoved)
 }
 
 func (h *fuzzHarness) channelID(name string) channels.ID {
@@ -214,6 +283,13 @@ func (h *fuzzHarness) result() fuzzResult {
 	h.notifyLock.Lock()
 	defer h.notifyLock.Unlock()
 	res.Notifications = slices.Clone(h.notifications)
+	res.Abandoned = slices.Sorted(maps.Keys(h.model.abandoned))
+	res.Caches = h.endCaches
+	for i, feed := range h.feeds {
+		for _, r := range feed.received {
+			res.Feeds[i] = append(res.Feeds[i], r.String())
+		}
+	}
 	return res
 }
 
@@ -223,10 +299,66 @@ func (h *fuzzHarness) allocSeq() uint64 {
 	return seq
 }
 
-// run executes ops in order.
+// run executes ops in order, checking the cache's invariants after each, then settles the run and checks the
+// end state.
 func (h *fuzzHarness) run(ops []fuzzOp) {
-	for _, op := range ops {
+	h.ops = ops
+	for i, op := range ops {
+		h.beginStep(i, op, "")
 		h.step(op)
+		h.checkAfterOp()
+	}
+	h.quiesce()
+	h.checkEnd()
+}
+
+// timeoutPending lets the cache's own InsertPendingEntries task run when fake time passes its deadline. The
+// extra nanosecond keeps the harness's wake-up off the task's tick instant.
+func (h *fuzzHarness) timeoutPending() {
+	time.Sleep(fuzzPendingSeqMaxWait + time.Nanosecond)
+	synctest.Wait()
+	h.resyncLateLogs()
+}
+
+// cleanSkipped lets the cache's skipped-sequence cleanup run, and records what it abandoned. Nothing is
+// delivered while the harness sleeps, so a sequence that leaves the skipped list across the sleep was given up on.
+func (h *fuzzHarness) cleanSkipped() {
+	_, _, before := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	time.Sleep(fuzzSkippedSeqMaxWait + time.Nanosecond)
+	synctest.Wait()
+	_, _, after := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	h.resyncLateLogs()
+	for _, seq := range before {
+		if !slices.Contains(after, seq) {
+			h.model.abandoned[seq] = true
+		}
+	}
+}
+
+// quiesce delivers everything still outstanding, oldest first, then lets the cache time out whatever is left
+// pending and has every feed read once more.
+func (h *fuzzHarness) quiesce() {
+	for len(h.undelivered) > 0 {
+		ev := h.undelivered[0]
+		h.undelivered = h.undelivered[1:]
+		h.beginStep(len(h.ops), fuzzOp{}, "quiesce: deliver undelivered")
+		h.deliver(ev)
+		h.checkAfterOp()
+	}
+	for len(h.withheld) > 0 {
+		ev := h.withheld[0]
+		h.withheld = h.withheld[1:]
+		h.beginStep(len(h.ops), fuzzOp{}, "quiesce: deliver withheld")
+		h.deliver(ev)
+		h.checkAfterOp()
+	}
+	h.beginStep(len(h.ops), fuzzOp{}, "quiesce: time out pending")
+	h.timeoutPending()
+	h.checkAfterOp()
+	for i := range h.feeds {
+		h.beginStep(len(h.ops), fuzzOp{}, fmt.Sprintf("quiesce: feed %d reads", i))
+		h.feedRead(i)
+		h.checkAfterOp()
 	}
 }
 
@@ -234,37 +366,47 @@ func (h *fuzzHarness) step(op fuzzOp) {
 	switch op.Code {
 	case opWrite:
 		h.write(op.writeDoc(), op.writeMask(), op.writeExtraSeq())
+		h.stepEvent = h.undelivered[len(h.undelivered)-1]
 	case opDeliver:
+		if len(h.undelivered) == 0 {
+			h.stepNote = "nothing undelivered"
+		}
 		h.deliverOne(op.deliverWindow(), op.deliverPick())
 	case opWithhold:
-		if len(h.undelivered) > 0 {
-			h.withheld = append(h.withheld, h.undelivered[0])
-			h.undelivered = h.undelivered[1:]
+		if len(h.undelivered) == 0 {
+			h.stepNote = "nothing undelivered"
+			break
 		}
+		h.stepEvent = h.undelivered[0]
+		h.withheld = append(h.withheld, h.undelivered[0])
+		h.undelivered = h.undelivered[1:]
 	case opDeliverLate:
-		if len(h.withheld) > 0 {
-			ev := h.withheld[0]
-			h.withheld = h.withheld[1:]
-			h.deliver(ev)
+		if len(h.withheld) == 0 {
+			h.stepNote = "nothing withheld"
+			break
 		}
+		ev := h.withheld[0]
+		h.withheld = h.withheld[1:]
+		h.deliver(ev)
 	case opDuplicate:
-		if len(h.delivered) > 0 {
-			h.deliver(h.delivered[int(op.Args[0])%len(h.delivered)])
+		if len(h.delivered) == 0 {
+			h.stepNote = "nothing delivered yet"
+			break
 		}
+		h.deliver(h.delivered[int(op.Args[0])%len(h.delivered)])
 	case opUnused:
 		h.unused()
+		h.stepEvent = h.undelivered[len(h.undelivered)-1]
 	case opUnusedRange:
 		h.unusedRange(op.unusedRangeLen())
+		h.stepEvent = h.undelivered[len(h.undelivered)-1]
 	case opPrincipal:
 		h.principal(op.principalIsUser())
+		h.stepEvent = h.undelivered[len(h.undelivered)-1]
 	case opTimeoutPending:
-		// The cache's own InsertPendingEntries task does the work when fake time passes its deadline. The
-		// extra nanosecond keeps the harness's wake-up off the task's tick instant.
-		time.Sleep(fuzzPendingSeqMaxWait + time.Nanosecond)
-		synctest.Wait()
+		h.timeoutPending()
 	case opCleanSkipped:
-		time.Sleep(fuzzSkippedSeqMaxWait + time.Nanosecond)
-		synctest.Wait()
+		h.cleanSkipped()
 	case opCreateCache:
 		h.createChannelCache(fuzzChannelNames[op.channelIndex()])
 	case opFeedRead:
@@ -315,6 +457,21 @@ func (h *fuzzHarness) write(docIndex int, mask uint8, extraSeq bool) {
 	slices.Sort(doc.recentSeqs)
 
 	docID := fmt.Sprintf("doc%d", docIndex)
+	rev := &fuzzRev{
+		docIndex:   docIndex,
+		docID:      docID,
+		generation: doc.generation,
+		seq:        seq,
+		revID:      revID,
+		channels:   cloneChannelMap(doc.channels),
+		recentSeqs: slices.Clone(doc.recentSeqs),
+		unusedSeqs: unusedSeqs,
+	}
+	h.model.revs[docIndex] = append(h.model.revs[docIndex], rev)
+	h.model.seqs[seq] = fuzzSeqRecord{kind: eventDoc, rev: rev}
+	for _, unusedSeq := range unusedSeqs {
+		h.model.seqs[unusedSeq] = fuzzSeqRecord{kind: eventUnused, burnedBy: rev}
+	}
 	syncData := db.SyncData{
 		RevAndVersion:   channels.RevAndVersion{RevTreeID: revID},
 		Sequence:        seq,
@@ -329,6 +486,7 @@ func (h *fuzzHarness) write(docIndex int, mask uint8, extraSeq bool) {
 		fromSeq: seq,
 		toSeq:   seq,
 		docID:   docID,
+		rev:     rev,
 		feed:    feedEventForTest(h.t, docID, h.env.collectionID, syncData),
 	})
 }
@@ -349,6 +507,7 @@ func cloneChannelMap(m channels.ChannelMap) channels.ChannelMap {
 
 func (h *fuzzHarness) unused() {
 	seq := h.allocSeq()
+	h.model.seqs[seq] = fuzzSeqRecord{kind: eventUnused}
 	key := h.env.dbContext.MetadataKeys.UnusedSeqKey(seq)
 	h.undelivered = append(h.undelivered, &fuzzEvent{
 		kind: eventUnused, fromSeq: seq, toSeq: seq, docID: key,
@@ -360,6 +519,9 @@ func (h *fuzzHarness) unusedRange(n int) {
 	from := h.nextSeq
 	h.nextSeq += uint64(n)
 	to := h.nextSeq - 1
+	for seq := from; seq <= to; seq++ {
+		h.model.seqs[seq] = fuzzSeqRecord{kind: eventUnusedRange, from: from, to: to}
+	}
 	key := h.env.dbContext.MetadataKeys.UnusedSeqRangeKey(from, to)
 	h.undelivered = append(h.undelivered, &fuzzEvent{
 		kind: eventUnusedRange, fromSeq: from, toSeq: to, docID: key,
@@ -375,6 +537,7 @@ func (h *fuzzHarness) principal(isUser bool) {
 	if !isUser {
 		prefix = "_role:"
 	}
+	h.model.seqs[seq] = fuzzSeqRecord{kind: eventPrincipal, name: prefix + name}
 	h.undelivered = append(h.undelivered, &fuzzEvent{
 		kind: eventPrincipal, fromSeq: seq, toSeq: seq, docID: prefix + name, isUser: isUser,
 		json: []byte(fmt.Sprintf(`{"name":%q,"sequence":%d}`, name, seq)),
@@ -399,6 +562,12 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 		h.delivered = append(h.delivered, ev)
 	}
 	ev.delivery++
+	h.stepEvent, h.stepDelivery = ev, ev.delivery
+	h.pinLateLogs()
+	h.resetSkippedRemoved()
+	if ev.kind == eventDoc {
+		h.model.delivered[ev.rev.seq] = true
+	}
 
 	received := channels.NewFeedTimestampFromNow()
 	feed := ev.feed
@@ -413,6 +582,7 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 	case eventPrincipal:
 		h.cache.ProcessPrincipalDocForTest(h.t, h.env.ctx, ev.docID, ev.json, ev.isUser, received)
 	}
+	h.checkLateLog(ev)
 }
 
 func (h *fuzzHarness) createChannelCache(name string) {
@@ -420,11 +590,36 @@ func (h *fuzzHarness) createChannelCache(name string) {
 	require.NoError(h.t, err)
 }
 
-// feedRead reads every channel the feed watches from sequence zero.
+// feedRead has a feed read every channel it watches since where it last got to. This simulated feed is deliberately
+// simple: it reads the stable sequence first, so a sequence the cache has not yet made stable is never reported to
+// it, and entries beyond that are dropped to be read next time.
 func (h *fuzzHarness) feedRead(feedIndex int) {
-	for _, name := range h.feeds[feedIndex].channels {
-		_, err := h.channelCache.GetChanges(h.env.ctx, h.channelID(name), db.ChangesOptions{ChangesCtx: h.env.ctx})
+	feed := h.feeds[feedIndex]
+	next, stable, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	for _, name := range feed.channels {
+		since := feed.since[name]
+		// Arm the query callback with the state just before this read, which viewOmittedState uses to decide whether
+		// the view was the cache's only route to a revision. It is captured here because the callback runs inside
+		// GetChanges and must not read the caches itself. Disarming afterwards makes any other query fail loudly.
+		h.armed = &fuzzQuery{nextSequence: next, skipped: skipped, cache: h.snapshot(name)}
+		entries, err := h.channelCache.GetChanges(h.env.ctx, h.channelID(name), db.ChangesOptions{
+			Since:      db.SequenceID{Seq: since},
+			ChangesCtx: h.env.ctx,
+		})
+		h.armed = nil
 		require.NoError(h.t, err)
+		for _, e := range entries {
+			if e.Sequence <= since {
+				h.failf("feed %d read channel %s since %d and was given %s", feedIndex, name, since, describeEntry(e))
+			}
+			if e.Sequence > stable {
+				continue
+			}
+			feed.received = append(feed.received, fuzzReceived{
+				channel: name, seq: e.Sequence, docID: e.DocID, revID: e.RevID, removed: e.IsRemoved(),
+			})
+		}
+		feed.since[name] = max(since, stable)
 	}
 }
 
@@ -435,6 +630,9 @@ func runFuzzScript(t *testing.T, env *fuzzEnv, data []byte) fuzzResult {
 	synctest.Test(t, func(t *testing.T) {
 		h := newFuzzHarness(t, env, cfg)
 		h.start()
+		// A failed check ends this goroutine without returning, which would leave the cache's background tasks
+		// running and turn the failure into a bubble deadlock panic.
+		defer h.stop()
 		h.run(ops)
 		h.stop()
 		res = h.result()
@@ -466,11 +664,73 @@ func fuzzSeeds() map[string][]byte {
 			Principal(true).Write(0, chanMask("A", "C"), false).Unused().Principal(false).
 			DeliverAt(4, 2).Deliver(1).Deliver(1).Deliver(1).Duplicate(0).Duplicate(1).Duplicate(2).
 			Write(0, chanMask("C"), true).Deliver(1).Duplicate(3).TimeoutPending().Bytes(),
+		// A cache created after a write backfills from the bucket view, which shows only each document's latest write.
+		"backfillAfterRewrite": newScriptBuilder().config(cfg).
+			Write(0, chanMask("B"), false).Deliver(1).Write(0, chanMask("B", "C"), false).
+			FeedRead(2).Write(0, chanMask("C"), false).Deliver(1).Deliver(1).CreateCache(1).FeedRead(1).FeedRead(3).Bytes(),
+		// A sequence abandoned by the skipped-list cleanup, then a later revision of the same document.
+		"abandonedThenRewritten": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
+			Write(0, chanMask("A", "B"), false).Write(1, chanMask("A"), false).Write(0, chanMask("A"), false).
+			Withhold().Deliver(1).Deliver(1).TimeoutPending().CleanSkipped().DeliverLate().
+			Write(0, chanMask("B"), false).Deliver(1).FeedRead(0).FeedRead(1).Bytes(),
+		// A document leaves a channel at a sequence that is skipped, and the cache replays it from a later revision.
+		"lateRemovalReplay": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
+			CreateCache(0).CreateCache(1).CreateCache(2).
+			Write(0, chanMask("A"), false).Write(0, chanMask("B"), false).Write(1, chanMask("A"), false).Write(2, chanMask("B"), false).
+			Withhold().Withhold().Deliver(1).Deliver(1).TimeoutPending().
+			Write(0, chanMask("C"), false).Deliver(1).FeedRead(0).FeedRead(1).DeliverLate().DeliverLate().FeedRead(0).FeedRead(1).Bytes(),
+		// The document's own skipped sequence arrives, into caches that already exist.
+		"lateOwnSequence": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
+			CreateCache(0).CreateCache(1).Write(0, chanMask("A", "B"), false).Write(1, chanMask("A"), false).Write(2, chanMask("B"), false).
+			Withhold().Deliver(1).Deliver(1).TimeoutPending().FeedRead(0).DeliverLate().FeedRead(0).FeedRead(1).Bytes(),
+		// More late arrivals in one channel than the channel cache's maximum length, so the late log hits its cap.
+		"lateLogCap": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMaxLen = 3 }).
+			CreateCache(0).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).
+			Write(3, chanMask("A"), false).Write(4, chanMask("A"), false).Write(5, chanMask("A"), false).
+			Withhold().Withhold().Withhold().Withhold().Withhold().Deliver(1).TimeoutPending().
+			DeliverLate().DeliverLate().DeliverLate().DeliverLate().DeliverLate().FeedRead(0).Bytes(),
+		// A revision skipped when the channel cache is created is not in the backfill, since the view shows only the
+		// document's rewrite (sequence 5, beyond the cache's validFrom), and must still reach the cache when it
+		// arrives late.
+		"lateIntoBackfilledCache": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).
+			Write(3, chanMask("B"), false).Write(0, chanMask("A"), false).
+			Withhold().Deliver(1).Deliver(1).TimeoutPending().CreateCache(0).FeedRead(0).DeliverLate().FeedRead(0).Bytes(),
+		// The same, but the first revision was processed before the cache existed, so the backfill is its only route
+		// and its absence from the cache is expected.
+		"processedBeforeBackfill": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).
+			Write(3, chanMask("B"), false).Write(0, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).CreateCache(0).FeedRead(0).Deliver(1).Deliver(1).FeedRead(0).Bytes(),
+		// Delivering the first event processes its unused sequence, which flushes an overdue pending entry and skips the
+		// document's own sequence just before the delivery processes it as a late arrival.
+		"skipDuringDelivery": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
+			Write(0, chanMask("E"), true).TimeoutPending().Write(1, chanMask("E"), false).
+			Withhold().Deliver(1).TimeoutPending().DeliverLate().Bytes(),
+		// The same flush also skips a sequence that no delivery brings in, which stays skipped.
+		"skipDuringDeliveryPartial": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
+			Write(0, chanMask("E"), true).Write(2, chanMask("E"), false).Write(1, chanMask("E"), false).TimeoutPending().
+			Withhold().Withhold().Deliver(1).TimeoutPending().DeliverLate().Bytes(),
+		// The flush that skips the document's own sequence also skips older sequences that the same delivery then
+		// replays from recent_sequences, as unused sequences.
+		"skipReplayDuringDelivery": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.PendingMaxNum = 3 }).
+			Unused().Write(0, chanMask("E"), false).Unused().Unused().Write(0, chanMask("E"), false).
+			Unused().Unused().Unused().Unused().Write(0, chanMask("E"), true).
+			Withhold().Withhold().Withhold().Withhold().Withhold().Withhold().Bytes(),
+		// The same, but the document left channel E at one of the replayed sequences, so its replay is a removal that
+		// reaches the late logs of E and "*".
+		"skipRemovalReplayDuringDelivery": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.PendingMaxNum = 3; c.Flags |= 1 }).
+			CreateCache(4).
+			Unused().Write(0, chanMask("E"), false).Unused().Unused().Write(0, chanMask("D"), false).
+			Unused().Unused().Unused().Unused().Write(0, chanMask("D"), true).
+			Withhold().Withhold().Withhold().Withhold().Withhold().Withhold().Bytes(),
 	}
 }
 
-// FuzzChangeCacheDispatch feeds arbitrary scripts to a real change cache. It checks only that the cache
-// neither panics, hangs nor races.
+// FuzzChangeCacheDispatch feeds arbitrary scripts to a real change cache. It checks that the cache neither
+// panics, hangs nor races, and that what it holds and reports agrees with the simulated bucket: see
+// change_cache_fuzz_check_test.go for the properties.
 func FuzzChangeCacheDispatch(f *testing.F) {
 	base.SetUpTestLogging(f, base.LevelWarn, base.KeyAll)
 	env := newFuzzEnv(f)
@@ -543,5 +803,54 @@ func TestFuzzHarnessDeterministic(t *testing.T) {
 			assert.Equal(t, first, second)
 			assert.NotEmpty(t, first.Notifications, "a seed script should cache something")
 		})
+	}
+}
+
+func TestFuzzBuilderRender(t *testing.T) {
+	script := newScriptBuilder().config(func(c *fuzzConfig) { c.PendingMaxNum = 10; c.Flags = 1 }).
+		Write(0, chanMask("B", "C"), true).Write(1, 0, false).Deliver(2).DeliverAt(6, 3).Withhold().Unused().
+		Principal(false).CreateCache(4).FeedRead(2).TimeoutPending().
+		add(opWrite, 48, 48, 49). // operands the builder's decoded API cannot express
+		add(opUnusedRange, 12).
+		add(opNop)
+	cfg, ops := decodeScript(script.Bytes())
+	expected := `newScriptBuilder().
+	config(func(c *fuzzConfig) { c.PendingMaxNum = 10; c.Flags = 1 }).
+	Write(0, chanMask("B", "C"), true).
+	Write(1, chanMask(), false).
+	Deliver(2).
+	DeliverAt(6, 3).
+	Withhold().
+	Unused().
+	Principal(false).
+	CreateCache(4).
+	FeedRead(2).
+	TimeoutPending().
+	add(opWrite, 48, 48, 49).
+	add(opUnusedRange, 12).
+	add(opNop).
+	Bytes()`
+	assert.Equal(t, expected, renderBuilder(cfg, ops))
+	assert.Equal(t, renderBuilder(cfg, ops), renderBuilder(decodeScript(script.Bytes())))
+}
+
+// TestFuzzBuilderRoundTrip checks that the calls renderBuilder prints rebuild the script they came from, byte for
+// byte, including operands the decoded builder API cannot express. The text and the call it stands for are produced
+// together, so applying the calls tests what the text says.
+func TestFuzzBuilderRoundTrip(t *testing.T) {
+	check := func(name string, data []byte) {
+		cfg, ops := decodeScript(data)
+		rebuilt := newScriptBuilder()
+		for _, step := range builderSteps(cfg, ops) {
+			step.apply(rebuilt)
+		}
+		assert.Equal(t, (&scriptBuilder{cfg: cfg, ops: ops}).Bytes(), rebuilt.Bytes(), name)
+	}
+	for name, seed := range fuzzSeeds() {
+		check(name, seed)
+	}
+	r := rand.New(rand.NewPCG(3, 4))
+	for i := range 500 {
+		check(fmt.Sprintf("random %d", i), randomScriptBytes(r, int(r.UintN(200))))
 	}
 }
