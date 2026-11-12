@@ -32,24 +32,14 @@ concurrency:
   cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
 
 env:
-  # Pinned action versions, referenced by the steps below through their YAML anchors.
-  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  ACTIONS_SETUP_GO_VERSION: &actions_setup_go_version actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-  ACTIONS_UPLOAD_ARTIFACT_VERSION: &actions_upload_artifact_version actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-  ACTIONS_RUFF_VERSION: &actions_ruff_version astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
-  ACTIONS_SETUP_UV_VERSION: &actions_setup_uv_version astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-  ACTIONS_GOLANGCI_LINT_VERSION: &actions_golangci_lint_version golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-  # tag for repo at v1 is not updated
-  ACTIONS_GOVULNCHECK_VERSION: &actions_govulncheck_version golang/govulncheck-action@31f7c5463448f83528bd771c2d978d940080c9fd
-  ACTIONS_GO_TEST_ANNOTATIONS_VERSION: &actions_go_test_annotations_version guyarb/golang-test-annotations@96fc379b171c49932041d6c789e73331a7bdeec1 # v0.9.0
   GO_MOD_FILE: &go_mod_file go.mod
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -63,8 +53,8 @@ jobs:
     name: addlicense
     runs-on: ubuntu-latest
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -77,8 +67,8 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -86,7 +76,7 @@ jobs:
         shell: bash
         run: .ci/retry.sh go list -deps -test -tags cb_sg_devmode,ruleguard ./... tool > /dev/null
       - name: golangci-lint
-        uses: *actions_golangci_lint_version
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.14.0
           args: --config=.golangci-strict.yml
@@ -108,8 +98,8 @@ jobs:
       MallocNanoZone: 0
     name: test (${{ matrix.name }})
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -127,7 +117,7 @@ jobs:
         run: .github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
-        uses: *actions_go_test_annotations_version
+        uses: guyarb/golang-test-annotations@v0.9.0
         with:
           test-results: test.json
       - name: Render test log
@@ -136,7 +126,7 @@ jobs:
         run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: *actions_upload_artifact_version
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
           path: test.log
@@ -148,8 +138,8 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -165,7 +155,7 @@ jobs:
         run: .github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
-        uses: *actions_go_test_annotations_version
+        uses: guyarb/golang-test-annotations@v0.9.0
         with:
           test-results: test.json
       - name: Render test log
@@ -174,7 +164,7 @@ jobs:
         run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: *actions_upload_artifact_version
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -187,8 +177,8 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       SG_TEST_USE_DEFAULT_COLLECTION: true
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -204,7 +194,7 @@ jobs:
         run: .github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
-        uses: *actions_go_test_annotations_version
+        uses: guyarb/golang-test-annotations@v0.9.0
         with:
           test-results: test.json
       - name: Render test log
@@ -213,7 +203,7 @@ jobs:
         run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: *actions_upload_artifact_version
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -224,8 +214,8 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -241,7 +231,7 @@ jobs:
         run: .github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
-        uses: *actions_go_test_annotations_version
+        uses: guyarb/golang-test-annotations@v0.9.0
         with:
           test-results: test.json
       - name: Render test log
@@ -250,7 +240,7 @@ jobs:
         run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: *actions_upload_artifact_version
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -264,8 +254,8 @@ jobs:
       GOPRIVATE: github.com/couchbaselabs
       SG_TEST_DISABLE_REV_CACHE: true
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -281,7 +271,7 @@ jobs:
         run: .github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
-        uses: *actions_go_test_annotations_version
+        uses: guyarb/golang-test-annotations@v0.9.0
         with:
           test-results: test.json
       - name: Render test log
@@ -290,7 +280,7 @@ jobs:
         run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: *actions_upload_artifact_version
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-logs-${{ github.job }}
           path: test.log
@@ -300,15 +290,15 @@ jobs:
   python-format:
     runs-on: ubuntu-latest
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_ruff_version
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/ruff-action@v4.1.0
         with:
           args: 'format --check'
   python-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_ruff_version
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/ruff-action@v4.1.0
   test-sgcollect:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -316,8 +306,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_uv_version
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: Run test
         run: |
           uv run -- pytest
@@ -332,8 +322,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -351,7 +341,7 @@ jobs:
         run: .github/scripts/test-summary.sh
       - name: Annotate Failures
         if: always()
-        uses: *actions_go_test_annotations_version
+        uses: guyarb/golang-test-annotations@v0.9.0
         with:
           test-results: test.json
       - name: Render test log
@@ -360,7 +350,7 @@ jobs:
         run: go tool gotestsum --format standard-verbose --raw-command -- cat test.json > test.log 2>&1 || true
       - name: Upload test logs artifact
         if: failure()
-        uses: *actions_upload_artifact_version
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: test-logs-${{ github.job }}-${{ matrix.name || matrix.os || 'default' }}
           path: test.log
@@ -370,8 +360,8 @@ jobs:
     runs-on: ubuntu-latest
     name: build cache perf tool
     steps:
-      - uses: *actions_checkout_version
-      - uses: *actions_setup_go_version
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: *go_mod_file
       # go mod download would try to fetch the private EE module, which public runners can't reach
@@ -385,7 +375,7 @@ jobs:
     name: Run govulncheck
     steps:
       - id: govulncheck
-        uses: *actions_govulncheck_version
+        uses: golang/govulncheck-action@v1.1.0
         with:
           # blank this or the action's 'stable' default overrides the file
           go-version-input: ''

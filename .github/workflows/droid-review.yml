@@ -27,11 +27,6 @@ concurrency:
     }}
   cancel-in-progress: true
 
-env:
-  # Pinned action versions, referenced by the steps below through their YAML anchors.
-  ACTIONS_CHECKOUT_VERSION: &actions_checkout_version actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-  ACTIONS_DROID_VERSION: &actions_droid_version Factory-AI/droid-action@260eac443df653198ed70e9ea9d32980cfabde23 # v13
-
 jobs:
   droid:
     if: |
@@ -53,13 +48,13 @@ jobs:
       id-token: write # exchange for a Factory Droid GitHub App token, since no github_token input is supplied
     steps:
       - name: Checkout repository
-        uses: *actions_checkout_version
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: Run Droid Review
-        uses: *actions_droid_version
+        uses: Factory-AI/droid-action@v13
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           review_model: gpt-5.2

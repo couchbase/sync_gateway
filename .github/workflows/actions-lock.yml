@@ -1,0 +1,47 @@
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included in
+# the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+# file, in accordance with the Business Source License, use of this software
+# will be governed by the Apache License, Version 2.0, included in the file
+# licenses/APL2.txt.
+
+# Fails when .github/workflows/actions.lock is out of sync with the workflows,
+# or when a locked commit no longer verifies against its upstream repository.
+name: actions-lock
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - 'master'
+      - 'main'
+      - 'release/*'
+      - 'feature/*'
+      - 'beryllium'
+      - 'CBG*'
+      - 'ci-*'
+  pull_request:
+    branches:
+      - 'master'
+      - 'main'
+      - 'release/*'
+      - 'beryllium'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !contains(github.ref, 'release/') && !contains(github.ref, 'main') }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      # Dependabot does not update this pin; bump it by hand to pick up new lockfile checks.
+      - run: gh extension install github/gh-actions-lock --pin v0.4.1
+      - run: gh actions-lock --verify
