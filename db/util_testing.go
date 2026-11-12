@@ -1985,6 +1985,12 @@ func (c *changeCache) SequenceStateForTest(_ testing.TB, ctx context.Context) (n
 	return nextSequence, maxStable, skipped
 }
 
+// UnusedSeqChannelIDForTest returns the key the change cache notifies when sequences are released as unused, which
+// is not a channel. Tests need it to tell that key from channel names in a notification.
+func UnusedSeqChannelIDForTest() channels.ID {
+	return unusedSeqChannelID
+}
+
 // SetRemoveSkippedHookForTest installs a function called with each sequence that leaves the skipped list because it
 // arrived late. It runs on the delivering goroutine with the cache's write lock held, so it must not call back into
 // the cache. Install it between Init and Start: Init leaves the cache locked until Start, and the cache reads the hook

@@ -161,7 +161,8 @@ type fuzzHarness struct {
 	skippedRemoved []uint64 // sequences that left the skipped list on arrival since the last reset, in order
 
 	notifyLock    sync.Mutex
-	notifications []string // each notification's channel names, sorted and comma-joined, in arrival order
+	notifications []string        // each notification's channel names, sorted and comma-joined, in arrival order
+	notify        fuzzNotifyState // guarded by notifyLock
 }
 
 // fuzzResult is the cache state at the end of a run. Comparing two runs of one script checks the harness
@@ -242,9 +243,13 @@ func (h *fuzzHarness) recordNotification(_ context.Context, chans channels.Set) 
 		names = append(names, id.Name)
 	}
 	slices.Sort(names)
-	h.notifyLock.Lock()
-	defer h.notifyLock.Unlock()
-	h.notifications = append(h.notifications, strings.Join(names, ","))
+	func() {
+		h.notifyLock.Lock()
+		defer h.notifyLock.Unlock()
+		h.notifications = append(h.notifications, strings.Join(names, ","))
+	}()
+	// trackNotification takes notifyLock itself, after reading the cache's state without it held.
+	h.trackNotification(chans)
 }
 
 // recordSkippedRemoved is the cache's hook for a sequence leaving the skipped list on arrival. It is called from
@@ -312,19 +317,12 @@ func (h *fuzzHarness) run(ops []fuzzOp) {
 	h.checkEnd()
 }
 
-// timeoutPending lets the cache's own InsertPendingEntries task run when fake time passes its deadline. The
-// extra nanosecond keeps the harness's wake-up off the task's tick instant.
-func (h *fuzzHarness) timeoutPending() {
-	time.Sleep(fuzzPendingSeqMaxWait + time.Nanosecond)
-	synctest.Wait()
-	h.resyncLateLogs()
-}
-
-// cleanSkipped lets the cache's skipped-sequence cleanup run, and records what it abandoned. Nothing is
-// delivered while the harness sleeps, so a sequence that leaves the skipped list across the sleep was given up on.
-func (h *fuzzHarness) cleanSkipped() {
+// sleep passes fake time so the cache's background tasks run, and records what they abandoned. Nothing is delivered
+// while the harness sleeps, so a sequence that leaves the skipped list across a sleep was given up on by the cache's
+// skipped-sequence cleanup, which ticks on its own timer whichever op is sleeping.
+func (h *fuzzHarness) sleep(d time.Duration) {
 	_, _, before := h.cache.SequenceStateForTest(h.t, h.env.ctx)
-	time.Sleep(fuzzSkippedSeqMaxWait + time.Nanosecond)
+	time.Sleep(d)
 	synctest.Wait()
 	_, _, after := h.cache.SequenceStateForTest(h.t, h.env.ctx)
 	h.resyncLateLogs()
@@ -333,6 +331,17 @@ func (h *fuzzHarness) cleanSkipped() {
 			h.model.abandoned[seq] = true
 		}
 	}
+}
+
+// timeoutPending lets the cache's own InsertPendingEntries task run when fake time passes its deadline. The
+// extra nanosecond keeps the harness's wake-up off the task's tick instant.
+func (h *fuzzHarness) timeoutPending() {
+	h.sleep(fuzzPendingSeqMaxWait + time.Nanosecond)
+}
+
+// cleanSkipped sleeps long enough for the cache to abandon skipped sequences that have waited the full max wait.
+func (h *fuzzHarness) cleanSkipped() {
+	h.sleep(fuzzSkippedSeqMaxWait + time.Nanosecond)
 }
 
 // quiesce delivers everything still outstanding, oldest first, then lets the cache time out whatever is left
@@ -360,6 +369,10 @@ func (h *fuzzHarness) quiesce() {
 		h.feedRead(i)
 		h.checkAfterOp()
 	}
+	h.beginStep(len(h.ops), fuzzOp{}, "quiesce: flush notifications")
+	h.cache.FlushNotificationsForTest(h.t)
+	h.checkAfterOp()
+	h.checkNoLostWakes()
 }
 
 func (h *fuzzHarness) step(op fuzzOp) {
@@ -413,6 +426,7 @@ func (h *fuzzHarness) step(op fuzzOp) {
 		h.feedRead(op.feedIndex())
 	case opFlush:
 		h.cache.FlushNotificationsForTest(h.t)
+		h.checkNoLostWakes()
 	case opStall, opNop:
 		// opStall is RESERVED and opNop is what unknown opcodes decode to.
 	}
@@ -565,6 +579,7 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 	h.stepEvent, h.stepDelivery = ev, ev.delivery
 	h.pinLateLogs()
 	h.resetSkippedRemoved()
+	h.claimSequences(ev)
 	if ev.kind == eventDoc {
 		h.model.delivered[ev.rev.seq] = true
 	}
@@ -647,6 +662,7 @@ func fuzzSeeds() map[string][]byte {
 		c.FeedMasks = [fuzzNumFeeds]uint8{chanMask("A"), chanMask("A", "B"), chanMask("C", "D", "E"), chanMask("B", "E")}
 	}
 	return map[string][]byte{
+		"abandonedDuringTimeouts": abandonedDuringTimeoutsSeed(180),
 		"inOrderWrites": newScriptBuilder().config(cfg).
 			Write(0, chanMask("A"), false).Deliver(1).
 			Write(1, chanMask("A", "B"), false).Deliver(1).
@@ -725,7 +741,32 @@ func fuzzSeeds() map[string][]byte {
 			Unused().Write(0, chanMask("E"), false).Unused().Unused().Write(0, chanMask("D"), false).
 			Unused().Unused().Unused().Unused().Write(0, chanMask("D"), true).
 			Withhold().Withhold().Withhold().Withhold().Withhold().Withhold().Bytes(),
+		// Each notify site releases a document that was waiting for an earlier sequence, so its channels must be
+		// notified by whichever event closed the gap.
+		"notifyPrincipalReleasesPending": newScriptBuilder().config(cfg).
+			Principal(true).Write(0, chanMask("A", "B"), false).Withhold().Deliver(1).DeliverLate().Flush().Bytes(),
+		"notifyUnusedReleasesPending": newScriptBuilder().config(cfg).
+			Unused().Write(0, chanMask("A"), false).Withhold().Deliver(1).DeliverLate().Flush().Bytes(),
+		"notifyRangeReleasesPending": newScriptBuilder().config(cfg).
+			UnusedRange(2).Write(0, chanMask("B"), false).Withhold().Deliver(1).DeliverLate().Flush().Bytes(),
+		"notifySingleRangeReleasesPending": newScriptBuilder().config(cfg).
+			UnusedRange(1).Write(0, chanMask("C"), false).Withhold().Deliver(1).DeliverLate().Flush().Bytes(),
+		// A pending document is released by the cache's own background task, which has no event to notify from.
+		"notifyBackgroundRelease": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("B"), false).Withhold().Deliver(1).TimeoutPending().Flush().Bytes(),
 	}
+}
+
+// abandonedDuringTimeoutsSeed skips a sequence and then lets the cache's own cleanup task abandon it while the
+// harness only sleeps through pending timeouts: the task ticks every half of the skipped max wait, so it needs the
+// skip to age past that wait, which takes timeouts*fuzzPendingSeqMaxWait of fake time.
+func abandonedDuringTimeoutsSeed(timeouts int) []byte {
+	b := newScriptBuilder().config(func(c *fuzzConfig) { c.PendingMaxNum = 10; c.Flags |= 1 }).
+		Write(0, chanMask("E"), false).Unused().Withhold().Deliver(1)
+	for range timeouts {
+		b.TimeoutPending()
+	}
+	return b.DeliverLate().Bytes()
 }
 
 // FuzzChangeCacheDispatch feeds arbitrary scripts to a real change cache. It checks that the cache neither
