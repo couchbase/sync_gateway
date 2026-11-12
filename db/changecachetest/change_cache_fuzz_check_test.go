@@ -59,7 +59,11 @@ func (h *fuzzHarness) checkAfterOp() {
 	h.t.Helper()
 	h.pinLateLogs()
 	next, stable, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	h.refreshStepEnd(next, skipped)
 	h.recordTrace(next, stable, skipped)
+	if v := h.takeViolation(); v != "" {
+		h.failf("%s", v)
+	}
 
 	// I6: the cache only moves forward.
 	if next < h.lastNext {

@@ -30,6 +30,7 @@ type fuzzTraceStep struct {
 	next     uint64
 	stable   uint64
 	skipped  []uint64
+	notified []fuzzNotification // notifications that fired during the step
 }
 
 // beginStep marks the start of an op or harness step.
@@ -51,7 +52,7 @@ func (h *fuzzHarness) stepName() string {
 func (h *fuzzHarness) recordTrace(next, stable uint64, skipped []uint64) {
 	h.trace = append(h.trace, fuzzTraceStep{
 		index: h.opIndex, op: h.curOp, phase: h.phase, event: h.stepEvent, note: h.stepNote, delivery: h.stepDelivery,
-		next: next, stable: stable, skipped: skipped,
+		next: next, stable: stable, skipped: skipped, notified: h.drainNotifications(),
 	})
 }
 
@@ -97,7 +98,11 @@ func (h *fuzzHarness) formatTraceStep(step fuzzTraceStep) string {
 	case step.event != nil:
 		did = " -> allocated " + describeEvent(step.event)
 	}
-	return fmt.Sprintf("  %3d %s%s | next %d stable %d skipped %v", step.index, what, did, step.next, step.stable, step.skipped)
+	line := fmt.Sprintf("  %3d %s%s | next %d stable %d skipped %v", step.index, what, did, step.next, step.stable, step.skipped)
+	for _, n := range step.notified {
+		line += "\n        notified " + n.String()
+	}
+	return line
 }
 
 // sequenceLegend lists every sequence the simulated server allocated, what it is, and where its event is.
