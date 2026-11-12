@@ -193,6 +193,9 @@ func (h *fuzzHarness) start() {
 	options.CachePendingSeqMaxWait = fuzzPendingSeqMaxWait
 	options.CacheSkippedSeqMaxWait = fuzzSkippedSeqMaxWait
 	options.ChannelCacheMaxLength = h.cfg.ChannelMaxLen
+	if minLength, ok := h.cfg.minLength(); ok {
+		options.ChannelCacheMinLength = minLength
+	}
 
 	// A channel cache created after sequences were cached backfills from the bucket's channel view, which
 	// the model answers from every write, delivered or not.
@@ -201,10 +204,17 @@ func (h *fuzzHarness) start() {
 		if h.armed == nil {
 			h.failf("channel view query for %s [%d,%d] outside a feed read", channel, startSeq, endSeq)
 		}
+		view := h.model.channelView(h.env.collectionID, channel, startSeq, endSeq, limit, activeOnly)
+		// A query that hit its limit only vouches for the sequences up to its last result: the cache treats the
+		// result as valid to there, so that is the range the view could have left a revision out of.
+		coveredTo := endSeq
+		if limit > 0 && len(view) >= limit {
+			coveredTo = view[len(view)-1].Sequence
+		}
 		q := *h.armed
-		q.channel, q.startSeq, q.endSeq, q.allocated = channel, startSeq, endSeq, h.nextSeq
+		q.channel, q.startSeq, q.endSeq, q.allocated = channel, startSeq, coveredTo, h.nextSeq
 		h.model.queries = append(h.model.queries, q)
-		return h.model.channelView(h.env.collectionID, channel, startSeq, endSeq, limit, activeOnly), nil
+		return view, nil
 	})
 	channelCache, err := db.NewChannelCacheForTest(t, ctx, "db", options.ChannelCacheOptions, queryHandler.AsFactory,
 		channels.NewActiveChannels(h.env.dbContext.DbStats.Cache().NumActiveChannels), h.env.dbContext.DbStats.Cache())
@@ -366,7 +376,7 @@ func (h *fuzzHarness) quiesce() {
 	h.checkAfterOp()
 	for i := range h.feeds {
 		h.beginStep(len(h.ops), fuzzOp{}, fmt.Sprintf("quiesce: feed %d reads", i))
-		h.feedRead(i)
+		h.feedRead(i, 0)
 		h.checkAfterOp()
 	}
 	h.beginStep(len(h.ops), fuzzOp{}, "quiesce: flush notifications")
@@ -423,7 +433,7 @@ func (h *fuzzHarness) step(op fuzzOp) {
 	case opCreateCache:
 		h.createChannelCache(fuzzChannelNames[op.channelIndex()])
 	case opFeedRead:
-		h.feedRead(op.feedIndex())
+		h.feedRead(op.feedIndex(), op.feedLimit())
 	case opFlush:
 		h.cache.FlushNotificationsForTest(h.t)
 		h.checkNoLostWakes()
@@ -608,7 +618,7 @@ func (h *fuzzHarness) createChannelCache(name string) {
 // feedRead has a feed read every channel it watches since where it last got to. This simulated feed is deliberately
 // simple: it reads the stable sequence first, so a sequence the cache has not yet made stable is never reported to
 // it, and entries beyond that are dropped to be read next time.
-func (h *fuzzHarness) feedRead(feedIndex int) {
+func (h *fuzzHarness) feedRead(feedIndex, limit int) {
 	feed := h.feeds[feedIndex]
 	next, stable, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
 	for _, name := range feed.channels {
@@ -619,14 +629,20 @@ func (h *fuzzHarness) feedRead(feedIndex int) {
 		h.armed = &fuzzQuery{nextSequence: next, skipped: skipped, cache: h.snapshot(name)}
 		entries, err := h.channelCache.GetChanges(h.env.ctx, h.channelID(name), db.ChangesOptions{
 			Since:      db.SequenceID{Seq: since},
+			Limit:      limit,
 			ChangesCtx: h.env.ctx,
 		})
 		h.armed = nil
 		require.NoError(h.t, err)
+		if limit > 0 && len(entries) > limit {
+			h.failf("feed %d read channel %s with limit %d and was given %d entries", feedIndex, name, limit, len(entries))
+		}
+		lastReturned := since
 		for _, e := range entries {
 			if e.Sequence <= since {
 				h.failf("feed %d read channel %s since %d and was given %s", feedIndex, name, since, describeEntry(e))
 			}
+			lastReturned = e.Sequence
 			if e.Sequence > stable {
 				continue
 			}
@@ -634,7 +650,14 @@ func (h *fuzzHarness) feedRead(feedIndex int) {
 				channel: name, seq: e.Sequence, docID: e.DocID, revID: e.RevID, removed: e.IsRemoved(),
 			})
 		}
-		feed.since[name] = max(since, stable)
+		// A read that returned a full limit may have left entries behind, so the feed can only move on as far as the
+		// last entry it was given. If that entry is beyond the stable sequence, everything up to stable was in the
+		// batch, since a read returns the entries after since in order.
+		if limit > 0 && len(entries) == limit && lastReturned <= stable {
+			feed.since[name] = max(since, lastReturned)
+		} else {
+			feed.since[name] = max(since, stable)
+		}
 	}
 }
 
@@ -754,6 +777,68 @@ func fuzzSeeds() map[string][]byte {
 		// A pending document is released by the cache's own background task, which has no event to notify from.
 		"notifyBackgroundRelease": newScriptBuilder().config(cfg).
 			Write(0, chanMask("A"), false).Write(1, chanMask("B"), false).Withhold().Deliver(1).TimeoutPending().Flush().Bytes(),
+		// An unused range that is skipped and then arrives late is removed from the skipped list as a whole.
+		"unusedRangeSkippedThenLate": newScriptBuilder().config(cfg).
+			UnusedRange(2).Write(0, chanMask("A"), false).Withhold().Deliver(1).TimeoutPending().DeliverLate().Bytes(),
+		// An event redelivered while its first copy is still waiting in the pending buffer is ignored.
+		"duplicateOfPendingSequence": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Withhold().Deliver(1).Duplicate(0).DeliverLate().Bytes(),
+		// Two copies of one unused range are pending, so popping the first finds the same start behind it.
+		"duplicateRangePending": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).UnusedRange(3).Withhold().Deliver(1).Duplicate(0).DeliverLate().Bytes(),
+		// A late entry below a channel cache's validFrom is not cached, since the cache was created after it was skipped.
+		"lateBelowValidFrom": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Withhold().Deliver(1).TimeoutPending().
+			CreateCache(0).DeliverLate().Bytes(),
+		// A late revision replaces the document's older entry, which sits directly before its place in the log.
+		"lateReplacesAdjacentEntry": newScriptBuilder().config(cfg).CreateCache(0).
+			Write(0, chanMask("A"), false).Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).
+			Deliver(1).Withhold().Deliver(1).Deliver(1).TimeoutPending().DeliverLate().Bytes(),
+		// A late revision replaces the document's older entry, with another entry between them.
+		"lateReplacesEntryAcrossOthers": newScriptBuilder().config(cfg).CreateCache(0).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(0, chanMask("A"), false).
+			Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
+			Deliver(1).Deliver(1).Withhold().Deliver(1).Deliver(1).TimeoutPending().DeliverLate().Bytes(),
+		// A feed reading below a cache that already holds entries backfills them in front, until the cache is full.
+		"backfillStopsAtCapacity": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).
+			Write(3, chanMask("A"), false).Write(4, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).Deliver(1).Deliver(1).CreateCache(0).
+			Write(5, chanMask("A"), false).Write(6, chanMask("A"), false).Deliver(1).Deliver(1).FeedRead(0).FeedRead(0).Bytes(),
+		// An empty cache backfilling more rows than it can hold keeps only the newest.
+		"backfillExceedsEmptyCache": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).
+			Write(3, chanMask("A"), false).Write(4, chanMask("A"), false).Write(5, chanMask("A"), false).Write(6, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).Deliver(1).Deliver(1).Deliver(1).Deliver(1).CreateCache(0).FeedRead(0).Bytes(),
+		// The same with room for everything the view returns.
+		"backfillFitsInCache": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Deliver(1).Deliver(1).CreateCache(0).
+			Write(2, chanMask("A"), false).Deliver(1).FeedRead(0).Bytes(),
+		// A late log entry is dropped once it is older than the late log's age, even with a listener on it.
+		"lateLogAgesOut": newScriptBuilder().config(cfg).CreateCache(0).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Withhold().Deliver(1).TimeoutPending().
+			DeliverLate().CleanSkipped().Bytes(),
+		// Entries age out of a channel cache, raising its validFrom, and a feed then reads below it and backfills.
+		"ageOutThenBackfill": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMaxLen = 6; c.ChannelMinLen = 3 }).
+			CreateCache(0).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).Deliver(1).FeedRead(0).CleanSkipped().FeedRead(1).Bytes(),
+		// A limited read of a cache created late hits its limit inside the view query, so the backfill is only valid to
+		// the last row and is not cached.
+		"limitHitInQuery": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).Deliver(1).CreateCache(0).Write(4, chanMask("A"), false).Deliver(1).
+			FeedReadLimit(0, 2).FeedReadLimit(0, 2).FeedRead(0).Bytes(),
+		// The query returns fewer rows than the limit, so the limit is reached among the cache's own entries.
+		"limitHitInCache": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Deliver(1).CreateCache(0).
+			Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).FeedReadLimit(0, 3).FeedRead(0).Bytes(),
+		// The cache is full, so a limited read that backfills has no room to prepend what the view returned.
+		"limitedBackfillCacheFull": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMaxLen = 3 }).
+			Write(0, chanMask("A"), false).Deliver(1).CreateCache(0).
+			Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
+			Deliver(1).Deliver(1).Deliver(1).FeedReadLimit(0, 2).FeedRead(0).Bytes(),
 	}
 }
 
@@ -792,10 +877,11 @@ func TestFuzzScriptRoundTrip(t *testing.T) {
 		c.ChannelMaxLen = 3
 		c.Flags = 0xF1 // unused flag bits must survive
 		c.FeedMasks = [fuzzNumFeeds]uint8{1, 31, 6, 0}
-		c.Spare = [6]uint8{1, 2, 3, 4, 5, 255}
+		c.ChannelMinLen = 9
+		c.Spare = [5]uint8{1, 2, 3, 4, 255}
 	}).Write(7, chanMask("A", "E"), true).Deliver(8).DeliverAt(3, 31).Withhold().DeliverLate().Duplicate(200).
 		Unused().UnusedRange(8).Principal(false).TimeoutPending().CleanSkipped().CreateCache(4).
-		FeedRead(3).Flush().Stall(6)
+		FeedRead(3).FeedReadLimit(2, 63).Flush().Stall(6)
 
 	cfg, ops := decodeScript(b.Bytes())
 	assert.Equal(t, b.cfg, cfg)
