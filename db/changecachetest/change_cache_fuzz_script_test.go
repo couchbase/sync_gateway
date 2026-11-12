@@ -39,9 +39,13 @@ package changecachetest
 //	4  channel max length 3-20                  ChannelCacheMaxLength
 //	5  flags              bit0: create "*" channel cache at start
 //	6-9 feed channel masks, one per simulated feed, bit n = channel "A"+n; a zero mask means {A}
-//	10-15 spare           RESERVED for future config fields
+//	10 channel min length 0: the default (so age pruning is off); b>0: (b-1) % channel max length, which is below
+//	                      the maximum so the age-based prune can run   ChannelCacheMinLength
+//	11-15 spare           RESERVED for future config fields
 //
-// Ops are one opcode byte followed by opArity[opcode] operand bytes; see the op constants.
+// Ops are one opcode byte followed by opArity[opcode] operand bytes; see the op constants. An operand may gain a wider
+// meaning without a new op as long as every value it already decoded to keeps its meaning: FeedRead's operand is the
+// feed in its low two bits and, above them, a read limit, where zero (no limit) is what it always meant.
 
 import (
 	"fmt"
@@ -129,7 +133,17 @@ type fuzzConfig struct {
 	ChannelMaxLen   int
 	Flags           uint8 // the raw flags byte, so bits not yet used survive a round trip
 	FeedMasks       [fuzzNumFeeds]uint8
-	Spare           [6]uint8 // RESERVED
+	ChannelMinLen   uint8    // the raw header byte, see minLength
+	Spare           [5]uint8 // RESERVED
+}
+
+// minLength is the channel cache's minimum length. ok is false for a zero byte, which keeps the default: that is
+// longer than any maximum a script can ask for, so it leaves the age-based prune off.
+func (c fuzzConfig) minLength() (minLength int, ok bool) {
+	if c.ChannelMinLen == 0 {
+		return 0, false
+	}
+	return int(c.ChannelMinLen-1) % c.ChannelMaxLen, true
 }
 
 // defaultFuzzConfig is what an all-zero header decodes to.
@@ -147,11 +161,12 @@ func decodeConfig(b []byte) fuzzConfig {
 		PendingMaxNum:   3 + int(h[3])%48,
 		ChannelMaxLen:   3 + int(h[4])%18,
 		Flags:           h[5],
+		ChannelMinLen:   h[10],
 	}
 	for i := range cfg.FeedMasks {
 		cfg.FeedMasks[i] = h[6+i] & (1<<fuzzNumChans - 1)
 	}
-	copy(cfg.Spare[:], h[10:])
+	copy(cfg.Spare[:], h[11:])
 	return cfg
 }
 
@@ -175,7 +190,8 @@ func (c fuzzConfig) encode() []byte {
 	h[4] = byte(c.ChannelMaxLen - 3)
 	h[5] = c.Flags
 	copy(h[6:], c.FeedMasks[:])
-	copy(h[10:], c.Spare[:])
+	h[10] = c.ChannelMinLen
+	copy(h[11:], c.Spare[:])
 	return h
 }
 
@@ -246,6 +262,12 @@ func (o fuzzOp) feedIndex() int {
 	return int(o.Args[0]) % fuzzNumFeeds
 }
 
+// feedLimit is the most entries a FeedRead asks each channel for, taken from the operand above the feed bits. Zero
+// means no limit.
+func (o fuzzOp) feedLimit() int {
+	return int(o.Args[0]) / fuzzNumFeeds
+}
+
 // String prints the op by what its operands decode to, so a failure reads without the byte format at hand. It is for
 // humans only and is not part of the format.
 func (o fuzzOp) String() string {
@@ -282,6 +304,9 @@ func (o fuzzOp) String() string {
 	case opCreateCache:
 		return fmt.Sprintf("CreateCache(%s)", fuzzChannelNames[o.channelIndex()])
 	case opFeedRead:
+		if o.feedLimit() > 0 {
+			return fmt.Sprintf("FeedRead(feed %d, limit %d)", o.feedIndex(), o.feedLimit())
+		}
 		return fmt.Sprintf("FeedRead(feed %d)", o.feedIndex())
 	case opFlush:
 		return "Flush"
@@ -410,6 +435,11 @@ func (b *scriptBuilder) CreateCache(ch int) *scriptBuilder {
 
 func (b *scriptBuilder) FeedRead(feed int) *scriptBuilder {
 	return b.add(opFeedRead, byte(feed))
+}
+
+// FeedReadLimit has the feed ask each channel for at most limit entries per read.
+func (b *scriptBuilder) FeedReadLimit(feed, limit int) *scriptBuilder {
+	return b.add(opFeedRead, byte(feed+limit*fuzzNumFeeds))
 }
 
 func (b *scriptBuilder) Flush() *scriptBuilder {

@@ -249,7 +249,8 @@ func configStep(cfg fuzzConfig) (builderStep, bool) {
 	field(cfg.ChannelMaxLen != def.ChannelMaxLen, fmt.Sprintf("c.ChannelMaxLen = %d", cfg.ChannelMaxLen), func(c *fuzzConfig) { c.ChannelMaxLen = cfg.ChannelMaxLen })
 	field(cfg.Flags != def.Flags, fmt.Sprintf("c.Flags = %d", cfg.Flags), func(c *fuzzConfig) { c.Flags = cfg.Flags })
 	field(cfg.FeedMasks != def.FeedMasks, fmt.Sprintf("c.FeedMasks = [fuzzNumFeeds]uint8{%s}", joinInts(cfg.FeedMasks[:])), func(c *fuzzConfig) { c.FeedMasks = cfg.FeedMasks })
-	field(cfg.Spare != def.Spare, fmt.Sprintf("c.Spare = [6]uint8{%s}", joinInts(cfg.Spare[:])), func(c *fuzzConfig) { c.Spare = cfg.Spare })
+	field(cfg.ChannelMinLen != def.ChannelMinLen, fmt.Sprintf("c.ChannelMinLen = %d", cfg.ChannelMinLen), func(c *fuzzConfig) { c.ChannelMinLen = cfg.ChannelMinLen })
+	field(cfg.Spare != def.Spare, fmt.Sprintf("c.Spare = [5]uint8{%s}", joinInts(cfg.Spare[:])), func(c *fuzzConfig) { c.Spare = cfg.Spare })
 	if len(texts) == 0 {
 		return builderStep{}, false
 	}
@@ -319,8 +320,12 @@ func opStep(op fuzzOp) builderStep {
 		ch := op.channelIndex()
 		text, apply = fmt.Sprintf("CreateCache(%d)", ch), func(b *scriptBuilder) { b.CreateCache(ch) }
 	case opFeedRead:
-		feed := op.feedIndex()
-		text, apply = fmt.Sprintf("FeedRead(%d)", feed), func(b *scriptBuilder) { b.FeedRead(feed) }
+		feed, limit := op.feedIndex(), op.feedLimit()
+		if limit == 0 {
+			text, apply = fmt.Sprintf("FeedRead(%d)", feed), func(b *scriptBuilder) { b.FeedRead(feed) }
+		} else {
+			text, apply = fmt.Sprintf("FeedReadLimit(%d, %d)", feed, limit), func(b *scriptBuilder) { b.FeedReadLimit(feed, limit) }
+		}
 	case opFlush:
 		text, apply = "Flush()", func(b *scriptBuilder) { b.Flush() }
 	case opStall:
