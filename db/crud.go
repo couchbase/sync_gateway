@@ -3681,7 +3681,7 @@ func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context,
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
-		base.InfofCtx(ctx, base.KeyAccess, "Rev %q / %q invalidates channels of %s", base.UD(docid), newRevID, changedPrincipals)
+		base.InfofCtx(ctx, base.KeyAccess, "Rev %q / %q invalidates channels of %s", base.UD(docid), newRevID, base.UD(changedPrincipals))
 		for _, changedAccessPrincipalName := range changedPrincipals {
 			db.invalUserOrRoleChannels(ctx, changedAccessPrincipalName, invalSeq)
 			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
