@@ -4311,6 +4311,27 @@ func testTombstoneFlagMatchesBody(t *testing.T, dataStore sgbucket.DataStore) {
 	}
 }
 
+// requireExpiry checks an absolute expiry, where 0 means no expiry.
+func requireExpiry(t *testing.T, expected, actual uint32, msg string) {
+	if expected == 0 {
+		require.Zero(t, actual, msg)
+	} else {
+		// Couchbase Server gets an absolute expiry as a duration, which can round it down.
+		require.InDelta(t, expected, actual, 2, msg)
+	}
+}
+
+// requireTombstoneExpiry checks the expiry of a tombstone that a write between deleteStart and deleteEnd left.
+// Before: Rosmar, and Couchbase Server before 8.5 until the tombstone is on disk, give expected (0 or the operation expiry).
+// Should be: the delete time (MB-70540), which Couchbase Server 8.5 gives at once.
+func requireTombstoneExpiry(t *testing.T, expected, actual uint32, deleteStart, deleteEnd time.Time, msg string) {
+	// Allow for the truncation of the delete time to seconds.
+	if actual >= uint32(deleteStart.Unix())-1 && actual <= uint32(deleteEnd.Unix())+1 {
+		return
+	}
+	requireExpiry(t, expected, actual, msg)
+}
+
 // testUpdateByDocState checks the document after an Update over a missing, tombstone or live document, when the
 // callback returns a value or nil, with and without a delete.
 func testUpdateByDocState(t *testing.T, dataStore sgbucket.DataStore) {
@@ -4355,10 +4376,12 @@ func testUpdateByDocState(t *testing.T, dataStore sgbucket.DataStore) {
 			}
 
 			exp := uint32(3600)
+			deleteStart := time.Now()
 			_, err := dataStore.Update(ctx, key, 0, func([]byte) ([]byte, *uint32, bool, error) {
 				return tc.value, &exp, tc.delete, nil
 			})
 			require.NoError(t, err)
+			deleteEnd := time.Now()
 
 			body, _, err := dataStore.GetRaw(ctx, key)
 			switch {
@@ -4373,7 +4396,11 @@ func testUpdateByDocState(t *testing.T, dataStore sgbucket.DataStore) {
 			}
 			docExp, err := dataStore.GetExpiry(ctx, key)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedExpiry, docExp != 0, "unexpected expiry %d", docExp)
+			if tc.expectedTombstone {
+				requireTombstoneExpiry(t, 0, docExp, deleteStart, deleteEnd, "tombstone expiry")
+			} else {
+				require.Equal(t, tc.expectedExpiry, docExp != 0, "unexpected expiry %d", docExp)
+			}
 			xattrs, _, err := dataStore.GetXattrs(ctx, key, []string{SyncXattrName})
 			if tc.expectedSync {
 				require.NoError(t, err)
@@ -4413,7 +4440,7 @@ func testTombstoneExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 		state      docState
 		takesExp   bool // the operation takes an expiry
 		takesOpts  bool // the operation takes MutateInOptions
-		keepsOpExp bool // the tombstone has the expiry passed to the operation
+		keepsOpExp bool // the tombstone has the expiry passed to the operation, or the delete time
 		op         func(t *testing.T, key string, cas uint64, exp uint32, opts *sgbucket.MutateInOptions)
 	}{
 		{
@@ -4535,14 +4562,6 @@ func testTombstoneExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 		require.NoError(t, JSONUnmarshal(xattrs[VirtualDocumentXattr], &document))
 		return document
 	}
-	requireExpiry := func(t *testing.T, expected, actual uint32, msg string) {
-		if expected == 0 {
-			require.Zero(t, actual, msg)
-		} else {
-			// Couchbase Server gets an absolute expiry as a duration, which can round it down.
-			require.InDelta(t, expected, actual, 2, msg)
-		}
-	}
 	for _, tc := range testCases {
 		docExpiries := []uint32{0, docExpiry}
 		if tc.state == missing {
@@ -4580,7 +4599,9 @@ func testTombstoneExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 							if preserve {
 								opts = &sgbucket.MutateInOptions{PreserveExpiry: true}
 							}
+							deleteStart := time.Now()
 							tc.op(t, key, cas, opExp, opts)
+							deleteEnd := time.Now()
 
 							var expected uint32
 							if tc.keepsOpExp {
@@ -4590,11 +4611,13 @@ func testTombstoneExpiry(t *testing.T, dataStore sgbucket.DataStore) {
 							require.True(t, IsDocNotFoundError(err), "expected not found error, got %v", err)
 							exp, err := dataStore.GetExpiry(ctx, key)
 							require.NoError(t, err)
-							requireExpiry(t, expected, exp, "tombstone expiry")
+							requireTombstoneExpiry(t, expected, exp, deleteStart, deleteEnd, "tombstone expiry")
 							document := getDocumentXattr(t, key)
 							require.True(t, document.Deleted)
-							requireExpiry(t, expected, document.Exptime, "$document.exptime")
+							requireTombstoneExpiry(t, expected, document.Exptime, deleteStart, deleteEnd, "$document.exptime")
 
+							// MB-75186: on Couchbase Server 8.5 with full eviction, a resurrection over a tombstone that is only on
+							// disk gets the delete time as its expiry. These tombstones stay in memory, so they do not hit it.
 							resurrect(t, key)
 							exp, err = dataStore.GetExpiry(ctx, key)
 							require.NoError(t, err)
