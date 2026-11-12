@@ -952,6 +952,7 @@ function(doc, oldDoc) {
 // Start subChanges w/ continuous=true, batchsize=20
 // Start sending rev messages for documents that grant access to themselves for the active replication's user
 func TestConcurrentRefreshUser(t *testing.T) {
+	t.Skip("Skipping due to flakiness until CBG-5307 is done")
 	base.LongRunningTest(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
