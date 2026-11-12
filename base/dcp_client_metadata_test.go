@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocbcore/v10"
+
+	"github.com/couchbase/sync_gateway/testing/require"
 )
 
 // TestDCPMetadataCSSetFailoverEntriesDuringPersist mirrors GoCBDCPClient, where the OpenStream callback sets failover
@@ -33,7 +35,7 @@ func TestDCPMetadataCSSetFailoverEntriesDuringPersist(t *testing.T) {
 		}
 	})
 	for range 100 {
-		metadata.Persist(ctx, 0, vbIDs)
+		require.NoError(t, metadata.Persist(ctx, 0, vbIDs))
 	}
 	wg.Wait()
 }

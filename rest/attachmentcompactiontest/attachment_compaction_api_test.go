@@ -474,7 +474,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	vbMeta := meta.GetMeta(0)
 	vbMeta.VbUUID = garbageVBUUID
 	meta.SetMeta(0, vbMeta)
-	meta.Persist(rt.Context(), 0, []uint16{0})
+	require.NoError(t, meta.Persist(rt.Context(), 0, []uint16{0}))
 
 	// kick off a new run attempting to start it again (should force into rollback handling)
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=start", "")

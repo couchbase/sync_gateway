@@ -16,16 +16,21 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// ImportFeedStopMaxWait is how long Stop waits for the non-sharded import feed to stop.
+const ImportFeedStopMaxWait = 30 * time.Second
+
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
 	terminator       chan bool                              // Signal to cause DCP Client.Close() to be called, which removes dcp receiver
+	dcpDoneChan      <-chan error                           // Closed when the non-sharded DCP feed stops and persists its final checkpoints
 	collections      map[uint32]*DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                    // Database stats group
 	importStats      *base.SharedBucketImportStats          // import stats group
@@ -79,7 +84,7 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			IdleCheckpointOps: true,
 		}
 
-		_, err := base.StartDCPFeed(ctx, dbContext.Bucket, feedArgs)
+		il.dcpDoneChan, err = base.StartDCPFeed(ctx, dbContext.Bucket, feedArgs)
 		return err
 	}
 
@@ -237,7 +242,8 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 	}
 }
 
-// Stop triggers closing the import listener DCP feed and removes the node from shared DCP feed. This function is asynchronous.
+// Stop closes the import listener DCP feed and removes the node from shared DCP feed. For a non-sharded feed, it waits up
+// to ImportFeedStopMaxWait for the feed to persist its final checkpoints.
 func (il *importListener) Stop(ctx context.Context) {
 	if il != nil {
 		if il.cbgtContext != nil {
@@ -246,6 +252,13 @@ func (il *importListener) Stop(ctx context.Context) {
 			// TODO: Shut down the cfg (when cfg supports)
 		}
 		close(il.terminator)
+		if il.dcpDoneChan != nil {
+			select {
+			case _ = <-il.dcpDoneChan:
+			case <-time.After(ImportFeedStopMaxWait):
+				base.WarnfCtx(ctx, "Timeout after %v of waiting for import feed to stop", ImportFeedStopMaxWait)
+			}
+		}
 	}
 }
 

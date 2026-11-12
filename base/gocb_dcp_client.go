@@ -309,7 +309,7 @@ func (dc *GoCBDCPClient) Start() (doneChan chan error, err error) {
 
 // Close is used externally to stop the DCP client. If the client was already closed due to error, returns that error
 func (dc *GoCBDCPClient) Close() error {
-	dc.close()
+	dc.close(false)
 	return dc.getCloseError()
 }
 
@@ -323,8 +323,8 @@ func (dc *GoCBDCPClient) GetMetadata() []DCPMetadata {
 }
 
 // close is used internally to stop the DCP client.  Sends any fatal errors to the client's done channel, and
-// closes that channel.
-func (dc *GoCBDCPClient) close() {
+// closes that channel. purgeCheckpoints deletes the persisted checkpoints after the workers stop.
+func (dc *GoCBDCPClient) close(purgeCheckpoints bool) {
 
 	// set dc.closing to true, avoid re-triggering close if it's already in progress
 	if !dc.closing.CompareAndSwap(false, true) {
@@ -344,6 +344,10 @@ func (dc *GoCBDCPClient) close() {
 	// Wait for all workers to finish before closing doneChannel
 	go func() {
 		dc.workersWg.Wait()
+		// purge only after the workers stop, because a worker persists its deferred checkpoint on close
+		if purgeCheckpoints {
+			dc.metadata.Purge(dc.ctx, len(dc.workers))
+		}
 		dc.doneChannel <- dc.getCloseError()
 		close(dc.doneChannel)
 	}()
@@ -596,16 +600,15 @@ func (dc *GoCBDCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEnt
 }
 
 func (dc *GoCBDCPClient) deactivateVbucket(vbID uint16) {
-	dc.activeVbucketLock.Lock()
-	delete(dc.activeVbuckets, vbID)
-	activeCount := len(dc.activeVbuckets)
-	dc.activeVbucketLock.Unlock()
+	activeCount := func() int {
+		dc.activeVbucketLock.Lock()
+		defer dc.activeVbucketLock.Unlock()
+		delete(dc.activeVbuckets, vbID)
+		return len(dc.activeVbuckets)
+	}()
 	if activeCount == 0 {
-		dc.close()
-		// On successful one-shot feed completion, purge persisted checkpoints
-		if dc.oneShot {
-			dc.metadata.Purge(dc.ctx, len(dc.workers))
-		}
+		// a one-shot feed that streamed every vbucket is complete, so its checkpoints are no longer needed
+		dc.close(dc.oneShot)
 	}
 }
 
@@ -647,7 +650,7 @@ func (dc *GoCBDCPClient) onStreamEnd(e endStreamEvent) {
 
 func (dc *GoCBDCPClient) fatalError(err error) {
 	dc.setCloseError(err)
-	dc.close()
+	dc.close(false)
 }
 
 func (dc *GoCBDCPClient) setCloseError(err error) {

@@ -37,6 +37,7 @@ type DCPWorker struct {
 	metadata              DCPMetadataStore
 	pendingSnapshot       map[uint16]snapshotEvent
 	lastMetaPersistTime   time.Time
+	pendingPersist        bool // a requested checkpoint was deferred by metaPersistFrequency, or its write failed
 	metaPersistFrequency  time.Duration
 	assignedVbs           []uint16
 	idleCheckpointOps     bool // Whether a checkpoint write made only for _sync: doc events is counted as an idle KV op
@@ -112,33 +113,41 @@ func (w *DCPWorker) Start(ctx context.Context, wg *sync.WaitGroup) {
 		for {
 			select {
 			case event := <-w.eventFeed:
-				vbID := event.VbID()
-				switch e := event.(type) {
-				case snapshotEvent:
-					// Set pending snapshot - don't persist to meta until we receive first sequence in the snapshot,
-					// to avoid attempting to restart with a new snapshot and old sequence value
-					w.pendingSnapshot[vbID] = e
-				case mutationEvent:
-					if w.mutationCallback != nil {
-						w.mutationCallback(e.asFeedEvent())
-					}
-					w.updateSeq(ctx, e.key, vbID, e.seq)
-				case deletionEvent:
-					if w.mutationCallback != nil && !w.ignoreDeletes {
-						w.mutationCallback(e.asFeedEvent())
-					}
-					w.updateSeq(ctx, e.key, vbID, e.seq)
-				case seqnoAdvancedEvent:
-					w.updateSeq(ctx, nil, vbID, e.seq)
-				case endStreamEvent:
-					w.endStreamCallback(e)
-				}
+				w.handleEvent(ctx, event)
 			case <-w.terminator:
-				w.Close()
+				w.Close(ctx)
 				return
 			}
 		}
 	}()
+}
+
+// handleEvent processes a single stream event. Events for a given vbucket must be handled in order.
+func (w *DCPWorker) handleEvent(ctx context.Context, event streamEvent) {
+	vbID := event.VbID()
+	switch e := event.(type) {
+	case snapshotEvent:
+		// Set pending snapshot - don't persist to meta until we receive first sequence in the snapshot,
+		// to avoid attempting to restart with a new snapshot and old sequence value
+		w.pendingSnapshot[vbID] = e
+	case mutationEvent:
+		shouldPersist := true
+		if w.mutationCallback != nil {
+			shouldPersist = w.mutationCallback(e.asFeedEvent())
+		}
+		w.updateSeq(ctx, e.key, vbID, e.seq, shouldPersist)
+	case deletionEvent:
+		shouldPersist := true
+		if w.mutationCallback != nil && !w.ignoreDeletes {
+			shouldPersist = w.mutationCallback(e.asFeedEvent())
+		}
+		w.updateSeq(ctx, e.key, vbID, e.seq, shouldPersist)
+	case seqnoAdvancedEvent:
+		// no callback requested a checkpoint, so the seq is persisted with the next requested checkpoint
+		w.updateSeq(ctx, nil, vbID, e.seq, false)
+	case endStreamEvent:
+		w.endStreamCallback(e)
+	}
 }
 
 func (w *DCPWorker) checkPendingSnapshot(vbID uint16) {
@@ -148,9 +157,11 @@ func (w *DCPWorker) checkPendingSnapshot(vbID uint16) {
 	}
 }
 
-func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq uint64) {
-	// Ignore DCP checkpoint documents
-	if bytes.HasPrefix(key, w.checkpointPrefixBytes) {
+// updateSeq records seq as processed. If shouldPersist is set, it persists a checkpoint, or defers it to the end of the
+// persist interval or to Close.
+func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq uint64, shouldPersist bool) {
+	// Ignore the echo of this feed's own checkpoint documents to avoid a persistence feedback loop
+	if len(w.checkpointPrefixBytes) > 0 && bytes.HasPrefix(key, w.checkpointPrefixBytes) {
 		return
 	}
 
@@ -161,18 +172,38 @@ func (w *DCPWorker) updateSeq(ctx context.Context, key []byte, vbID uint16, seq 
 		w.sawNonSyncDoc = true
 	}
 
-	if time.Since(w.lastMetaPersistTime) > w.metaPersistFrequency {
-		w.metadata.Persist(ctx, w.ID, w.assignedVbs)
-		// Background work such as heartbeats writes _sync: docs even on a node with no clients. When only those were
-		// seen, the checkpoint write is idle work too.
-		if w.idleCheckpointOps && !w.sawNonSyncDoc {
-			SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
-		}
-		w.sawNonSyncDoc = false
+	if !shouldPersist {
+		return
 	}
-
+	if time.Since(w.lastMetaPersistTime) <= w.metaPersistFrequency {
+		w.pendingPersist = true
+		return
+	}
+	w.persist(ctx)
 }
 
-func (w *DCPWorker) Close() {
-	// cleanup persistence
+func (w *DCPWorker) persist(ctx context.Context) {
+	err := w.metadata.Persist(ctx, w.ID, w.assignedVbs)
+	if err != nil {
+		InfofCtx(ctx, KeyDCP, "%v", err)
+	}
+	// Background work such as heartbeats writes _sync: docs even on a node with no clients. When only those were
+	// seen, the checkpoint write is idle work too.
+	if w.idleCheckpointOps && !w.sawNonSyncDoc {
+		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps.Add(1)
+	}
+	// keep sawNonSyncDoc after a failed write, so that the retry is not counted as idle
+	if err == nil {
+		w.sawNonSyncDoc = false
+	}
+	// a failed write still starts the persist interval, so a struggling cluster is not sent a write on every event
+	w.lastMetaPersistTime = time.Now()
+	w.pendingPersist = err != nil
+}
+
+// Close persists any checkpoint that was deferred by metaPersistFrequency or that failed to write.
+func (w *DCPWorker) Close(ctx context.Context) {
+	if w.pendingPersist {
+		w.persist(ctx)
+	}
 }

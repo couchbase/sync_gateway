@@ -10,6 +10,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -413,7 +414,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 				assert.NoError(t, err)
 			}
 		}
-		return false
+		return true
 	}
 
 	// Add documents
@@ -977,6 +978,156 @@ func TestDCPCheckpointCleanup(t *testing.T) {
 		require.Error(t, err, "Expected checkpoint document %s to be deleted", key)
 		RequireDocNotFoundError(t, err)
 	}
+}
+
+// TestDCPCallbackControlsCheckpoint makes sure that GoCBDCPClient only persists checkpoints when the callback
+// returns true.
+func TestDCPCallbackControlsCheckpoint(t *testing.T) {
+	TestRequiresGocbDCPClient(t)
+	for _, persist := range []bool{true, false} {
+		t.Run(fmt.Sprintf("persist=%t", persist), func(t *testing.T) {
+			ctx := TestCtx(t)
+			bucket := GetTestBucket(t)
+			defer bucket.Close(ctx)
+
+			dataStore := bucket.GetSingleDataStore()
+			docIDs := sgtest.DocPerVBucket(t, bucket.Bucket)
+			expected := make(map[string]struct{}, len(docIDs))
+			for _, docID := range docIDs {
+				expected[docID] = struct{}{}
+			}
+
+			var seenLock sync.Mutex
+			seen := make(map[string]struct{}, len(expected))
+			foundDocs := make(chan struct{})
+			callback := func(event sgbucket.FeedEvent) bool {
+				seenLock.Lock()
+				defer seenLock.Unlock()
+				if _, ok := expected[string(event.Key)]; ok {
+					seen[string(event.Key)] = struct{}{}
+					if len(seen) == len(expected) {
+						close(foundDocs)
+					}
+				}
+				return persist
+			}
+
+			checkpointPrefix := DefaultMetadataKeys.DCPCheckpointPrefix(t.Name())
+			dcpClient := newDCPClientWithFastCheckpointing(t, bucket, DCPClientOptions{
+				FeedID:            "testfeed",
+				CollectionNames:   NewCollectionNameSet(dataStore),
+				CheckpointPrefix:  checkpointPrefix,
+				Callback:          callback,
+				MetadataStoreType: DCPMetadataStoreCS,
+				MetadataStore:     bucket.GetMetadataStore(),
+			})
+			doneChan, err := dcpClient.Start()
+			require.NoError(t, err)
+
+			for _, docID := range docIDs {
+				require.NoError(t, dataStore.Set(ctx, docID, 0, nil, map[string]any{"foo": "bar"}))
+			}
+			RequireChanClosed(t, foundDocs)
+			require.NoError(t, dcpClient.Close())
+			RequireChanClosed(t, doneChan)
+
+			metadata, ok := dcpClient.(*GoCBDCPClient).metadata.(*DCPMetadataCS)
+			require.True(t, ok)
+			for i := range DefaultNumWorkers {
+				key := metadata.getMetadataKey(i)
+				_, _, err := bucket.GetMetadataStore().GetRaw(ctx, key)
+				if persist {
+					require.NoError(t, err, "checkpoint document %q not found", key)
+				} else {
+					RequireDocNotFoundError(t, err)
+				}
+			}
+		})
+	}
+}
+
+// blockingPersistMetadata is a DCPMetadataStore whose Persist blocks until the test releases it.
+type blockingPersistMetadata struct {
+	DCPMetadataStore
+	persistStarted chan struct{}
+	releasePersist chan struct{}
+	purged         atomic.Bool
+}
+
+func (m *blockingPersistMetadata) Persist(ctx context.Context, workerID int, vbIDs []uint16) error {
+	m.persistStarted <- struct{}{}
+	<-m.releasePersist
+	return m.DCPMetadataStore.Persist(ctx, workerID, vbIDs)
+}
+
+func (m *blockingPersistMetadata) Purge(ctx context.Context, numWorkers int) {
+	m.purged.Store(true)
+	m.DCPMetadataStore.Purge(ctx, numWorkers)
+}
+
+// TestDCPOneShotPurgeWaitsForWorkerClose makes sure that a completed one-shot feed purges its checkpoints only after
+// the workers flush their deferred checkpoints on close, so that a flush cannot recreate a purged checkpoint.
+func TestDCPOneShotPurgeWaitsForWorkerClose(t *testing.T) {
+	ctx := TestCtx(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close(ctx)
+
+	const numVbuckets = 1
+	const numWorkers = 1
+	checkpointPrefix := DefaultMetadataKeys.DCPCheckpointPrefix(t.Name())
+	csMetadata := NewDCPMetadataCS(ctx, bucket.GetMetadataStore(), numVbuckets, numWorkers, checkpointPrefix)
+	metadata := &blockingPersistMetadata{
+		DCPMetadataStore: csMetadata,
+		persistStarted:   make(chan struct{}),
+		releasePersist:   make(chan struct{}),
+	}
+
+	deferredDocHandled := make(chan struct{})
+	callback := func(event sgbucket.FeedEvent) bool {
+		if string(event.Key) == "doc2" {
+			close(deferredDocHandled)
+		}
+		return true
+	}
+
+	persistFrequency := time.Hour
+	dc := &GoCBDCPClient{
+		ctx:                        ctx,
+		callback:                   callback,
+		workers:                    make([]*DCPWorker, numWorkers),
+		numVbuckets:                numVbuckets,
+		terminator:                 make(chan bool),
+		doneChannel:                make(chan error, 1),
+		metadata:                   metadata,
+		activeVbuckets:             map[uint16]struct{}{0: {}},
+		oneShot:                    true,
+		checkpointPrefix:           checkpointPrefix,
+		checkpointPersistFrequency: &persistFrequency,
+	}
+	dc.startWorkers(ctx)
+	worker := dc.workers[0]
+
+	// the first checkpoint persists immediately
+	worker.Send(ctx, mutationEvent{key: []byte("doc1"), seq: 1})
+	RequireChanRecvWithTimeout(t, metadata.persistStarted, TestChanTimeout)
+	metadata.releasePersist <- struct{}{}
+
+	// the second checkpoint is deferred by the persist interval until the worker closes
+	worker.Send(ctx, mutationEvent{key: []byte("doc2"), seq: 2})
+	RequireChanClosed(t, deferredDocHandled)
+
+	// the last vbucket stream ends, which completes the one-shot feed
+	dc.deactivateVbucket(0)
+
+	// the worker flush is blocked, so the purge must not have run yet
+	RequireChanRecvWithTimeout(t, metadata.persistStarted, TestChanTimeout)
+	require.False(t, metadata.purged.Load(), "checkpoints purged before the worker flushed its deferred checkpoint")
+	metadata.releasePersist <- struct{}{}
+
+	RequireNoErrorOnChanCloseWithTimeout(t, dc.doneChannel, TestChanTimeout)
+	require.True(t, metadata.purged.Load())
+	_, _, err := bucket.GetMetadataStore().GetRaw(ctx, csMetadata.getMetadataKey(0))
+	RequireDocNotFoundError(t, err)
 }
 
 // newDCPClientWithFastCheckpointing is a helper function to create a DCP client which will serialize checkpoints on
