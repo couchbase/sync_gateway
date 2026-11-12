@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/require"
 	rosmar "github.com/couchbaselabs/rosmar"
 )
@@ -70,4 +71,14 @@ func SafeDocumentName(t *testing.T, name string) string {
 	}
 	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
 	return docName
+}
+
+// SetRosmarClockForTest overrides rosmar's process-wide CAS clock. At cleanup, the wall clock comes back with a
+// floor above the last value of clock, so later CAS values in the process stay above the ones from this test.
+func SetRosmarClockForTest(t testing.TB, clock func() uint64) {
+	rosmar.SetClockForTest(clock)
+	t.Cleanup(func() {
+		floor := (clock() | sgbucket.HLCLogicalMask) + 1
+		rosmar.SetClockForTest(func() uint64 { return max(sgbucket.HLCWallClock(), floor) })
+	})
 }

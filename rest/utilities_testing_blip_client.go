@@ -1123,6 +1123,11 @@ func (btc *BlipTesterClient) TB() testing.TB {
 	return btc.rt.TB()
 }
 
+// GetHLCValueForTest returns the next value from the client's HLC clock.
+func (btc *BlipTesterClient) GetHLCValueForTest() uint64 {
+	return btc.hlc.Now(0)
+}
+
 // SetHLCClockForTest overrides the client's HLC clock function, for deterministic HLV version generation in tests.
 func (btc *BlipTesterClient) SetHLCClockForTest(clockFn func() uint64) {
 	btc.hlc.SetClockForTest(clockFn)

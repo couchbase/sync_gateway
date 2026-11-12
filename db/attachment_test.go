@@ -1831,11 +1831,9 @@ func TestVersionCASCorrectionPreservesGlobalXattr(t *testing.T) {
 	ds := collection.GetCollectionDatastore()
 	retryCount := dbc.DbStats.Database().HLVVersionCASRetryCount
 
-	// put the Sync Gateway clock 100ms ahead of the clock assigning the CAS, so the write generates a version
-	// ahead of its CAS and updateAndReturnDoc corrects it with a re-stamp. Derived from the same source the
-	// bucket uses, so the injected offset is the only difference.
-	dbc.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + uint64(100*time.Millisecond) })
-	defer dbc.hlc.SetClockForTest(sgbucket.HLCWallClock)
+	// put the Sync Gateway clock 100ms ahead of the CAS clock, so the write generates a version ahead of its CAS
+	// and updateAndReturnDoc corrects it with a re-stamp
+	SetSGClockAheadOfCASForTest(t, dbc.DatabaseContext)(100 * time.Millisecond)
 
 	docID := t.Name()
 	before := retryCount.Value()
@@ -1859,7 +1857,10 @@ type unmigratedAttachmentWritePath struct {
 	// alreadyUnmigrated skips moving the attachment metadata back into _sync, for a create that writes a
 	// document in the pre-4.0 layout itself.
 	alreadyUnmigrated bool
-	run               func(t *testing.T, ctx context.Context, dbc *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string)
+	// sgClockAhead puts the Sync Gateway clock ahead of the clock assigning the CAS for run, so that a write
+	// generates a version ahead of its CAS and is corrected by a re-stamp.
+	sgClockAhead time.Duration
+	run          func(t *testing.T, ctx context.Context, dbc *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string)
 }
 
 // TestWritePathsPreserveUnmigratedAttachmentMetadata pins the invariant that no code path which rewrites a
@@ -1903,15 +1904,11 @@ func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
 		},
 		{
 			// correctVersionAheadOfCAS/restampVersionCAS re-persist _sync, _vv and _mou after the write above
-			name: "Sync Gateway write with version-CAS correction",
+			name:         "Sync Gateway write with version-CAS correction",
+			sgClockAhead: 100 * time.Millisecond,
 			run: func(t *testing.T, ctx context.Context, dbc *Database, collection *DatabaseCollectionWithUser, docID, rev1ID string) {
 				retryCount := dbc.DbStats.Database().HLVVersionCASRetryCount
 				before := retryCount.Value()
-
-				// put the Sync Gateway clock ahead of the clock assigning the CAS, so the write generates a
-				// version ahead of its CAS and is corrected by a re-stamp
-				dbc.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + uint64(100*time.Millisecond) })
-				defer dbc.hlc.SetClockForTest(sgbucket.HLCWallClock)
 
 				require.NoError(t, putWithAttachmentStub(t, ctx, collection, docID, rev1ID))
 				require.Equal(t, before+1, retryCount.Value(), "expected a corrective re-stamp for this write")
@@ -2011,6 +2008,7 @@ func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 			ds := collection.GetCollectionDatastore()
+			setSGClockAhead := SetSGClockAheadOfCASForTest(t, dbc.DatabaseContext)
 
 			_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("preResync");}`)
 			require.NoError(t, err)
@@ -2038,6 +2036,7 @@ func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
 				require.NotEmpty(t, GetRawSyncXattr(t, ds, docID).AttachmentsPre4dot0, "setup should leave pre-4.0 attachment metadata in _sync")
 			}
 
+			setSGClockAhead(tc.sgClockAhead)
 			tc.run(t, ctx, dbc, collection, docID, rev1ID)
 
 			requireAttachmentMetadataPreserved(t, ds, docID, attName, attDigest, attLength)

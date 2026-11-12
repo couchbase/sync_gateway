@@ -527,15 +527,13 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	setSGClockAhead := SetSGClockAheadOfCASForTest(t, db.DatabaseContext)
 
 	retryCount := db.DbStats.Database().HLVVersionCASRetryCount
 
 	t.Run("within max wait is corrected", func(t *testing.T) {
 		// SG clock 100ms ahead of the server: the generated version exceeds the CAS, within the wait bound.
-		// Derive from the same wall-clock source the bucket uses (HLCWallClock) so the only difference is the
-		// injected offset; using time.Now() directly diverges from the bucket's clock on Windows.
-		offset := uint64(100 * time.Millisecond)
-		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
+		setSGClockAhead(100 * time.Millisecond)
 
 		before := retryCount.Value()
 		_, doc, err := collection.Put(ctx, "skewedWithinBound", Body{"foo": "bar"})
@@ -551,8 +549,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 
 	t.Run("beyond max wait is left uncorrected", func(t *testing.T) {
 		// SG clock 2s ahead (> maxVersionCASCorrectionWait): correction is skipped with a warning.
-		offset := uint64(2 * time.Second)
-		db.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + offset })
+		setSGClockAhead(2 * time.Second)
 
 		before := retryCount.Value()
 		_, doc, err := collection.Put(ctx, "skewedBeyondBound", Body{"foo": "bar"})
@@ -646,6 +643,7 @@ func TestRestampVersionCASMou(t *testing.T) {
 			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
+			setSGClockAhead := SetSGClockAheadOfCASForTest(t, dbc.DatabaseContext)
 
 			// move the document between channels, so the ended channel history the carry-forward step below
 			// compacts is there to prune
@@ -670,8 +668,7 @@ func TestRestampVersionCASMou(t *testing.T) {
 			before := retryCount.Value()
 
 			// SG clock ahead of the server, so the write's generated version exceeds its CAS and is corrected
-			dbc.hlc.SetClockForTest(func() uint64 { return sgbucket.HLCWallClock() + uint64(100*time.Millisecond) })
-			defer dbc.hlc.SetClockForTest(sgbucket.HLCWallClock)
+			setSGClockAhead(100 * time.Millisecond)
 
 			doc := testCase.write(t, ctx, collection, docID, rev2ID)
 			require.Equal(t, before+1, retryCount.Value(), "expected a corrective re-stamp for this write")
