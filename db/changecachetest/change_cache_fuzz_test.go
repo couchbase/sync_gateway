@@ -48,6 +48,7 @@ type fuzzCache interface {
 	SetManualNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set))
 	FlushNotificationsForTest(t testing.TB)
 	GetNextSequenceForTest(t testing.TB) uint64
+	LastSequence() uint64
 	GetMaxStableCachedForTest(t testing.TB, ctx context.Context) uint64
 	SkippedSeqsForTest(t testing.TB) *db.SkippedSequenceSkiplist
 	SequenceStateForTest(t testing.TB, ctx context.Context) (nextSequence, maxStable uint64, skipped []uint64)
@@ -132,12 +133,15 @@ type fuzzHarness struct {
 	channelCache *db.ChannelCacheImplForTest
 	feeds        [fuzzNumFeeds]*fuzzFeed
 
-	nextSeq     uint64 // next sequence the simulated server will allocate
-	docs        [fuzzNumDocs]*fuzzDoc
-	undelivered []*fuzzEvent // oldest first
-	withheld    []*fuzzEvent // oldest first
-	delivered   []*fuzzEvent // in first-delivery order, one entry per event
-	principals  int
+	nextSeq       uint64 // next sequence the simulated server will allocate
+	docs          [fuzzNumDocs]*fuzzDoc
+	undelivered   []*fuzzEvent // oldest first
+	withheld      []*fuzzEvent // oldest first
+	delivered     []*fuzzEvent // in first-delivery order, one entry per event
+	principals    int
+	slept         bool              // time passed since the last check, so the cache's age prune may have run
+	lastValidFrom map[string]uint64 // each channel cache's validFrom at the previous check
+	dropped       bool              // an event was dropped as superseded, so its sequences are left for the cache to abandon
 
 	model        *fuzzModel
 	ops          []fuzzOp // the script being run, for failure messages
@@ -332,6 +336,7 @@ func (h *fuzzHarness) run(ops []fuzzOp) {
 // skipped-sequence cleanup, which ticks on its own timer whichever op is sleeping.
 func (h *fuzzHarness) sleep(d time.Duration) {
 	_, _, before := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	h.slept = true
 	time.Sleep(d)
 	synctest.Wait()
 	_, _, after := h.cache.SequenceStateForTest(h.t, h.env.ctx)
@@ -374,6 +379,15 @@ func (h *fuzzHarness) quiesce() {
 	h.beginStep(len(h.ops), fuzzOp{}, "quiesce: time out pending")
 	h.timeoutPending()
 	h.checkAfterOp()
+	if h.dropped {
+		// The sequences of dropped events were never delivered, so they are skipped until the cache abandons them. The
+		// cleanup acts only on a sequence that has been skipped for its full max wait and wakes every half of it, so one
+		// sleep of the max wait may fall short and two always suffice.
+		h.beginStep(len(h.ops), fuzzOp{}, "quiesce: abandon dropped sequences")
+		h.cleanSkipped()
+		h.cleanSkipped()
+		h.checkAfterOp()
+	}
 	for i := range h.feeds {
 		h.beginStep(len(h.ops), fuzzOp{}, fmt.Sprintf("quiesce: feed %d reads", i))
 		h.feedRead(i, 0)
@@ -400,9 +414,7 @@ func (h *fuzzHarness) step(op fuzzOp) {
 			h.stepNote = "nothing undelivered"
 			break
 		}
-		h.stepEvent = h.undelivered[0]
-		h.withheld = append(h.withheld, h.undelivered[0])
-		h.undelivered = h.undelivered[1:]
+		h.stepEvent = h.withholdOldest()
 	case opDeliverLate:
 		if len(h.withheld) == 0 {
 			h.stepNote = "nothing withheld"
@@ -580,8 +592,29 @@ func (h *fuzzHarness) deliverOne(window, pick int) {
 	h.deliver(ev)
 }
 
+// withholdOldest moves the oldest undelivered event to the withheld list, so it arrives late or not at all.
+func (h *fuzzHarness) withholdOldest() *fuzzEvent {
+	ev := h.undelivered[0]
+	h.withheld = append(h.withheld, ev)
+	h.undelivered = h.undelivered[1:]
+	return ev
+}
+
 // deliver hands an event to the cache the way the caching feed does.
+//
+// A document's revisions reach the cache in sequence order, since they come from one vBucket in CAS order, and DCP
+// deduplicates a revision that a newer one has superseded before it was sent. An event for an older revision of a
+// document whose newer revision has been delivered is therefore dropped, and its sequences are never delivered: they
+// stay skipped until the cache abandons them.
 func (h *fuzzHarness) deliver(ev *fuzzEvent) {
+	if ev.kind == eventDoc {
+		if newer := h.model.highestDelivered(ev.rev.docIndex); newer != nil && newer.seq > ev.rev.seq {
+			h.stepEvent = ev
+			h.stepNote = fmt.Sprintf("dropped %s@%d: superseded by @%d (DCP dedup)", ev.docID, ev.rev.seq, newer.seq)
+			h.dropped = true
+			return
+		}
+	}
 	if ev.delivery == 0 {
 		h.delivered = append(h.delivered, ev)
 	}
@@ -589,6 +622,7 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 	h.stepEvent, h.stepDelivery = ev, ev.delivery
 	h.pinLateLogs()
 	h.resetSkippedRemoved()
+	nextBefore, _, _ := h.cache.SequenceStateForTest(h.t, h.env.ctx)
 	h.claimSequences(ev)
 	if ev.kind == eventDoc {
 		h.model.delivered[ev.rev.seq] = true
@@ -608,11 +642,13 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 		h.cache.ProcessPrincipalDocForTest(h.t, h.env.ctx, ev.docID, ev.json, ev.isUser, received)
 	}
 	h.checkLateLog(ev)
+	h.checkNoNeedlessWait(nextBefore)
 }
 
 func (h *fuzzHarness) createChannelCache(name string) {
 	_, err := db.GetSingleChannelCacheForTest(h.t, h.env.ctx, h.channelCache, h.channelID(name))
 	require.NoError(h.t, err)
+	h.checkCacheExists(name, "creating it")
 }
 
 // feedRead has a feed read every channel it watches since where it last got to. This simulated feed is deliberately
@@ -626,7 +662,8 @@ func (h *fuzzHarness) feedRead(feedIndex, limit int) {
 		// Arm the query callback with the state just before this read, which viewOmittedState uses to decide whether
 		// the view was the cache's only route to a revision. It is captured here because the callback runs inside
 		// GetChanges and must not read the caches itself. Disarming afterwards makes any other query fail loudly.
-		h.armed = &fuzzQuery{nextSequence: next, skipped: skipped, cache: h.snapshot(name)}
+		before, queries := h.snapshot(name), len(h.model.queries)
+		h.armed = &fuzzQuery{nextSequence: next, skipped: skipped, cache: before}
 		entries, err := h.channelCache.GetChanges(h.env.ctx, h.channelID(name), db.ChangesOptions{
 			Since:      db.SequenceID{Seq: since},
 			Limit:      limit,
@@ -634,6 +671,8 @@ func (h *fuzzHarness) feedRead(feedIndex, limit int) {
 		})
 		h.armed = nil
 		require.NoError(h.t, err)
+		h.checkCacheExists(name, "a feed read")
+		h.checkReadServedBy(name, since, limit, before, len(h.model.queries) > queries)
 		if limit > 0 && len(entries) > limit {
 			h.failf("feed %d read channel %s with limit %d and was given %d entries", feedIndex, name, limit, len(entries))
 		}
@@ -707,10 +746,11 @@ func fuzzSeeds() map[string][]byte {
 		"backfillAfterRewrite": newScriptBuilder().config(cfg).
 			Write(0, chanMask("B"), false).Deliver(1).Write(0, chanMask("B", "C"), false).
 			FeedRead(2).Write(0, chanMask("C"), false).Deliver(1).Deliver(1).CreateCache(1).FeedRead(1).FeedRead(3).Bytes(),
-		// A sequence abandoned by the skipped-list cleanup, then a later revision of the same document.
+		// A sequence abandoned by the skipped-list cleanup, then its own late arrival and a later revision of the same
+		// document.
 		"abandonedThenRewritten": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
-			Write(0, chanMask("A", "B"), false).Write(1, chanMask("A"), false).Write(0, chanMask("A"), false).
-			Withhold().Deliver(1).Deliver(1).TimeoutPending().CleanSkipped().DeliverLate().
+			Write(0, chanMask("A", "B"), false).Write(1, chanMask("A"), false).
+			Withhold().Deliver(1).TimeoutPending().CleanSkipped().DeliverLate().
 			Write(0, chanMask("B"), false).Deliver(1).FeedRead(0).FeedRead(1).Bytes(),
 		// A document leaves a channel at a sequence that is skipped, and the cache replays it from a later revision.
 		"lateRemovalReplay": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.Flags |= 1 }).
@@ -839,6 +879,48 @@ func fuzzSeeds() map[string][]byte {
 			Write(0, chanMask("A"), false).Deliver(1).CreateCache(0).
 			Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
 			Deliver(1).Deliver(1).Deliver(1).FeedReadLimit(0, 2).FeedRead(0).Bytes(),
+		// A rewritten document's older sequence never arrives, since DCP deduplicates it, and the revision that supersedes it
+		// replays it from recent_sequences just as nextSequence is waiting for it.
+		"replayAtNextSequence": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(0, chanMask("A"), false).Withhold().Deliver(1).Bytes(),
+		// A document in no channel at all still has a sequence to cache.
+		"writeInNoChannel": newScriptBuilder().config(cfg).
+			Write(0, chanMask(), false).Deliver(1).Bytes(),
+		// The age-based prune runs over a channel cache that holds nothing.
+		"ageSweepOfEmptyCache": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMinLen = 3 }).
+			CreateCache(0).CleanSkipped().Write(0, chanMask("A"), false).Deliver(1).Bytes(),
+		// A limited read asks for more entries than the cache holds.
+		"limitAboveCachedCount": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Deliver(1).FeedReadLimit(0, 5).FeedReadLimit(0, 5).Bytes(),
+		// The end-of-run feed reads start below a cache's validFrom and the view has nothing in range, so the answer is the
+		// cache alone.
+		"backfillFindsNothing": newScriptBuilder().config(cfg).
+			Unused().Deliver(1).Unused().CreateCache(0).Write(0, chanMask("A"), false).Bytes(),
+		// The view returns only a document the cache already holds, so the backfill adds nothing.
+		"backfillAddsNothing": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Deliver(1).CreateCache(0).Write(0, chanMask("A"), false).Deliver(1).FeedRead(0).Bytes(),
+		// An unused range is released while a later document is already pending behind a gap, and must not extend over
+		// the gap's sequence, which is another document's.
+		"unusedRangeBeforeGap": newScriptBuilder().config(cfg).CreateCache(0).
+			Write(0, chanMask("A"), false).UnusedRange(2).Write(1, chanMask("A"), false).Write(2, chanMask("B"), false).
+			Withhold().Deliver(1).Withhold().Deliver(1).DeliverLate().Bytes(),
+		// A late revision takes the place of the document's older entry beyond other entries, and the cache then prunes by
+		// length from the front, which relies on the log staying in sequence order.
+		"lateReplacementThenPrune": newScriptBuilder().config(cfg).CreateCache(0).
+			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(0, chanMask("A"), false).
+			Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).Write(4, chanMask("A"), false).Write(5, chanMask("A"), false).
+			Deliver(1).Deliver(1).Withhold().Deliver(1).Deliver(1).TimeoutPending().DeliverLate().
+			Deliver(1).Deliver(1).Bytes(),
+		// A cache that has pruned entries by length and by age forgets those documents, so a feed's backfill from the view
+		// can add them back.
+		"lengthPruneThenBackfill": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.PendingMaxNum = 3; c.ChannelMaxLen = 3; c.ChannelMinLen = 3 }).
+			Write(1, chanMask("A"), false).Write(4, chanMask("A"), false).Write(2, chanMask("A"), false).Write(0, chanMask("A"), false).
+			Deliver(1).DeliverAt(3, 2).Deliver(1).FeedRead(0).Write(4, chanMask("A"), false).CleanSkipped().FeedRead(1).Bytes(),
+		// A cache created by a feed read prunes by length from the front while an older document is still skipped. The prune
+		// forgets exactly the entries it removes, and the late arrival then lands consistently with the cache's validFrom.
+		"lengthPruneThenLateArrival": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.PendingMaxNum = 3; c.ChannelMaxLen = 3 }).
+			Write(1, chanMask("A"), false).Write(0, chanMask("A"), false).Write(2, chanMask("A"), false).Write(0, chanMask("A"), false).
+			Deliver(1).Deliver(1).Withhold().FeedRead(0).Write(0, chanMask("A"), true).Write(7, chanMask("A"), false).Bytes(),
 	}
 }
 
