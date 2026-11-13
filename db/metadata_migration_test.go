@@ -805,6 +805,7 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			{"own unusedSeq (binary)", def.UnusedSeqKey(5), dispMigrated},
 			{"own unusedSeqRange (binary)", def.UnusedSeqRangeKey(5, 9), dispMigrated},
 			{"own database state", def.DatabaseStateKey(), dispMigrated},
+			{"own timestamps_seq", def.TimestampsSeqKey(), dispMigrated},
 			{"own replication status", def.ReplicationStatusKey("repl1"), dispMigrated},
 			{"own sgcfg", def.SGCfgPrefix("") + "nodeDefs-known", dispMigrated},
 			{"own resync cfg", def.ResyncCfgPrefix() + cbgt.PLAN_PINDEXES_KEY, dispMigrated},
@@ -813,9 +814,12 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			// non-inverted sibling family (`_sync:m_db2:…`) — out-of-scope via SyncDocMetadataPrefix arm
 			{"sibling non-inverted seq", db2.SyncSeqKey(), dispOutOfScope},
 			{"sibling non-inverted unusedSeq", db2.UnusedSeqKey(7), dispOutOfScope},
+			{"sibling non-inverted timestamps_seq", db2.TimestampsSeqKey(), dispOutOfScope},
 
 			// heartbeater — deleted, never moved
 			{"own heartbeater", def.HeartbeaterPrefix("") + "heartbeat_timeout:node1", dispDeleted},
+			// a groupID equal to a singleton key name must not divert the heartbeat into that key's arm
+			{"own heartbeater (groupID timestamps_seq)", def.HeartbeaterPrefix(base.MetaKeyTimestampsSeq.String()) + "heartbeat_timeout:nodeA", dispDeleted},
 
 			// the seq counter is NEVER range-scan migrated (the orchestrator promotes it
 			// out-of-band) — out-of-scope even for the owning DB
@@ -829,6 +833,8 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 
 			// genuinely unrecognised `_sync:` key — must surface as unknown, not be swallowed
 			{"unknown prefix", "_sync:somethingnew:foo", dispUnknown},
+			{"unknown state-prefixed key", def.DatabaseStateKey() + "_v2", dispUnknown},
+			{"unknown timestamps_seq-prefixed key", def.TimestampsSeqKey() + "_v2", dispUnknown},
 		})
 	})
 
@@ -853,6 +859,17 @@ func TestHandleMigrationKeyClassification(t *testing.T) {
 			// non-inverted owned — migrated
 			{"own unusedSeq (binary)", db2.UnusedSeqKey(5), dispMigrated},
 			{"own database state", db2.DatabaseStateKey(), dispMigrated},
+			{"own timestamps_seq", db2.TimestampsSeqKey(), dispMigrated},
+
+			// the default sibling's singleton keys — out-of-scope (formatMetadataKey arm)
+			{"default-sibling database state", def.DatabaseStateKey(), dispOutOfScope},
+			{"default-sibling timestamps_seq", def.TimestampsSeqKey(), dispOutOfScope},
+			// the singleton arms match exactly, so a heartbeater whose groupID is a singleton name is still out-of-scope
+			{"default-sibling heartbeater (groupID state)", def.HeartbeaterPrefix(base.MetaKeyDatabaseState.String()) + "heartbeat_timeout:nodeA", dispOutOfScope},
+			{"default-sibling heartbeater (groupID timestamps_seq)", def.HeartbeaterPrefix(base.MetaKeyTimestampsSeq.String()) + "heartbeat_timeout:nodeA", dispOutOfScope},
+			// a key that only starts with a singleton name is not that singleton
+			{"unknown state-prefixed key", def.DatabaseStateKey() + "_v2", dispUnknown},
+			{"unknown timestamps_seq-prefixed key", def.TimestampsSeqKey() + "_v2", dispUnknown},
 
 			// a DIFFERENT sibling's non-inverted key — out-of-scope
 			{"otherDB non-inverted key", base.NewMetadataKeys("otherDB").SGCfgPrefix(""), dispOutOfScope},
@@ -1059,6 +1076,7 @@ func TestMigrateMetadataDefaultDBExcludesNamespacedSibling(t *testing.T) {
 		def.DCPCheckpointPrefix("") + "1":     []byte(`{"seq":42}`),
 		def.UnusedSeqKey(5):                   []byte(`{"unused":5}`),
 		def.DatabaseStateKey():                []byte(`{"state":"Online"}`),
+		def.TimestampsSeqKey():                []byte(`{"timestamps":[{"s":42,"t":1700000000}]}`),
 	}
 	sibling := map[string][]byte{
 		db2.UserKey("bob"):                  []byte(`{"name":"bob"}`),
@@ -1068,6 +1086,7 @@ func TestMigrateMetadataDefaultDBExcludesNamespacedSibling(t *testing.T) {
 		db2.DCPCheckpointPrefix("") + "1":   []byte(`{"seq":7}`),
 		db2.SyncSeqKey():                    []byte(`{"seq":100}`),
 		db2.DatabaseStateKey():              []byte(`{"state":"Online"}`),
+		db2.TimestampsSeqKey():              []byte(`{"timestamps":[{"s":7,"t":1700000000}]}`),
 	}
 
 	requireSiblingExclusionScan(ctx, t, ms, base.DefaultMetadataID, []string{"db2"}, own, sibling)
@@ -1094,11 +1113,13 @@ func TestMigrateMetadataNamespacedDBExcludesDefaultSibling(t *testing.T) {
 		db2.DCPCheckpointPrefix("") + "1":   []byte(`{"seq":7}`),
 		db2.UnusedSeqKey(5):                 []byte(`{"unused":5}`),
 		db2.DatabaseStateKey():              []byte(`{"state":"Online"}`),
+		db2.TimestampsSeqKey():              []byte(`{"timestamps":[{"s":7,"t":1700000000}]}`),
 	}
 	sibling := map[string][]byte{
 		def.UserKey("alice"):                         []byte(`{"name":"alice"}`),
 		def.DCPCheckpointPrefix("") + "1":            []byte(`{"seq":42}`),
 		def.DatabaseStateKey():                       []byte(`{"state":"Online"}`),
+		def.TimestampsSeqKey():                       []byte(`{"timestamps":[{"s":42,"t":1700000000}]}`),
 		def.SyncSeqKey():                             []byte(`{"seq":100}`),
 		base.NewMetadataKeys("otherDB").SyncSeqKey(): []byte(`{"seq":5}`),
 	}
