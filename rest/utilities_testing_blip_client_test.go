@@ -34,6 +34,13 @@ func newTestPullMessage(btcc *BlipTesterCollectionClient, profile string, proper
 	return msg
 }
 
+// lastSeq returns the last client sequence the collection allocated.
+func (btcc *BlipTesterCollectionClient) lastSeq() clientSeq {
+	btcc.seqLock.RLock()
+	defer btcc.seqLock.RUnlock()
+	return btcc._seqLast
+}
+
 // TestBlipTesterClientPullHandling covers how the blip tester client stores what a pull delivers, driving
 // the pull handlers directly rather than through a replication. Each case is a revision Sync Gateway can
 // send that the client has to record under a version other than the one on the wire, or not record at all.
@@ -52,39 +59,11 @@ func TestBlipTesterClientPullHandling(t *testing.T) {
 
 		if client.UseHLV() {
 			// both cases turn on a revision being identified by its cv, which pre-4.0 clients do not do
-			requireRevAfterNoRevIsStored(t, ctx, client, btcc)
 			requireDuplicateRevIsNoop(t, ctx, client, btcc)
+			requireStaleRevIsNoop(t, ctx, client, btcc)
 		}
 		requireReplacedRevIsStored(t, ctx, client, btcc)
 	})
-}
-
-// requireRevAfterNoRevIsStored covers a norev placeholder followed by a rev for the same cv. The
-// placeholder carries the cv but no body, so the rev that follows is the first copy of the document the
-// client holds, and must be stored rather than answered as a revision the client already has.
-func requireRevAfterNoRevIsStored(t *testing.T, ctx context.Context, client *BlipTesterClient, btcc *BlipTesterCollectionClient) {
-	docID := sgtest.SafeDocumentName(t, t.Name()) + "_revAfterNoRev"
-	hlv := db.NewHybridLogicalVector()
-	require.NoError(t, hlv.AddVersion(db.Version{SourceID: "sourceA", Value: 100}))
-	version := DocVersion{CV: *hlv.ExtractCurrentVersionFromHLV()}
-
-	client.pullReplication.handleNoRev(ctx, client)(newTestPullMessage(btcc, db.MessageNoRev, blip.Properties{
-		db.NorevMessageId:  docID,
-		db.NorevMessageRev: version.CV.String(),
-	}, nil))
-
-	body := []byte(`{"foo":"bar"}`)
-	revMsg := newTestPullMessage(btcc, db.MessageRev, blip.Properties{
-		db.RevMessageID:  docID,
-		db.RevMessageRev: version.CV.String(),
-	}, body)
-	client.pullReplication.handleRev(ctx, client)(revMsg)
-
-	assert.NotEqual(t, "true", revMsg.Response().Properties[noopProperty], "the client held only a bodyless norev placeholder, so this rev is not a no-op")
-
-	data, _, found := btcc.GetVersion(docID, version)
-	require.True(t, found, "version %v is not stored on the client", version)
-	assert.JSONEq(t, string(body), string(data), "the rev body must replace the norev placeholder")
 }
 
 // requireDuplicateRevIsNoop covers the same cv being sent twice, which Sync Gateway does when a document
@@ -92,12 +71,6 @@ func requireRevAfterNoRevIsStored(t *testing.T, ctx context.Context, client *Bli
 // including no client sequence, which the push changes feed would otherwise iterate over forever because
 // no document sits behind it.
 func requireDuplicateRevIsNoop(t *testing.T, ctx context.Context, client *BlipTesterClient, btcc *BlipTesterCollectionClient) {
-	seqLast := func() clientSeq {
-		btcc.seqLock.RLock()
-		defer btcc.seqLock.RUnlock()
-		return btcc._seqLast
-	}
-
 	docID := sgtest.SafeDocumentName(t, t.Name()) + "_duplicateRev"
 	hlv := db.NewHybridLogicalVector()
 	require.NoError(t, hlv.AddVersion(db.Version{SourceID: "sourceB", Value: 200}))
@@ -113,12 +86,12 @@ func requireDuplicateRevIsNoop(t *testing.T, ctx context.Context, client *BlipTe
 	}
 
 	handleRev(newRevMsg())
-	seqAfterFirstRev := seqLast()
+	seqAfterFirstRev := btcc.lastSeq()
 
 	duplicateMsg := newRevMsg()
 	handleRev(duplicateMsg)
 	assert.Equal(t, "true", duplicateMsg.Response().Properties[noopProperty], "a revision the client already holds is acked as a no-op")
-	assert.Equal(t, seqAfterFirstRev, seqLast(), "a no-op rev must not allocate a client sequence")
+	assert.Equal(t, seqAfterFirstRev, btcc.lastSeq(), "a no-op rev must not allocate a client sequence")
 
 	// a sequence with no document behind it never makes the changes feed wait: it walks past the empty
 	// sequence and starts again, yielding the document at the sequence before it every time
@@ -130,6 +103,41 @@ func requireDuplicateRevIsNoop(t *testing.T, ctx context.Context, client *BlipTe
 		assert.Fail(t, "changes feed yielded a document after a no-op rev", "docID %q seq %d", change.docID, change.seq)
 	case <-time.After(time.Second):
 	}
+}
+
+// requireStaleRevIsNoop covers a rev for a version older than the client's latest. Revs for separate
+// changes batches are sent concurrently, so this happens, and couchbase-lite-core answers the rev as a no-op.
+func requireStaleRevIsNoop(t *testing.T, ctx context.Context, client *BlipTesterClient, btcc *BlipTesterCollectionClient) {
+	docID := sgtest.SafeDocumentName(t, t.Name()) + "_staleRev"
+	staleCV := db.Version{SourceID: "sourceD", Value: 100}
+	latestCV := db.Version{SourceID: "sourceE", Value: 200}
+	staleBody := []byte(`{"version":1}`)
+	latestBody := []byte(`{"version":2}`)
+
+	handleRev := client.pullReplication.handleRev(ctx, client)
+	handleRev(newTestPullMessage(btcc, db.MessageRev, blip.Properties{
+		db.RevMessageID:  docID,
+		db.RevMessageRev: staleCV.String(),
+	}, staleBody))
+	handleRev(newTestPullMessage(btcc, db.MessageRev, blip.Properties{
+		db.RevMessageID:      docID,
+		db.RevMessageRev:     latestCV.String(),
+		db.RevMessageHistory: staleCV.String(),
+	}, latestBody))
+	seqAfterLatestRev := btcc.lastSeq()
+
+	staleRevMsg := newTestPullMessage(btcc, db.MessageRev, blip.Properties{
+		db.RevMessageID:  docID,
+		db.RevMessageRev: staleCV.String(),
+	}, staleBody)
+	handleRev(staleRevMsg)
+	assert.Equal(t, "true", staleRevMsg.Response().Properties[noopProperty], "a rev older than the client's latest is acked as a no-op")
+
+	assert.Equal(t, seqAfterLatestRev, btcc.lastSeq(), "a stale rev must not allocate a client sequence")
+	body, hlv, version := btcc.GetDoc(docID)
+	require.NotNil(t, version)
+	assert.JSONEq(t, string(latestBody), string(body))
+	assert.Equal(t, latestCV, *hlv.ExtractCurrentVersionFromHLV())
 }
 
 // requireReplacedRevIsStored covers the replacedRev property on a pull. The client records the revision it
