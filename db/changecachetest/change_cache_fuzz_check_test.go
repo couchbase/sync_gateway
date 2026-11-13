@@ -75,6 +75,8 @@ func (h *fuzzHarness) checkAfterOp() {
 	h.lastNext, h.lastStable = next, stable
 
 	snaps := h.snapshots()
+	h.checkStructure(next, snaps)
+	h.checkSequenceViews(next)
 
 	// I3: a channel cache vouches for nothing below validFrom, so it must not hold anything there.
 	for _, name := range allChannelNames {
@@ -392,5 +394,122 @@ func (h *fuzzHarness) checkEndFeed(feedIndex int, feed *fuzzFeed) {
 				h.failf("feed %d (channels %v): last entry received in channel %s for %s is %v, want %s", feedIndex, feed.channels, name, latest.docID, got, want)
 			}
 		}
+	}
+}
+
+// fuzzMaxNumChannels is the most channel caches the cache will create. The harness uses far fewer channels, so a
+// channel cache is always created; a bypass cache would only be legitimate if a future script could reach this limit.
+var fuzzMaxNumChannels = db.DefaultCacheOptions().MaxNumChannels
+
+// checkCacheExists is P-exists: a channel cache must exist after the harness creates one or reads from it, as long as the
+// harness cannot reach the cache's channel limit. Every other property only looks at caches that exist, so a cache that
+// silently serves everything as a bypass cache would otherwise pass them all.
+func (h *fuzzHarness) checkCacheExists(name, what string) {
+	h.t.Helper()
+	if len(allChannelNames) >= fuzzMaxNumChannels {
+		return
+	}
+	if h.snapshot(name) == nil {
+		h.failf("P-exists: no channel cache for %s after %s", name, what)
+	}
+}
+
+// checkStructure checks the shape of every channel cache after every op:
+//   - P-len: it holds at most ChannelCacheMaxLength entries;
+//   - P-order: its entries are in strictly ascending sequence order with at most one per document, which the length
+//     prune and the late insert rely on;
+//   - P-mono: its validFrom only rises when entries were pruned, either by length (the cache is then at its maximum)
+//     or by age (which only happens while time passes), never because an entry was added.
+func (h *fuzzHarness) checkStructure(next uint64, snaps map[string]*fuzzCacheSnapshot) {
+	h.t.Helper()
+	slept := h.slept
+	h.slept = false
+	if h.lastValidFrom == nil {
+		h.lastValidFrom = map[string]uint64{}
+	}
+	for name, snap := range snaps {
+		if len(snap.entries) > h.cfg.ChannelMaxLen {
+			h.failf("P-len: channel %s holds %d entries, more than the maximum %d\ncache: %s", name, len(snap.entries), h.cfg.ChannelMaxLen, snap)
+		}
+		docs := make(map[string]bool, len(snap.entries))
+		for i, e := range snap.entries {
+			if i > 0 && e.Sequence <= snap.entries[i-1].Sequence {
+				h.failf("P-order: channel %s has %s after sequence %d\ncache: %s", name, describeEntry(e), snap.entries[i-1].Sequence, snap)
+			}
+			if docs[e.DocID] {
+				h.failf("P-order: channel %s holds %s twice\ncache: %s", name, e.DocID, snap)
+			}
+			docs[e.DocID] = true
+		}
+		if prev, ok := h.lastValidFrom[name]; ok && snap.validFrom > prev && len(snap.entries) != h.cfg.ChannelMaxLen && !slept {
+			h.failf("P-mono: channel %s validFrom rose from %d to %d without a prune (nextSequence %d)\ncache: %s", name, prev, snap.validFrom, next, snap)
+		}
+		h.lastValidFrom[name] = snap.validFrom
+	}
+}
+
+// checkSequenceViews checks that the cache's views of how far it has got agree: the channel caches' high sequence and
+// LastSequence, which reads the copy of nextSequence published without the cache lock, both equal nextSequence-1 once
+// every op has finished. A sequence is only ever processed at nextSequence, or skipped by moving nextSequence past it
+// when the entry behind it is processed, so the highest processed sequence is always nextSequence-1.
+func (h *fuzzHarness) checkSequenceViews(next uint64) {
+	h.t.Helper()
+	high, last := h.channelCache.GetHighCacheSequence(), h.cache.LastSequence()
+	if high != next-1 || last != next-1 {
+		h.failf("sequence views disagree: nextSequence %d, channel cache high sequence %d, LastSequence %d (want %d for both)", next, high, last, next-1)
+	}
+}
+
+// checkReadServedBy is P-hit and P-warm for one feed read of a channel: a read goes to the view exactly when the cache
+// that existed before it was not valid from the read's first sequence, and an unlimited read leaves the cache valid from
+// there unless it is full. P-warm relies on the harness never setting ActiveOnly, which makes a read skip the backfill.
+func (h *fuzzHarness) checkReadServedBy(name string, since uint64, limit int, before *fuzzCacheSnapshot, queried bool) {
+	h.t.Helper()
+	if before != nil {
+		if want := before.validFrom > since+1; queried != want {
+			h.failf("P-hit: feed read of %s since %d with the cache valid from %d queried the view: %v, want %v", name, since, before.validFrom, queried, want)
+		}
+	}
+	after := h.snapshot(name)
+	if after != nil && limit == 0 && len(after.entries) < h.cfg.ChannelMaxLen && after.validFrom > since+1 {
+		h.failf("P-warm: unlimited feed read of %s since %d left the cache (%d of %d entries) valid only from %d\ncache: %s",
+			name, since, len(after.entries), h.cfg.ChannelMaxLen, after.validFrom, after)
+	}
+}
+
+// checkNoNeedlessWait is called right after a delivery, before any time has passed. The cache releases contiguous
+// sequences as they arrive, so a feed never waits for the pending time-out on a sequence the cache has already been
+// given: once every sequence from the previous nextSequence up to N has been delivered or replayed from a
+// recent_sequences list, nextSequence must have reached N+1. Only a sequence that really is missing may hold it back.
+//
+// A sequence counts as given if a delivery claimed it. Dropped and abandoned sequences are never claimed, so they hold
+// nextSequence back, which is right: the cache has not been given them. A sequence at or above the previous nextSequence
+// cannot be in the skipped list, so a claimed one is always either processed or waiting behind a gap. Principals and
+// unused ranges are claimed like any other sequence, a Duplicate delivery claims nothing new, and the pending overflow
+// can only move nextSequence further, so the lower bound holds in each case.
+func (h *fuzzHarness) checkNoNeedlessWait(nextBefore uint64) {
+	h.t.Helper()
+	next, _, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	// failf must not run with notifyLock held, so read the claims first.
+	lowestUnclaimed, waiting := func() (uint64, []uint64) {
+		h.notifyLock.Lock()
+		defer h.notifyLock.Unlock()
+		claimed := func(seq uint64) bool {
+			_, ok := h.notify.claims[seq]
+			return ok
+		}
+		lowest := nextBefore
+		for ; lowest < h.nextSeq && claimed(lowest); lowest++ {
+		}
+		var waiting []uint64
+		for seq := max(nextBefore, next); seq < h.nextSeq; seq++ {
+			if claimed(seq) {
+				waiting = append(waiting, seq)
+			}
+		}
+		return lowest, waiting
+	}()
+	if next < lowestUnclaimed {
+		h.failf("no needless wait: nextSequence is %d but every sequence below %d has been given to the cache (claimed but unprocessed: %v, skipped %v)", next, lowestUnclaimed, waiting, skipped)
 	}
 }
