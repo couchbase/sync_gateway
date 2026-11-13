@@ -41,7 +41,7 @@ dev = [
   "pytest-httpserver>=1.2.0",
   "ruff>=0.17.4",
   "trustme>=1.2.1",
-  "ty==0.0.96", # pre-release, pin exactly
+  "ty==0.0.100", # pre-release, pin exactly
 ]
 
 [tool.ty.environment]
@@ -51,4 +51,4 @@ extra-paths = ["tools"]
 include = ["tools", "tools-tests"]
 
 [tool.ty.rules]
-unresolved-import = "error"
+import-not-found = "error"
