@@ -1480,3 +1480,35 @@ func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration, st
 	}
 	return pairs
 }
+
+// TestTimestampsManagerKVIdleOps checks that adding a due entry counts every KV operation as an idle KV op: the read and
+// write of the timestamps document, and the read of the sequence counter.
+func TestTimestampsManagerKVIdleOps(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
+	dataStore := tBucket.GetSingleDataStore()
+	metaKeys := base.NewMetadataKeys(t.Name())
+	_, err := dataStore.Incr(ctx, metaKeys.SyncSeqKey(), 5, 5, 0)
+	require.NoError(t, err)
+
+	now := time.Now()
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     dataStore,
+		metaKeys:          metaKeys,
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		// reads the counter on the unwrapped store, as DatabaseContext.GetRequestPlusSequence does
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return base.GetCounter(ctx, dataStore, metaKeys.SyncSeqKey())
+		},
+		nowFunc: func() time.Time { return now },
+	})
+	// creates the document, which does not read the sequence
+	require.NoError(t, tm.addEntry(ctx))
+	now = now.Add(time.Hour)
+
+	idleKVOps := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().NumIdleKvOps
+	before := idleKVOps.Value()
+	require.NoError(t, tm.addEntry(ctx))
+	assert.Equal(t, int64(3), idleKVOps.Value()-before, "a read and a write of the timestamps doc, and a read of the sequence")
+}
