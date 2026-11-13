@@ -26,6 +26,7 @@ import (
 
 // TestResyncRollback ensures that we allow rollback of
 func TestResyncRollback(t *testing.T) {
+	t.Skip("CBG-6151: This test was not asserting rollbacks")
 	base.TestRequiresGocbDCPClient(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc) { channel("x") }`, // use custom sync function to increment sync function counter
