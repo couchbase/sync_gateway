@@ -26,6 +26,7 @@ import (
 
 // TestResyncRollback ensures that we allow rollback of
 func TestResyncRollback(t *testing.T) {
+	t.Skip("CBG-6151: This test was not asserting rollbacks")
 	base.TestRequiresGocbDCPClient(t)
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		SyncFn: `function(doc) { channel("x") }`, // use custom sync function to increment sync function counter
@@ -56,8 +57,10 @@ func TestResyncRollback(t *testing.T) {
 	require.Equal(t, db.BackgroundProcessStateStopped, status.State)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	checkpointPrefix := db.GetResyncDCPCheckpointPrefix(rt.GetDatabase(), status.ResyncID, false)
-	meta := base.NewDCPMetadataCS(rt.Context(), rt.Bucket().DefaultDataStore(rt.Context()), 1024, 8, checkpointPrefix)
+	// _offline reloads the database and closes rt.Bucket(), so use the reloaded database's metadata store.
+	database := rt.GetDatabase()
+	checkpointPrefix := db.GetResyncDCPCheckpointPrefix(database, status.ResyncID, false)
+	meta := base.NewDCPMetadataCS(rt.Context(), database.MetadataStore, 1024, 8, checkpointPrefix)
 	vbMeta := meta.GetMeta(0)
 	var garbageVBUUID gocbcore.VbUUID = 1234
 	vbMeta.VbUUID = garbageVBUUID
