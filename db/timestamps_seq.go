@@ -250,6 +250,7 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 			return newValBytes, nil, false, marshalErr
 		}
 		if unmarshalErr := base.JSONUnmarshal(current, &timestampsSeqArray); unmarshalErr != nil {
+			base.WarnfCtx(ctx, "Unable to parse the timestamps document, resetting it to an empty array: %v", unmarshalErr)
 			// reset a document that can't be parsed rather than fail every call: an empty array only delays purges until
 			// entries cover the purge interval again, and newValBytes replaces the in-memory copy with it
 			newValBytes, marshalErr = base.JSONMarshal(TimestampsSeqArray{})

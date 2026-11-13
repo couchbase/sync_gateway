@@ -24,8 +24,8 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestTimestampsDocCreation makes sure that Start creates the timestamps document in the metadata store, and adds an
-// entry for the current sequence without waiting for the background task.
+// TestTimestampsDocCreation makes sure that Start creates the timestamps document in the metadata store with an empty
+// array, and loads the same array into memory.
 func TestTimestampsDocCreation(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
@@ -681,6 +681,7 @@ func TestConcurrentAddEntryMultipleManagers(t *testing.T) {
 		}
 		// the first manager creates the document, so that the concurrent calls all race to add the first entry
 		require.NoError(t, managers[0].Start(ctx))
+		defer managers[0].Stop(ctx)
 
 		errs := make(chan error, numNodes)
 		// start is closed once every goroutine exists, so that the calls overlap as much as possible
@@ -763,6 +764,7 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 		metaKeys := base.NewMetadataKeys(t.Name())
 
 		tm1 := NewTimestampsManager(newOpts(t, ctx, metadataStore, metaKeys, t.Name()))
+		defer tm1.Stop(ctx)
 		// The callback runs after node 2 sees no document but before it writes, so node 1 wins the race and
 		// node 2's write fails on CAS and retries against node 1's document.
 		var once atomic.Bool
@@ -777,6 +779,7 @@ func TestTimestampsManagerJoinExistingCluster(t *testing.T) {
 
 		tm2 := NewTimestampsManager(newOpts(t, ctx, leakyBucket.GetMetadataStore(), metaKeys, t.Name()))
 		require.NoError(t, tm2.Start(ctx))
+		defer tm2.Stop(ctx)
 		requireJoinedNode(t, ctx, metadataStore, metaKeys, tm2)
 	})
 }
@@ -803,6 +806,7 @@ func TestTimestampsManagerCancelledAddEntryLoadsOtherNodeEntry(t *testing.T) {
 
 	tm1 := NewTimestampsManager(opts)
 	require.NoError(t, tm1.Start(ctx))
+	defer tm1.Stop(ctx)
 	require.NoError(t, tm1.addEntry(ctx))
 
 	// node 2 only knows about an old entry, so from its point of view an entry is due
@@ -928,6 +932,7 @@ func TestTimestampsManagerSteadyStateSize(t *testing.T) {
 	clock := newTestClock(clockStart)
 	tm := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil, t.Name())
 	require.NoError(t, tm.Start(ctx))
+	defer tm.Stop(ctx)
 
 	// The entry at or before the purge timestamp is kept, so a full document holds NumTimestampsEntries+1 entries.
 	for i := range purgeIntervals * NumTimestampsEntries {
@@ -961,6 +966,7 @@ func TestTimestampsManagerPurgeIntervalShrinks(t *testing.T) {
 		return time.Duration(purgeInterval.Load())
 	}, t.Name())
 	require.NoError(t, tm.Start(ctx))
+	defer tm.Stop(ctx)
 
 	// an entry every hour for more than a purge interval, which leaves a full document
 	for range NumTimestampsEntries + 10 {
@@ -1007,6 +1013,7 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil, t.Name())
 		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil, t.Name())
 		require.NoError(t, nodeA.Start(ctx))
+		defer nodeA.Stop(ctx)
 		require.NoError(t, nodeA.addEntry(ctx))
 
 		// node B is two hours behind node A, so the newest entry is in its future
@@ -1029,6 +1036,7 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil, t.Name())
 		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil, t.Name())
 		require.NoError(t, nodeA.Start(ctx))
+		defer nodeA.Stop(ctx)
 		require.NoError(t, nodeA.addEntry(ctx))
 
 		// node B is two hours ahead of node A, and adds an entry stamped in the future of node A
@@ -1055,6 +1063,7 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 		clock := newTestClock(clockStart)
 		node := newClockTestManager(ctx, metadataStore, metaKeys, clock, nil, t.Name())
 		require.NoError(t, node.Start(ctx))
+		defer node.Stop(ctx)
 		require.NoError(t, node.addEntry(ctx))
 
 		// the clock is stepped back by a day, then moves forward again, one update frequency at a time
@@ -1076,6 +1085,7 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 		nodeA := newClockTestManager(ctx, metadataStore, metaKeys, clockA, nil, t.Name())
 		nodeB := newClockTestManager(ctx, metadataStore, metaKeys, clockB, nil, t.Name())
 		require.NoError(t, nodeA.Start(ctx))
+		defer nodeA.Stop(ctx)
 
 		// node A jumps forward and adds an entry, while node B jumps backward and adds nothing
 		clockA.Set(clockStart.Add(5 * time.Hour))
@@ -1101,7 +1111,6 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 		var currentSeq atomic.Uint64
 		newNode := func(clock *testClock) *TimestampsManager {
 			return NewTimestampsManager(TimestampsMgrOpts{
-				ctx:               ctx,
 				metadataStore:     metadataStore,
 				metaKeys:          metaKeys,
 				purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
@@ -1118,12 +1127,12 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 			{Seq: 30, Timestamp: clockStart.Add(2 * time.Hour).Unix()},
 		}
 		currentSeq.Store(30)
-		nodeA.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: entries})
+		nodeA.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: entries})
 
 		// the sequence rolls back to 10, so the last two entries are ahead of it
 		currentSeq.Store(10)
 		for name, node := range map[string]*TimestampsManager{"node A": nodeA, "node B": nodeB} {
-			require.NoError(t, node.addEntry(), name)
+			require.NoError(t, node.addEntry(ctx), name)
 			tsDoc := getTimestampsDoc(t, ctx, metadataStore, metaKeys)
 			assert.Equal(t, entries[:1], tsDoc.Timestamps, name)
 			assert.Equal(t, tsDoc, *node.timestampsSeqArray.Load(), name)
@@ -1131,9 +1140,8 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 	})
 }
 
-// GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end. If startSeq is
-// non-zero, the sequences start at startSeq and increase by one per pair, otherwise every pair has sequence 0.
-// It returns nil if duration is not positive, or if start is after end.
+// TestTimestampsManagerStop makes sure that Stop waits for the background task to end, and that a second Stop does
+// nothing.
 func TestTimestampsManagerStop(t *testing.T) {
 	ctx := t.Context()
 	testBucket := base.GetTestBucket(t)
@@ -1458,8 +1466,9 @@ func (tm *TimestampsManager) CreateTSDocForTest(t *testing.T, ctx context.Contex
 	require.NoError(t, tm.metadataStore.Set(ctx, tm.metaKeys.TimestampsSeqKey(), 0, nil, tsArray))
 }
 
-// GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end, each with sequence 0.
-// It returns nil if duration is not positive.
+// GenerateTimestampsSeqPairs returns one pair every duration from start up to and including end. If startSeq is
+// non-zero, the sequences start at startSeq and increase by one per pair, otherwise every pair has sequence 0.
+// It returns nil if duration is not positive, or if start is after end.
 func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration, startSeq uint64) []TimestampsSeqPair {
 	var pairs []TimestampsSeqPair
 	seq := startSeq
