@@ -732,8 +732,10 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	xdcr := startXDCR(t, srcBucket, dstBucket, XDCROptions{Mobile: MobileOn})
 	defer func() { assert.NoError(t, xdcr.Stop(ctx)) }()
 
-	// Wait for both the attachment doc and the main doc to replicate
+	// Wait for both the attachment doc and the main doc to replicate, and for the filtered _sync:seq and
+	// _sync:timestamps_seq metadata docs, so the count after migration only changes from the migration.
 	requireWaitForXDCRDocsWritten(t, xdcr, 2)
+	requireWaitForXDCRDocsProcessed(t, xdcr, 4)
 
 	// Verify doc is present and attachment wasn't found - via REST-like call Get1xRevAndChannels
 	b, _, _, _, _, _, _, _, err := dstColl.Get1xRevAndChannels(dstCtx, docID, "", false)
@@ -747,12 +749,13 @@ func TestXDCRBeforeAttachmentMigration(t *testing.T) {
 	sd := db.GetRawSyncXattr(t, srcDs, docID)
 	require.NoError(t, srcColl.MigrateAttachmentMetadata(srcColl.AddCollectionContext(srcCtx), docID, fromCas, &sd))
 
-	// Since metadata migration writes _mou, the document will be processed. Wait for the migration's _globalSync xattr update to replicate to the target.
-	requireWaitForXDCRDocsProcessed(t, xdcr, 4)
+	// The migration writes _mou, so XDCR processes the document, but resolves it against the already replicated cv and skips it.
+	requireWaitForXDCRDocsProcessed(t, xdcr, 5)
 
 	stats, err := xdcr.Stats(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), stats.DocsWritten)
+	require.Equal(t, uint64(1), stats.TargetNewerDocs)
 }
 
 // TestVVMultiActor verifies that updates by multiple actors (updates to different clusters/buckets) are properly
