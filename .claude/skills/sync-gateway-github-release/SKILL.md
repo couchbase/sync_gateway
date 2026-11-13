@@ -132,18 +132,41 @@ Do not pass `--generate-notes` or `--latest`. The body is already complete, and 
 
 Publish happens on GA day. The tag is made from the branch head at this moment, so the branch must hold exactly what shipped.
 
-1. `git fetch origin --tags`. Show the head commit of `origin/release/$V` and ask the user to confirm it is the GA build.
-2. Check the GA month again (step 2b), because GA dates can slip into the next month. If the month changed, ask before `gh release edit "$V" --title "$V — $MONTH"`.
-3. Fetch the docs page again and build the body again (step 3). The docs heading may exist now, so the link can gain its anchor. If the body differs from the draft (`diff <(gh release view "$V" --json body | jq -j .body) "$OUT"`; use `jq -j`, because `--jq .body` adds a newline and every body then looks changed), show the diff and ask before `gh release edit "$V" --notes-file "$OUT"`.
-4. Work out "latest": only the highest version across **all** published releases gets it (see the `isLatest` row in `gh release list`). A 3.3.x or 4.0.x release is never latest while 4.1.x exists.
-5. Publish in rising version order, so the latest one is published last. Pass the full SHA the user confirmed in item 1 as `--target`, not the branch, so a push to the branch during the publish cannot change what gets tagged:
+1. `git fetch origin --tags`, then `SHA=$(git rev-parse origin/release/$V)`.
+2. Check that the published packages contain `$SHA`. Release builds write `<version>-<build>` and the full commit SHA into the `sync_gateway` binary (the `@COMMIT_SHA@` placeholder in `base/version.go`), so read them from the downloads. Never run the downloaded binary. Check more than one package type, since each one is published separately.
+
+```sh
+PKG=<scratchpad>/pkg-$V; mkdir -p "$PKG"
+BASE="https://packages.couchbase.com/releases/couchbase-sync-gateway/$V"
+for P in enterprise_${V}_x86_64.deb enterprise_${V}_x86_64.zip community_${V}_x86_64.zip; do
+  F="$PKG/$P"; curl -fsSL -o "$F" "$BASE/couchbase-sync-gateway-$P" || { echo "$P: not downloadable"; continue; }
+  case "$P" in
+    *.deb) mkdir -p "$F.x" && (cd "$F.x" && ar x "$F") && tar -xOf "$F.x"/data.tar.* --wildcards '*bin/sync_gateway' > "$F.bin" ;;
+    *.zip) unzip -p "$F" '*/bin/sync_gateway' > "$F.bin" ;;
+  esac
+  BUILD=$(grep -aoE "${V//./\\.}-[0-9]+" "$F.bin" | sort -u | tr '\n' ' ')
+  COMMIT=$(grep -aoE '[0-9a-f]{40,}' "$F.bin" | awk 'length==40' | sort -u | tr '\n' ' ')
+  echo "$P: build=$BUILD commit=$COMMIT $( [ "${COMMIT% }" = "$SHA" ] && echo OK || echo MISMATCH)"
+done
+# enterprise_4.1.3_x86_64.deb: build=4.1.3-20  commit=2d4202a588b892f833678c027e793852eb4a9b90  OK
+```
+
+   - **All OK:** show the build number and commit, and continue.
+   - **A package has a different commit:** stop. Show the user each package's build and commit, and which one matches the branch head. Ask before publishing.
+   - **Not downloadable (403):** the packages are not published yet (or never are, as for most 4-part hotfixes). Ask the user to confirm the GA commit instead.
+
+   Use `$SHA` as the `--target` in item 6 only after this check.
+3. Check the GA month again (step 2b), because GA dates can slip into the next month. If the month changed, ask before `gh release edit "$V" --title "$V — $MONTH"`.
+4. Fetch the docs page again and build the body again (step 3). The docs heading may exist now, so the link can gain its anchor. If the body differs from the draft (`diff <(gh release view "$V" --json body | jq -j .body) "$OUT"`; use `jq -j`, because `--jq .body` adds a newline and every body then looks changed), show the diff and ask before `gh release edit "$V" --notes-file "$OUT"`.
+5. Work out "latest": only the highest version across **all** published releases gets it (see the `isLatest` row in `gh release list`). A 3.3.x or 4.0.x release is never latest while 4.1.x exists.
+6. Publish in rising version order, so the latest one is published last. Pass the full SHA checked in item 2 as `--target`, not the branch, so a push to the branch during the publish cannot change what gets tagged:
 
 ```sh
 gh release edit "$V" --target "$SHA" --draft=false --latest=false   # every release except the highest
 gh release edit "$V" --target "$SHA" --draft=false --latest         # the highest version only
 ```
 
-6. Check: `git ls-remote --tags origin "refs/tags/$V"` matches the branch head, and `gh release list --limit 5` shows the right Latest.
+7. Check: `git ls-remote --tags origin "refs/tags/$V"` matches `$SHA`, and `gh release list --limit 5` shows the right Latest.
 
 ## Common mistakes
 
@@ -154,4 +177,5 @@ gh release edit "$V" --target "$SHA" --draft=false --latest         # the highes
 | `--generate-notes` with `--notes` | You cannot preview the exact body before it is written. Build the file in step 3. |
 | Previous tag from `git tag` only | A tag can exist with no published release. Use the release list. |
 | Publishing without `--latest=false` | GitHub may mark a 3.3.x or 4.0.x release as Latest. |
+| Trusting the branch head as the GA build | Read the build and commit from the published packages (step 5, item 2). |
 | Second `gh release create` for a tag that has a draft | Drafts can share a tag name, so you get a duplicate. Always do step 1. |
