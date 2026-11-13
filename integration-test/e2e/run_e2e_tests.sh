@@ -31,7 +31,9 @@ if [[ "$BACKING_STORE" == "cbs" ]]; then
     # start_cbs.py runs cbdinocluster out of the integration-test/tools module, so warm that
     # module cache here where a flaky proxy is retried rather than failing the whole run
     "${REPO_DIR}/.ci/retry.sh" go -C "${REPO_DIR}/integration-test/tools" mod download
-    "${REPO_DIR}/integration-test/start_cbs.py" --version "${COUCHBASE_SERVER_VERSION}" --purpose sync_gateway_e2e --env-file "${CBS_ENV_FILE}"
+    "${REPO_DIR}/integration-test/start_cbs.py" --version "${COUCHBASE_SERVER_VERSION}" --purpose sync_gateway_e2e --env-file "${CBS_ENV_FILE}" \
+        --kv-memory-mb "${COUCHBASE_KV_MEMORY_MB:-3072}" \
+        --index-memory-mb "${COUCHBASE_INDEX_MEMORY_MB:-3072}"
     # shellcheck disable=SC1090
     source "${CBS_ENV_FILE}"
     rm -f "${CBS_ENV_FILE}"
