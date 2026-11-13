@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
-"""Print the Sync Gateway rows of the "Mobile Engineering Operations" Confluence page, with dates.
+# Copyright 2026-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
 
-The page keeps its CC/RC/GA dates as ADF date nodes. The markdown form of the page drops
-them, so fetch the page with contentFormat "adf" and pass the saved result to this script:
+"""Print the parts of the "Mobile Engineering Operations" Confluence page that mention
+the given Sync Gateway versions, with their dates.
 
-    python3 -I confluence_ga_dates.py <saved getConfluencePage result> [version ...]
+The page is edited by hand and has no fixed structure, so this does not look for
+particular columns or labels. It turns the page into text blocks (table rows,
+paragraphs, list items, headings), keeps the blocks that name Sync Gateway and one of
+the versions, and prints them for a person (or Claude) to read.
 
-The file can be the whole tool result ({"content": {"nodes": [{"body": ...}]}}), or the ADF
-document itself. With versions, only rows that name one of them are printed.
+The page keeps its dates as ADF date nodes, and the markdown form of the page drops
+them, so fetch the page with contentFormat "adf" and pass the saved result:
+
+    python3 -I confluence_ga_dates.py <saved getConfluencePage result> 3.3.9 4.0.9 4.1.3
+
+The file can be the whole tool result ({"content": {"nodes": [{"body": ...}]}}) or the
+ADF document itself. Exit status 3 means nothing matched.
 """
 
 import datetime
@@ -15,11 +29,14 @@ import json
 import re
 import sys
 
+BLOCKS = {"tableRow", "paragraph", "listItem", "heading"}
+PRODUCT = re.compile(r"\bSGW\b|Sync Gateway", re.I)
+
 
 def load_doc(path):
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    if "content" in data and isinstance(data["content"], dict):
+    if isinstance(data.get("content"), dict):
         data = data["content"]["nodes"][0]["body"]
     if isinstance(data, str):
         data = json.loads(data)
@@ -31,44 +48,52 @@ def text(node):
         return " ".join(text(c) for c in node)
     if not isinstance(node, dict):
         return ""
-    kind = node.get("type")
-    attrs = node.get("attrs", {})
+    kind, attrs = node.get("type"), node.get("attrs", {})
     if kind == "text":
         return node.get("text", "")
     if kind == "date":
         ts = int(attrs["timestamp"]) / 1000
-        return "[" + datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m-%d") + "]"
+        return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime(
+            "[%Y-%m-%d]"
+        )
     if kind == "status":
         return "[" + attrs.get("text", "") + "]"
     if kind in ("inlineCard", "blockCard"):
         return attrs.get("url", "")
     if kind == "mention":
         return attrs.get("text", "")
-    return " ".join(text(c) for c in node.get("content", []))
+    sep = " | " if kind == "tableRow" else " "
+    return sep.join(text(c) for c in node.get("content", []))
 
 
-def rows(node):
+def blocks(node):
+    """Yield the text of each outermost block, so a table row is not repeated per cell."""
     if isinstance(node, dict):
-        if node.get("type") == "tableRow":
-            yield [re.sub(r"\s+", " ", text(c)).strip() for c in node.get("content", [])]
+        if node.get("type") in BLOCKS:
+            yield re.sub(r"\s+", " ", text(node)).strip()
             return
         for child in node.get("content", []):
-            yield from rows(child)
+            yield from blocks(child)
 
 
 def main():
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
     doc = load_doc(sys.argv[1])
     versions = sys.argv[2:]
-    # Minor releases are listed by x.y only ("SGW 4.1"), so x.y.0 also matches x.y.
+    # Minor releases are often written as x.y ("SGW 4.1"), so x.y.0 also matches x.y.
     versions += [v[:-2] for v in versions if re.fullmatch(r"\d+\.\d+\.0", v)]
-    for cells in rows(doc):
-        line = " || ".join(cells)
-        if not re.search(r"\bSGW\b|Sync Gateway", line):
-            continue
-        if versions and not any(re.search(r"(?<![\d.])" + re.escape(v) + r"(?![\d.])", line) for v in versions):
-            continue
-        # The in-progress table has a long "Update" column; the dates are in the first four cells.
-        print(" || ".join(cells[:5])[:600])
+    wanted = [re.compile(r"(?<![\d.])" + re.escape(v) + r"(?![\d.])") for v in versions]
+    found = 0
+    for block in blocks(doc):
+        if PRODUCT.search(block) and any(w.search(block) for w in wanted):
+            print(block[:500])
+            found += 1
+    if not found:
+        print(
+            "nothing on the page names Sync Gateway and these versions; skip this source"
+        )
+        sys.exit(3)
 
 
 if __name__ == "__main__":
