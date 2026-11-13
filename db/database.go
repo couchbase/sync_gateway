@@ -1916,19 +1916,28 @@ func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []u
 	}
 }
 
-// getResyncedDocument runs the sync function on the document and determines if any channels or access grants have changed. Returns ErrUpdateCancel if the document does not need to be rewritten. Any unused sequences should be released by the caller.
-func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool) (updatedDoc *Document, updatedUnusedSequences []uint64, err error) {
+// resyncDocument is a document updated by getResyncedDocument that needs to be written.
+type resyncDocument struct {
+	doc             *Document
+	expiry          *uint32  // set by the sync function for the current revision, nil if not set
+	unusedSequences []uint64 // allocated but unused sequences that the caller must release
+}
+
+// getResyncedDocument runs the sync function on the document and determines if any channels or access grants have changed. Returns ErrUpdateCancel if the document does not need to be rewritten.
+func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool) (*resyncDocument, error) {
 	docid := doc.ID
 	forceUpdate := false
 	if !doc.HasValidSyncData() {
 		// This is a document not known to the sync gateway. Ignore it:
-		return nil, nil, base.ErrUpdateCancel
+		return nil, base.ErrUpdateCancel
 	}
 
 	base.TracefCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 
 	// Run the sync fn over each current/leaf revision, in case there are conflicts:
 	changed := 0
+	var expiry *uint32
+	var updatedUnusedSequences []uint64
 	doc.History.forEachLeaf(func(rev *RevInfo) {
 		bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
 		if err != nil {
@@ -1973,23 +1982,22 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			}
 			// Only update document expiry based on the current (active) rev
 			if syncExpiry != nil {
+				expiry = syncExpiry
 				doc.UpdateExpiry(*syncExpiry)
 			}
 		}
 	})
 	if changed == 0 && !forceUpdate {
-		return nil, nil, base.ErrUpdateCancel
+		return nil, base.ErrUpdateCancel
 	}
 	doc.SetCrc32cUserXattrHash()
-	return doc, updatedUnusedSequences, nil
+	return &resyncDocument{doc: doc, expiry: expiry, unusedSequences: updatedUnusedSequences}, nil
 }
 
 // ResyncDocument will re-run the sync function on the document and write an updated version to the bucket. If
 // the sync function doesn't change any channels or access grants, no write will be performed.
 func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid string, previousDoc *sgbucket.BucketDocument, regenerateSequences bool) error {
-	var updatedDoc *Document
-	var updatedExpiry *uint32
-	var unusedSequences []uint64
+	var updatedDoc *resyncDocument
 	writeUpdateFunc := func(currentValue []byte, currentXattrs map[string][]byte, cas uint64) (sgbucket.UpdatedDoc, error) {
 		// resyncDocument is not called on tombstoned documents, so this value will only be empty if the document was
 		// deleted between DCP event and calling this function. In any case, we do not need to update it.
@@ -2000,7 +2008,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 		if err != nil {
 			return sgbucket.UpdatedDoc{}, err
 		}
-		updatedDoc, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences)
+		updatedDoc, err = db.getResyncedDocument(ctx, doc, regenerateSequences)
 		if err != nil {
 			return sgbucket.UpdatedDoc{}, err
 		}
@@ -2008,7 +2016,7 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 
 		// Update MetadataOnlyUpdate based on previous Cas, MetadataOnlyUpdate
 		doc.MetadataOnlyUpdate = computeMetadataOnlyUpdate(doc.Cas, doc.RevSeqNo, doc.MetadataOnlyUpdate)
-		_, rawSyncXattr, _, rawMouXattr, rawGlobalSync, err := updatedDoc.MarshalWithXattrs()
+		_, rawSyncXattr, _, rawMouXattr, rawGlobalSync, err := updatedDoc.doc.MarshalWithXattrs()
 		xattrs := map[string][]byte{
 			base.SyncXattrName: rawSyncXattr,
 			base.MouXattrName:  rawMouXattr,
@@ -2016,27 +2024,24 @@ func (db *DatabaseCollectionWithUser) ResyncDocument(ctx context.Context, docid 
 		if rawGlobalSync != nil {
 			xattrs[base.GlobalXattrName] = rawGlobalSync
 		}
-		updatedDoc := sgbucket.UpdatedDoc{
+		return sgbucket.UpdatedDoc{
 			Doc:    nil, // Resync does not require document body update
 			Xattrs: xattrs,
-			Expiry: updatedExpiry,
+			Expiry: updatedDoc.expiry,
 			Spec: []sgbucket.MacroExpansionSpec{
 				sgbucket.NewMacroExpansionSpec(XattrMouCasPath(), sgbucket.MacroCas),
 			},
-		}
-		return updatedDoc, err
+		}, err
 	}
-	// TODO(CBG-5801): this runs before WriteUpdateWithXattrs below, so unusedSequences is always empty here.
-	db.releaseSequences(ctx, unusedSequences)
-
 	// these values are updated by the callback function
+	// TODO(CBG-6136): PreserveExpiry is not set, so a resync drops any expiry that the sync function does not set.
 	mutateInOpts := sgbucket.MutateInOptions{}
 	var expiry uint32
 	_, err := db.dataStore.WriteUpdateWithXattrs(ctx, docid, db.syncGlobalSyncMouRevSeqNoAndUserXattrKeys(), expiry, previousDoc, &mutateInOpts, writeUpdateFunc)
 	if err == nil {
 		base.Audit(ctx, base.AuditIDDocumentResync, base.AuditFields{
 			base.AuditFieldDocID:      docid,
-			base.AuditFieldDocVersion: updatedDoc.CVOrRevTreeID(),
+			base.AuditFieldDocVersion: updatedDoc.doc.CVOrRevTreeID(),
 		})
 	}
 	return err
