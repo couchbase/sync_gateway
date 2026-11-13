@@ -13,9 +13,11 @@ package sgtest
 import (
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/require"
 	rosmar "github.com/couchbaselabs/rosmar"
 )
@@ -70,4 +72,44 @@ func SafeDocumentName(t *testing.T, name string) string {
 	}
 	require.Less(t, len(docName), 251, "Document name %s is too long, must be less than 251 characters", name)
 	return docName
+}
+
+// rosmarClockFloor is above every CAS issued under a clock from SetRosmarClockForTest, across all tests in the process.
+var rosmarClockFloor atomic.Uint64
+
+// NextClockTickForTest returns the start of the next physical HLC tick above the wall clock, minimum and every CAS
+// issued under a clock from SetRosmarClockForTest. Use it to start a clock that a backward wall clock step cannot put
+// below a version or CAS that already exists.
+func NextClockTickForTest(minimum uint64) uint64 {
+	return (max(sgbucket.HLCWallClock(), rosmarClockFloor.Load(), minimum) | sgbucket.HLCLogicalMask) + 1
+}
+
+// SetRosmarClockForTest overrides rosmar's process-wide CAS clock. The clock never goes below the floor from earlier
+// overrides, and each value it returns raises the floor. At cleanup, the wall clock comes back with that floor.
+func SetRosmarClockForTest(t testing.TB, clock func() uint64) {
+	floor := rosmarClockFloor.Load()
+	rosmar.SetClockForTest(func() uint64 {
+		now := max(clock(), floor)
+		raiseRosmarClockFloor((now | sgbucket.HLCLogicalMask) + 1)
+		return now
+	})
+	t.Cleanup(func() {
+		rosmar.SetClockForTest(func() uint64 { return max(sgbucket.HLCWallClock(), rosmarClockFloor.Load()) })
+	})
+}
+
+// SetMonotonicRosmarClockForTest overrides rosmar's CAS clock with one that follows Go's monotonic clock, so a wall
+// clock step cannot move it. The clock starts at NextClockTickForTest(minimum) and is returned.
+func SetMonotonicRosmarClockForTest(t testing.TB, minimum uint64) (clock func() uint64) {
+	startTick := NextClockTickForTest(minimum)
+	start := time.Now()
+	clock = func() uint64 { return startTick + uint64(time.Since(start)) }
+	SetRosmarClockForTest(t, clock)
+	return clock
+}
+
+// raiseRosmarClockFloor sets the floor to floor, unless the floor is already higher.
+func raiseRosmarClockFloor(floor uint64) {
+	for current := rosmarClockFloor.Load(); floor > current && !rosmarClockFloor.CompareAndSwap(current, floor); current = rosmarClockFloor.Load() {
+	}
 }

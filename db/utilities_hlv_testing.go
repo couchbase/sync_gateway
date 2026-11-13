@@ -17,12 +17,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/require"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // HLVAgent performs HLV updates directly (not via SG) for simulating/testing interaction with non-SG HLV agents
@@ -421,6 +424,26 @@ func AlterHLVForTest(t *testing.T, ctx context.Context, dataStore base.DataStore
 
 func (db *DatabaseContext) GetHLCValueForTest(floorValue uint64) uint64 {
 	return db.hlc.Now(floorValue)
+}
+
+// SetMonotonicClocksForTest drives the database's HLC from the CAS clock, and under rosmar drives both from Go's
+// monotonic clock. It returns a function that sets how far the HLC runs ahead of the CAS clock. The offset starts at
+// zero and can only grow: the HLC never goes backward, so a lower offset has no effect.
+//
+// Effect of a wall clock jump (for example an NTP step on a CI agent):
+//   - Rosmar, after this call: none. Both clocks follow Go's monotonic clock, as does the correction sleep.
+//   - Couchbase Server, forward jump larger than the offset during a write: the CAS passes the version, so no
+//     correction happens.
+//   - Couchbase Server, backward jump: the CAS stalls, so the correction sleep can leave it below the version.
+func SetMonotonicClocksForTest(t testing.TB, dbc *DatabaseContext) (setSGClockAhead func(time.Duration)) {
+	var offset atomic.Int64
+	casClock := sgbucket.HLCWallClock
+	if base.UnitTestUrlIsWalrus() {
+		casClock = sgtest.SetMonotonicRosmarClockForTest(t, dbc.hlc.Now(0))
+	}
+	dbc.SetHLCClockForTest(func() uint64 { return casClock() + uint64(offset.Load()) })
+	t.Cleanup(func() { dbc.SetHLCClockForTest(sgbucket.HLCWallClock) })
+	return func(d time.Duration) { offset.Store(int64(d)) }
 }
 
 // SetHLCClockForTest overrides the database's HLC clock function, for deterministic HLV version generation in tests.
