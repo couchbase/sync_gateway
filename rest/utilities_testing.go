@@ -2263,17 +2263,6 @@ func (d RestDocument) IsRemoved() bool {
 	return removed.(bool)
 }
 
-// NewHTTPTestServerOnListener returns a new httptest server, which is configured to listen on the given listener.
-// This is useful when you need to know the listen address before you start up a server.
-func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Server {
-	s := &httptest.Server{
-		Config:   &http.Server{Handler: h},
-		Listener: l,
-	}
-	s.Start()
-	return s
-}
-
 type DocVersion = db.DocVersion
 
 // RequireDocVersionNotNil calls t.Fail if two document version is not specified.
