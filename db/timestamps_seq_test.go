@@ -1046,6 +1046,40 @@ func TestTimestampsManagerClockSkew(t *testing.T) {
 		assert.Len(t, tsDoc.Timestamps, 2)
 		assert.Equal(t, tsDoc, *nodeA.timestampsSeqArray.Load())
 	})
+
+	t.Run("rollback is cleaned up when every clock is behind the newest entry", func(t *testing.T) {
+		metaKeys := base.NewMetadataKeys(t.Name())
+		var currentSeq atomic.Uint64
+		newNode := func(clock *testClock) *TimestampsManager {
+			return NewTimestampsManager(TimestampsMgrOpts{
+				ctx:               ctx,
+				metadataStore:     metadataStore,
+				metaKeys:          metaKeys,
+				purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+				getSequenceFunc:   func(context.Context) (uint64, error) { return currentSeq.Load(), nil },
+				nowFunc:           clock.Now,
+			})
+		}
+		// both clocks are an hour behind the oldest entry, so they are behind the newest entry at every step
+		nodeA := newNode(newTestClock(clockStart.Add(-time.Hour)))
+		nodeB := newNode(newTestClock(clockStart.Add(-time.Hour)))
+		entries := []TimestampsSeqPair{
+			{Seq: 10, Timestamp: clockStart.Unix()},
+			{Seq: 20, Timestamp: clockStart.Add(time.Hour).Unix()},
+			{Seq: 30, Timestamp: clockStart.Add(2 * time.Hour).Unix()},
+		}
+		currentSeq.Store(30)
+		nodeA.CreateTSDocForTest(t, TimestampsSeqArray{Timestamps: entries})
+
+		// the sequence rolls back to 10, so the last two entries are ahead of it
+		currentSeq.Store(10)
+		for name, node := range map[string]*TimestampsManager{"node A": nodeA, "node B": nodeB} {
+			require.NoError(t, node.addEntry(), name)
+			tsDoc := getTimestampsDoc(t, ctx, metadataStore, metaKeys)
+			assert.Equal(t, entries[:1], tsDoc.Timestamps, name)
+			assert.Equal(t, tsDoc, *node.timestampsSeqArray.Load(), name)
+		}
+	})
 }
 
 // CreateTSDocForTest writes tsArray to the timestamps document, replacing any existing content.

@@ -87,9 +87,8 @@ func (ts *TimestampsSeqArray) trim(purgeTimestamp int64) {
 }
 
 func (ts *TimestampsSeqArray) isDue(now int64, updateFrequency time.Duration) bool {
-	newestEntry := ts.newestTimestamp()
-	entryDue := ts.isEmpty() || now >= newestEntry+int64(updateFrequency/time.Second)
-	return entryDue
+	// an empty array has a newest timestamp of 0, so it is always due
+	return now >= ts.newestTimestamp()+int64(updateFrequency/time.Second)
 }
 
 // PurgeIntervalFunc returns the interval after which timestamps entries are no longer needed.
@@ -166,16 +165,16 @@ func (tm *TimestampsManager) updateTimestampsArray(timestampArray TimestampsSeqA
 	tm.timestampsSeqArray.Store(&timestampArray)
 }
 
-// Start calls addEntry: it creates the document with an empty array if it is missing, and otherwise loads it,
-// removing invalid entries or appending an entry if one is due.
+// Start calls addEntry: it loads the document into memory, or writes the in-memory array (empty on a new node)
+// if the document is missing.
 func (tm *TimestampsManager) Start() error {
 	// TODO: Add BackgroundTask here
 	err := tm.addEntry()
 	return err
 }
 
-// addEntry creates the timestamps document if it is missing. Otherwise it removes entries ahead of the current
-// sequence or, if none were removed and an entry is due, appends one and drops entries past the purge interval.
+// addEntry writes the in-memory array if the timestamps document is missing, without removing invalid entries. Otherwise
+// it removes entries ahead of the current sequence or, if none were removed and an entry is due, appends one and trims.
 func (tm *TimestampsManager) addEntry() error {
 	key := tm.metaKeys.TimestampsSeqKey()
 	// the bytes of the last successful write, used to refresh the in-memory array
@@ -207,15 +206,15 @@ func (tm *TimestampsManager) addEntry() error {
 		removedEntries = timestampsSeqArray.removeInvalidEntries(lastSeq)
 		removed := len(removedEntries) > 0
 
-		// Timestamps come from each node's local clock. Skip the update if this node's clock is behind the newest
-		// entry, since appending would break the sorted order that trim relies on.
-		if now < timestampsSeqArray.newestTimestamp() {
-			newValBytes = current
-			return nil, nil, false, base.ErrUpdateCancel
-		}
-
 		// If entries were removed, persist the cleaned array without appending. The next call adds an entry.
 		if !removed {
+			// Timestamps come from each node's local clock. Skip the update if this node's clock is behind the newest
+			// entry, since appending would break the sorted order that trim relies on.
+			if now < timestampsSeqArray.newestTimestamp() {
+				newValBytes = current
+				return nil, nil, false, base.ErrUpdateCancel
+			}
+
 			if !timestampsSeqArray.isDue(now, tm.updateFrequency()) {
 				newValBytes = current
 				return nil, nil, false, base.ErrUpdateCancel
