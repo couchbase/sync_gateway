@@ -51,4 +51,4 @@ extra-paths = ["tools"]
 include = ["tools", "tools-tests"]
 
 [tool.ty.rules]
-unresolved-import = "error"
+import-not-found = "error"
