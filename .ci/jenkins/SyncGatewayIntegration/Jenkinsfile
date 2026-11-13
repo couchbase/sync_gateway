@@ -117,6 +117,11 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
             defaultValue: true,
             description: 'Do not verify certificates when talking to Couchbase Server. This only has an effect if COUCHBASE_SERVER_PROTOCOL is set to couchbases.'
         )
+        string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '3', description: 'Maximum packages tested at the same time against separate Couchbase Server clusters.')
+        string(name: 'PACKAGE_TIMEOUT', defaultValue: '', description: 'Per-package go test timeout. Empty uses the integration-tester default.')
+        booleanParam(name: 'MULTI_NODE', defaultValue: false, description: 'Provision a 3-node Couchbase Server cluster instead of 1.')
+        booleanParam(name: 'DETECT_RACES', defaultValue: false, description: 'Enable the Go race detector.')
+        booleanParam(name: 'SG_CBCOLLECT_ALWAYS', defaultValue: false, description: 'Always collect cbcollect_info after each package run.')
         string(name: 'PARENT_JOB_NAME', defaultValue: '', description: 'If set, uses this in some build names as a helpful indication of what triggered this job.')
     }
 
@@ -219,7 +224,7 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
             // Empty archives/results are tolerated so that a failure before the tests produce any output
             // (checkout, curl, docker login/pull, Couchbase Server startup) doesn't throw here, skip the
             // rest of this block, and mask the real cause.
-            archiveArtifacts artifacts: 'verbose*.out', allowEmptyArchive: true, fingerprint: false
+            archiveArtifacts artifacts: 'verbose*.out,cbcollect_*.zip', allowEmptyArchive: true, fingerprint: false
             junit testResults: 'verbose*.xml', allowEmptyResults: true, checksName: 'sgw-jenkins-integration-test-junit'
             // Gives the coverage report a baseline to diff against. Must come before recordCoverage, as
             // in the top-level Jenkinsfile.

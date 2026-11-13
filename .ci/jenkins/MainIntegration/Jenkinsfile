@@ -62,12 +62,13 @@ pipeline {
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
 
-    // Only the two parameters the run actually honours. The -m block in .ci/jenkins/integration-build.sh
+    // Only the parameters the run actually honours. The -m block in .ci/jenkins/integration-build.sh
     // hardcodes the server version, edition, target test and package, GSI and TLS settings, overwriting
     // whatever this job sets - change those there, not here, and don't report them in Slack from here.
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
         string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness.')
+        string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '3', description: 'Maximum packages tested at the same time against separate Couchbase Server clusters.')
     }
 
     stages {
@@ -133,7 +134,7 @@ pipeline {
             // Empty archives/results are tolerated so that a failure before the tests produce any output
             // (checkout, curl, Couchbase Server startup) doesn't throw here, skip the rest of this block,
             // and mask the real cause.
-            archiveArtifacts artifacts: 'verbose*', allowEmptyArchive: true, fingerprint: false
+            archiveArtifacts artifacts: 'verbose*.out,cbcollect_*.zip', allowEmptyArchive: true, fingerprint: false
             junit testResults: 'verbose*.xml', allowEmptyResults: true
             recordCoverage(tools: [[parser: 'GO_COV', pattern: 'coverage_*.out']])
         }
