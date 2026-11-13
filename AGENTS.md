@@ -75,6 +75,17 @@ Be mindful of performance implications, such as mutex contention, race condition
 
 Pair every `Lock()` with a `defer Unlock()` and every `RLock()` with a `defer RUnlock()`, taken immediately after the lock. A manual `Unlock()`/`RUnlock()` is skipped on an early return or a panic. If the critical section must end before the function does, move it into its own function or a closure so that the `defer` still covers it.
 
+### Idle KV and query ops
+
+Capella's free-tier hibernation treats a cluster as idle when Couchbase Server's `kv_ops` minus Sync Gateway's `idle_kv_ops` stat did not rise, and the same for `n1ql_requests` minus `idle_query_ops`. So every KV op and query that background work makes on a node with no clients must be counted in `NumIdleKvOps` or `NumIdleQueryOps`. This covers loops such as the config poll, heartbeats, the offline database state poll, the ISGR status reporter, DCP checkpoints, and scheduled tombstone compaction (the only background work that runs a query). The counts must match Couchbase Server's exactly: a missed op keeps an idle cluster awake, and an op counted as idle that was made for a client hides real activity.
+
+Only Enterprise Edition with GSI, as Capella runs it, has to be right, and mostly on a single node. Multi-node, CE and views paths are nice to cover but not required at the expense of code complexity.
+
+- Prefer a counting wrapper: `base.NewIdleKVOpDataStore(ds)` for a `DataStore`, and `sc.bootstrapContextFor(true)` or `BootstrapConnection.WithKVOpStat` for bootstrap metadata. The wrappers count each KV op a call makes, including fallback reads, CAS retries and helper calls, and leave out the failed ops that `kv_ops` leaves out.
+- When the op is deep in shared code and a wrapper does not fit, a direct `NumIdleKvOps.Add(n)` or `NumIdleQueryOps.Add(n)` is fine (DCP checkpoints and compaction queries do this). Count what the call really sends to Couchbase Server.
+- Do not count ops made for a client request (REST or BLIP) as idle. When a helper runs for both, pass an `idle bool` and choose from it.
+- Unit tests for new background work should check that the idle stat rises by at least the expected count (see `rest/idle_kv_ops_test.go`). Other background work also adds to it, so check a lower bound. The exact match is checked by the weekly [E2E-IdleOps-Weekly](https://jenkins.sgwdev.com/job/E2E-IdleOps-Weekly/) Jenkins job, which runs the idle ops test from couchbase-lite-tests on an idle node for 1.5 hours.
+
 ### Comments
 
 Code comments explain the _intent_ or _reasoning_ behind an implementation, rather than just restating what the code does.
