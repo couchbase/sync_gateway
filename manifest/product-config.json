@@ -1058,7 +1058,7 @@
         "manifest/4.1/4.1.0.xml": {
             "do-build": false,
             "go_version": "1.26.4",
-            "interval": 120,
+            "interval": 1440,
             "production": true,
             "release": "4.1.0",
             "release_name": "Couchbase Sync Gateway 4.1.0",
