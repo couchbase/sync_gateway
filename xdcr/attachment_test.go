@@ -85,7 +85,7 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 		require.NoError(c, err)
 		// doc and attachment doc
 		assert.Equalf(c, uint64(2), stats.DocsWritten, "expected doc and attachment to be replicated")
-	}, time.Second*5, time.Millisecond*100)
+	}, xdcrWaitTime, time.Millisecond*100)
 
 	// stop replication
 	require.NoError(t, xdcrAtoB.Stop(ctx))
@@ -118,14 +118,14 @@ func TestMultiActorLosingConflictUpdateRemovingAttachments(t *testing.T) {
 		stats, err := xdcrAtoB.Stats(ctx)
 		require.NoError(c, err)
 		assert.Equalf(c, expectedDocsWritten, stats.DocsWritten, "unexpected additional mutation replicated (an attachment delete?)")
-	}, time.Second*5, time.Millisecond*100)
+	}, xdcrWaitTime, time.Millisecond*100)
 
 	// wait for XDCR stats to ensure attachment data also made it over
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcrBtoA.Stats(ctx)
 		require.NoError(c, err)
 		assert.Equalf(c, uint64(1), stats.DocsWritten, "expected resolved conflict to be replicated back to A")
-	}, time.Second*5, time.Millisecond*100)
+	}, xdcrWaitTime, time.Millisecond*100)
 
 	// wait for doc (resolved conflict) to replicate back to rtA
 	rtA.WaitForVersionHLVOnly(docID, rtBVersion)
