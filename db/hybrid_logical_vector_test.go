@@ -527,7 +527,7 @@ func TestHLVVersionAheadOfCASCorrection(t *testing.T) {
 	db, ctx := SetupTestDB(t)
 	defer db.Close(ctx)
 	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
-	setSGClockAhead := SetSGClockAheadOfCASForTest(t, db.DatabaseContext)
+	setSGClockAhead := SetMonotonicClocksForTest(t, db.DatabaseContext)
 
 	retryCount := db.DbStats.Database().HLVVersionCASRetryCount
 
@@ -643,7 +643,7 @@ func TestRestampVersionCASMou(t *testing.T) {
 			dbc, ctx := SetupTestDB(t)
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
-			setSGClockAhead := SetSGClockAheadOfCASForTest(t, dbc.DatabaseContext)
+			setSGClockAhead := SetMonotonicClocksForTest(t, dbc.DatabaseContext)
 
 			// move the document between channels, so the ended channel history the carry-forward step below
 			// compacts is there to prune

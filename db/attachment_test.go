@@ -1833,7 +1833,7 @@ func TestVersionCASCorrectionPreservesGlobalXattr(t *testing.T) {
 
 	// put the Sync Gateway clock 100ms ahead of the CAS clock, so the write generates a version ahead of its CAS
 	// and updateAndReturnDoc corrects it with a re-stamp
-	SetSGClockAheadOfCASForTest(t, dbc.DatabaseContext)(100 * time.Millisecond)
+	SetMonotonicClocksForTest(t, dbc.DatabaseContext)(100 * time.Millisecond)
 
 	docID := t.Name()
 	before := retryCount.Value()
@@ -2008,7 +2008,7 @@ func TestWritePathsPreserveUnmigratedAttachmentMetadata(t *testing.T) {
 			defer dbc.Close(ctx)
 			collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, dbc)
 			ds := collection.GetCollectionDatastore()
-			setSGClockAhead := SetSGClockAheadOfCASForTest(t, dbc.DatabaseContext)
+			setSGClockAhead := SetMonotonicClocksForTest(t, dbc.DatabaseContext)
 
 			_, err := collection.UpdateSyncFun(ctx, `function(doc){channel("preResync");}`)
 			require.NoError(t, err)

@@ -3035,7 +3035,7 @@ func TestPutDocUpdateVersionVector(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	// keep each version at or below its CAS across a wall clock jump (rosmar only)
-	db.SetSGClockAheadOfCASForTest(t, rt.GetDatabase())
+	db.SetMonotonicClocksForTest(t, rt.GetDatabase())
 
 	bucketUUID := rt.GetDatabase().EncodedSourceID
 
@@ -3098,7 +3098,7 @@ func TestHLVOnPutWithImportRejection(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	// keep each version at or below its CAS across a wall clock jump (rosmar only)
-	db.SetSGClockAheadOfCASForTest(t, rt.GetDatabase())
+	db.SetMonotonicClocksForTest(t, rt.GetDatabase())
 
 	bucketUUID := rt.GetDatabase().EncodedSourceID
 
@@ -3414,7 +3414,7 @@ func TestHLVUpdateOnRevReplicatorPut(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	// keep each version at or below its CAS across a wall clock jump (rosmar only)
-	db.SetSGClockAheadOfCASForTest(t, rt.GetDatabase())
+	db.SetMonotonicClocksForTest(t, rt.GetDatabase())
 
 	docID := t.Name()
 	newVersion := DocVersion{

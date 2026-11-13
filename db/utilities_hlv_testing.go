@@ -426,26 +426,23 @@ func (db *DatabaseContext) GetHLCValueForTest(floorValue uint64) uint64 {
 	return db.hlc.Now(floorValue)
 }
 
-// SetSGClockAheadOfCASForTest returns a function that sets how far the database's HLC runs ahead of the CAS clock.
-// The offset starts at zero and can only grow: the HLC never goes backward, so a lower offset has no effect.
+// SetMonotonicClocksForTest drives the database's HLC from the CAS clock, and under rosmar drives both from Go's
+// monotonic clock. It returns a function that sets how far the HLC runs ahead of the CAS clock. The offset starts at
+// zero and can only grow: the HLC never goes backward, so a lower offset has no effect.
 //
 // Effect of a wall clock jump (for example an NTP step on a CI agent):
-//   - Rosmar: none. Both clocks follow Go's monotonic clock, as does the sleep in correctVersionAheadOfCAS.
+//   - Rosmar, after this call: none. Both clocks follow Go's monotonic clock, as does the correction sleep.
 //   - Couchbase Server, forward jump larger than the offset during a write: the CAS passes the version, so no
 //     correction happens.
 //   - Couchbase Server, backward jump: the CAS stalls, so the correction sleep can leave it below the version.
-func SetSGClockAheadOfCASForTest(t testing.TB, dbc *DatabaseContext) (setOffset func(time.Duration)) {
+func SetMonotonicClocksForTest(t testing.TB, dbc *DatabaseContext) (setSGClockAhead func(time.Duration)) {
 	var offset atomic.Int64
 	casClock := sgbucket.HLCWallClock
 	if base.UnitTestUrlIsWalrus() {
-		// Start on the next physical tick, above every CAS and version already issued in the current tick.
-		startTick := (max(sgbucket.HLCWallClock(), dbc.hlc.Now(0)) | sgbucket.HLCLogicalMask) + 1
-		start := time.Now()
-		casClock = func() uint64 { return startTick + uint64(time.Since(start)) }
-		sgtest.SetRosmarClockForTest(t, casClock)
+		casClock = sgtest.SetMonotonicRosmarClockForTest(t, dbc.hlc.Now(0))
 	}
-	dbc.hlc.SetClockForTest(func() uint64 { return casClock() + uint64(offset.Load()) })
-	t.Cleanup(func() { dbc.hlc.SetClockForTest(sgbucket.HLCWallClock) })
+	dbc.SetHLCClockForTest(func() uint64 { return casClock() + uint64(offset.Load()) })
+	t.Cleanup(func() { dbc.SetHLCClockForTest(sgbucket.HLCWallClock) })
 	return func(d time.Duration) { offset.Store(int64(d)) }
 }
 

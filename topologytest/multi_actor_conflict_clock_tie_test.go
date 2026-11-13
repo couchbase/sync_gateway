@@ -11,7 +11,6 @@ package topologytest
 import (
 	"testing"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbase/sync_gateway/testing/sgtest"
@@ -67,7 +66,7 @@ func controllableClockPeerCount(topologySpec TopologySpecification) (count int) 
 func forceHLCClockTieForTest(t testing.TB, topology Topology) {
 	t.Helper()
 	ctx := base.TestCtx(t)
-	fixedTime := sgbucket.HLCWallClock()
+	var highestHLC uint64
 	var setClocks []func(func() uint64)
 	rosmarClockSet := false
 	for name, peer := range topology.peers.NonImportSortedPeers() {
@@ -76,13 +75,13 @@ func forceHLCClockTieForTest(t testing.TB, topology Topology) {
 			p, ok := peer.(*SyncGatewayPeer)
 			require.True(t, ok, "peer %s (%T) is a PeerTypeSyncGateway but not a *SyncGatewayPeer", name, peer)
 			dbCtx := p.rt.GetDatabase()
-			fixedTime = max(fixedTime, dbCtx.GetHLCValueForTest(0))
+			highestHLC = max(highestHLC, dbCtx.GetHLCValueForTest(0))
 			setClocks = append(setClocks, dbCtx.SetHLCClockForTest)
 		case PeerTypeCouchbaseLite, PeerTypeCouchbaseLiteV3:
 			p, ok := peer.(*CouchbaseLiteMockPeer)
 			require.True(t, ok, "peer %s (%T) is a %s but not a *CouchbaseLiteMockPeer", name, peer, peer.Type())
 			btc := p.getSingleSGBlipClient().btc
-			fixedTime = max(fixedTime, btc.GetHLCValueForTest())
+			highestHLC = max(highestHLC, btc.GetHLCValueForTest())
 			setClocks = append(setClocks, btc.SetHLCClockForTest)
 		case PeerTypeCouchbaseServer:
 			if !base.UnitTestUrlIsWalrus() {
@@ -95,8 +94,8 @@ func forceHLCClockTieForTest(t testing.TB, topology Topology) {
 			}
 		} // exhaustive:enforce
 	}
-	// HLC.Now drops the logical bits of the clock value, so move to the next physical tick to stay strictly above.
-	fixedTime = (fixedTime | sgbucket.HLCLogicalMask) + 1
+	// HLC.Now drops the logical bits of the clock value, so the next physical tick keeps every peer strictly above.
+	fixedTime := sgtest.NextClockTickForTest(highestHLC)
 	tieClock := func() uint64 { return fixedTime }
 	for _, setClock := range setClocks {
 		setClock(tieClock)
