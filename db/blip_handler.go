@@ -570,7 +570,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 
 	// change map should only have one entry
 	if len(changeVersion) > 1 {
-		base.AssertfCtx(bh.loggingCtx, "more changes in list than expected on change entry: %v", change.ID)
+		base.AssertfCtx(bh.loggingCtx, "more changes in list than expected on change entry: %v", base.UD(change.ID))
 	}
 	rev, _ := changeVersion.GetChangeRowRev()
 
@@ -946,9 +946,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(ctx context.Context, sender *blip.Sen
 			var err error
 			revTreeHistory, err = toHistory(redactedRev.History, knownRevs, maxHistory)
 			if err != nil {
-				err := base.RedactErrorf("Could not get rev tree history for replacement rev in sendRevAsDelta %s %s: %w, sending a noRev to skip this revision for replication at sequence %s.", base.UD(docID), revID, err, seq)
-				base.WarnfCtx(ctx, "%s", err)
-				return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+				return bsc.sendNoRevForInvalidRevTree(ctx, sender, handleChangesResponseCollection, docID, revID, collectionIdx, seq, err)
 			}
 		}
 
@@ -1004,7 +1002,7 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 		seqStr = rq.Properties[NorevMessageSequence]
 	}
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q seq:%q - error: %q - reason: %q",
-		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
+		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], base.UD(rq.Properties[NorevMessageReason]))
 
 	if bh.collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seq, err := ParseJSONSequenceID(seqStr)
@@ -1086,7 +1084,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	}
 
 	if bh.readOnly {
-		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, docID: %s, rev:%s", docID, rev)
+		return base.HTTPErrorf(http.StatusForbidden, "Replication context is read-only, rev:%s", rev)
 	}
 
 	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -1183,21 +1181,23 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		var deltaSrcRev DocumentRevision
 		deltaSrcRev, err = bh.collection.GetRev(bh.loggingCtx, docID, deltaSrcRevString, false, nil)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevString, err)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevString, base.UD(err))
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't fetch doc for deltaSrc=%s", deltaSrcRevString)
 		}
 
 		// Receiving a delta to be applied on top of a tombstone is not valid.
 		if deltaSrcRev.Deleted {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevString)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc. deltaSrc=%s", deltaSrcRevString)
 		}
 
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevString, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevString, base.UD(err))
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc. deltaSrc=%s", deltaSrcRevString)
 		}
 
 		if deltaSrcBody[BodyRemoved] != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found _removed property for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevString)
+			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found _removed property for doc. deltaSrc=%s", deltaSrcRevString)
 		}
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
@@ -1590,7 +1590,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	}
 
 	if resp.Properties[BlipErrorCode] != "" {
-		return nil, fmt.Errorf("error %s from getAttachment: %s", resp.Properties[BlipErrorCode], respBody)
+		return nil, base.RedactErrorf("error %s from getAttachment: %s", resp.Properties[BlipErrorCode], base.UD(respBody))
 	}
 	lNum, metaLengthOK := meta["length"]
 	if !metaLengthOK {
@@ -1732,7 +1732,9 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, docVersion strin
 		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attMeta, bsc.allowedAttachments)
+	if base.LogTraceEnabled(bsc.loggingCtx, base.KeySync) {
+		base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added digests: %v current set: %v", digests(attMeta), base.UD(bsc.allowedAttachments))
+	}
 }
 
 func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol CBMobileSubprotocolVersion) {
@@ -1756,7 +1758,9 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attMeta, bsc.allowedAttachments)
+	if base.LogTraceEnabled(bsc.loggingCtx, base.KeySync) {
+		base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed digests: %v current set: %v", digests(attMeta), base.UD(bsc.allowedAttachments))
+	}
 }
 
 func allowedAttachmentKey(docID, digest string, activeCBMobileSubprotocol CBMobileSubprotocolVersion) string {

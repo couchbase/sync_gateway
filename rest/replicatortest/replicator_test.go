@@ -7505,7 +7505,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 }
 
 // CBG-1672 - Return 422 status for unprocessable deltas instead of 404 to use non-delta retry handling
-// Should log "422 Unable to unmarshal mutable body for doc test deltaSrc=1-dbc7919edc9ec2576d527880186f8e8a"
+// Should log "422 Unable to unmarshal mutable body for doc. deltaSrc=1-dbc7919edc9ec2576d527880186f8e8a"
 // then fall back to full body replication
 func TestUnprocessableDeltas(t *testing.T) {
 	ctx := base.TestCtx(t)
@@ -7572,7 +7572,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 		require.NoError(t, cache.Upsert(ctx, rev)) // CV key  → found by v4 GetWithCV
 		cache.PutRevEntry(t, ctx, rev)             // revID key → found by v3 GetWithRev
 
-		base.AssertLogContains(t, "Unable to unmarshal mutable body for doc test", func() {
+		base.AssertLogContains(t, "Unable to unmarshal mutable body for doc", func() {
 			require.NoError(t, ar.Start(activeCtx))
 			// Check if it replicated
 			sgrRunner.WaitForDocReplicated("test", activeRT, passiveRT, version2)

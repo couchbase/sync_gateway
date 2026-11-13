@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
@@ -79,4 +80,63 @@ func TestBlipSequenceProperty(t *testing.T) {
 		})
 	}
 
+}
+
+// TestBlipMessageParamsStringRedaction checks that the String() output of subChanges and getAttachment params, which is
+// logged as is, tags each channel and doc ID on its own as user data when redaction is on, and has no tags when it is off.
+func TestBlipMessageParamsStringRedaction(t *testing.T) {
+	ctx := base.TestCtx(t)
+
+	// subChanges only logs its channels when a channel filter is set
+	subChangesRq := blip.NewRequest()
+	subChangesRq.SetProfile(MessageSubChanges)
+	subChangesRq.Properties[SubChangesFilter] = base.ByChannelFilter
+	subChangesRq.Properties[SubChangesChannels] = "!,chanA"
+	require.NoError(t, subChangesRq.SetJSONBody(SubChangesBody{DocIDs: []string{"doc1", "doc2"}}))
+	subChangesParams, err := NewSubChangesParams(ctx, subChangesRq, nil, false)
+	require.NoError(t, err)
+
+	getAttachmentRq := blip.NewRequest()
+	getAttachmentRq.SetProfile(MessageGetAttachment)
+	getAttachmentRq.Properties[GetAttachmentID] = "doc1"
+	getAttachmentRq.Properties[GetAttachmentDigest] = "sha1-abc"
+	getAttachmentParams := newGetAttachmentParams(getAttachmentRq)
+
+	testCases := []struct {
+		name     string
+		params   fmt.Stringer
+		userData []string // values that must each be tagged on their own
+	}{
+		{
+			name:     "subChanges",
+			params:   subChangesParams,
+			userData: []string{"!", "chanA", "doc1", "doc2"},
+		},
+		{
+			name:     "getAttachment",
+			params:   getAttachmentParams,
+			userData: []string{"doc1"},
+		},
+	}
+
+	// String() reads the global redaction setting, so restore it when the test ends
+	redactUserData := base.RedactUserData
+	defer func() { base.RedactUserData = redactUserData }()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			base.RedactUserData = true
+			redacted := tc.params.String()
+			for _, value := range tc.userData {
+				require.Contains(t, redacted, base.UserDataPrefix+value+base.UserDataSuffix)
+			}
+
+			base.RedactUserData = false
+			unredacted := tc.params.String()
+			require.NotContains(t, unredacted, base.UserDataPrefix)
+			for _, value := range tc.userData {
+				require.Contains(t, unredacted, value)
+			}
+		})
+	}
 }
