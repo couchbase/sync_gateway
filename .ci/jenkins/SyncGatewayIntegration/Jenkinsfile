@@ -57,7 +57,7 @@ def notifyGitHub(String status) {
 }
 
 pipeline {
-    agent { label 'integration-test' }
+    agent { label 'integration-test-spot' }
 
     options {
         skipDefaultCheckout()
