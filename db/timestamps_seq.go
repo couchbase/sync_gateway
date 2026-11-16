@@ -91,6 +91,15 @@ func (ts *TimestampsSeqArray) isDue(now int64, updateFrequency time.Duration) bo
 	return now >= ts.newestTimestamp()+int64(updateFrequency/time.Second)
 }
 
+// purgeSequence returns the sequence of the oldest entry if it is at or before purgeTimestamp (epoch seconds), and 0
+// otherwise. Between two trims a newer entry can also be old enough, so the result can be one entry behind.
+func (ts *TimestampsSeqArray) purgeSequence(purgeTimestamp int64) uint64 {
+	if !ts.isEmpty() && ts.Timestamps[0].Timestamp <= purgeTimestamp {
+		return ts.Timestamps[0].Seq
+	}
+	return 0
+}
+
 // PurgeIntervalFunc returns the interval after which timestamps entries are no longer needed.
 type PurgeIntervalFunc func() time.Duration
 
@@ -306,4 +315,12 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	}
 	tm.updateTimestampsArray(updatedTimestampsSeqArray)
 	return nil
+}
+
+// GetPurgeSequence returns the sequence that was current at the start of the purge interval, from the in-memory array.
+// It returns 0 if the oldest entry is newer than the start of the purge interval, or if the array is empty.
+func (tm *TimestampsManager) GetPurgeSequence() uint64 {
+	now := tm.nowFunc().Unix()
+	purgeTimestamp := now - int64(tm.purgeInterval()/time.Second)
+	return tm.timestampsSeqArray.Load().purgeSequence(purgeTimestamp)
 }

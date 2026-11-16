@@ -187,7 +187,7 @@ type DatabaseContext struct {
 	numVBuckets                        uint16                            // Number of vbuckets in the bucket
 	SameSiteCookieMode                 http.SameSite
 	DBStateManager                     *DatabaseStateMgr  // Manager used to manage the state of processes across nodes
-	TimestampsManager                  *TimestampsManager // Records the cluster sequence over time in the timestamps_seq document, set when online processes start
+	TimestampsManager                  *TimestampsManager // Records the cluster sequence over time in the timestamps_seq document, started when online processes start
 
 	scopeName string // name of the single scope for the database
 }
@@ -233,6 +233,7 @@ type DatabaseContextOptions struct {
 	ConfigPrincipals                 *ConfigPrincipals
 	TestPurgeIntervalOverride        *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
 	TestVersionPruningWindowOverride *time.Duration    // If set, use this value for db.GetVersionPruningWindow - test seam to force specific pruning window for tests
+	TestTimestampsNowFunc            func() time.Time  // If set, the clock of the TimestampsManager - test seam to control the purge sequence
 	LoggingConfig                    *base.DbLogConfig // Per-database log configuration
 	MaxConcurrentChangesBatches      *int              // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs                *int              // Maximum number of revs to process concurrently per replication
@@ -638,6 +639,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	distributedResync := dbContext.useShardedDCP()
 	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
+	// Created here rather than in StartOnlineProcesses, because the import feed can update documents before Start runs
+	dbContext.TimestampsManager = NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     metadataStore,
+		metaKeys:          dbContext.MetadataKeys,
+		purgeIntervalFunc: dbContext.ClientPartitionWindow,
+		getSequenceFunc:   dbContext.GetRequestPlusSequence,
+		nowFunc:           options.TestTimestampsNowFunc,
+		dbName:            dbName,
+	})
 
 	var joinResync resyncJoinFunc
 	if distributedResync {

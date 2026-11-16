@@ -2823,3 +2823,31 @@ func TestCbgtGetPoolsDefaultForBucket(t *testing.T) {
 		require.NotEmpty(t, body, "scopes=%t", scopes)
 	}
 }
+
+// TestImportDocsThatExistBeforeStart makes sure that the documents in the bucket before the database starts are
+// imported without errors. The import feed can update them before the timestamps manager starts.
+func TestImportDocsThatExistBeforeStart(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const numDocs = 1000
+	dataStore := tb.DefaultDataStore(ctx)
+	for i := range numDocs {
+		added, err := dataStore.Add(ctx, fmt.Sprintf("doc%d", i), 0, map[string]any{"foo": i})
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb,
+		AutoImport:       new(true),
+		// compaction makes the import call GetPurgeSequence
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{EnableChannelHistoryCompaction: new(true)}},
+	})
+	defer rt.Close()
+
+	importStats := rt.GetDatabase().DbStats.SharedBucketImportStats
+	base.RequireWaitForStat(t, importStats.ImportCount.Value, numDocs)
+	assert.Equal(t, int64(0), importStats.ImportErrorCount.Value())
+}
