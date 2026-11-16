@@ -2630,12 +2630,16 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.startReplications(ctx)
 
+	// The timestamps document and the sequence read use the same store, so that both count as idle KV ops
+	idleMetadataStore := base.NewIdleKVOpDataStore(db.MetadataStore)
 	timestampsMgrOpts := TimestampsMgrOpts{
-		metadataStore:     db.MetadataStore,
+		metadataStore:     idleMetadataStore,
 		metaKeys:          db.MetadataKeys,
 		purgeIntervalFunc: db.ClientPartitionWindow,
-		getSequenceFunc:   db.GetRequestPlusSequence,
-		dbName:            db.Name,
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return base.GetCounter(ctx, idleMetadataStore, db.MetadataKeys.SyncSeqKey())
+		},
+		dbName: db.Name,
 	}
 	db.TimestampsManager = NewTimestampsManager(timestampsMgrOpts)
 
