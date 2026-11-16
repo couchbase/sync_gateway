@@ -138,12 +138,14 @@ type fuzzConfig struct {
 }
 
 // minLength is the channel cache's minimum length. ok is false for a zero byte, which keeps the default: that is
-// longer than any maximum a script can ask for, so it leaves the age-based prune off.
+// longer than any maximum a script can ask for, so it leaves the age-based prune off. Any other byte maps to
+// 1..ChannelMaxLen-1, so the age-based prune is on: the cache ignores a minimum of zero, and does not prune by age
+// when the minimum is at least the maximum.
 func (c fuzzConfig) minLength() (minLength int, ok bool) {
 	if c.ChannelMinLen == 0 {
 		return 0, false
 	}
-	return int(c.ChannelMinLen-1) % c.ChannelMaxLen, true
+	return 1 + int(c.ChannelMinLen-1)%(c.ChannelMaxLen-1), true
 }
 
 // defaultFuzzConfig is what an all-zero header decodes to.

@@ -233,7 +233,8 @@ func (m *fuzzModel) channelView(collectionID uint32, channel string, startSeq, e
 		if !ok || state.seq < startSeq || (endSeq != 0 && state.seq > endSeq) || (activeOnly && state.removed) {
 			continue
 		}
-		entry := &db.LogEntry{DocID: latest.docID, RevID: state.revID, Sequence: state.seq, CollectionID: collectionID}
+		// The real query stamps each row as received now, so backfilled entries age from the read, not from the write.
+		entry := &db.LogEntry{DocID: latest.docID, RevID: state.revID, Sequence: state.seq, CollectionID: collectionID, TimeReceived: channels.NewFeedTimestampFromNow()}
 		if state.removed {
 			entry.Flags |= channels.Removed
 		}

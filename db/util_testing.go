@@ -1749,9 +1749,9 @@ func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(conte
 }
 
 // SetManualNotifyChangeFuncForTest installs the notify callback and switches the cache to manual-flush
-// mode, where the test decides when pending notifications are delivered by calling
-// FlushNotificationsForTest. No background flusher is ever started in this mode, which keeps delivery
-// deterministic.
+// mode, the mode in which FlushNotificationsForTest may be called. The cache still notifies inline as it
+// caches entries, so a flush has nothing to deliver yet; once notifications are batched, this mode will
+// leave their delivery to the test's flushes.
 func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
 	c.notifyChangeFunc = notify
 	c.manualNotify = true

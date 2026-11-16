@@ -859,7 +859,7 @@ func fuzzSeeds() map[string][]byte {
 			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Withhold().Deliver(1).TimeoutPending().
 			DeliverLate().CleanSkipped().Bytes(),
 		// Entries age out of a channel cache, raising its validFrom, and a feed then reads below it and backfills.
-		"ageOutThenBackfill": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMaxLen = 6; c.ChannelMinLen = 3 }).
+		"ageOutThenBackfill": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMaxLen = 6; c.ChannelMinLen = 2 }).
 			CreateCache(0).
 			Write(0, chanMask("A"), false).Write(1, chanMask("A"), false).Write(2, chanMask("A"), false).Write(3, chanMask("A"), false).
 			Deliver(1).Deliver(1).Deliver(1).Deliver(1).FeedRead(0).CleanSkipped().FeedRead(1).Bytes(),
@@ -887,7 +887,7 @@ func fuzzSeeds() map[string][]byte {
 		"writeInNoChannel": newScriptBuilder().config(cfg).
 			Write(0, chanMask(), false).Deliver(1).Bytes(),
 		// The age-based prune runs over a channel cache that holds nothing.
-		"ageSweepOfEmptyCache": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMinLen = 3 }).
+		"ageSweepOfEmptyCache": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.ChannelMinLen = 2 }).
 			CreateCache(0).CleanSkipped().Write(0, chanMask("A"), false).Deliver(1).Bytes(),
 		// A limited read asks for more entries than the cache holds.
 		"limitAboveCachedCount": newScriptBuilder().config(cfg).
@@ -913,7 +913,7 @@ func fuzzSeeds() map[string][]byte {
 			Deliver(1).Deliver(1).Bytes(),
 		// A cache that has pruned entries by length and by age forgets those documents, so a feed's backfill from the view
 		// can add them back.
-		"lengthPruneThenBackfill": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.PendingMaxNum = 3; c.ChannelMaxLen = 3; c.ChannelMinLen = 3 }).
+		"lengthPruneThenBackfill": newScriptBuilder().config(cfg).config(func(c *fuzzConfig) { c.PendingMaxNum = 3; c.ChannelMaxLen = 3; c.ChannelMinLen = 2 }).
 			Write(1, chanMask("A"), false).Write(4, chanMask("A"), false).Write(2, chanMask("A"), false).Write(0, chanMask("A"), false).
 			Deliver(1).DeliverAt(3, 2).Deliver(1).FeedRead(0).Write(4, chanMask("A"), false).CleanSkipped().FeedRead(1).Bytes(),
 		// A cache created by a feed read prunes by length from the front while an older document is still skipped. The prune
