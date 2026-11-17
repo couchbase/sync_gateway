@@ -348,6 +348,28 @@ func TestConfigValidationMaxRunsInFlight(t *testing.T) {
 			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 1024 must be greater than 1250 to hold one full cascade of max_num_pending (40000) in runs of size 32",
 			wantCE: 2048, // CE ignores the explicit value and auto-sizes
 		},
+		{
+			name:   "deprecated max_num_pending auto-sizes up",
+			config: `{"cache": {"max_num_pending": 100000}}`,
+			wantEE: 4096, wantCE: 4096,
+		},
+		{
+			name:   "deprecated max_num_pending too large to auto-size",
+			config: `{"cache": {"max_num_pending": 2097121}}`,
+			errEE:  "cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
+			errCE:  "cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
+		},
+		{
+			name:   "explicit value too small for deprecated max_num_pending",
+			config: `{"cache": {"max_num_pending": 40000, "channel_cache": {"max_runs_in_flight": 1024}}}`,
+			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 1024 must be greater than 1250 to hold one full cascade of max_num_pending (40000) in runs of size 32",
+			wantCE: 2048,
+		},
+		{
+			name:   "max_num_pending takes precedence over deprecated max_num_pending",
+			config: `{"cache": {"max_num_pending": 100000, "channel_cache": {"max_num_pending": 10000}}}`,
+			wantEE: 1024, wantCE: 1024,
+		},
 	}
 
 	for _, test := range tests {
@@ -383,13 +405,15 @@ func TestMaxRunsInFlightRuntimeConfig(t *testing.T) {
 	defer rt.Close()
 
 	tests := []struct {
-		name            string
-		maxNumPending   *int
-		maxRunsInFlight *uint32
-		wantEE, wantCE  uint32
+		name                    string
+		maxNumPending           *int
+		deprecatedMaxNumPending *int
+		maxRunsInFlight         *uint32
+		wantEE, wantCE          uint32
 	}{
 		{name: "unset reports the default", wantEE: 1024, wantCE: 1024},
 		{name: "unset reports the size from a large max_num_pending", maxNumPending: new(100000), wantEE: 4096, wantCE: 4096},
+		{name: "unset reports the size from a large deprecated max_num_pending", deprecatedMaxNumPending: new(100000), wantEE: 4096, wantCE: 4096},
 		{name: "explicit value", maxRunsInFlight: new(uint32(2048)), wantEE: 2048, wantCE: 1024},
 	}
 	for _, test := range tests {
@@ -400,10 +424,13 @@ func TestMaxRunsInFlightRuntimeConfig(t *testing.T) {
 			}
 
 			dbConfig := rt.NewDbConfig()
-			dbConfig.CacheConfig = &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{
-				MaxNumPending:   test.maxNumPending,
-				MaxRunsInFlight: test.maxRunsInFlight,
-			}}
+			dbConfig.CacheConfig = &CacheConfig{
+				DeprecatedCachePendingSeqMaxNum: test.deprecatedMaxNumPending,
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxNumPending:   test.maxNumPending,
+					MaxRunsInFlight: test.maxRunsInFlight,
+				},
+			}
 			RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
 			defer func() {
 				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
