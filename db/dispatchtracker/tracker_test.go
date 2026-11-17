@@ -18,6 +18,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -262,12 +263,19 @@ func TestCompleteConcurrent(t *testing.T) {
 			tr := newTestTracker(t, capacity)
 			bufs := newBuffers(n)
 
+			// If head ever stops advancing the issuer would wait for room forever, so it gives up at a deadline
+			// and the missing tickets fail the test instead of hanging it.
+			deadline := time.Now().Add(30 * time.Second)
 			issued := make(chan uint64, capacity)
 			go func() {
 				defer close(issued)
 				for next := uint64(1); next <= n; next++ {
-					for !tr.HasRoom(next) {
+					for !tr.HasRoom(next) && time.Now().Before(deadline) {
 						runtime.Gosched()
+					}
+					if !tr.HasRoom(next) {
+						assert.Failf(t, "no room to issue ticket", "ticket %d: head stuck at %d", next, tr.Head())
+						return
 					}
 					issued <- next
 				}
