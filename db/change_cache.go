@@ -72,9 +72,11 @@ type changeCache struct {
 	receivedSeqs          map[uint64]struct{}                 // Set of all sequences received
 	pendingLogs           LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
 	notifyChangeFunc      func(context.Context, channels.Set) // Client callback that notifies of channel changes
+	manualNotify          bool                                // True when a test has chosen manual-flush mode, which FlushNotificationsForTest requires. Set only by the test setters.
 	started               base.AtomicBool                     // Set by the Start method
 	stopped               base.AtomicBool                     // Set by the Stop method
 	skippedSeqs           *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
+	removeSkippedHook     func(seq uint64)                    // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
 	lock                  sync.RWMutex                        // Coordinates access to struct fields
 	options               CacheOptions                        // Cache config
 	terminator            chan bool                           // Signal termination of background goroutines
@@ -1071,6 +1073,9 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	}
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
+	}
+	if c.removeSkippedHook != nil {
+		c.removeSkippedHook(x)
 	}
 	return nil
 }

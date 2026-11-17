@@ -1745,6 +1745,37 @@ func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Contex
 // SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries.
 func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
 	c.notifyChangeFunc = notify
+	c.manualNotify = false
+}
+
+// SetManualNotifyChangeFuncForTest installs the notify callback and switches the cache to manual-flush
+// mode, the mode in which FlushNotificationsForTest may be called. The cache still notifies inline as it
+// caches entries, so a flush has nothing to deliver yet; once notifications are batched, this mode will
+// leave their delivery to the test's flushes.
+func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
+	c.notifyChangeFunc = notify
+	c.manualNotify = true
+}
+
+// FlushNotificationsForTest delivers any pending notifications to the installed callback. It fails the
+// test unless manual-flush mode is installed, so a test can't silently rely on a flush that nothing owns.
+func (c *changeCache) FlushNotificationsForTest(t testing.TB) {
+	t.Helper()
+	if !c.manualNotify {
+		t.Fatalf("FlushNotificationsForTest requires SetManualNotifyChangeFuncForTest")
+		return
+	}
+	// There is nothing to drain: each caching-feed path that caches entries (DocChanged, unused sequences
+	// and ranges, principal docs, and InsertPendingEntries) calls the notify callback itself as soon as the
+	// entries are cached.
+	// TODO: CBG-6117 drain the notify accumulator here.
+}
+
+// ProcessPrincipalDocForTest caches a user or role document body as the caching feed does once it has
+// fetched the body from the metadata store. DocChanged's principal path re-reads that body with a CAS
+// check, so a test that has no metadata document to fetch enters here instead.
+func (c *changeCache) ProcessPrincipalDocForTest(_ testing.TB, ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived channels.FeedTimestamp) {
+	c.processPrincipalDoc(ctx, docID, docJSON, isUser, timeReceived)
 }
 
 // SetUserForTest swaps the user a database resolves channel access against.
@@ -1968,6 +1999,50 @@ func (c *changeCache) GetNextSequenceForTest(_ testing.TB) uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.nextSequence
+}
+
+// SequenceStateForTest returns nextSequence, the max stable cached sequence and every sequence in the skipped list
+// as one snapshot taken under the cache's read lock. Unlike GetMaxStableCachedForTest it is safe to call while the
+// cache's background tasks may be running.
+func (c *changeCache) SequenceStateForTest(_ testing.TB, ctx context.Context) (nextSequence, maxStable uint64, skipped []uint64) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	nextSequence = c.nextSequence
+	maxStable = c._getMaxStableCached(ctx)
+	// The oldest skipped sequence bounds the scan: nothing below maxStable+1 is skipped, and nothing at or above
+	// nextSequence can be.
+	for seq := maxStable + 1; seq < nextSequence; seq++ {
+		if c.skippedSeqs.Contains(seq) {
+			skipped = append(skipped, seq)
+		}
+	}
+	return nextSequence, maxStable, skipped
+}
+
+// UnusedSeqChannelIDForTest returns the key the change cache notifies when sequences are released as unused, which
+// is not a channel. Tests need it to tell that key from channel names in a notification.
+func UnusedSeqChannelIDForTest() channels.ID {
+	return unusedSeqChannelID
+}
+
+// SetRemoveSkippedHookForTest installs a function called with each sequence that leaves the skipped list because it
+// arrived late. It runs on the delivering goroutine with the cache's write lock held, so it must not call back into
+// the cache. Install it between Init and Start: Init leaves the cache locked until Start, and the cache reads the hook
+// only under that lock, so installing it after Start would race.
+func (c *changeCache) SetRemoveSkippedHookForTest(_ testing.TB, hook func(seq uint64)) {
+	c.removeSkippedHook = hook
+}
+
+// LateLogSequencesForTest returns the sequences in the late log, oldest first, read under the late log's lock. The
+// first entry may be the seq-0 sentinel.
+func (c *singleChannelCacheImpl) LateLogSequencesForTest(_ testing.TB) []uint64 {
+	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
+	seqs := make([]uint64, 0, len(c.lateLogs))
+	for _, entry := range c.lateLogs {
+		seqs = append(seqs, entry.logEntry.Sequence)
+	}
+	return seqs
 }
 
 // GetPublishedNextSequenceForTest reports nextSequence as published at the last lock release, as seen by

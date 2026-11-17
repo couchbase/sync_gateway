@@ -527,10 +527,15 @@ func SetUpGlobalTestMemoryWatermark(m *testing.M, memWatermarkThresholdMB uint64
 		wg.Wait()
 
 		if inuseHighWaterMarkMB > float64(memWatermarkThresholdMB) {
-			// Exit during teardown to fail the suite if they exceeded the threshold
-			benchmark := flag.Lookup("test.bench")
-			if benchmark != nil && benchmark.Value.String() != "" {
-				log.Printf("Would be fatal if not running benchmarks FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
+			// Exit during teardown to fail the suite if they exceeded the threshold. Benchmarks and fuzzing hold memory
+			// of their own (what a benchmark allocates, the fuzzer's corpus and coverage data), so for them the
+			// threshold is only reported.
+			flagSet := func(name string) bool {
+				f := flag.Lookup(name)
+				return f != nil && f.Value.String() != ""
+			}
+			if flagSet("test.bench") || flagSet("test.fuzz") {
+				log.Printf("Would be fatal if not running benchmarks or fuzzing FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
 			} else {
 				log.Fatalf("FATAL - TEST: Memory high water mark %.2f MB exceeded threshold (%d MB)", inuseHighWaterMarkMB, memWatermarkThresholdMB)
 			}
