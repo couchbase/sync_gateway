@@ -1091,11 +1091,7 @@ Database:
               default: 50000
             max_runs_in_flight:
               description: |-
-                The maximum number of runs of sequences (up to 32 sequences each) that can be in flight between sequence ordering and the channel caches. When it is reached, the cache stops accepting new sequences until earlier runs finish.
-
-                Must be a power of two between 1024 and 65536, and must be greater than `max_num_pending` / 32 rounded up (the number of 32-sequence runs that one full release of pending sequences is cut into), so that the release fits. For example, `max_num_pending` 40000 needs a value greater than 1250, so 2048. A value that breaks either rule is rejected.
-
-                When not set, it is the smallest value that satisfies both rules for the configured `max_num_pending`: 1024 unless `max_num_pending` is above 32736.
+                The maximum number of batches of sequences waiting to be added to the channel caches.
 
                 **This is an Enterprise Edition feature only**
               type: integer
