@@ -240,7 +240,6 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	// the entries dropped by the latest attempt of the Update callback, logged once after a successful write
 	var removedEntries []TimestampsSeqPair
 	now := tm.nowFunc().Unix()
-	// TODO: Add this operation to KV Idle Ops
 	_, err := tm.metadataStore.Update(ctx, key, 0, func(current []byte) ([]byte, *uint32, bool, error) {
 		removedEntries = nil
 		var timestampsSeqArray TimestampsSeqArray

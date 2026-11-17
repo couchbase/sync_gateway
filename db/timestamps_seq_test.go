@@ -1480,3 +1480,68 @@ func GenerateTimestampsSeqPairs(start, end time.Time, duration time.Duration, st
 	}
 	return pairs
 }
+
+// TestTimestampsManagerKVIdleOps checks that adding a due entry counts every KV operation of the timestamps document
+// and of the sequence read, when both use the same counting store as DatabaseContext.StartOnlineProcesses sets up.
+func TestTimestampsManagerKVIdleOps(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tBucket := base.GetTestBucket(t)
+	defer tBucket.Close(ctx)
+
+	testCases := []struct {
+		name string
+		// returns the metadata store, after seeding _sync:seq where the test case needs it
+		store func(t *testing.T, metaKeys *base.MetadataKeys) base.DataStore
+		// read and write of the timestamps doc, plus the sequence read
+		expectedKVOps int64
+	}{
+		{
+			name: "single datastore",
+			store: func(t *testing.T, metaKeys *base.MetadataKeys) base.DataStore {
+				ds := tBucket.GetSingleDataStore()
+				_, err := ds.Incr(ctx, metaKeys.SyncSeqKey(), 5, 5, 0)
+				require.NoError(t, err)
+				return ds
+			},
+			expectedKVOps: 3,
+		},
+		{
+			// reads miss on primary and are retried on fallback, as during metadata migration
+			name: "fallback reads enabled",
+			store: func(t *testing.T, metaKeys *base.MetadataKeys) base.DataStore {
+				primary, err := tBucket.GetNamedDataStore(0)
+				require.NoError(t, err)
+				ms := base.NewMetadataStore(primary, tBucket.DefaultDataStore(ctx))
+				_, err = ms.Fallback().Incr(ctx, metaKeys.SyncSeqKey(), 5, 5, 0)
+				require.NoError(t, err)
+				return ms
+			},
+			expectedKVOps: 5,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			metaKeys := base.NewMetadataKeys(t.Name())
+			kvOps := &base.SgwIntStat{}
+			store := base.NewKVOpStatDataStore(testCase.store(t, metaKeys), kvOps)
+
+			now := time.Now()
+			tm := NewTimestampsManager(TimestampsMgrOpts{
+				metadataStore:     store,
+				metaKeys:          metaKeys,
+				purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+				getSequenceFunc: func(ctx context.Context) (uint64, error) {
+					return base.GetCounter(ctx, store, metaKeys.SyncSeqKey())
+				},
+				nowFunc: func() time.Time { return now },
+			})
+			// creates the document, which does not read the sequence
+			require.NoError(t, tm.addEntry(ctx))
+			now = now.Add(time.Hour)
+
+			kvOps.Set(0)
+			require.NoError(t, tm.addEntry(ctx))
+			assert.Equal(t, testCase.expectedKVOps, kvOps.Value())
+		})
+	}
+}
