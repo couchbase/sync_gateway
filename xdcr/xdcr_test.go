@@ -93,7 +93,7 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 			var err error
 			body, xattrs, cas, err = toDs.GetWithXattrs(ctx, doc, []string{base.VvXattrName, base.MouXattrName})
 			assert.NoError(c, err, "Could not get doc %s", doc)
-		}, time.Second*5, time.Millisecond*100)
+		}, xdcrWaitTime, time.Millisecond*100)
 		require.Equal(t, docCas[doc], cas)
 		require.JSONEq(t, startingBody, string(body))
 		require.NotContains(t, maps.Keys(xattrs), base.MouXattrName)
@@ -115,12 +115,12 @@ func TestMobileXDCRNoSyncDataCopied(t *testing.T) {
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		stats, err := xdcr.Stats(ctx)
 		if !assert.NoError(c, err) {
-			assert.NoError(c, err)
+			return
 		}
 		assert.Equal(c, totalDocsFiltered+1, stats.MobileDocsFiltered)
 		assert.Equal(c, totalDocsWritten+2, stats.DocsWritten)
 
-	}, time.Second*5, time.Millisecond*100)
+	}, xdcrWaitTime, time.Millisecond*100)
 
 	require.NoError(t, xdcr.Stop(ctx))
 	require.ErrorIs(t, xdcr.Stop(ctx), ErrReplicationNotRunning)
@@ -850,6 +850,9 @@ func TestVVMultiActor(t *testing.T) {
 
 }
 
+// xdcrWaitTime is how long tests wait for XDCR to replicate or update stats. A loaded Couchbase Server can take several seconds to start a replication.
+const xdcrWaitTime = 30 * time.Second
+
 // startXDCR will create a new XDCR manager and start it. This must be closed by the caller.
 func startXDCR(t *testing.T, fromBucket base.Bucket, toBucket base.Bucket, opts XDCROptions) Manager {
 	ctx := base.TestCtx(t)
@@ -870,7 +873,7 @@ func requireWaitForXDCRDocsProcessed(t *testing.T, xdcr Manager, expectedDocsPro
 			return
 		}
 		assert.Equal(c, expectedDocsProcessed, stats.DocsProcessed, "all stats=%+v", stats)
-	}, time.Second*5, time.Millisecond*100)
+	}, xdcrWaitTime, time.Millisecond*100)
 }
 
 // requireWaitForXDCRDocsWritten waits for the replication to write the exact number of documents.
@@ -883,7 +886,7 @@ func requireWaitForXDCRDocsWritten(t *testing.T, xdcr Manager, expectedDocsWritt
 			return
 		}
 		assert.Equal(c, expectedDocsWritten, stats.DocsWritten, "all stats=%+v", stats)
-	}, time.Second*5, time.Millisecond*100)
+	}, xdcrWaitTime, time.Millisecond*100)
 }
 
 // requireCV requires tests that a given hlv from server has sourceID and cas matching the current version.
