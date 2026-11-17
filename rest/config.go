@@ -1195,11 +1195,13 @@ func (dbConfig *DbConfig) maxRunsInFlight() (uint64, error) {
 			configured = dbConfig.CacheConfig.ChannelCacheConfig.MaxRunsInFlight
 		}
 	}
+	// Size from max_num_pending even when a value is configured, so that a max_num_pending too large for any
+	// value is reported against max_num_pending rather than against max_runs_in_flight.
+	capacity, err := dispatchtracker.CapacityFor(maxNumPending)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", maxNumPendingKey, err)
+	}
 	if configured == nil {
-		capacity, err := dispatchtracker.CapacityFor(maxNumPending)
-		if err != nil {
-			return 0, fmt.Errorf("%s: %w", maxNumPendingKey, err)
-		}
 		return capacity, nil
 	}
 	if err := dispatchtracker.ValidateCapacity(uint64(*configured), maxNumPending); err != nil {

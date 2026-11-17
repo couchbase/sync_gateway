@@ -35,6 +35,10 @@ const (
 
 	// MaxCapacity bounds memory: 24 B of slots per run, and up to RunSize entries in flight per run.
 	MaxCapacity = 1 << 16
+
+	// MaxNumPending is the largest max_num_pending that MaxCapacity can hold: a full cascade of it is cut
+	// into MaxCapacity-1 runs, one fewer than the capacity, as ValidateCapacity requires.
+	MaxNumPending = (MaxCapacity - 1) * RunSize
 )
 
 // slot records a completed run until the head walk retires it. A slot is written only when its run
@@ -154,7 +158,13 @@ func ValidateCapacity(capacity uint64, maxNumPending int) error {
 		return err
 	}
 	if need := cascadeRuns(maxNumPending); capacity <= need {
-		return fmt.Errorf("capacity %d must be greater than %d to hold one full cascade of max_num_pending (%d) in runs of size %d", capacity, need, maxNumPending, RunSize)
+		// Name the smallest value that works rather than the bound itself: the bound is rarely a power of
+		// two, so a value just above it would only be rejected again.
+		smallest, err := CapacityFor(maxNumPending)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%d is too small for max_num_pending %d: use at least %d, or leave it unset to size it automatically", capacity, maxNumPending, smallest)
 	}
 	return nil
 }
@@ -166,7 +176,7 @@ func CapacityFor(maxNumPending int) (uint64, error) {
 		capacity = 1 << bits.Len64(need-1) // next power of two >= need
 	}
 	if capacity > MaxCapacity {
-		return 0, fmt.Errorf("max_num_pending %d needs a capacity of %d, above the maximum of %d", maxNumPending, capacity, MaxCapacity)
+		return 0, fmt.Errorf("%d is above the maximum of %d", maxNumPending, MaxNumPending)
 	}
 	return capacity, nil
 }

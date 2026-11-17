@@ -394,10 +394,10 @@ func TestValidateCapacity(t *testing.T) {
 	}{
 		{capacity: MinCapacity, maxNumPending: 10000},
 		{capacity: MinCapacity, maxNumPending: 1023 * RunSize}, // a cascade of 1,023 runs leaves one run spare
-		{capacity: MinCapacity, maxNumPending: 1023*RunSize + 1, wantErr: "full cascade"},
+		{capacity: MinCapacity, maxNumPending: 1023*RunSize + 1, wantErr: "1024 is too small for max_num_pending 32737: use at least 2048"},
 		{capacity: 2048, maxNumPending: 1023*RunSize + 1},
 		{capacity: MaxCapacity, maxNumPending: (MaxCapacity - 1) * RunSize},
-		{capacity: MaxCapacity, maxNumPending: (MaxCapacity-1)*RunSize + 1, wantErr: "full cascade"},
+		{capacity: MaxCapacity, maxNumPending: MaxNumPending + 1, wantErr: "2097121 is above the maximum of 2097120"},
 		{capacity: 1000, maxNumPending: 10, wantErr: "power of two"},
 		{capacity: 0, maxNumPending: 10, wantErr: "power of two"},
 		{capacity: 512, maxNumPending: 10, wantErr: "between"},
@@ -429,7 +429,7 @@ func TestCapacityFor(t *testing.T) {
 		{maxNumPending: 2047 * RunSize, want: 2048},
 		{maxNumPending: 2047*RunSize + 1, want: 4096},
 		{maxNumPending: (MaxCapacity - 1) * RunSize, want: MaxCapacity},
-		{maxNumPending: (MaxCapacity-1)*RunSize + 1, wantErr: true},
+		{maxNumPending: MaxNumPending + 1, wantErr: true},
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("maxNumPending=%d", tc.maxNumPending), func(t *testing.T) {

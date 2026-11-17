@@ -311,8 +311,8 @@ func TestConfigValidationMaxRunsInFlight(t *testing.T) {
 		{
 			name:   "max_num_pending too large to auto-size",
 			config: `{"cache": {"channel_cache": {"max_num_pending": 2097121}}}`,
-			errEE:  "cache.channel_cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
-			errCE:  "cache.channel_cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
+			errEE:  "cache.channel_cache.max_num_pending: 2097121 is above the maximum of 2097120",
+			errCE:  "cache.channel_cache.max_num_pending: 2097121 is above the maximum of 2097120",
 		},
 		{
 			name:   "explicit value",
@@ -323,6 +323,12 @@ func TestConfigValidationMaxRunsInFlight(t *testing.T) {
 			name:   "explicit maximum with the largest max_num_pending it holds",
 			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 65536, "max_num_pending": 2097120}}}`,
 			wantEE: 65536, wantCE: 65536,
+		},
+		{
+			name:   "explicit value with max_num_pending too large for any value",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 65536, "max_num_pending": 2097121}}}`,
+			errEE:  "cache.channel_cache.max_num_pending: 2097121 is above the maximum of 2097120",
+			errCE:  "cache.channel_cache.max_num_pending: 2097121 is above the maximum of 2097120",
 		},
 		{
 			name:   "explicit value not a power of two",
@@ -345,7 +351,7 @@ func TestConfigValidationMaxRunsInFlight(t *testing.T) {
 		{
 			name:   "explicit value too small for max_num_pending",
 			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 1024, "max_num_pending": 40000}}}`,
-			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 1024 must be greater than 1250 to hold one full cascade of max_num_pending (40000) in runs of size 32",
+			errEE:  "cache.channel_cache.max_runs_in_flight: 1024 is too small for max_num_pending 40000: use at least 2048, or leave it unset to size it automatically",
 			wantCE: 2048, // CE ignores the explicit value and auto-sizes
 		},
 		{
@@ -356,13 +362,13 @@ func TestConfigValidationMaxRunsInFlight(t *testing.T) {
 		{
 			name:   "deprecated max_num_pending too large to auto-size",
 			config: `{"cache": {"max_num_pending": 2097121}}`,
-			errEE:  "cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
-			errCE:  "cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
+			errEE:  "cache.max_num_pending: 2097121 is above the maximum of 2097120",
+			errCE:  "cache.max_num_pending: 2097121 is above the maximum of 2097120",
 		},
 		{
 			name:   "explicit value too small for deprecated max_num_pending",
 			config: `{"cache": {"max_num_pending": 40000, "channel_cache": {"max_runs_in_flight": 1024}}}`,
-			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 1024 must be greater than 1250 to hold one full cascade of max_num_pending (40000) in runs of size 32",
+			errEE:  "cache.channel_cache.max_runs_in_flight: 1024 is too small for max_num_pending 40000: use at least 2048, or leave it unset to size it automatically",
 			wantCE: 2048,
 		},
 		{
