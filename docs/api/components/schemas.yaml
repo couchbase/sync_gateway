@@ -1089,6 +1089,18 @@ Database:
               description: The maximum number of channel caches which can exist at any one point.
               type: integer
               default: 50000
+            max_runs_in_flight:
+              description: |-
+                The maximum number of runs of sequences (up to 32 sequences each) that can be in flight between sequence ordering and the channel caches. When it is reached, the cache stops accepting new sequences until earlier runs finish.
+
+                Must be a power of two between 1024 and 65536, and must be greater than `max_num_pending` / 32 so that one full release of pending sequences fits. A value that breaks either rule is rejected.
+
+                When not set, it is the smallest value that satisfies both rules for the configured `max_num_pending`: 1024 unless `max_num_pending` is above 32736.
+
+                **This is an Enterprise Edition feature only**
+              type: integer
+              minimum: 1024
+              maximum: 65536
             max_wait_pending:
               description: The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
               type: integer

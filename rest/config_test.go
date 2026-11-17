@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -271,6 +272,173 @@ func TestConfigValidationCache(t *testing.T) {
 		assert.Equal(t, db.DefaultChannelCacheMaxNumber, opts.CacheOptions.MaxNumChannels)
 		assert.Equal(t, db.DefaultCompactHighWatermarkPercent, opts.CacheOptions.CompactHighWatermarkPercent)
 		assert.Equal(t, db.DefaultCompactLowWatermarkPercent, opts.CacheOptions.CompactLowWatermarkPercent)
+	}
+}
+
+func TestConfigValidationMaxRunsInFlight(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string // the database config
+		// Expected outcome per edition: either an error containing errEE/errCE, or the resolved capacity.
+		errEE, errCE   string
+		wantEE, wantCE uint64
+	}{
+		{
+			name:   "no cache config",
+			config: `{}`,
+			wantEE: 1024, wantCE: 1024,
+		},
+		{
+			name:   "default max_num_pending fits the minimum",
+			config: `{"cache": {"channel_cache": {"max_num_pending": 10000}}}`,
+			wantEE: 1024, wantCE: 1024,
+		},
+		{
+			name:   "largest max_num_pending the minimum holds",
+			config: `{"cache": {"channel_cache": {"max_num_pending": 32736}}}`,
+			wantEE: 1024, wantCE: 1024,
+		},
+		{
+			name:   "max_num_pending one past the minimum auto-sizes up",
+			config: `{"cache": {"channel_cache": {"max_num_pending": 32737}}}`,
+			wantEE: 2048, wantCE: 2048,
+		},
+		{
+			name:   "large max_num_pending auto-sizes up",
+			config: `{"cache": {"channel_cache": {"max_num_pending": 100000}}}`,
+			wantEE: 4096, wantCE: 4096,
+		},
+		{
+			name:   "max_num_pending too large to auto-size",
+			config: `{"cache": {"channel_cache": {"max_num_pending": 2097121}}}`,
+			errEE:  "cache.channel_cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
+			errCE:  "cache.channel_cache.max_num_pending: max_num_pending 2097121 needs a capacity of 131072, above the maximum of 65536",
+		},
+		{
+			name:   "explicit value",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 2048}}}`,
+			wantEE: 2048, wantCE: 1024,
+		},
+		{
+			name:   "explicit maximum with the largest max_num_pending it holds",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 65536, "max_num_pending": 2097120}}}`,
+			wantEE: 65536, wantCE: 65536,
+		},
+		{
+			name:   "explicit value not a power of two",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 1000}}}`,
+			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 1000 must be a power of two",
+			wantCE: 1024,
+		},
+		{
+			name:   "explicit value below the minimum",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 512}}}`,
+			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 512 must be between 1024 and 65536",
+			wantCE: 1024,
+		},
+		{
+			name:   "explicit value above the maximum",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 131072}}}`,
+			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 131072 must be between 1024 and 65536",
+			wantCE: 1024,
+		},
+		{
+			name:   "explicit value too small for max_num_pending",
+			config: `{"cache": {"channel_cache": {"max_runs_in_flight": 1024, "max_num_pending": 40000}}}`,
+			errEE:  "cache.channel_cache.max_runs_in_flight: capacity 1024 must be greater than 1250 to hold one full cascade of max_num_pending (40000) in runs of size 32",
+			wantCE: 2048, // CE ignores the explicit value and auto-sizes
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			wantErr, want := test.errCE, test.wantCE
+			if base.IsEnterpriseEdition() {
+				wantErr, want = test.errEE, test.wantEE
+			}
+
+			var dbConfig DbConfig
+			require.NoError(t, base.JSONUnmarshal([]byte(test.config), &dbConfig))
+			err := SetupAndValidateDatabases(ctx, DbConfigMap{"db": &dbConfig})
+			if wantErr != "" {
+				require.ErrorContains(t, err, wantErr)
+				return
+			}
+			require.NoError(t, err)
+
+			sc := NewServerContext(ctx, &StartupConfig{}, false)
+			defer sc.Close(ctx)
+			opts, err := dbcOptionsFromConfig(ctx, sc, &dbConfig, "db")
+			require.NoError(t, err)
+			assert.Equal(t, want, opts.CacheOptions.MaxRunsInFlight)
+		})
+	}
+}
+
+// TestMaxRunsInFlightRuntimeConfig checks that _config?include_runtime=true reports the max_runs_in_flight the
+// database is using, including when it was sized from max_num_pending, since that is what support reads.
+func TestMaxRunsInFlightRuntimeConfig(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	tests := []struct {
+		name            string
+		maxNumPending   *int
+		maxRunsInFlight *uint32
+		wantEE, wantCE  uint32
+	}{
+		{name: "unset reports the default", wantEE: 1024, wantCE: 1024},
+		{name: "unset reports the size from a large max_num_pending", maxNumPending: new(100000), wantEE: 4096, wantCE: 4096},
+		{name: "explicit value", maxRunsInFlight: new(uint32(2048)), wantEE: 2048, wantCE: 1024},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			want := test.wantCE
+			if base.IsEnterpriseEdition() {
+				want = test.wantEE
+			}
+
+			dbConfig := rt.NewDbConfig()
+			dbConfig.CacheConfig = &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{
+				MaxNumPending:   test.maxNumPending,
+				MaxRunsInFlight: test.maxRunsInFlight,
+			}}
+			RequireStatus(t, rt.CreateDatabase("db", dbConfig), http.StatusCreated)
+			defer func() {
+				RequireStatus(t, rt.SendAdminRequest(http.MethodDelete, "/db/", ""), http.StatusOK)
+			}()
+
+			resp := rt.SendAdminRequest(http.MethodGet, "/db/_config?include_runtime=true", "")
+			RequireStatus(t, resp, http.StatusOK)
+			var cfg DbConfig
+			require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &cfg))
+			require.NotNil(t, cfg.CacheConfig)
+			require.NotNil(t, cfg.CacheConfig.ChannelCacheConfig)
+			require.NotNil(t, cfg.CacheConfig.ChannelCacheConfig.MaxRunsInFlight)
+			assert.Equal(t, want, *cfg.CacheConfig.ChannelCacheConfig.MaxRunsInFlight)
+
+			resp = rt.SendAdminRequest(http.MethodGet, "/_config?include_runtime=true", "")
+			RequireStatus(t, resp, http.StatusOK)
+			var serverCfg RunTimeServerConfigResponse
+			require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &serverCfg))
+			require.Contains(t, maps.Keys(serverCfg.Databases), "db")
+			require.NotNil(t, serverCfg.Databases["db"].CacheConfig)
+			require.NotNil(t, serverCfg.Databases["db"].CacheConfig.ChannelCacheConfig)
+			require.NotNil(t, serverCfg.Databases["db"].CacheConfig.ChannelCacheConfig.MaxRunsInFlight)
+			assert.Equal(t, want, *serverCfg.Databases["db"].CacheConfig.ChannelCacheConfig.MaxRunsInFlight)
+
+			// Without include_runtime the config is reported as stored, so an unset value stays unset.
+			resp = rt.SendAdminRequest(http.MethodGet, "/db/_config", "")
+			RequireStatus(t, resp, http.StatusOK)
+			cfg = DbConfig{}
+			require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &cfg))
+			if test.maxRunsInFlight == nil {
+				if cfg.CacheConfig != nil && cfg.CacheConfig.ChannelCacheConfig != nil {
+					assert.Nil(t, cfg.CacheConfig.ChannelCacheConfig.MaxRunsInFlight)
+				}
+			}
+		})
 	}
 }
 

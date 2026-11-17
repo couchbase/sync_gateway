@@ -25,6 +25,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db/dispatchtracker"
 )
 
 const (
@@ -125,6 +126,7 @@ type CacheOptions struct {
 	CachePendingSeqMaxWait time.Duration // Max wait for pending sequence before skipping
 	CachePendingSeqMaxNum  int           // Max number of pending sequences before skipping
 	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
+	MaxRunsInFlight        uint64        // Completion tracker capacity, in runs; must pass dispatchtracker.ValidateCapacity. Default and minimum dispatchtracker.MinCapacity (1024)
 	// Broadcast ticker intervals for waking continuous _changes feeds. Zero means use the package default
 	// (DefaultBroadcastChangesTime / SkippedSequenceBroadcastChangesTime). Internal tuning knob - primarily
 	// so tests can avoid the 500ms skipped-sequence slow mode dominating runtime. Not exposed via REST config.
@@ -137,6 +139,7 @@ func DefaultCacheOptions() CacheOptions {
 		CachePendingSeqMaxWait:           DefaultCachePendingSeqMaxWait,
 		CachePendingSeqMaxNum:            DefaultCachePendingSeqMaxNum,
 		CacheSkippedSeqMaxWait:           DefaultSkippedSeqMaxWait,
+		MaxRunsInFlight:                  dispatchtracker.MinCapacity,
 		BroadcastChangesInterval:         DefaultBroadcastChangesTime,
 		SkippedSequenceBroadcastInterval: SkippedSequenceBroadcastChangesTime,
 		ChannelCacheOptions: ChannelCacheOptions{

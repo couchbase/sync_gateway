@@ -68,7 +68,7 @@ func NewTracker(capacity uint64) (*Tracker, error) {
 // tickets.
 func NewForTest(capacity uint64) (*Tracker, error) {
 	if !isPowerOfTwo(capacity) {
-		return nil, fmt.Errorf("tracker capacity %d must be a power of two", capacity)
+		return nil, fmt.Errorf("capacity %d must be a power of two", capacity)
 	}
 	return newTracker(capacity), nil
 }
@@ -154,7 +154,7 @@ func ValidateCapacity(capacity uint64, maxNumPending int) error {
 		return err
 	}
 	if need := cascadeRuns(maxNumPending); capacity <= need {
-		return fmt.Errorf("tracker capacity %d must be greater than %d to hold one full cascade of max_num_pending (%d) in runs of %d", capacity, need, maxNumPending, RunSize)
+		return fmt.Errorf("capacity %d must be greater than %d to hold one full cascade of max_num_pending (%d) in runs of size %d", capacity, need, maxNumPending, RunSize)
 	}
 	return nil
 }
@@ -166,7 +166,7 @@ func CapacityFor(maxNumPending int) (uint64, error) {
 		capacity = 1 << bits.Len64(need-1) // next power of two >= need
 	}
 	if capacity > MaxCapacity {
-		return 0, fmt.Errorf("max_num_pending %d needs a tracker capacity of %d, above the maximum of %d", maxNumPending, capacity, MaxCapacity)
+		return 0, fmt.Errorf("max_num_pending %d needs a capacity of %d, above the maximum of %d", maxNumPending, capacity, MaxCapacity)
 	}
 	return capacity, nil
 }
@@ -183,10 +183,10 @@ func cascadeRuns(maxNumPending int) uint64 {
 
 func validateRange(capacity uint64) error {
 	if !isPowerOfTwo(capacity) {
-		return fmt.Errorf("tracker capacity %d must be a power of two", capacity)
+		return fmt.Errorf("capacity %d must be a power of two", capacity)
 	}
 	if capacity < MinCapacity || capacity > MaxCapacity {
-		return fmt.Errorf("tracker capacity %d must be between %d and %d", capacity, MinCapacity, MaxCapacity)
+		return fmt.Errorf("capacity %d must be between %d and %d", capacity, MinCapacity, MaxCapacity)
 	}
 	return nil
 }
