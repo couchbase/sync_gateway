@@ -21,36 +21,81 @@ import (
 )
 
 // TestChangeCacheBackgroundTaskBounds pins how long the cache's two housekeeping tasks take at worst. Each task wakes
-// every half of its max wait and acts only once an entry is at least a full max wait old, so the first wake-up that
-// finds it old enough comes no later than 1.5 times the max wait after it arrived. The fuzz harness only
-// checks that the cache ends in a consistent state, so a task that ran at the wrong interval would otherwise pass.
+// every half of its max wait. The fuzz harness only checks that the cache ends in a consistent state, so a task that
+// ran at the wrong interval would otherwise pass.
 func TestChangeCacheBackgroundTaskBounds(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelWarn, base.KeyAll)
 	env := newFuzzEnv(t)
 
+	// The pending task does not look at the age of the oldest pending entry to decide whether to flush. It flushes
+	// only if a full max wait has passed since the pending buffer was last flushed, and a flush that finds nothing old
+	// enough still restarts that clock. An entry that arrives just after a flush is too young for the next one, and
+	// the wake-up after that is skipped, so it waits up to twice the max wait. Another entry pushed to pending also
+	// flushes, so one pushed just before the first entry is old enough restarts the clock again and the wait grows to
+	// two and a half times the max wait. It can grow no further, because any flush once the entry is old enough
+	// releases it.
 	t.Run("pending entry is released", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			h := newFuzzHarness(t, env, defaultFuzzConfig())
-			h.start()
-			defer h.stop()
+		const tick = fuzzPendingSeqMaxWait / 2
+		testCases := []struct {
+			name      string
+			arriveAt  time.Duration // after the cache starts, which is when the pending task's clock starts
+			pushAfter time.Duration // when, after the arrival, another entry is pushed to pending; zero for none
+			maxDelay  time.Duration
+		}{
+			{name: "arrives on a flush", arriveAt: 0, maxDelay: fuzzPendingSeqMaxWait * 2},
+			{name: "arrives just after a flush", arriveAt: 100 * time.Millisecond, maxDelay: fuzzPendingSeqMaxWait * 2},
+			{name: "arrives between wake-ups", arriveAt: tick + 200*time.Millisecond, maxDelay: fuzzPendingSeqMaxWait * 2},
+			{
+				name:      "another push just before the entry is old enough",
+				arriveAt:  tick + 200*time.Millisecond,
+				pushAfter: fuzzPendingSeqMaxWait - 100*time.Millisecond,
+				maxDelay:  fuzzPendingSeqMaxWait * 5 / 2,
+			},
+		}
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					h := newFuzzHarness(t, env, defaultFuzzConfig())
+					h.start()
+					defer h.stop()
 
-			// Sequence 2 arrives while sequence 1 is missing, so it waits in the pending buffer.
-			h.write(0, chanMask("A"), false)
-			h.write(1, chanMask("A"), false)
-			h.withholdOldest() // sequence 1 never arrives
-			h.deliverOne(1, 0)
-			next, _, skipped := h.cache.SequenceStateForTest(t, h.env.ctx)
-			require.Equal(t, uint64(1), next)
-			require.Empty(t, skipped)
+					// Sequence 2 arrives while sequence 1 is missing, so it waits in the pending buffer.
+					h.write(0, chanMask("A"), false)
+					h.write(1, chanMask("A"), false)
+					h.withholdOldest() // sequence 1 never arrives
+					time.Sleep(tc.arriveAt)
+					h.deliverOne(1, 0)
+					arrived := time.Now()
+					released := func() bool {
+						next, _, _ := h.cache.SequenceStateForTest(t, h.env.ctx)
+						return next >= 3
+					}
+					require.False(t, released())
 
-			time.Sleep(fuzzPendingSeqMaxWait*3/2 + time.Nanosecond)
-			synctest.Wait()
-			next, _, skipped = h.cache.SequenceStateForTest(t, h.env.ctx)
-			assert.Equal(t, uint64(3), next, "sequence 2 should have been released")
-			assert.Equal(t, []uint64{1}, skipped, "sequence 1 should have been skipped")
-		})
+					if tc.pushAfter > 0 {
+						time.Sleep(tc.pushAfter)
+						synctest.Wait()
+						require.False(t, released(), "sequence 2 should still be pending when the next entry is pushed")
+						h.unusedRange(2) // sequences 3 and 4, which also wait behind sequence 1
+						h.deliverOne(1, 0)
+					}
+
+					for !released() && time.Since(arrived) <= tc.maxDelay {
+						time.Sleep(10 * time.Millisecond)
+						synctest.Wait()
+					}
+					waited := time.Since(arrived)
+					require.True(t, released(), "sequence 2 should have been released within %v", tc.maxDelay)
+					assert.GreaterOrEqual(t, waited, fuzzPendingSeqMaxWait, "sequence 2 was released before the max wait")
+					_, _, skipped := h.cache.SequenceStateForTest(t, h.env.ctx)
+					assert.Equal(t, []uint64{1}, skipped, "sequence 1 should have been skipped")
+				})
+			})
+		}
 	})
 
+	// The skipped task has no such clock: every wake-up abandons whatever has been skipped for the max wait, so the
+	// first wake-up after that comes no later than 1.5 times the max wait.
 	t.Run("skipped sequence is abandoned", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			h := newFuzzHarness(t, env, defaultFuzzConfig())
@@ -61,7 +106,8 @@ func TestChangeCacheBackgroundTaskBounds(t *testing.T) {
 			h.write(1, chanMask("A"), false)
 			h.withholdOldest() // sequence 1 never arrives
 			h.deliverOne(1, 0)
-			time.Sleep(fuzzPendingSeqMaxWait*3/2 + time.Nanosecond)
+			// Sequence 2 arrived on a flush, so sequence 1 is skipped after exactly one pending max wait.
+			time.Sleep(fuzzPendingSeqMaxWait + time.Nanosecond)
 			synctest.Wait()
 			_, _, skipped := h.cache.SequenceStateForTest(t, h.env.ctx)
 			require.Equal(t, []uint64{1}, skipped)
