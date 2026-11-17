@@ -9,7 +9,7 @@
 package importtest
 
 import (
-	"sync"
+	"net/http"
 	"testing"
 	"time"
 
@@ -22,47 +22,36 @@ import (
 func TestImportPartitionsOnConcurrentStart(t *testing.T) {
 	base.TestRequiresCbgt(t)
 
-	// Start multiple rest testers concurrently
-	numNodes := 4
-	numImportPartitions := uint16(16)
-	expectedPartitions := 4
-	restTesters := make([]*rest.RestTester, numNodes)
-	tb := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
-	defer tb.Close(ctx)
-	var wg sync.WaitGroup
-	for i := range numNodes {
-		wg.Add(1)
-		go func(i int) {
-			noCloseTB := tb.NoCloseClone()
-			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: noCloseTB,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					AutoImport:       true,
-					ImportPartitions: new(numImportPartitions),
-				}},
-			})
-			restTesters[i] = rt
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
+	const (
+		dbName              = "db"
+		numNodes            = 4
+		numImportPartitions = uint16(16)
+		expectedPartitions  = 4
+	)
+	rtc := rest.NewRestTesterCluster(t, &rest.RestTesterClusterConfig{
+		NumNodes: numNodes,
+		MutateStartupConfig: func(config *rest.StartupConfig) {
+			// fast polling lets the other nodes start the database at about the same time
+			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(50 * time.Millisecond)
+		},
+	})
+	defer rtc.Close(base.TestCtx(t))
 
-	defer func() {
-		for _, rt := range restTesters {
-			if rt != nil {
-				rt.Close()
-			}
-		}
-	}()
+	node0 := rtc.Node(0)
+	dbConfig := node0.NewDbConfig()
+	dbConfig.AutoImport = true
+	dbConfig.ImportPartitions = new(numImportPartitions)
+	rest.RequireStatus(t, node0.CreateDatabase(dbName, dbConfig), http.StatusCreated)
+
+	rtc.ForEachNode(func(rt *rest.RestTester) { rt.WaitForDatabase(dbName) })
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		currentPartitions := make([]int, len(restTesters))
-		for i, rt := range restTesters {
-			currentPartitions[i] = rt.GetDatabase().ImportPartitionCount()
-		}
+		var currentPartitions []int
+		rtc.ForEachNode(func(rt *rest.RestTester) {
+			currentPartitions = append(currentPartitions, rt.GetDatabase().ImportPartitionCount())
+		})
 		for _, rtPartitions := range currentPartitions {
 			assert.Equal(c, expectedPartitions, rtPartitions, "unbalanced partitions, distribution: %v", currentPartitions)
 		}
-	}, time.Second*5, time.Millisecond*250)
+	}, 20*time.Second, 250*time.Millisecond)
 }
