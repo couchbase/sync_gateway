@@ -53,8 +53,9 @@ func TestRosmarTestsStopOnInterrupt(t *testing.T) {
 	t.Chdir(dir)
 	pidFile := filepath.Join(dir, "gotestsum.pid")
 	binDir := filepath.Join(dir, "bin")
-	// A fake gotestsum with a child process, standing in for go test and the test binary.
-	writeScript(t, filepath.Join(binDir, "gotestsum"), "echo $$ > "+pidFile+"\nsleep 300 &\nwait\n")
+	// A fake gotestsum with a child process, standing in for go test and the test binary. The pid is written
+	// after the fork so the SIGINT cannot race it, since a child forked during the group kill can survive it.
+	writeScript(t, filepath.Join(binDir, "gotestsum"), "sleep 300 &\necho $$ > "+pidFile+"\nwait\n")
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 
 	// Registered before the test signals itself, so the SIGINT cancels ctx instead of killing the test binary.
