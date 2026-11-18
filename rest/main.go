@@ -441,7 +441,10 @@ func createBootstrapConnectionWithOpts(ctx context.Context, opts bootstrapConnec
 		return base.NewRosmarCluster(opts.server, opts.useSystemMetadataCollection)
 	}
 
-	connStr, err := base.GetGoCBConnStringWithDefaults(opts.server, base.DefaultGoCBConnStringParams())
+	// The bootstrap connection only reads and writes small metadata docs, but opens several gocb clusters per node.
+	connStrParams := base.DefaultGoCBConnStringParams()
+	connStrParams.KvPoolSize = base.LowThroughputKvPoolSize
+	connStr, err := base.GetGoCBConnStringWithDefaults(opts.server, connStrParams)
 	if err != nil {
 		return nil, err
 	}
