@@ -120,10 +120,6 @@ func (btcc *BlipTesterCollectionClient) getProposeChangesForSeq(seq clientSeq) (
 	if !ok {
 		return nil, false
 	}
-	latestRev := doc._revisionsBySeq[doc._latestSeq]
-	if latestRev.noRev {
-		return nil, false
-	}
 	return doc._proposeChangesEntryForDoc(), true
 }
 
@@ -206,9 +202,8 @@ type clientDocRev struct {
 	HLV         db.HybridLogicalVector // The full HLV for the revision, populated when mode = HLV
 	body        []byte
 	isDelete    bool
-	pullMessage *blip.Message // rev or norev message associated with this revision is successfully pulled and the response is received and processed by BlipTesterCollectionClient
+	pullMessage *blip.Message // rev message associated with this revision is successfully pulled and the response is received and processed by BlipTesterCollectionClient
 	pushMessage *blip.Message // rev or norev message associated with this revision is successfully pushed to Sync Gateway and a response has been received
-	noRev       bool          // true if this revision was created via a norev message
 }
 
 // clientDoc represents a document stored on the client - it may also contain older versions of the document.
@@ -325,54 +320,17 @@ func (cd *clientDoc) _getLatestHLVCopy(t testing.TB) db.HybridLogicalVector {
 	return *latestRev.HLV.Copy()
 }
 
-// _alreadyHasIncomingRev reports whether the client already holds the incoming revision. Sync Gateway
-// sends one when a document is rewritten without its cv changing, because the client answers the second
-// changes entry before the first rev arrives and so asks for the same version twice.
-func (cd *clientDoc) _alreadyHasIncomingRev(t testing.TB, incomingHLV *db.HybridLogicalVector) bool {
+// _compareIncomingHLV compares the incoming HLV with the latest local revision. It reports HLVNoConflict when
+// there is nothing to compare against: no local doc or a revtree revision.
+func (cd *clientDoc) _compareIncomingHLV(t testing.TB, incomingHLV *db.HybridLogicalVector) db.HLVConflictStatus {
 	if cd == nil || incomingHLV == nil {
-		return false
+		return db.HLVNoConflict
 	}
 	latestRev := cd._latestRev(t)
-	if latestRev.noRev {
-		// a norev names the version Sync Gateway could not send but carries no body, so the client does
-		// not hold that revision and a rev for the same cv is new content rather than a duplicate
-		return false
-	}
 	if latestRev.version.RevTreeID != "" {
-		// revtree clients identify a revision by its rev ID rather than its cv
-		return false
+		return db.HLVNoConflict
 	}
-	return latestRev.HLV.EqualCV(incomingHLV)
-}
-
-func (cd *clientDoc) _hasConflict(t testing.TB, incomingHLV *db.HybridLogicalVector) bool {
-	// there is no local document
-	if cd == nil {
-		return false
-	}
-	latestRev := cd._latestRev(t)
-	if latestRev.noRev {
-		// a norev placeholder holds no body, so there is nothing for the incoming revision to conflict with
-		return false
-	}
-	if latestRev.version.RevTreeID != "" {
-		// currently no conflict detection or resolution for revtree clients.
-		return false
-	}
-
-	localHLV := latestRev.HLV
-	incomingCV := incomingHLV.ExtractCurrentVersionFromHLV()
-
-	conflictStatus := db.IsInConflict(t.Context(), &localHLV, incomingHLV)
-	switch conflictStatus {
-	case db.HLVNoConflict:
-		return false
-	case db.HLVConflict:
-		return true
-	case db.HLVNoConflictRevAlreadyPresent:
-		require.FailNow(t, fmt.Sprintf("incoming CV %#+v has lower version than the local revision %#+v - this should've been filtered via changes response before ending up as a rev. blip tester would reply that to Sync Gateway that it doesn't need this revision", incomingCV, localHLV))
-	}
-	return false
+	return db.IsInConflict(t.Context(), &latestRev.HLV, incomingHLV)
 }
 
 func (btcc *BlipTesterCollectionClient) _resolveConflict(incomingHLV *db.HybridLogicalVector, incomingBody []byte, localDoc *clientDocRev) (body []byte, hlv db.HybridLogicalVector) {
@@ -540,7 +498,7 @@ func (btr *BlipTesterReplicator) initHandlers(ctx context.Context, btc *BlipTest
 
 	btr.bt.blipContext.DefaultHandler = btr.defaultHandler()
 	handlers := map[string]func(*blip.Message){
-		db.MessageNoRev:           btr.handleNoRev(ctx, btc),
+		db.MessageNoRev:           btr.handleNoRev(),
 		db.MessageGetAttachment:   btr.handleGetAttachment(btc),
 		db.MessageRev:             btr.handleRev(ctx, btc),
 		db.MessageProposeChanges:  btr.handleProposeChanges(btc),
@@ -937,35 +895,10 @@ func (btr *BlipTesterReplicator) handleGetAttachment(btc *BlipTesterClient) func
 
 }
 
-// handleNoRev handles noRev messages on the blip tester client
-func (btr *BlipTesterReplicator) handleNoRev(ctx context.Context, btc *BlipTesterClient) func(msg *blip.Message) {
-	return func(msg *blip.Message) {
-		btcc := btc.getCollectionClientFromMessage(msg)
-
-		// ignore messages arriving after close
-		if btcc.isClosed() {
-			return
-		}
-
-		docID := msg.Properties[db.NorevMessageId]
-		revID := msg.Properties[db.NorevMessageRev]
-		incomingVersion := DocVersion{}
-
-		incomingHLV := &db.HybridLogicalVector{}
-		if btc.UseHLV() {
-			incomingHLV, incomingVersion = btc.getVersionsFromRevMessage(msg)
-		} else {
-			incomingVersion.RevTreeID = revID
-		}
-
-		btcc.addRev(ctx, docID, revOptions{
-			incomingVersion: incomingVersion,
-			incomingHLV:     incomingHLV,
-			msg:             msg,
-			isNoRev:         true,
-		})
-	}
-
+// handleNoRev handles norev messages on the blip tester client. Like couchbase-lite-core, it stores nothing:
+// tests find norevs with WaitForPullNoRevMessage, which reads the message log.
+func (btr *BlipTesterReplicator) handleNoRev() func(msg *blip.Message) {
+	return func(*blip.Message) {}
 }
 
 // defaultHandler is the default handler for the blip tester client, this will fail the test harness
@@ -2380,11 +2313,10 @@ type revOptions struct {
 	replacedVersion           *DocVersion             // replacedVersion is the version of the revision that was replaced, to update the global structure of all docIDs<->rev
 	updateLatestServerVersion bool                    // updateLatestServerVersion is true if the latestServerVersion should be updated to the newVersion. This only keeps track of a single Sync Gateway.
 	incomingHLV               *db.HybridLogicalVector // the incoming hlv for the revision. This is nil if revtrees are used and non nil if HLVs are used.
-	isNoRev                   bool                    // isNoRev is true if this revision was created from a _no_rev message
 }
 
-// addRev adds a revision for a specific document. It returns true when the client already held the
-// incoming revision, so nothing was stored.
+// addRev adds a revision for a specific document. It returns true when the client already held the incoming
+// revision or a newer one, so the rev is answered as a no-op.
 func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string, opts revOptions) (alreadyExisted bool) {
 	btcc.seqLock.Lock()
 	defer btcc.seqLock.Unlock()
@@ -2392,16 +2324,15 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 	newBody := opts.body
 	newVersion := opts.incomingVersion
 	doc, hasLocalDoc := btcc._getClientDoc(docID)
-	// A revision the client already holds is a no-op, which is what couchbase-lite-core does with one
-	// (Inserter::insertRevisionNow sets alreadyExisted, IncomingRev::finish answers noop:true). The
-	// client asked for it, so this is not the changes response being ignored.
-	if doc._alreadyHasIncomingRev(btcc.TB(), opts.incomingHLV) {
-		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring rev for docID %s: already have version %#v", base.UD(docID), opts.incomingVersion)
+	// Like couchbase-lite-core, a revision the client holds, or one older than its latest, is a no-op: revs for
+	// separate changes batches are sent concurrently, so an older rev can arrive after a newer one.
+	conflictStatus := doc._compareIncomingHLV(btcc.TB(), opts.incomingHLV)
+	if conflictStatus == db.HLVNoConflictRevAlreadyPresent {
+		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring rev for docID %s: already have version %#v or newer", base.UD(docID), opts.incomingVersion)
 		return true
 	}
 	updatedHLV := doc._getLatestHLVCopy(btcc.TB())
-	require.NotNil(btcc.TB(), updatedHLV, "updatedHLV should not be nil for docID %q", docID)
-	if doc._hasConflict(btcc.TB(), opts.incomingHLV) {
+	if conflictStatus == db.HLVConflict {
 		newBody, updatedHLV = btcc._resolveConflict(opts.incomingHLV, opts.body, doc._latestRev(btcc.TB()))
 		base.DebugfCtx(ctx, base.KeySGTest, "Resolved conflict for docID %q, incomingHLV:%#v, existingHLV:%#v, updatedHLV:%#v", docID, opts.incomingHLV, doc._latestRev(btcc.TB()).HLV, updatedHLV)
 	} else {
@@ -2410,17 +2341,6 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 			// Add the incoming HLV to the local HLV, regardless of winner
 			updatedHLV.UpdateWithIncomingHLV(opts.incomingHLV)
 		}
-	}
-	// A bodyless norev must never clobber a document we already have real content for. Leave the doc's active
-	// revision, _seqStore entry, _revisionsBySeq and _seqsByVersions untouched: this norev never applied to
-	// client state, so it must not be discoverable as a revision the client holds (via
-	// getAllRevisions/_proposeChangesEntryForDoc) or as a second, stale-looking _seqStore pointer to the same
-	// doc that would be yielded twice by changes iteration. Waiters use WaitForPullNoRevMessage, which reads
-	// the raw pull replication message log directly.
-	if opts.isNoRev && newBody == nil && hasLocalDoc && doc._latestRev(btcc.TB()).body != nil {
-		require.Equal(btcc.TB(), db.MessageNoRev, opts.msg.Profile(), "only norev messages should hit this bodyless-clobber guard")
-		base.DebugfCtx(ctx, base.KeySGTest, "Ignoring norev body for docID %s: no body for version %#v", base.UD(docID), opts.incomingVersion)
-		return
 	}
 	newVersion.CV = *updatedHLV.ExtractCurrentVersionFromHLV()
 	// allocated only now that the revision is stored: a sequence with no document behind it makes the
@@ -2434,7 +2354,6 @@ func (btcc *BlipTesterCollectionClient) addRev(ctx context.Context, docID string
 		body:        newBody,
 		HLV:         updatedHLV,
 		version:     newVersion,
-		noRev:       opts.isNoRev,
 	}
 
 	if !hasLocalDoc {
