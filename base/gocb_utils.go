@@ -239,6 +239,11 @@ func NewClusterAgent(ctx context.Context, spec CouchbaseClusterSpec, waitUntilRe
 		DebugfCtx(ctx, KeyAll, "Parsed cluster connection string %q in: %v", UD(spec.Server), d)
 	}
 
+	// The cluster agent is only used for management requests, so its KV connections don't need a large read buffer.
+	// A kv_buffer_size in the connection string still takes precedence.
+	if config.KVConfig.ConnectionBufferSize == 0 {
+		config.KVConfig.ConnectionBufferSize = LowThroughputKvBufferSize
+	}
 	agent, err := gocbcore.CreateAgent(&config)
 	if err != nil {
 		return nil, fmt.Errorf("gocbcore.CreateAgent failed: %w", err)
