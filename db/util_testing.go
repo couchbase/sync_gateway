@@ -64,16 +64,11 @@ func (db *DatabaseContext) NewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *
 // StartChangeCache is called from the cache benchmarking tool to init the change cache, not to be called
 // from outside test code
 func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
-	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
-		db.mutationListener.Notify(ctx, changedChannels)
-	}
-
 	// Initialize the change cache
 	if err := db.changeCache.Init(
 		ctx,
 		db,
 		db.channelCache,
-		notifyChange,
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
@@ -1742,33 +1737,67 @@ func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Contex
 	return c._getMaxStableCached(ctx)
 }
 
-// SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries.
-func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
-	c.notifyChangeFunc = notify
-	c.manualNotify = false
+// SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries, in place of the
+// change listener. A flusher goroutine drains the cache's notifications into it on the broadcast interval, as the
+// listener's tick would, until the test ends or another callback is installed. Delivery therefore runs on that
+// goroutine, up to one interval after the entries are cached, so a test must wait for a notification rather than
+// expect it once DocChanged returns.
+func (c *changeCache) SetNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set)) {
+	override := &notifyOverride{notify: notify}
+	c.notifyOverride.Store(override)
+
+	interval := c.options.BroadcastChangesInterval
+	if interval <= 0 {
+		interval = DefaultBroadcastChangesTime
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		// A later setter replaces override, which ends this flusher so that only one goroutine drains for a test.
+		for c.notifyOverride.Load() == override {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				c.drainToCallback(override.notify)
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		close(stop)
+		<-done
+	})
 }
 
-// SetManualNotifyChangeFuncForTest installs the notify callback and switches the cache to manual-flush
-// mode, the mode in which FlushNotificationsForTest may be called. The cache still notifies inline as it
-// caches entries, so a flush has nothing to deliver yet; once notifications are batched, this mode will
-// leave their delivery to the test's flushes.
+// SetManualNotifyChangeFuncForTest installs the notify callback in place of the change listener, in manual-flush
+// mode: nothing drains the cache's notifications until the test calls FlushNotificationsForTest, so a test controls
+// exactly when they are delivered.
 func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
-	c.notifyChangeFunc = notify
-	c.manualNotify = true
+	c.notifyOverride.Store(&notifyOverride{notify: notify, manual: true})
 }
 
-// FlushNotificationsForTest delivers any pending notifications to the installed callback. It fails the
-// test unless manual-flush mode is installed, so a test can't silently rely on a flush that nothing owns.
+// FlushNotificationsForTest delivers every notification merged since the last flush to the installed callback, on
+// the calling goroutine. It fails the test unless manual-flush mode is installed, so a test can't silently race a
+// flusher goroutine for the notifications.
 func (c *changeCache) FlushNotificationsForTest(t testing.TB) {
 	t.Helper()
-	if !c.manualNotify {
+	override := c.notifyOverride.Load()
+	if override == nil || !override.manual {
 		t.Fatalf("FlushNotificationsForTest requires SetManualNotifyChangeFuncForTest")
 		return
 	}
-	// There is nothing to drain: each caching-feed path that caches entries (DocChanged, unused sequences
-	// and ranges, principal docs, and InsertPendingEntries) calls the notify callback itself as soon as the
-	// entries are cached.
-	// TODO: CBG-6117 drain the notify accumulator here.
+	c.drainToCallback(override.notify)
+}
+
+// drainToCallback drains the cache's notifications into a test's callback. The callback is given a copy, because the
+// accumulator clears the drained set for reuse once the drain returns and a test may keep what it receives.
+func (c *changeCache) drainToCallback(notify func(context.Context, channels.Set)) {
+	c.notifyAcc.Drain(func(keys channels.Set) {
+		notify(c.logCtx, maps.Clone(keys))
+	})
 }
 
 // ProcessPrincipalDocForTest caches a user or role document body as the caching feed does once it has

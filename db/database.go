@@ -2416,17 +2416,11 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 		}
 	}
 
-	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
-		db.mutationListener.Notify(ctx, changedChannels)
-	}
-
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	if err := db.changeCache.Init(
 		ctx,
 		db,
 		db.channelCache,
-		notifyChange,
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {

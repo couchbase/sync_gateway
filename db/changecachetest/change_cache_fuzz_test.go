@@ -226,11 +226,12 @@ func (h *fuzzHarness) start() {
 	h.channelCache = channelCache
 
 	cache := db.NewChangeCacheForTest(t)
-	require.NoError(t, cache.Init(ctx, h.env.dbContext, channelCache, nil, &options, h.env.dbContext.MetadataKeys))
-	// Init leaves the cache locked until Start, and its background tasks take that lock before they read the
-	// notify callback, so installing it here is ordered before every read. After Start it would race them.
+	require.NoError(t, cache.Init(ctx, h.env.dbContext, channelCache, &options, h.env.dbContext.MetadataKeys))
+	// In manual mode the callback runs only inside the harness's own flushes, so every notification is recorded at a
+	// step the harness chose.
 	cache.SetManualNotifyChangeFuncForTest(t, h.recordNotification)
-	// The hook runs under the same lock, so it is installed here for the same reason.
+	// Init leaves the cache locked until Start, and its background tasks take that lock before they call the hook, so
+	// installing it here is ordered before every call. After Start it would race them.
 	cache.SetRemoveSkippedHookForTest(t, h.recordSkippedRemoved)
 	require.NoError(t, cache.Start(0))
 	h.cache = cache

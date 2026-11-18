@@ -273,13 +273,39 @@ func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
 		return
 	}
 	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	listener._stampKeys(ctx, keys)
+}
+
+// _stampKeys advances the counter and records it against every key, so that a waiter for any of them sees a change.
+// It doesn't broadcast: waiters are woken by the next broadcast tick. Like Notify, it must not be given principal
+// keys. Requires tapNotifier.L.
+func (listener *changeListener) _stampKeys(ctx context.Context, keys channels.Set) {
 	listener.counter++
 	for key := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
 	base.DebugfCtx(ctx, base.KeyChanges, "Listener keys %q for %s have changed, count=%d",
 		base.UD(keys), base.MD(listener.bucketName), listener.counter)
-	listener.tapNotifier.L.Unlock()
+}
+
+// broadcastTick stamps the channels the change cache has gained entries for since the last tick, then wakes every
+// waiter if any key has changed since lastCount. Doing both in one tapNotifier.L hold means no waiter can read its
+// counts between the stamp and the broadcast: one that read them before is parked on tapNotifier and woken by this
+// broadcast, and one that reads them after sees the new counts, so none can miss the wake. Returns the count to pass
+// as lastCount next tick.
+func (listener *changeListener) broadcastTick(ctx context.Context, lastCount uint64) uint64 {
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	listener.dbCtx.changeCache.drainForBroadcast(func(keys channels.Set) {
+		listener._stampKeys(ctx, keys)
+	})
+	if listener.counter <= lastCount {
+		return lastCount
+	}
+	base.DebugfCtx(ctx, base.KeyChanges, "Notifying changes for %s count=%d", base.MD(listener.bucketName), listener.counter)
+	listener.tapNotifier.Broadcast()
+	return listener.counter
 }
 
 func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
@@ -298,15 +324,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				// if the counter has changed, notify waiting clients
-				listener.tapNotifier.L.Lock()
-				if listener.counter > currCount {
-					base.DebugfCtx(ctx, base.KeyChanges, "Notifying changes for %s count=%d", base.MD(listener.bucketName), listener.counter)
-					listener.tapNotifier.Broadcast()
-					currCount = listener.counter
-				}
-				listener.tapNotifier.L.Unlock()
-
+				currCount = listener.broadcastTick(ctx, currCount)
 				// check if we need to reset ticker value based on skipped sequence presence
 				newBroadcastSlowMode := listener.dbCtx.BroadcastSlowMode.Load()
 				if broadcastSlowMode != newBroadcastSlowMode {

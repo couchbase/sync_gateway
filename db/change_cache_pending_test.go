@@ -147,7 +147,7 @@ func TestAddPendingLogs(t *testing.T) {
 			ctx := base.TestCtx(t)
 			testChannelID := channels.NewID(testCase.channelName, GetSingleDatabaseCollection(t, dbContext).GetCollectionID())
 			testChangeCache := &changeCache{}
-			if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+			if err := testChangeCache.Init(ctx, dbContext, dbContext.channelCache, &CacheOptions{
 				CachePendingSeqMaxWait: 1 * time.Minute,
 				CacheSkippedSeqMaxWait: 20 * time.Minute,
 				CachePendingSeqMaxNum:  10,
@@ -229,7 +229,7 @@ func TestAddPendingLogsStaleRangeAdvancesHighCacheSequence(t *testing.T) {
 	defer dbContext.Close(ctx)
 
 	testChangeCache := &changeCache{}
-	require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.channelCache, nil, &CacheOptions{
+	require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.channelCache, &CacheOptions{
 		CachePendingSeqMaxWait: time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  10,

@@ -17,10 +17,13 @@ import (
 
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-func TestManualNotifyDeliversInline(t *testing.T) {
+// TestManualNotifyDeliversOnFlush checks that manual-flush mode holds notifications back until the test flushes,
+// and that a flush then delivers them on the calling goroutine.
+func TestManualNotifyDeliversOnFlush(t *testing.T) {
 	database, ctx := db.SetupTestDB(t)
 	defer database.Close(ctx)
 
@@ -28,27 +31,26 @@ func TestManualNotifyDeliversInline(t *testing.T) {
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 	expected := channels.NewID("zero", collection.GetCollectionID())
 
-	// Capacity 1 with a non-blocking send: further matching notifications must never block the caching feed.
-	notified := make(chan struct{}, 1)
+	// The callback runs only inside FlushNotificationsForTest, and only one flush runs at a time (EventuallyWithT
+	// runs its conditions one after another), so it needs no lock.
+	var notified []channels.Set
 	cache := database.ChangeCacheForTest(t)
 	cache.SetManualNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		if !chans.Contains(expected) {
-			return
-		}
-		select {
-		case notified <- struct{}{}:
-		default:
+		if chans.Contains(expected) {
+			notified = append(notified, chans)
 		}
 	})
 
 	_, _, err := collection.Put(ctx, "manualNotifyDoc", db.Body{"channels": []string{"zero"}})
 	require.NoError(t, err)
 
-	// The caching feed notifies inline: DocChanged calls the notify callback as soon as processEntry has
-	// cached the entry, so the channel arrives without a flush.
-	select {
-	case <-notified:
-	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for notify")
-	}
+	// Nothing but a flush delivers in manual mode, so nothing has arrived yet, however far the caching feed has got.
+	require.Empty(t, notified)
+
+	// Put returns before the caching feed has processed the write, and the merge into the accumulator follows the
+	// caching, so an early flush can find nothing to deliver: flush on every poll until the channel arrives.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cache.FlushNotificationsForTest(t)
+		assert.Len(c, notified, 1)
+	}, 10*time.Second, 10*time.Millisecond)
 }

@@ -1281,10 +1281,10 @@ func readNextFromFeed(feed <-chan (*db.ChangeEntry), timeout time.Duration) (*db
 //
 // Create doc1 w/ unused sequences 1, actual sequence 3.
 // Create doc2 w/ sequence 2, channel ABC
-// Send feed event for doc2. This won't trigger notifyChangeFunc, as buffering is waiting for seq 1
-// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChangeFunc for channel ABC.
+// Send feed event for doc2. This won't trigger the notify callback, as buffering is waiting for seq 1
+// Send feed event for doc1. This should trigger caching for doc2, and trigger the notify callback for channel ABC.
 //
-// Verify that notifyChangeFunc for channel ABC was sent.
+// Verify that the notify callback was called for channel ABC.
 func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	base.LongRunningTest(t)
 
@@ -1302,9 +1302,9 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	collection := db.GetSingleDatabaseCollection(t, database.DatabaseContext)
 	collectionID := collection.GetCollectionID()
 
-	// -------- Setup notifyChangeFunc callback ----------------
+	// -------- Setup notify callback ----------------
 
-	//  Detect whether the 2nd was ignored using an notifyChangeFunc listener callback and make sure it was not added to the ABC channel
+	//  Detect whether the 2nd was ignored using the notify callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
 	database.ChangeCacheForTest(t).SetNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
@@ -1376,7 +1376,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	require.NoError(t, err)
 	doc2DCPBytes = sgbucket.EncodeValueWithXattrs(body, sgbucket.Xattr{Name: base.SyncXattrName, Value: syncXattr})
 
-	// Send feed event for doc2. This won't trigger notifyChangeFunc, as buffering is waiting for seq 1
+	// Send feed event for doc2. This won't trigger the notify callback, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
 		Synchronous:  true,
 		Key:          []byte(doc2Id),
@@ -1386,7 +1386,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	database.ChangeCacheForTest(t).DocChanged(feedEventDoc2, db.DocTypeDocument)
 
-	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChangeFunc for channel ABC.
+	// Send feed event for doc1. This should trigger caching for doc2, and trigger the notify callback for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
 		Synchronous:  true,
 		Key:          []byte(doc1Id),
@@ -1397,7 +1397,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Wait for waitgroup ----------------
 
-	// Block until the notifyChangeFunc callback was invoked with the expected channels.
+	// Block until the notify callback was invoked with the expected channels.
 	// If the callback is never called back with expected, will block forever.
 	waitForOnChangeCallback.Wait()
 
@@ -1547,7 +1547,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 }
 
-// Verify that notifyChangeFunc for channel zero is sent even when the channel isn't active in the cache.
+// Verify that the notify callback is called for channel zero even when the channel isn't active in the cache.
 func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Enable relevant logging
@@ -1560,7 +1560,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
 	collectionID := collection.GetCollectionID()
 
-	// -------- Setup notifyChangeFunc callback ----------------
+	// -------- Setup notify callback ----------------
 
 	notifyChannel := make(chan struct{})
 	database.ChangeCacheForTest(t).SetNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
@@ -1749,7 +1749,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			collectionID := collection.GetCollectionID()
 
 			changeCache := db.NewChangeCacheForTest(b)
-			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(b), nil, nil, context.MetadataKeys); err != nil {
+			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(b), nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -1913,7 +1913,7 @@ func BenchmarkDocChanged(b *testing.B) {
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := db.NewChangeCacheForTest(b)
-			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(b), nil, nil, context.MetadataKeys); err != nil {
+			if err := changeCache.Init(ctx, context, context.ChannelCacheForTest(b), nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -1973,7 +1973,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 2 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2050,7 +2050,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 2 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2128,7 +2128,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 2 * time.Second,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2186,7 +2186,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 5 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 	}, dbContext.MetadataKeys); err != nil {
@@ -2251,7 +2251,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  5,
@@ -2310,7 +2310,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  5,
@@ -2376,7 +2376,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2474,7 +2474,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2557,7 +2557,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2626,7 +2626,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 100 * time.Millisecond,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  1,
@@ -2697,7 +2697,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 20 * time.Minute,
 		CacheSkippedSeqMaxWait: 20 * time.Minute,
 		CachePendingSeqMaxNum:  0,
@@ -2809,7 +2809,7 @@ func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
 	require.NoError(t, err)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &db.CacheOptions{
+	if err := testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &db.CacheOptions{
 		CachePendingSeqMaxWait: 2 * time.Nanosecond,
 		CacheSkippedSeqMaxWait: 1 * time.Second,
 		CachePendingSeqMaxNum:  0,
@@ -2970,7 +2970,7 @@ func TestChangeCacheLastSequence(t *testing.T) {
 			cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
 
 			testChangeCache := db.NewChangeCacheForTest(t)
-			require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, &cacheOptions, dbContext.MetadataKeys))
+			require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), &cacheOptions, dbContext.MetadataKeys))
 			require.NoError(t, testChangeCache.Start(initialSequence))
 			defer testChangeCache.Stop(ctx)
 
@@ -3027,7 +3027,7 @@ func TestDocChangedStartupSequenceFilter(t *testing.T) {
 
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3077,7 +3077,7 @@ func TestDocChangedBeforeStart(t *testing.T) {
 
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, nil, database.DatabaseContext.MetadataKeys))
+		nil, database.DatabaseContext.MetadataKeys))
 	defer changeCache.Stop(ctx)
 
 	syncDataFor := func(seq uint64) db.SyncData {
@@ -3134,7 +3134,7 @@ func TestDocChangedRecentSequences(t *testing.T) {
 
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3202,7 +3202,7 @@ func TestDocChangedFeedLatencyStat(t *testing.T) {
 		cacheOptions := db.DefaultCacheOptions()
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		// Init records the current time; place it before Start so the elapsed time is known.
 		changeCache.SetInitTimeForTest(t, initTime)
 		require.NoError(t, changeCache.Start(0))
@@ -3255,7 +3255,7 @@ func TestDocChangedUnusedSequences(t *testing.T) {
 	cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3284,7 +3284,7 @@ func TestDocChangedVersionVector(t *testing.T) {
 	cacheOptions := db.DefaultCacheOptions()
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(0))
 	defer changeCache.Stop(ctx)
 
@@ -3323,7 +3323,7 @@ func TestDocChangedSGCfgDoc(t *testing.T) {
 	cacheOptions := db.DefaultCacheOptions()
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(0))
 	defer changeCache.Stop(ctx)
 
@@ -3360,7 +3360,7 @@ func TestDocChangedSkippedRecentSequence(t *testing.T) {
 
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3493,7 +3493,7 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		cacheOptions := db.DefaultCacheOptions()
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
 		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
 		require.NoError(t, changeCache.Start(initialSequence))
@@ -3518,7 +3518,7 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
 		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
 		require.NoError(t, changeCache.Start(initialSequence))
@@ -3551,7 +3551,7 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
 		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
 		require.NoError(t, changeCache.Start(initialSequence))
@@ -3592,7 +3592,7 @@ func TestProcessEntryRouting(t *testing.T) {
 		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
@@ -3617,7 +3617,7 @@ func TestProcessEntryRouting(t *testing.T) {
 		cacheOptions := db.DefaultCacheOptions()
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
@@ -3642,7 +3642,7 @@ func TestProcessEntryRouting(t *testing.T) {
 		cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
@@ -3671,7 +3671,7 @@ func TestSkippedSequenceBookkeeping(t *testing.T) {
 
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3710,7 +3710,7 @@ func TestReleaseUnusedSequenceRange(t *testing.T) {
 
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3744,7 +3744,7 @@ func TestDocChangedUnusedSequenceRangeKey(t *testing.T) {
 	cacheOptions.CachePendingSeqMaxWait = 2 * time.Minute
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3818,7 +3818,7 @@ func TestDocChangedEvictsRevisionCacheOnUnchangedCV(t *testing.T) {
 		cacheOptions := db.DefaultCacheOptions()
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-			nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+			&cacheOptions, database.DatabaseContext.MetadataKeys))
 		require.NoError(t, changeCache.Start(0))
 		defer changeCache.Stop(ctx)
 
@@ -3874,7 +3874,7 @@ func TestMaxStableCachedWithSkippedSequence(t *testing.T) {
 	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -3907,7 +3907,7 @@ func TestWaitForSequenceNotSkipped(t *testing.T) {
 	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
 	changeCache := db.NewChangeCacheForTest(t)
 	require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
-		nil, &cacheOptions, database.DatabaseContext.MetadataKeys))
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
 	require.NoError(t, changeCache.Start(initialSequence))
 	defer changeCache.Stop(ctx)
 
@@ -4043,7 +4043,7 @@ func TestChangeCacheLastSequenceBeforeStart(t *testing.T) {
 	ctx = dbContext.AddDatabaseLogContext(ctx)
 
 	testChangeCache := db.NewChangeCacheForTest(t)
-	require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, nil, dbContext.MetadataKeys))
+	require.NoError(t, testChangeCache.Init(ctx, dbContext, dbContext.ChannelCacheForTest(t), nil, dbContext.MetadataKeys))
 
 	lastSequenceCh := make(chan uint64, 1)
 	go func() {
