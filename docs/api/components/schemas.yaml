@@ -1089,6 +1089,14 @@ Database:
               description: The maximum number of channel caches which can exist at any one point.
               type: integer
               default: 50000
+            max_runs_in_flight:
+              description: |-
+                The maximum number of batches of sequences waiting to be added to the channel caches.
+
+                **This is an Enterprise Edition feature only**
+              type: integer
+              minimum: 1024
+              maximum: 65536
             max_wait_pending:
               description: The maximum time (in milliseconds) for waiting for a pending sequence before skipping it.
               type: integer

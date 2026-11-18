@@ -1427,7 +1427,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 				cacheOptions.CompactLowWatermarkPercent = *lwm
 			}
 		}
-
 		if config.CacheConfig.RevCacheConfig != nil {
 			if config.CacheConfig.RevCacheConfig.MaxItemCount != nil {
 				revCacheOptions.MaxItemCount = *config.CacheConfig.RevCacheConfig.MaxItemCount
@@ -1447,6 +1446,14 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			}
 		}
 	}
+	maxRunsInFlight, err := config.maxRunsInFlight()
+	if err != nil {
+		return db.DatabaseContextOptions{}, err
+	}
+	if config.CacheConfig == nil || config.CacheConfig.ChannelCacheConfig == nil || config.CacheConfig.ChannelCacheConfig.MaxRunsInFlight == nil {
+		base.DebugfCtx(ctx, base.KeyCache, "cache.channel_cache.max_runs_in_flight not set, sized to %d from max_num_pending %d", maxRunsInFlight, cacheOptions.CachePendingSeqMaxNum)
+	}
+	cacheOptions.MaxRunsInFlight = maxRunsInFlight
 
 	// In sync gateway version 4.0+ we do not support the disabling of use of xattrs
 	if config.EnableXattrs != nil && !*config.EnableXattrs {

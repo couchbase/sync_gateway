@@ -116,6 +116,16 @@ func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*Db
 		return nil, err
 	}
 
+	// max_runs_in_flight has no fixed default: when unset it is sized from max_num_pending, so it can only be
+	// filled in once the merge has settled max_num_pending.
+	if defaultDbConfig.CacheConfig.ChannelCacheConfig.MaxRunsInFlight == nil {
+		maxRunsInFlight, err := defaultDbConfig.maxRunsInFlight()
+		if err != nil {
+			return nil, err
+		}
+		defaultDbConfig.CacheConfig.ChannelCacheConfig.MaxRunsInFlight = new(uint32(maxRunsInFlight))
+	}
+
 	return defaultDbConfig, nil
 }
 

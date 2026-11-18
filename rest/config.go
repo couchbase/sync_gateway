@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/dispatchtracker"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbaselabs/rosmar"
 )
@@ -268,6 +269,7 @@ type ChannelCacheConfig struct {
 	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
+	MaxRunsInFlight      *uint32 `json:"max_runs_in_flight,omitempty"`         // Maximum number of runs of sequences between ordering and channel caches; sized from max_num_pending when unset
 	DeprecatedQueryLimit *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client DEPRECATED in favour of db.QueryPaginationLimit
 }
 
@@ -797,6 +799,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 					base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
 				}
+				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxRunsInFlight; val != nil {
+					base.WarnfCtx(ctx, eeOnlyWarningMsg, "cache.channel_cache.max_runs_in_flight", *val, "sized from max_num_pending")
+					dbConfig.CacheConfig.ChannelCacheConfig.MaxRunsInFlight = nil
+				}
 			}
 
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending < 1 {
@@ -842,6 +848,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			if dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil && !*dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel {
 				multiError = multiError.Append(fmt.Errorf("enable_star_channel cannot be set to false"))
 			}
+		}
+		// Outside the channel_cache block, since the deprecated cache.max_num_pending alone can make this fail.
+		if _, err := dbConfig.maxRunsInFlight(); err != nil {
+			multiError = multiError.Append(err)
 		}
 
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
@@ -1159,6 +1169,45 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	return multiError.ErrorOrNil()
+}
+
+// maxRunsInFlight resolves cache.channel_cache.max_runs_in_flight: the configured value when set, otherwise
+// the smallest capacity that holds one full cascade of the effective max_num_pending. Either way the result
+// must satisfy the completion tracker's capacity rules.
+//
+// This runs during validation and the runtime config merge, before deprecatedConfigCacheFallback has copied
+// the deprecated cache.max_num_pending into cache.channel_cache.max_num_pending, so it applies the same
+// precedence itself: the new option wins, the deprecated one is used when only it is set.
+func (dbConfig *DbConfig) maxRunsInFlight() (uint64, error) {
+	maxNumPending := db.DefaultCachePendingSeqMaxNum
+	maxNumPendingKey := "cache.channel_cache.max_num_pending"
+	var configured *uint32
+	if dbConfig.CacheConfig != nil {
+		if dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum != nil {
+			maxNumPending = *dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum
+			maxNumPendingKey = "cache.max_num_pending"
+		}
+		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil {
+				maxNumPending = *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending
+				maxNumPendingKey = "cache.channel_cache.max_num_pending"
+			}
+			configured = dbConfig.CacheConfig.ChannelCacheConfig.MaxRunsInFlight
+		}
+	}
+	// Size from max_num_pending even when a value is configured, so that a max_num_pending too large for any
+	// value is reported against max_num_pending rather than against max_runs_in_flight.
+	capacity, err := dispatchtracker.CapacityFor(maxNumPending)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", maxNumPendingKey, err)
+	}
+	if configured == nil {
+		return capacity, nil
+	}
+	if err := dispatchtracker.ValidateCapacity(uint64(*configured), maxNumPending); err != nil {
+		return 0, fmt.Errorf("cache.channel_cache.max_runs_in_flight: %w", err)
+	}
+	return uint64(*configured), nil
 }
 
 // Checks for deprecated cache config options and if they are set it will return a warning. If the old one is set and
