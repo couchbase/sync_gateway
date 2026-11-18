@@ -447,7 +447,7 @@ func SuspendSequenceBatching() func() {
 
 // IsRunningForTest returns true if Start ran its background task and Stop has not been called.
 func (tm *TimestampsManager) IsRunningForTest() bool {
-	return len(tm.backgroundTasks) > 0 && !tm.stopped.IsTrue()
+	return tm.started.IsTrue() && !tm.stopped.IsTrue()
 }
 
 // Public channel view call - for unit test support

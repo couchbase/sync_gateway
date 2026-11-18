@@ -94,7 +94,7 @@ func (ts *TimestampsSeqArray) isDue(now int64, updateFrequency time.Duration) bo
 // purgeSequence returns the sequence of the oldest entry if it is at or before purgeTimestamp (epoch seconds), and 0
 // otherwise. Between two trims a newer entry can also be old enough, so the result can be one entry behind.
 func (ts *TimestampsSeqArray) purgeSequence(purgeTimestamp int64) uint64 {
-	if !ts.isEmpty() && ts.Timestamps[0].Timestamp <= purgeTimestamp {
+	if !ts.isEmpty() && ts.oldestTimestamp() <= purgeTimestamp {
 		return ts.Timestamps[0].Seq
 	}
 	return 0
@@ -118,6 +118,7 @@ type TimestampsManager struct {
 	nowFunc                     func() time.Time
 	backgroundTasks             []BackgroundTask
 	terminator                  chan bool
+	started                     base.AtomicBool // set once Start has added the background task, so that tests can read it without a lock
 	stopped                     base.AtomicBool
 	dbName                      string
 	testUpdateFrequencyOverride *time.Duration
@@ -163,6 +164,12 @@ func (tm *TimestampsManager) purgeInterval() time.Duration {
 		return purgeInterval
 	}
 	return base.DefaultClientPartitionWindow
+}
+
+// purgeTimestamp returns the start of the purge interval that ends at now, in epoch seconds. trim and GetPurgeSequence
+// both use it, so that the entry that trim keeps is the entry that gives the purge sequence.
+func (tm *TimestampsManager) purgeTimestamp(now int64) int64 {
+	return now - int64(tm.purgeInterval()/time.Second)
 }
 
 // updateFrequency returns the minimum time between two entries: the purge interval split across
@@ -224,6 +231,7 @@ func (tm *TimestampsManager) Start(ctx context.Context) error {
 		return err
 	}
 	tm.backgroundTasks = append(tm.backgroundTasks, bgt)
+	tm.started.Set(true)
 	return nil
 }
 
@@ -290,8 +298,7 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 			}
 			timestampsSeqArray.append(lastSeq, now)
 			// trim after the append, so that the new entry counts when the array is trimmed
-			purgeTimestamp := now - int64(tm.purgeInterval()/time.Second)
-			timestampsSeqArray.trim(purgeTimestamp)
+			timestampsSeqArray.trim(tm.purgeTimestamp(now))
 		}
 
 		newValBytes, err = base.JSONMarshal(timestampsSeqArray)
@@ -320,7 +327,5 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 // GetPurgeSequence returns the sequence that was current at the start of the purge interval, from the in-memory array.
 // It returns 0 if the oldest entry is newer than the start of the purge interval, or if the array is empty.
 func (tm *TimestampsManager) GetPurgeSequence() uint64 {
-	now := tm.nowFunc().Unix()
-	purgeTimestamp := now - int64(tm.purgeInterval()/time.Second)
-	return tm.timestampsSeqArray.Load().purgeSequence(purgeTimestamp)
+	return tm.timestampsSeqArray.Load().purgeSequence(tm.purgeTimestamp(tm.nowFunc().Unix()))
 }

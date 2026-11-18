@@ -1306,6 +1306,33 @@ func TestTimestampsManagerStop(t *testing.T) {
 	require.NotPanics(t, func() { tm.Stop(ctx) })
 }
 
+// TestTimestampsManagerIsRunningForTest makes sure that IsRunningForTest is false before Start and after Stop, and that
+// it can be called while Start runs on another goroutine, as it does when a database comes online asynchronously.
+func TestTimestampsManagerIsRunningForTest(t *testing.T) {
+	ctx := t.Context()
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:   func(context.Context) (uint64, error) { return 0, nil },
+		dbName:            t.Name(),
+	})
+	require.False(t, tm.IsRunningForTest())
+
+	startErr := make(chan error)
+	go func() { startErr <- tm.Start(ctx) }()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, tm.IsRunningForTest())
+	}, 10*time.Second, time.Millisecond)
+	require.NoError(t, <-startErr)
+
+	tm.Stop(ctx)
+	require.False(t, tm.IsRunningForTest())
+}
+
 // TestTimestampsManagerStartCorruptDoc makes sure that Start resets a timestamps document that can't be parsed to an
 // empty array, replaces the in-memory copy with it, and starts the background task, so that recording heals by itself.
 func TestTimestampsManagerStartCorruptDoc(t *testing.T) {
