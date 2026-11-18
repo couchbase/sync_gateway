@@ -1,6 +1,6 @@
 ---
 name: sync-gateway-flaky-test-ticket
-description: Use when the user wants a CBG Jira ticket filed for a flaky or intermittently failing Sync Gateway test. The user gives a Jenkins build link or a GitHub Actions run link. The ticket is titled "Flaky test: <TestName>" and its description has the link and the failure output of the test. Use for requests like "file a flaky test ticket for this", "open a ticket for TestFoo, it failed here: <url>", "make a CBG for this flake", or a pasted CI link with "flaky". Not for fixing the test, and not for backport tickets (that is sync-gateway-backport-tickets).
+description: 'Use when the user wants a CBG Jira ticket filed for a flaky or intermittently failing Sync Gateway test. The user gives a Jenkins build link or a GitHub Actions run link. The ticket is titled "Flaky test: <TestName>" and its description has the link and the failure output of the test. Use for requests like "file a flaky test ticket for this", "open a ticket for TestFoo, it failed here: <url>", "make a CBG for this flake", or a pasted CI link with "flaky". Not for fixing the test, and not for backport tickets (that is sync-gateway-backport-tickets).'
 ---
 
 # Sync Gateway Flaky Test Ticket
@@ -22,7 +22,7 @@ For Jenkins:
 
 1. Call `getBuild` for the job and build. Take the branch (usually the last job segment), the date (`timestamp`), and the result.
 2. Call `getTestResults` with `onlyFailingTests: true`. Find the record of the test. Take its error details, stack trace, and stdout.
-3. If the test results do not have the output, call `searchBuildLog` with the pattern `--- FAIL: <TestName>`. Set `contextLines` to get the `=== RUN` to `--- FAIL` block.
+3. If the test results do not have the output, use the archived `verbose*.out` file of the build (for example `verbose_ee.out` or `verbose_int.out`). Do not use the console log, because the Jenkins jobs filter the test output out of it. The `artifacts` of `getBuild` list the file, and its URL is `<build url>artifact/<relativePath>`. The Jenkins tools cannot download an artifact. Ask the user to save the file to the scratchpad or to paste the block of the test. Then take the block as in step 3 for GitHub Actions.
 
 For GitHub Actions:
 
@@ -82,6 +82,8 @@ To reopen a ticket, move it to Reopened (or the nearest open status) with `trans
   - No assignee: Jira sets the project default. No fixVersion and no sprint.
 
 Use cloud ID `jira.issues.couchbase.com` for the Atlassian tools.
+
+Before you create, call `getJiraIssueTypeMetaWithFields` with `projectIdOrKey: "CBG"`, the `Bug` issue type ID, and `requiredFieldsOnly: false`. The result is large and goes to a file, so read the field IDs with `jq -r '.fields[] | .fieldId' <file>`. If `security` is not in the list, stop and tell the user. Without `security` on the create screen, the ticket is public until a later edit sets the security level.
 
 ## Confirm before you create
 
