@@ -203,9 +203,6 @@ func (tm *TimestampsManager) entryDue() bool {
 // is logged rather than returned, because NewBackgroundTask stops on an error; the array still shows the entry as due,
 // so the next check retries.
 func (tm *TimestampsManager) checkEntry(ctx context.Context) error {
-	if !tm.entryDue() {
-		return nil
-	}
 	if err := tm.addEntry(ctx); err != nil {
 		base.WarnfCtx(ctx, "Unable to add timestamps entry, retrying in %v: %v", tm.checkInterval(), err)
 	}
@@ -324,8 +321,27 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	return nil
 }
 
+// LoadTimestampsSeqArray replaces the in-memory array with the timestamps document as it is stored, without an append
+// or a trim. If the document is missing or cannot be parsed, it returns the error and keeps the in-memory array.
+func (tm *TimestampsManager) LoadTimestampsSeqArray(ctx context.Context) error {
+	var tsSeqArray TimestampsSeqArray
+	_, err := tm.metadataStore.Get(ctx, tm.metaKeys.TimestampsSeqKey(), &tsSeqArray)
+	if err != nil {
+		return err
+	}
+	tm.updateTimestampsArray(tsSeqArray)
+	return nil
+}
+
 // GetPurgeSequence returns the sequence that was current at the start of the purge interval, from the in-memory array.
-// It returns 0 if the oldest entry is newer than the start of the purge interval, or if the array is empty.
-func (tm *TimestampsManager) GetPurgeSequence() uint64 {
+// If the array is empty, it loads the timestamps document first. It returns 0 if the oldest entry is newer than the
+// start of the purge interval, or if the array is still empty.
+func (tm *TimestampsManager) GetPurgeSequence(ctx context.Context) uint64 {
+	if tm.timestampsSeqArray.Load().isEmpty() {
+		err := tm.LoadTimestampsSeqArray(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error loading timestamps sequence from DB: %v", err)
+		}
+	}
 	return tm.timestampsSeqArray.Load().purgeSequence(tm.purgeTimestamp(tm.nowFunc().Unix()))
 }

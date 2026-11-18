@@ -639,15 +639,20 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	distributedResync := dbContext.useShardedDCP()
 	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
-	// Created here rather than in StartOnlineProcesses, because the import feed can update documents before Start runs
-	dbContext.TimestampsManager = NewTimestampsManager(TimestampsMgrOpts{
-		metadataStore:     metadataStore,
+
+	// The timestamps document and the sequence read use the same store, so that both count as idle KV ops
+	idleMetadataStore := base.NewIdleKVOpDataStore(dbContext.MetadataStore)
+	timestampsMgrOpts := TimestampsMgrOpts{
+		metadataStore:     idleMetadataStore,
 		metaKeys:          dbContext.MetadataKeys,
 		purgeIntervalFunc: dbContext.ClientPartitionWindow,
-		getSequenceFunc:   dbContext.GetRequestPlusSequence,
-		nowFunc:           options.TestTimestampsNowFunc,
-		dbName:            dbName,
-	})
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return base.GetCounter(ctx, idleMetadataStore, dbContext.MetadataKeys.SyncSeqKey())
+		},
+		dbName:  dbContext.Name,
+		nowFunc: options.TestTimestampsNowFunc,
+	}
+	dbContext.TimestampsManager = NewTimestampsManager(timestampsMgrOpts)
 
 	var joinResync resyncJoinFunc
 	if distributedResync {
@@ -2640,22 +2645,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.startReplications(ctx)
 
-	// The timestamps document and the sequence read use the same store, so that both count as idle KV ops
-	idleMetadataStore := base.NewIdleKVOpDataStore(db.MetadataStore)
-	timestampsMgrOpts := TimestampsMgrOpts{
-		metadataStore:     idleMetadataStore,
-		metaKeys:          db.MetadataKeys,
-		purgeIntervalFunc: db.ClientPartitionWindow,
-		getSequenceFunc: func(ctx context.Context) (uint64, error) {
-			return base.GetCounter(ctx, idleMetadataStore, db.MetadataKeys.SyncSeqKey())
-		},
-		dbName: db.Name,
-	}
-	db.TimestampsManager = NewTimestampsManager(timestampsMgrOpts)
-
-	err = db.TimestampsManager.Start(ctx)
-	if err != nil {
-		return err
+	timestampsMgrErr := db.TimestampsManager.Start(ctx)
+	if timestampsMgrErr != nil {
+		return timestampsMgrErr
 	}
 
 	return nil
