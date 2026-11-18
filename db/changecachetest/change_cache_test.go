@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1922,6 +1921,8 @@ func BenchmarkDocChanged(b *testing.B) {
 				b.Fail()
 			}
 			defer changeCache.Stop(ctx)
+			// This cache has no change listener, so drain its notifications on the default tick as the listener would.
+			changeCache.StartNotifyDrainerForTest(b, db.DefaultBroadcastChangesTime)
 
 			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {
@@ -3397,72 +3398,52 @@ func TestDocChangedSkippedRecentSequence(t *testing.T) {
 	assert.Equal(t, "skippedDoc", cached[0].DocID)
 }
 
-// notification is one call to the change cache's notify function, stamped with the cached-sequence watermark at the
-// moment it ran.
+// notification is one delivery to the change cache's notify callback, stamped with the cached-sequence watermark at
+// the moment it ran.
 type notification struct {
 	channels  channels.Set
 	watermark uint64
 }
 
-// notifyRecorder collects change notifications. Each one is stamped with the watermark when it fires, so a test can
-// check that nothing was notified before it was readable: a feed woken for a change it cannot yet see reads nothing
-// and goes back to sleep. That check holds however late a notification is delivered, so it needs no timing window.
+// notifyCache is the part of the change cache a notifyRecorder drives. The cache type itself is unexported in package
+// db, so the recorder holds it through this interface.
+type notifyCache interface {
+	GetChannelCacheForTest(t testing.TB) db.ChannelCache
+	SetManualNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set))
+	FlushNotificationsForTest(t testing.TB)
+}
+
+// notifyRecorder collects change notifications in manual-flush mode. Notifications collect in the cache until a tick
+// drains them, so one delivered at an arbitrary later time could carry a channel merged too early alongside the
+// readable change that followed it. The test instead flushes after each step it drives, on its own goroutine, and
+// each delivery is stamped with the watermark at the flush: a channel merged before its change was readable is
+// delivered by the flush for that step, while the watermark is still below the change.
 type notifyRecorder struct {
+	cache        notifyCache
 	channelCache db.ChannelCache
-	lock         sync.Mutex
 	notified     []notification
 }
 
-func newNotifyRecorder(channelCache db.ChannelCache) *notifyRecorder {
-	return &notifyRecorder{channelCache: channelCache}
+// newNotifyRecorder installs the recorder as cache's manual-flush notify callback. Call it before the cache starts.
+func newNotifyRecorder(t *testing.T, cache notifyCache) *notifyRecorder {
+	r := &notifyRecorder{cache: cache, channelCache: cache.GetChannelCacheForTest(t)}
+	cache.SetManualNotifyChangeFuncForTest(t, r.record)
+	return r
 }
 
+// record runs only inside flush, on the test's goroutine, so it needs no lock.
 func (r *notifyRecorder) record(_ context.Context, channelSet channels.Set) {
-	watermark := r.channelCache.GetHighCacheSequence()
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	r.notified = append(r.notified, notification{channels: channelSet, watermark: watermark})
+	r.notified = append(r.notified, notification{channels: channelSet, watermark: r.channelCache.GetHighCacheSequence()})
 }
 
-func (r *notifyRecorder) snapshot() []notification {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	return slices.Clone(r.notified)
-}
-
-// waitForCount waits until exactly count notifications have arrived and returns them.
-func (r *notifyRecorder) waitForCount(t *testing.T, count int, msgAndArgs ...any) []notification {
+// flush delivers everything merged since the last flush and returns what it delivered. The cache merges before
+// DocChanged returns, so a flush after DocChanged sees everything that call merged. Each flush delivers at most one
+// notification.
+func (r *notifyRecorder) flush(t *testing.T) []notification {
 	t.Helper()
-	var notifications []notification
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		notifications = r.snapshot()
-		assert.Len(c, notifications, count, msgAndArgs...)
-	}, 10*time.Second, 10*time.Millisecond)
-	return notifications
-}
-
-// requireNothingNotifiedBefore checks that no notification of any kind - for any channel set, including an empty one
-// - fired before the watermark reached watermark. While a test holds a sequence back, the watermark cannot pass it,
-// so anything notified during that time carries the lower stamp and fails here however late it was delivered.
-func (r *notifyRecorder) requireNothingNotifiedBefore(t *testing.T, watermark uint64) {
-	t.Helper()
-	for _, n := range r.snapshot() {
-		require.GreaterOrEqual(t, n.watermark, watermark,
-			"%v was notified at watermark %d, before anything after %d was readable", n.channels, n.watermark, watermark-1)
-	}
-}
-
-// requireNotNotifiedBefore checks that every notification for channelID fired once the watermark had reached
-// visibleAt. Call it after the change at visibleAt has been released and notified: an early notification for the
-// channel is in the recording by then, carrying the lower watermark it fired at.
-func (r *notifyRecorder) requireNotNotifiedBefore(t *testing.T, channelID channels.ID, visibleAt uint64) {
-	t.Helper()
-	for _, n := range r.snapshot() {
-		if n.channels.Contains(channelID) {
-			require.GreaterOrEqual(t, n.watermark, visibleAt,
-				"%s was notified at watermark %d, before its change at %d was readable", channelID, n.watermark, visibleAt)
-		}
-	}
+	before := len(r.notified)
+	r.cache.FlushNotificationsForTest(t)
+	return r.notified[before:]
 }
 
 // TestChangeCacheNotifiesChangedChannels covers the notification that wakes a changes feed. A
@@ -3494,19 +3475,18 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 			&cacheOptions, database.DatabaseContext.MetadataKeys))
-		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
-		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
+		notified := newNotifyRecorder(t, changeCache)
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
 		changeCache.DocChanged(feedEventForTest(t, "twoChannelDoc", collectionID, syncDataFor(101, "ABC", "XYZ")), db.DocTypeDocument)
 
-		notifications := notified.waitForCount(t, 1, "one write is one notification")
-		_, hasABC := notifications[0].channels[channels.NewID("ABC", collectionID)]
-		_, hasXYZ := notifications[0].channels[channels.NewID("XYZ", collectionID)]
-		assert.True(t, hasABC)
-		assert.True(t, hasXYZ)
+		notifications := notified.flush(t)
+		require.Len(t, notifications, 1, "the write's channels must be waiting to be notified once it is cached")
+		assert.True(t, notifications[0].channels.Contains(channels.NewID("ABC", collectionID)))
+		assert.True(t, notifications[0].channels.Contains(channels.NewID("XYZ", collectionID)))
 		assert.GreaterOrEqual(t, notifications[0].watermark, uint64(101), "the write must be readable when its channels are woken")
+		assert.Empty(t, notified.flush(t), "a write's channels must be merged once, not again later")
 	})
 
 	t.Run("a buffered write is not notified until it is readable", func(t *testing.T) {
@@ -3519,8 +3499,7 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 			&cacheOptions, database.DatabaseContext.MetadataKeys))
-		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
-		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
+		notified := newNotifyRecorder(t, changeCache)
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
@@ -3528,18 +3507,15 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		// change it cannot see reads nothing and sleeps through it.
 		abcChannel := channels.NewID("ABC", collectionID)
 		changeCache.DocChanged(feedEventForTest(t, "pendingDoc", collectionID, syncDataFor(102, "ABC")), db.DocTypeDocument)
+		require.Empty(t, notified.flush(t), "nothing may be notified while 102 is held behind 101")
 
-		// 101 in another channel releases both. Anything notified while 102 was held - for any channel set -
-		// carries the startup watermark, and a notification for ABC before 102 itself was readable carries a
-		// watermark below 102, so checking the stamps once ABC is notified catches either however late it was
-		// delivered.
+		// 101 in another channel releases both, and both are readable by the time they are notified.
 		changeCache.DocChanged(feedEventForTest(t, "blockingDoc", collectionID, syncDataFor(101, "XYZ")), db.DocTypeDocument)
-		notifications := notified.waitForCount(t, 1, "releasing 101 and 102 together is one notification")
+		notifications := notified.flush(t)
+		require.Len(t, notifications, 1, "the released writes' channels must be waiting to be notified")
 		assert.True(t, notifications[0].channels.Contains(abcChannel), "the buffered write must be notified once released")
 		assert.True(t, notifications[0].channels.Contains(channels.NewID("XYZ", collectionID)))
-		notified.requireNothingNotifiedBefore(t, initialSequence+1)
-		notified.requireNotNotifiedBefore(t, abcChannel, 102)
-		notified.requireNotNotifiedBefore(t, channels.NewID("XYZ", collectionID), 101)
+		assert.GreaterOrEqual(t, notifications[0].watermark, uint64(102), "both writes must be readable when their channels are woken")
 	})
 
 	t.Run("releasing an unused sequence notifies the channels it unblocks", func(t *testing.T) {
@@ -3552,8 +3528,7 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		changeCache := db.NewChangeCacheForTest(t)
 		require.NoError(t, changeCache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
 			&cacheOptions, database.DatabaseContext.MetadataKeys))
-		notified := newNotifyRecorder(changeCache.GetChannelCacheForTest(t))
-		changeCache.SetNotifyChangeFuncForTest(t, notified.record)
+		notified := newNotifyRecorder(t, changeCache)
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
@@ -3561,6 +3536,7 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 		// carry 102's channels - a feed on "ABC" is what needs waking, not just the unused-seq marker.
 		abcChannel := channels.NewID("ABC", collectionID)
 		changeCache.DocChanged(feedEventForTest(t, "blockedDoc", collectionID, syncDataFor(102, "ABC")), db.DocTypeDocument)
+		require.Empty(t, notified.flush(t), "nothing may be notified while 102 is held behind 101")
 
 		unusedSeqKey := database.DatabaseContext.MetadataKeys.UnusedSeqKey(101)
 		changeCache.DocChanged(sgbucket.FeedEvent{
@@ -3569,13 +3545,11 @@ func TestChangeCacheNotifiesChangedChannels(t *testing.T) {
 			CollectionID: collectionID,
 		}, db.DocTypeUnusedSeq)
 
-		// The unused-sequence marker and the unblocked document's channels go out as one notification.
-		notifications := notified.waitForCount(t, 1, "releasing 101 and unblocking 102 is one notification")
+		notifications := notified.flush(t)
+		require.Len(t, notifications, 1, "the unblocked write's channels must be waiting to be notified")
 		assert.True(t, notifications[0].channels.Contains(abcChannel),
 			"the unblocked document's channels must be notified, not only the unused-sequence marker")
-		// Nothing - including the unused-sequence marker - may be notified while 102 is held behind 101.
-		notified.requireNothingNotifiedBefore(t, initialSequence+1)
-		notified.requireNotNotifiedBefore(t, abcChannel, 102)
+		assert.GreaterOrEqual(t, notifications[0].watermark, uint64(102), "the unblocked write must be readable when its channels are woken")
 	})
 }
 
@@ -3782,8 +3756,11 @@ func TestChangeWaiterWake(t *testing.T) {
 	t.Run("a change on a watched key reports changes", func(t *testing.T) {
 		waiter := listener.NewWaiter([]channels.ID{watched}, false)
 
-		// Notify before waiting, so Wait returns on the counter it finds rather than blocking.
-		listener.Notify(ctx, channels.SetOfNoValidate(watched))
+		// The cache merges the channel as a release path does, and a tick stamps it. Both happen before waiting, so
+		// Wait returns on the count it finds rather than blocking. The listener's own tick may drain the merge first,
+		// which stamps the channel just the same.
+		database.ChangeCacheForTest(t).MergeNotificationsForTest(t, watched)
+		listener.BroadcastTickForTest(t, ctx)
 
 		assert.Equal(t, db.WaiterHasChanges, waiter.Wait(ctx))
 	})

@@ -891,6 +891,27 @@ func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Conte
 	listener.notifyKey(ctx, key)
 }
 
+// NotifyForTest stamps channel keys directly, bypassing the change cache's notifications and the broadcast tick, and
+// doesn't broadcast. It is for setting up listener state - seeding keyCounts, or moving keys before a lock-held
+// broadcast - not for driving notifications: a test of the notification path should merge with
+// MergeNotificationsForTest and let a tick deliver. Like the tick, it must not be given principal keys (see
+// _stampKeys); use NotifyKeyForTest for those.
+func (listener *changeListener) NotifyForTest(_ testing.TB, ctx context.Context, keys channels.Set) {
+	if len(keys) == 0 {
+		return
+	}
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	listener._stampKeys(ctx, keys)
+}
+
+// BroadcastTickForTest runs one broadcast tick on the calling goroutine: it drains the change cache's notifications,
+// stamps them and broadcasts. A test that drives ticks itself should set both broadcast intervals long enough that
+// the listener's own ticker never fires during the test, so that every channel stamp comes from a tick it ran.
+func (listener *changeListener) BroadcastTickForTest(_ testing.TB, ctx context.Context) {
+	listener.broadcastTick(ctx, 0)
+}
+
 // PrincipalCountsForTest returns copies of keyCounts and principalCounts.  The counter pointers are
 // snapshotted under principalCountsLock, and their values are then read under tapNotifier.L, so the
 // two returned maps are consistent with each other.  principalCounts is returned keyed in the same
@@ -1790,6 +1811,38 @@ func (c *changeCache) FlushNotificationsForTest(t testing.TB) {
 		return
 	}
 	c.drainToCallback(override.notify)
+}
+
+// MergeNotificationsForTest merges ids into the cache's pending notifications, as a release path does once the entries
+// behind them are cached. The next broadcast tick, or a flush in a test's callback mode, delivers them.
+func (c *changeCache) MergeNotificationsForTest(_ testing.TB, ids ...channels.ID) {
+	c.notifyAcc.Merge(ids)
+}
+
+// StartNotifyDrainerForTest drains the cache's notifications every interval until the test ends, discarding them.
+// It is for a cache built without a change listener, such as a benchmark's standalone cache: without a drainer the
+// accumulator only grows, and merges never contend with a drain, so the caching path costs less than in production.
+// The drained set is neither copied nor stamped, as stamping is the listener's cost and not the caching path's.
+func (c *changeCache) StartNotifyDrainerForTest(tb testing.TB, interval time.Duration) {
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for running := true; running; {
+			select {
+			case <-stop:
+				running = false
+			case <-ticker.C:
+				c.notifyAcc.Drain(func(channels.Set) {})
+			}
+		}
+	}()
+	tb.Cleanup(func() {
+		close(stop)
+		<-done
+	})
 }
 
 // drainToCallback drains the cache's notifications into a test's callback. The callback is given a copy, because the

@@ -39,7 +39,7 @@ func populateKeyCounts(b *testing.B, ctx context.Context, database *db.Database,
 	for i := range n {
 		keys = append(keys, channels.NewID(fmt.Sprintf("bench-chan-%d", i), collectionID))
 	}
-	listener.Notify(ctx, channels.SetOfNoValidate(keys...))
+	listener.NotifyForTest(b, ctx, channels.SetOfNoValidate(keys...))
 }
 
 // newBenchUser returns a saved user with `roles` resolved roles, giving a waiter the production
@@ -79,15 +79,17 @@ func newBenchWaiter(b *testing.B, database *db.Database, user auth.User, expecte
 }
 
 // startHerd parks `waiters` ChangeWaiters, each on its own channel key that is never individually
-// satisfied, and drives background channel Notify calls so the broadcaster ticker always has
-// something to broadcast.  Every tick wakes every waiter, which contends for tapNotifier.L, finds
-// its own channel unaffected and re-parks: the wasted-wake load the benchmarks measure against.
-// The waiters are load, not the measurement, so they are deliberately not barrier-synchronised.
+// satisfied, and merges a channel into the change cache's notifications in the background, as the
+// caching feed does, so the broadcaster's tick always has something to drain, stamp and broadcast.
+// Every tick wakes every waiter, which contends for tapNotifier.L, finds its own channel unaffected
+// and re-parks: the wasted-wake load the benchmarks measure against.  The waiters are load, not the
+// measurement, so they are deliberately not barrier-synchronised.
 //
 // Teardown releases the herd itself rather than relying on changeListener.Stop, which broadcasts
 // without holding tapNotifier.L - a goroutine midway through Cond.Wait's unlock-and-register step
 // can miss that broadcast and park forever.  notifyKey holds the lock across write-and-broadcast,
-// so teardown bumps every herd key via Notify and then issues one notifyKey to broadcast reliably.
+// so teardown stamps every herd key via NotifyForTest and then issues one notifyKey to broadcast
+// reliably.
 // `stop` covers the window where a goroutine is between Wait() calls rather than parked.
 //
 // The returned teardown owns the whole shutdown, including database.Close.  Call it exactly once.
@@ -113,12 +115,12 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 		})
 	}
 
+	changeCache := database.ChangeCacheForTest(b)
 	driverKey := channels.NewID("herd-driver-channel", 0)
 	wg.Go(func() {
 		// The broadcaster's pinned interval, not this rate, sets how often the herd is woken: the
-		// driver only has to move the counter before every broadcast tick, so each one fires.
-		// Running well inside the interval covers ticker drift and the driver itself being delayed
-		// on tapNotifier.L by a broadcast.
+		// driver only has to merge before every broadcast tick, so each tick has a channel to stamp
+		// and broadcasts.  Running well inside the interval covers ticker drift.
 		ticker := time.NewTicker(time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -126,7 +128,7 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 			case <-stop:
 				return
 			case <-ticker.C:
-				listener.Notify(ctx, channels.SetOfNoValidate(driverKey))
+				changeCache.MergeNotificationsForTest(b, driverKey)
 			}
 		}
 	})
@@ -137,7 +139,7 @@ func startHerd(b *testing.B, ctx context.Context, database *db.Database, waiters
 		for i := range waiters {
 			allHerdKeys = append(allHerdKeys, channels.NewID(fmt.Sprintf("herd-chan-%d", i), 0))
 		}
-		listener.Notify(ctx, channels.SetOfNoValidate(allHerdKeys...))
+		listener.NotifyForTest(b, ctx, channels.SetOfNoValidate(allHerdKeys...))
 		listener.NotifyKeyForTest(b, ctx, channels.NewID("herd-teardown", 0))
 		database.Close(ctx)
 		wg.Wait()

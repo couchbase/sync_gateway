@@ -259,27 +259,14 @@ func (listener *changeListener) Stop(ctx context.Context) {
 
 //////// NOTIFICATIONS:
 
-// Changes the counter, notifying waiting clients.
-//
-// Notify must not be used for principal (user/role) keys.  notifyKey is the only writer of
-// principal keys into keyCounts, and it also stores into principalCounts so that the per-BLIP-
-// message user count check (RefreshUserCount) can read it without tapNotifier.L.  Routing a
-// principal key through Notify instead would advance keyCounts without advancing the matching
-// principalCounts entry: the feed would still wake, but checkForUserUpdates would see no user
-// count change and skip the reload, silently serving stale channel access.
-func (listener *changeListener) Notify(ctx context.Context, keys channels.Set) {
-
-	if len(keys) == 0 {
-		return
-	}
-	listener.tapNotifier.L.Lock()
-	defer listener.tapNotifier.L.Unlock()
-	listener._stampKeys(ctx, keys)
-}
-
 // _stampKeys advances the counter and records it against every key, so that a waiter for any of them sees a change.
-// It doesn't broadcast: waiters are woken by the next broadcast tick. Like Notify, it must not be given principal
-// keys. Requires tapNotifier.L.
+// It doesn't broadcast: waiters are woken by the next broadcast tick. Requires tapNotifier.L.
+//
+// It must not be given principal (user/role) keys. notifyKey is the only writer of principal keys into keyCounts,
+// and it also stores into principalCounts so that the per-BLIP-message user count check (RefreshUserCount) can read
+// it without tapNotifier.L. Stamping a principal key here would advance keyCounts without advancing the matching
+// principalCounts entry: the feed would still wake, but checkForUserUpdates would see no user count change and skip
+// the reload, silently serving stale channel access.
 func (listener *changeListener) _stampKeys(ctx context.Context, keys channels.Set) {
 	listener.counter++
 	for key := range keys {
@@ -294,6 +281,10 @@ func (listener *changeListener) _stampKeys(ctx context.Context, keys channels.Se
 // counts between the stamp and the broadcast: one that read them before is parked on tapNotifier and woken by this
 // broadcast, and one that reads them after sees the new counts, so none can miss the wake. Returns the count to pass
 // as lastCount next tick.
+//
+// The drained set holds channels only and goes to _stampKeys, so principal keys must never be merged into the change
+// cache's notifications: they would be stamped without their principalCounts entry (see _stampKeys). Principal
+// changes take notifyKey instead, which stamps and broadcasts straight away rather than waiting for a tick.
 func (listener *changeListener) broadcastTick(ctx context.Context, lastCount uint64) uint64 {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
