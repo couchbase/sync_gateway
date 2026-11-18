@@ -82,10 +82,7 @@ func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbp
 func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*gocb.Cluster, string, error) {
 	// Test buckets see low throughput, and each test bucket opens its own cluster, so keep the KV connections few
 	// and their read buffers small to stop them taking up much of the package's memory watermark.
-	connSpec, err := getGoCBConnSpec(clusterSpec.Server, &GoCBConnStringParams{
-		KvPoolSize:   LowThroughputKvPoolSize,
-		KvBufferSize: LowThroughputKvBufferSize,
-	})
+	connSpec, err := getLowThroughputGoCBConnSpec(clusterSpec.Server)
 	if err != nil {
 		return nil, "", fmt.Errorf("couldn't parse connection string %q: %w", clusterSpec.Server, err)
 	}

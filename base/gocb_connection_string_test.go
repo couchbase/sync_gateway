@@ -76,6 +76,43 @@ func TestGetGoCBConnStringWithDefaults(t *testing.T) {
 	}
 }
 
+func TestGetLowThroughputGoCBConnString(t *testing.T) {
+	const lowThroughputConnStr = "couchbase://127.0.0.1?idle_http_connection_timeout=90000&kv_buffer_size=16384&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256"
+	testCases := []struct {
+		name    string
+		server  string
+		connStr string
+	}{
+		{
+			name:    "no params",
+			server:  "couchbase://127.0.0.1",
+			connStr: lowThroughputConnStr,
+		},
+		{
+			name:    "larger kv_pool_size and kv_buffer_size are replaced",
+			server:  "couchbase://127.0.0.1?kv_pool_size=4&kv_buffer_size=10485760",
+			connStr: lowThroughputConnStr,
+		},
+		{
+			name:    "smaller kv_buffer_size is replaced",
+			server:  "couchbase://127.0.0.1?kv_buffer_size=4096",
+			connStr: lowThroughputConnStr,
+		},
+		{
+			name:    "other params are kept",
+			server:  "couchbase://127.0.0.1?dcp_buffer_size=3&network=external",
+			connStr: "couchbase://127.0.0.1?dcp_buffer_size=3&idle_http_connection_timeout=90000&kv_buffer_size=16384&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256&network=external",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			connStr, err := GetLowThroughputGoCBConnString(testCase.server)
+			require.NoError(t, err)
+			require.Equal(t, testCase.connStr, connStr)
+		})
+	}
+}
+
 func TestGetConnSpecOption(t *testing.T) {
 	t.Run("int", func(t *testing.T) {
 		testCases := []struct {
