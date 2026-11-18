@@ -8555,20 +8555,30 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	var shouldChannelQueryError atomic.Bool
+	replicatorStarted := make(chan struct{})
+	// Fail the first channel query only after Start returns, so the error closes a running connection.
+	channelQueryError := func() error {
+		if !shouldChannelQueryError.CompareAndSwap(true, false) {
+			return nil
+		}
+		select {
+		case <-replicatorStarted:
+		case <-t.Context().Done():
+		}
+		return gocb.ErrTimeout
+	}
 	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		LeakyBucketConfig: &base.LeakyBucketConfig{
 			QueryCallback: func(ddoc, viewname string, params map[string]any) error {
-				if viewname == "channels" && shouldChannelQueryError.Load() {
-					shouldChannelQueryError.Store(false)
-					return gocb.ErrTimeout
+				if viewname == "channels" {
+					return channelQueryError()
 				}
 				return nil
 			},
 			N1QLQueryCallback: func(_ context.Context, statement string, params map[string]any, consistency base.ConsistencyMode, adhoc bool) error {
 				// * channel query uses all docs index
-				if strings.Contains(statement, "sg_allDocs") && shouldChannelQueryError.Load() {
-					shouldChannelQueryError.Store(false)
-					return gocb.ErrTimeout
+				if strings.Contains(statement, "sg_allDocs") {
+					return channelQueryError()
 				}
 				return nil
 			},
@@ -8605,6 +8615,7 @@ func TestActiveReplicatorChangesFeedExit(t *testing.T) {
 	activeRT.WaitForPendingChanges()
 	shouldChannelQueryError.Store(true)
 	require.NoError(t, ar.Start(activeRT.Context()))
+	close(replicatorStarted)
 
 	changesResults := passiveRT.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.Equal(t, docID, changesResults.Results[0].ID)
