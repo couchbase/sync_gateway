@@ -80,9 +80,9 @@ func newTestCluster(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*tbp
 
 // getGocbClusterForTest makes cluster connection. Callers must close. Returns the cluster and the connection string used to connect.
 func getGocbClusterForTest(ctx context.Context, clusterSpec CouchbaseClusterSpec) (*gocb.Cluster, string, error) {
-	connSpec, err := getGoCBConnSpec(clusterSpec.Server, &GoCBConnStringParams{
-		KvPoolSize: DefaultGocbKvPoolSize,
-	})
+	// Test buckets see low throughput, and each test bucket opens its own cluster, so keep the KV connections few
+	// and their read buffers small to stop them taking up much of the package's memory watermark.
+	connSpec, err := getLowThroughputGoCBConnSpec(clusterSpec.Server)
 	if err != nil {
 		return nil, "", fmt.Errorf("couldn't parse connection string %q: %w", clusterSpec.Server, err)
 	}

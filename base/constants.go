@@ -107,6 +107,15 @@ const (
 	// Number of connections used by DCP agents - must be 1
 	GoCBPoolSizeDCP = 1
 
+	// LowThroughputKvPoolSize is the kv_pool_size for connections that only send a few small ops, such as bootstrap
+	// config reads. A second connection per node only adds concurrency, which these connections don't need.
+	LowThroughputKvPoolSize = 1
+
+	// LowThroughputKvBufferSize is the kv_buffer_size for the same low-throughput connections. Without it gocbcore
+	// gives every KV connection a 20MB read buffer. Packets larger than the buffer are still read in full, so a small
+	// buffer only lowers throughput.
+	LowThroughputKvBufferSize = 16384
+
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 

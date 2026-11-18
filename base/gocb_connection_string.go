@@ -75,6 +75,29 @@ func getGoCBConnSpec(server string, defaults *GoCBConnStringParams) (*connstr.Co
 	return &connSpec, nil
 }
 
+// getLowThroughputGoCBConnSpec returns a gocb connection spec for connections that only send a few small KV ops, such as
+// the bootstrap connection. It replaces any kv_pool_size or kv_buffer_size in the server string: users set those to tune
+// database connections, and on these connections larger values would only add memory.
+func getLowThroughputGoCBConnSpec(server string) (*connstr.ConnSpec, error) {
+	connSpec, err := getGoCBConnSpec(server, nil)
+	if err != nil {
+		return nil, err
+	}
+	connSpec.Options[kvPoolSizeKey] = []string{strconv.Itoa(LowThroughputKvPoolSize)}
+	connSpec.Options[kvBufferSizeKey] = []string{strconv.Itoa(LowThroughputKvBufferSize)}
+	return connSpec, nil
+}
+
+// GetLowThroughputGoCBConnString returns a gocb connection string for connections that only send a few small KV ops.
+// See getLowThroughputGoCBConnSpec.
+func GetLowThroughputGoCBConnString(server string) (string, error) {
+	connSpec, err := getLowThroughputGoCBConnSpec(server)
+	if err != nil {
+		return "", err
+	}
+	return connSpec.String(), nil
+}
+
 // GetGoCBConnString builds a gocb connection string based on server string. This is used to set a new connection string
 func GetGoCBConnStringWithDefaults(server string, defaults *GoCBConnStringParams) (string, error) {
 	connSpec, err := getGoCBConnSpec(server, defaults)
