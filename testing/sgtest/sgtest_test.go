@@ -20,7 +20,7 @@ import (
 func TestSetRosmarClockForTestConsecutiveOverrides(t *testing.T) {
 	bucket, err := rosmar.OpenBucket(rosmar.InMemoryURL, "rosmarclock", rosmar.CreateOrOpen)
 	require.NoError(t, err)
-	defer bucket.Close(t.Context())
+	defer func() { require.NoError(t, bucket.CloseAndDelete(t.Context())) }()
 	ds := bucket.DefaultDataStore(t.Context())
 
 	var cas uint64

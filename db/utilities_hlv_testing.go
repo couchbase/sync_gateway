@@ -438,7 +438,7 @@ func (db *DatabaseContext) GetHLCValueForTest(floorValue uint64) uint64 {
 func SetMonotonicClocksForTest(t testing.TB, dbc *DatabaseContext) (setSGClockAhead func(time.Duration)) {
 	var offset atomic.Int64
 	casClock := sgbucket.HLCWallClock
-	if base.UnitTestUrlIsWalrus() {
+	if sgtest.UnitTestUrlIsWalrus() {
 		casClock = sgtest.SetMonotonicRosmarClockForTest(t, dbc.hlc.Now(0))
 	}
 	dbc.SetHLCClockForTest(func() uint64 { return casClock() + uint64(offset.Load()) })
