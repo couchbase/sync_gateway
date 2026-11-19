@@ -11,10 +11,7 @@ licenses/APL2.txt.
 package changecachetest
 
 import (
-	"context"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -22,67 +19,54 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestManualNotifyDeliversOnFlush checks that manual-flush mode holds notifications back until the test flushes,
-// and that a flush then delivers them on the calling goroutine.
-func TestManualNotifyDeliversOnFlush(t *testing.T) {
+// TestDrainNotifications checks that each drain returns only what was merged since the last one, and that an empty
+// drain returns nil.
+func TestDrainNotifications(t *testing.T) {
 	database, ctx := db.SetupTestDB(t)
 	defer database.Close(ctx)
 
-	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
-	expected := channels.NewID("zero", collection.GetCollectionID())
+	cacheOptions := db.DefaultCacheOptions()
+	cache := db.NewChangeCacheForTest(t)
+	require.NoError(t, cache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, cache.Start(0))
+	defer cache.Stop(ctx)
 
-	// The callback runs only inside FlushNotificationsForTest, and only one flush runs at a time (EventuallyWithT
-	// runs its conditions one after another), so it needs no lock.
-	var notified []channels.Set
-	cache := database.ChangeCacheForTest(t)
-	cache.SetManualNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		if chans.Contains(expected) {
-			notified = append(notified, chans)
-		}
-	})
-
-	_, _, err := collection.Put(ctx, "manualNotifyDoc", db.Body{"channels": []string{"zero"}})
-	require.NoError(t, err)
-
-	// Nothing but a flush delivers in manual mode, so nothing has arrived yet, however far the caching feed has got.
-	require.Empty(t, notified)
-
-	// Put returns before the caching feed has processed the write, and the merge into the accumulator follows the
-	// caching, so an early flush can find nothing to deliver: flush on every poll until the channel arrives.
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		cache.FlushNotificationsForTest(t)
-		assert.Len(c, notified, 1)
-	}, 10*time.Second, 10*time.Millisecond)
+	first, second := channels.NewID("first", 0), channels.NewID("second", 0)
+	cache.MergeNotificationsForTest(t, first)
+	assert.Equal(t, channels.SetOfNoValidate(first), cache.DrainNotificationsForTest(t))
+	cache.MergeNotificationsForTest(t, second)
+	assert.Equal(t, channels.SetOfNoValidate(second), cache.DrainNotificationsForTest(t), "only what was merged since the last drain")
+	assert.Nil(t, cache.DrainNotificationsForTest(t), "an empty drain returns nil")
 }
 
-// TestReplacedFlusherStopsDraining checks that installing a new notify callback stops the previous callback's flusher
-// before it returns. A flusher still running would take notifications merged after the replacement, and the new
-// callback would never see them.
-func TestReplacedFlusherStopsDraining(t *testing.T) {
+// fatalRecorder records a Fatalf instead of stopping the test, so a test can check that a helper refuses a call.
+type fatalRecorder struct {
+	testing.TB
+	fatal bool
+}
+
+func (r *fatalRecorder) Helper() {}
+
+func (r *fatalRecorder) Fatalf(string, ...any) { r.fatal = true }
+
+// TestDrainNotificationsRefusesDatabaseCache checks that a test can't drain the database's own cache, which the
+// listener's broadcast tick drains: the test would take notifications the listener never sees.
+func TestDrainNotificationsRefusesDatabaseCache(t *testing.T) {
 	database, ctx := db.SetupTestDB(t)
 	defer database.Close(ctx)
-	cache := database.ChangeCacheForTest(t)
 
-	var oldReceived atomic.Int64
-	cache.SetNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		oldReceived.Add(int64(len(chans)))
-	})
-	// Give the flusher time to park on its ticker, where a replacement it only checked for between ticks would go
-	// unnoticed until the next tick had already drained.
-	time.Sleep(10 * time.Millisecond)
+	recorder := &fatalRecorder{TB: t}
+	database.ChangeCacheForTest(t).DrainNotificationsForTest(recorder)
+	require.True(t, recorder.fatal, "draining the database's own cache must fail the test")
 
-	// The callback runs only inside FlushNotificationsForTest on this goroutine, so it needs no lock.
-	var manualReceived int
-	cache.SetManualNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		manualReceived += len(chans)
-	})
-
-	cache.MergeNotificationsForTest(t, channels.NewID("afterReplacement", 0))
-	// Long enough for the old flusher to tick several times, had it survived the replacement.
-	time.Sleep(3 * db.DefaultBroadcastChangesTime)
-	cache.FlushNotificationsForTest(t)
-
-	assert.Zero(t, oldReceived.Load(), "the replaced flusher drained into the old callback")
-	assert.Equal(t, 1, manualReceived, "the new callback must receive what was merged after it was installed")
+	standalone := db.NewChangeCacheForTest(t)
+	cacheOptions := db.DefaultCacheOptions()
+	require.NoError(t, standalone.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, standalone.Start(0))
+	defer standalone.Stop(ctx)
+	recorder = &fatalRecorder{TB: t}
+	standalone.DrainNotificationsForTest(recorder)
+	require.False(t, recorder.fatal, "a standalone cache may be drained")
 }

@@ -1303,18 +1303,8 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Setup notify callback ----------------
 
-	//  Detect whether the 2nd was ignored using the notify callback and make sure it was not added to the ABC channel
-	waitForOnChangeCallback := sync.WaitGroup{}
-	waitForOnChangeCallback.Add(1)
-	database.ChangeCacheForTest(t).SetNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		expectedChan := channels.NewID("ABC", collectionID)
-		for ch := range chans {
-			if ch == expectedChan {
-				waitForOnChangeCallback.Done()
-			}
-		}
-
-	})
+	// The listener wakes ABC only once doc1 fills seq 1 and doc2 is cached.
+	waiter := database.GetMutationListener(t).NewWaiter([]channels.ID{channels.NewID("ABC", collectionID)}, false)
 
 	// -------- Perform actions ----------------
 
@@ -1394,11 +1384,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	database.ChangeCacheForTest(t).DocChanged(feedEventDoc1, db.DocTypeDocument)
 
-	// -------- Wait for waitgroup ----------------
-
-	// Block until the notify callback was invoked with the expected channels.
-	// If the callback is never called back with expected, will block forever.
-	waitForOnChangeCallback.Wait()
+	requireWaiterWakes(t, ctx, waiter)
 
 }
 
@@ -1561,27 +1547,27 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// -------- Setup notify callback ----------------
 
-	notifyChannel := make(chan struct{})
-	database.ChangeCacheForTest(t).SetNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		expectedChan := channels.NewID("zero", collectionID)
-		if chans.Contains(expectedChan) {
-			notifyChannel <- struct{}{}
-		}
-	})
+	waiter := database.GetMutationListener(t).NewWaiter([]channels.ID{channels.NewID("zero", collectionID)}, false)
 
 	// Write a document to channel zero
 	body := db.Body{"channels": []string{"zero"}}
 	_, _, err := collection.Put(ctx, "inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
-	// Wait for notify to arrive
-	select {
-	case <-notifyChannel:
-		// success
-	case <-time.After(10 * time.Second):
-		assert.Fail(t, "Timed out waiting for notify to fire")
-	}
+	requireWaiterWakes(t, ctx, waiter)
+}
 
+// requireWaiterWakes fails the test unless the listener reports a change for waiter's channels within 10 seconds.
+func requireWaiterWakes(t *testing.T, ctx context.Context, waiter *db.ChangeWaiter) {
+	t.Helper()
+	woke := make(chan uint32, 1)
+	go func() { woke <- waiter.Wait(ctx) }()
+	select {
+	case result := <-woke:
+		require.Equal(t, db.WaiterHasChanges, result)
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "timed out waiting for the change listener to wake the waiter")
+	}
 }
 
 func TestMaxChannelCacheConfig(t *testing.T) {
@@ -3409,11 +3395,10 @@ type notification struct {
 // db, so the recorder holds it through this interface.
 type notifyCache interface {
 	GetChannelCacheForTest(t testing.TB) db.ChannelCache
-	SetManualNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set))
-	FlushNotificationsForTest(t testing.TB)
+	DrainNotificationsForTest(tb testing.TB) channels.Set
 }
 
-// notifyRecorder collects change notifications in manual-flush mode. Notifications collect in the cache until a tick
+// notifyRecorder collects change notifications from a standalone cache. Notifications collect in the cache until a tick
 // drains them, so one delivered at an arbitrary later time could carry a channel merged too early alongside the
 // readable change that followed it. The test instead flushes after each step it drives, on its own goroutine, and
 // each delivery is stamped with the watermark at the flush: a channel merged before its change was readable is
@@ -3424,16 +3409,9 @@ type notifyRecorder struct {
 	notified     []notification
 }
 
-// newNotifyRecorder installs the recorder as cache's manual-flush notify callback. Call it before the cache starts.
+// newNotifyRecorder returns a recorder for a standalone cache, which nothing drains but the recorder's flushes.
 func newNotifyRecorder(t *testing.T, cache notifyCache) *notifyRecorder {
-	r := &notifyRecorder{cache: cache, channelCache: cache.GetChannelCacheForTest(t)}
-	cache.SetManualNotifyChangeFuncForTest(t, r.record)
-	return r
-}
-
-// record runs only inside flush, on the test's goroutine, so it needs no lock.
-func (r *notifyRecorder) record(_ context.Context, channelSet channels.Set) {
-	r.notified = append(r.notified, notification{channels: channelSet, watermark: r.channelCache.GetHighCacheSequence()})
+	return &notifyRecorder{cache: cache, channelCache: cache.GetChannelCacheForTest(t)}
 }
 
 // flush delivers everything merged since the last flush and returns what it delivered. The cache merges before
@@ -3442,7 +3420,9 @@ func (r *notifyRecorder) record(_ context.Context, channelSet channels.Set) {
 func (r *notifyRecorder) flush(t *testing.T) []notification {
 	t.Helper()
 	before := len(r.notified)
-	r.cache.FlushNotificationsForTest(t)
+	if drained := r.cache.DrainNotificationsForTest(t); drained != nil {
+		r.notified = append(r.notified, notification{channels: drained, watermark: r.channelCache.GetHighCacheSequence()})
+	}
 	return r.notified[before:]
 }
 

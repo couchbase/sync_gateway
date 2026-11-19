@@ -902,7 +902,7 @@ func (listener *changeListener) NotifyForTest(_ testing.TB, ctx context.Context,
 	}
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	listener._stampKeys(ctx, keys)
+	listener._stampKeys(keys)
 }
 
 // BroadcastTickForTest runs one broadcast tick on the calling goroutine: it drains the change cache's notifications,
@@ -1345,7 +1345,7 @@ func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) 
 		require.NoError(t, db.changeCache.Clear(ctx))
 	}
 	var err error
-	db.mutationListener, err = newChangeListener(db.Bucket.GetName(), db.Options.GroupID, db)
+	db.mutationListener, err = newChangeListener(db.Options.GroupID, db)
 	require.NoError(t, err)
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
@@ -1762,87 +1762,34 @@ func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Contex
 	return c._getMaxStableCached(ctx)
 }
 
-// SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries, in place of the
-// change listener. A flusher goroutine drains the cache's notifications into it on the broadcast interval, as the
-// listener's tick would, until the test ends or another callback is installed. Delivery therefore runs on that
-// goroutine, up to one interval after the entries are cached, so a test must wait for a notification rather than
-// expect it once DocChanged returns.
-func (c *changeCache) SetNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set)) {
-	interval := c.options.BroadcastChangesInterval
-	if interval <= 0 {
-		interval = DefaultBroadcastChangesTime
-	}
-	stopCh := make(chan struct{})
-	done := make(chan struct{})
-	var stopOnce sync.Once
-	override := &notifyOverride{notify: notify, stop: func() {
-		stopOnce.Do(func() { close(stopCh) })
-		<-done
-	}}
-	c.installNotifyOverride(override)
-
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for running := true; running; {
-			select {
-			case <-stopCh:
-				running = false
-			case <-ticker.C:
-				c.drainToCallback(override.notify)
-			}
-		}
-	}()
-	t.Cleanup(override.stop)
-}
-
-// SetManualNotifyChangeFuncForTest installs the notify callback in place of the change listener, in manual-flush
-// mode: nothing drains the cache's notifications until the test calls FlushNotificationsForTest, so a test controls
-// exactly when they are delivered.
-func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
-	c.installNotifyOverride(&notifyOverride{notify: notify, manual: true})
-}
-
-// installNotifyOverride replaces the installed override with next. It first stops the replaced override's flusher and
-// waits for it to exit, so no drain into the old callback can follow the replacement and at most one goroutine ever
-// drains for a test. Holding notifyOverrideLock throughout keeps the listener's tick from draining while the overrides
-// change over, and means no tick that saw the old state is still draining once this returns. The flusher never takes
-// the lock, so waiting for it here can't deadlock.
-func (c *changeCache) installNotifyOverride(next *notifyOverride) {
-	c.notifyOverrideLock.Lock()
-	defer c.notifyOverrideLock.Unlock()
-	if prev := c.notifyOverride; prev != nil && prev.stop != nil {
-		prev.stop()
-	}
-	c.notifyOverride = next
-}
-
-// FlushNotificationsForTest delivers every notification merged since the last flush to the installed callback, on
-// the calling goroutine. It fails the test unless manual-flush mode is installed, so a test can't silently race a
-// flusher goroutine for the notifications.
-func (c *changeCache) FlushNotificationsForTest(t testing.TB) {
-	t.Helper()
-	override := c.loadNotifyOverride()
-	if override == nil || !override.manual {
-		t.Fatalf("FlushNotificationsForTest requires SetManualNotifyChangeFuncForTest")
-		return
-	}
-	// Delivered without notifyOverrideLock, so a callback that installs another override doesn't deadlock.
-	c.drainToCallback(override.notify)
-}
-
-// loadNotifyOverride returns the installed override, or nil if none is.
-func (c *changeCache) loadNotifyOverride() *notifyOverride {
-	c.notifyOverrideLock.Lock()
-	defer c.notifyOverrideLock.Unlock()
-	return c.notifyOverride
-}
-
 // MergeNotificationsForTest merges ids into the cache's pending notifications, as a release path does once the entries
-// behind them are cached. The next broadcast tick, or a flush in a test's callback mode, delivers them.
+// behind them are cached. The next broadcast tick, or DrainNotificationsForTest on a standalone cache, delivers them.
 func (c *changeCache) MergeNotificationsForTest(_ testing.TB, ids ...channels.ID) {
 	c.notifyAcc.Merge(ids)
+}
+
+// DrainNotificationsForTest drains a standalone cache's notifications on the calling goroutine and returns them, as
+// the broadcast tick does for a database's own cache. The returned set is the test's to keep: the cache reuses the set
+// it drains, so this hands out a copy. Returns nil if nothing was merged since the last drain. It fails the test if
+// called on a database's own cache, where it would race the listener's tick for the notifications.
+func (c *changeCache) DrainNotificationsForTest(tb testing.TB) channels.Set {
+	tb.Helper()
+	c.requireStandaloneForTest(tb)
+	var drained channels.Set
+	c.drainNotifications(func(keys channels.Set) {
+		drained = maps.Clone(keys)
+	})
+	return drained
+}
+
+// requireStandaloneForTest fails the test if c is its database's own change cache, which the listener's broadcast tick
+// drains. A test that drains it too would take notifications the listener never sees, so test drainers are limited
+// to standalone caches from NewChangeCacheForTest.
+func (c *changeCache) requireStandaloneForTest(tb testing.TB) {
+	tb.Helper()
+	if c.db != nil && c == &c.db.changeCache {
+		tb.Fatalf("a test may only drain a standalone change cache: the listener's broadcast tick drains the database's own cache")
+	}
 }
 
 // StartNotifyDrainerForTest drains the cache's notifications every interval until the test ends, discarding them.
@@ -1850,6 +1797,8 @@ func (c *changeCache) MergeNotificationsForTest(_ testing.TB, ids ...channels.ID
 // accumulator only grows, and merges never contend with a drain, so the caching path costs less than in production.
 // The drained set is neither copied nor stamped, as stamping is the listener's cost and not the caching path's.
 func (c *changeCache) StartNotifyDrainerForTest(tb testing.TB, interval time.Duration) {
+	tb.Helper()
+	c.requireStandaloneForTest(tb)
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
@@ -1861,21 +1810,13 @@ func (c *changeCache) StartNotifyDrainerForTest(tb testing.TB, interval time.Dur
 			case <-stop:
 				running = false
 			case <-ticker.C:
-				c.notifyAcc.Drain(func(channels.Set) {})
+				c.drainNotifications(func(channels.Set) {})
 			}
 		}
 	}()
 	tb.Cleanup(func() {
 		close(stop)
 		<-done
-	})
-}
-
-// drainToCallback drains the cache's notifications into a test's callback. The callback is given a copy, because the
-// accumulator clears the drained set for reuse once the drain returns and a test may keep what it receives.
-func (c *changeCache) drainToCallback(notify func(context.Context, channels.Set)) {
-	c.notifyAcc.Drain(func(keys channels.Set) {
-		notify(c.logCtx, maps.Clone(keys))
 	})
 }
 

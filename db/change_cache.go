@@ -74,8 +74,6 @@ type changeCache struct {
 	receivedSeqs          map[uint64]struct{}           // Set of all sequences received
 	pendingLogs           LogPriorityQueue              // Out-of-sequence entries waiting to be cached
 	notifyAcc             notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
-	notifyOverrideLock    sync.Mutex                    // Guards notifyOverride. Exists for tests: in production nothing sets the override, and only the broadcast tick takes this lock, once per tick, so it is never contended.
-	notifyOverride        *notifyOverride               // Set only by tests, to take drained notifications away from the broadcast tick. Guarded by notifyOverrideLock.
 	started               base.AtomicBool               // Set by the Start method
 	stopped               base.AtomicBool               // Set by the Stop method
 	skippedSeqs           *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
@@ -91,13 +89,6 @@ type changeCache struct {
 	cfgEventCallback      base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
 	sgCfgPrefix           string                        // Prefix for SG Cfg doc keys
 	metaKeys              *base.MetadataKeys            // Metadata key formatter
-}
-
-// notifyOverride is a test's replacement for the change listener as the destination of drained notifications.
-type notifyOverride struct {
-	notify func(context.Context, channels.Set) // receives each drained set; may keep it, as it is given a copy
-	manual bool                                // true when only FlushNotificationsForTest drains, false when a flusher goroutine does
-	stop   func()                              // stops and waits for this override's flusher goroutine; nil in manual mode
 }
 
 type changeCacheStats struct {
@@ -171,7 +162,7 @@ func DefaultCacheOptions() CacheOptions {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // Channels that gain entries are not notified from here: they collect in notifyAcc, which the change listener's
-// broadcast tick drains (see drainForBroadcast).
+// broadcast tick drains (see drainNotifications).
 // After calling Init(), you must call .Start() to start using the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
 
@@ -261,20 +252,10 @@ func (c *changeCache) Stop(ctx context.Context) {
 	c.lock.Unlock()
 }
 
-// drainForBroadcast passes every channel merged since the last drain to apply, which must not keep the set. The
-// change listener's broadcast tick calls it while holding tapNotifier.L, so apply can stamp the channels and the tick
-// broadcast them in that one lock hold. It drains nothing while a test has installed its own notify callback: the test
-// then receives the notifications instead of the listener, as the callback replaces the listener.
-//
-// notifyOverrideLock is held from the check through the drain, so a test that installs a callback can't have a tick
-// that saw no callback drain what is merged after the install returns. Only tests ever set the override, so in
-// production this tick is the lock's only user.
-func (c *changeCache) drainForBroadcast(apply func(channels.Set)) {
-	c.notifyOverrideLock.Lock()
-	defer c.notifyOverrideLock.Unlock()
-	if c.notifyOverride != nil {
-		return
-	}
+// drainNotifications passes every channel merged since the last drain to apply, which must not keep the set. The
+// change listener's broadcast tick calls it while holding tapNotifier.L, so the stamp and broadcast share one lock hold.
+// The tick is the only drainer of a database's cache; tests drain only standalone caches (DrainNotificationsForTest).
+func (c *changeCache) drainNotifications(apply func(channels.Set)) {
 	c.notifyAcc.Drain(apply)
 }
 

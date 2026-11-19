@@ -90,12 +90,17 @@ func (a *Accumulator) _add(ids []channels.ID) {
 	}
 }
 
-// Drain swaps out everything merged since the previous drain and, if it is non-empty, passes it to apply.
-// apply must not keep the set, because it is cleared for reuse as soon as apply returns. apply must not
-// call Drain (drains are serialised and the lock isn't re-entrant), but may call Merge: such a merge lands
-// in the next drain.
+// Drain passes everything merged since the previous drain to apply, and returns whether it did. apply isn't
+// called when nothing has been merged.
 //
-// Returns whether apply was called.
+// apply only borrows the set. It is cleared and reused for later merges as soon as apply returns, so apply
+// must copy anything it needs to keep, for example with maps.Clone. Lending the set rather than returning a
+// copy is what lets a drain allocate nothing. The production caller, the change listener's broadcast tick,
+// only reads the set to stamp its channels. A test that keeps what it drains should copy inside apply, as
+// changeCache.DrainNotificationsForTest does.
+//
+// apply may call Merge: a merge made while apply runs lands in the next drain. It must not call Drain, because
+// drains run one at a time and the lock isn't re-entrant.
 func (a *Accumulator) Drain(apply func(channels.Set)) bool {
 	a.drainMu.Lock()
 	defer a.drainMu.Unlock()

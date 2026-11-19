@@ -552,7 +552,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener, err = newChangeListener(bucket.GetName(), options.GroupID, dbContext)
+	dbContext.mutationListener, err = newChangeListener(options.GroupID, dbContext)
 	if err != nil {
 		return nil, err
 	}

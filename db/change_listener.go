@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"expvar"
+	"maps"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -36,7 +37,6 @@ type changeListener struct {
 	ctx                    context.Context
 	dbCtx                  *DatabaseContext
 	bucket                 base.Bucket
-	bucketName             string                 // Used for logging
 	tapNotifier            *sync.Cond             // Posts notifications when documents are updated
 	counter                uint64                 // Event counter; increments on every doc update
 	_terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
@@ -69,9 +69,8 @@ const principalDocCollectionIDForChannelID = 0
 type DocChangedFunc func(event sgbucket.FeedEvent, docType DocumentType)
 
 // newChangeListener creates a new changeListener to listen for feed events.
-func newChangeListener(name string, groupID string, db *DatabaseContext) (*changeListener, error) {
+func newChangeListener(groupID string, db *DatabaseContext) (*changeListener, error) {
 	listener := &changeListener{}
-	listener.bucketName = name
 	listener.counter = 1
 	listener._terminateCheckCounter = 0
 	listener.keyCounts = map[channels.ID]uint64{}
@@ -131,7 +130,6 @@ func (listener *changeListener) Start(ctx context.Context, bucket base.Bucket, d
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
-	listener.bucketName = bucket.GetName()
 
 	collectionNames := cachingFeedCollections(metadataStore, scopes)
 	listener.StartNotifierBroadcaster(ctx) // start broadcast changes goroutine
@@ -267,13 +265,13 @@ func (listener *changeListener) Stop(ctx context.Context) {
 // it without tapNotifier.L. Stamping a principal key here would advance keyCounts without advancing the matching
 // principalCounts entry: the feed would still wake, but checkForUserUpdates would see no user count change and skip
 // the reload, silently serving stale channel access.
-func (listener *changeListener) _stampKeys(ctx context.Context, keys channels.Set) {
+//
+// It doesn't log: a tick can stamp tens of thousands of keys, and broadcastTick logs them once tapNotifier.L is released.
+func (listener *changeListener) _stampKeys(keys channels.Set) {
 	listener.counter++
 	for key := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
-	base.DebugfCtx(ctx, base.KeyChanges, "Listener keys %q for %s have changed, count=%d",
-		base.UD(keys), base.MD(listener.bucketName), listener.counter)
 }
 
 // broadcastTick stamps the channels the change cache has gained entries for since the last tick, then wakes every
@@ -285,18 +283,41 @@ func (listener *changeListener) _stampKeys(ctx context.Context, keys channels.Se
 // The drained set holds channels only and goes to _stampKeys, so principal keys must never be merged into the change
 // cache's notifications: they would be stamped without their principalCounts entry (see _stampKeys). Principal
 // changes take notifyKey instead, which stamps and broadcasts straight away rather than waiting for a tick.
+//
+// Logging happens after tapNotifier.L is released: one tick can drain tens of thousands of channels, and formatting
+// them while every feed waits on the lock would stall all of them.
 func (listener *changeListener) broadcastTick(ctx context.Context, lastCount uint64) uint64 {
+	logChannels := base.LogTraceEnabled(ctx, base.KeyChanges)
+	count, stamped, changed := listener.stampAndBroadcast(lastCount, logChannels)
+	if count > lastCount {
+		base.DebugfCtx(ctx, base.KeyChanges, "Notifying changes count=%d, %d channels stamped this tick", count, stamped)
+	}
+	if logChannels && stamped > 0 {
+		base.TracefCtx(ctx, base.KeyChanges, "Channels changed at count=%d: %q", count, base.UD(changed))
+	}
+	return count
+}
+
+// stampAndBroadcast does broadcastTick's work under tapNotifier.L: it drains the change cache, stamps what it drained,
+// and broadcasts if the counter has moved past lastCount. It returns the count to pass as lastCount next tick and the
+// number of channels stamped. When copyChannels is set it also returns a copy of the stamped channels, for logging
+// once the lock is released: the drained set itself is cleared for reuse as soon as the drain's callback returns.
+func (listener *changeListener) stampAndBroadcast(lastCount uint64, copyChannels bool) (count uint64, stamped int, changed channels.Set) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	listener.dbCtx.changeCache.drainForBroadcast(func(keys channels.Set) {
-		listener._stampKeys(ctx, keys)
+	listener.dbCtx.changeCache.drainNotifications(func(keys channels.Set) {
+		listener._stampKeys(keys)
+		stamped = len(keys)
+		if copyChannels {
+			// clone map so caller owns changed
+			changed = maps.Clone(keys)
+		}
 	})
 	if listener.counter <= lastCount {
-		return lastCount
+		return lastCount, stamped, changed
 	}
-	base.DebugfCtx(ctx, base.KeyChanges, "Notifying changes for %s count=%d", base.MD(listener.bucketName), listener.counter)
 	listener.tapNotifier.Broadcast()
-	return listener.counter
+	return listener.counter, stamped, changed
 }
 
 func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
@@ -321,7 +342,7 @@ func (listener *changeListener) StartNotifierBroadcaster(ctx context.Context) {
 				if broadcastSlowMode != newBroadcastSlowMode {
 					// broadcast changes interval has changed, reset ticker
 					duration := listener.broadcastInterval(newBroadcastSlowMode)
-					base.DebugfCtx(ctx, base.KeyChanges, "Updating broadcast changes interval for %q to %v", base.MD(listener.bucketName), duration)
+					base.DebugfCtx(ctx, base.KeyChanges, "Updating broadcast changes interval to %v", duration)
 					broadcastSlowMode = newBroadcastSlowMode
 					ticker.Reset(duration)
 				}
@@ -360,8 +381,7 @@ func (listener *changeListener) notifyKey(ctx context.Context, key channels.ID) 
 	// Store under tapNotifier.L: a waiter woken by this notify re-acquires it before returning from
 	// Wait, so is guaranteed to see this value when it reads the counter lock-free afterwards.
 	principalCount.Store(listener.counter)
-	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
-		base.MD(listener.bucketName), base.UD(key), listener.counter)
+	base.DebugfCtx(ctx, base.KeyChanges, "Notifying that key %q changed, count=%d", base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
 }
 
@@ -389,8 +409,7 @@ func (listener *changeListener) NotifyCheckForTermination(ctx context.Context, k
 func (listener *changeListener) Wait(ctx context.Context, keys []channels.ID, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	base.DebugfCtx(ctx, base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
-		base.MD(listener.bucketName), counter)
+	base.DebugfCtx(ctx, base.KeyChanges, "No new changes to send to change listener.  Waiting for count to pass %d", counter)
 
 	for {
 		curCounter := listener._currentCount(keys)
