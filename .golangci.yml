@@ -47,9 +47,6 @@ linters:
         ruleguard:
           failOn: all
           rules: ${base-path}/ruleguard/rules-*.go
-    gosec:
-      includes:
-        - G112 # Slowloris: http.Server without ReadHeaderTimeout
     govet:
       enable:
         - fieldalignment
