@@ -906,10 +906,14 @@ func (listener *changeListener) NotifyForTest(_ testing.TB, ctx context.Context,
 }
 
 // BroadcastTickForTest runs one broadcast tick on the calling goroutine: it drains the change cache's notifications,
-// stamps them and broadcasts. A test that drives ticks itself should set both broadcast intervals long enough that
-// the listener's own ticker never fires during the test, so that every channel stamp comes from a tick it ran.
-func (listener *changeListener) BroadcastTickForTest(_ testing.TB, ctx context.Context) {
-	listener.broadcastTick(ctx, 0)
+// stamps them, and broadcasts only if it stamped any, as the listener's own tick does when nothing has changed since
+// its last broadcast. A test that drives ticks itself should set both broadcast intervals long enough that the
+// listener's own ticker never fires during the test, so that every channel stamp comes from a tick it ran.
+func (listener *changeListener) BroadcastTickForTest(t testing.TB, ctx context.Context) {
+	// notifyKey and every tick broadcast what they stamp, so the current count is this tick's lastCount. The exception
+	// is NotifyForTest, which stamps without broadcasting: a test that needs those keys broadcast must follow it with
+	// NotifyKeyForTest, as startHerd's teardown does, not with this.
+	listener.broadcastTick(ctx, listener.CounterForTest(t))
 }
 
 // PrincipalCountsForTest returns copies of keyCounts and principalCounts.  The counter pointers are
@@ -1802,13 +1806,16 @@ func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func
 
 // installNotifyOverride replaces the installed override with next. It first stops the replaced override's flusher and
 // waits for it to exit, so no drain into the old callback can follow the replacement and at most one goroutine ever
-// drains for a test. The old override stays installed until then, so the listener's tick can't drain in between.
-// Setters run on the test's goroutine, so two never race each other.
+// drains for a test. Holding notifyOverrideLock throughout keeps the listener's tick from draining while the overrides
+// change over, and means no tick that saw the old state is still draining once this returns. The flusher never takes
+// the lock, so waiting for it here can't deadlock.
 func (c *changeCache) installNotifyOverride(next *notifyOverride) {
-	if prev := c.notifyOverride.Load(); prev != nil && prev.stop != nil {
+	c.notifyOverrideLock.Lock()
+	defer c.notifyOverrideLock.Unlock()
+	if prev := c.notifyOverride; prev != nil && prev.stop != nil {
 		prev.stop()
 	}
-	c.notifyOverride.Store(next)
+	c.notifyOverride = next
 }
 
 // FlushNotificationsForTest delivers every notification merged since the last flush to the installed callback, on
@@ -1816,12 +1823,20 @@ func (c *changeCache) installNotifyOverride(next *notifyOverride) {
 // flusher goroutine for the notifications.
 func (c *changeCache) FlushNotificationsForTest(t testing.TB) {
 	t.Helper()
-	override := c.notifyOverride.Load()
+	override := c.loadNotifyOverride()
 	if override == nil || !override.manual {
 		t.Fatalf("FlushNotificationsForTest requires SetManualNotifyChangeFuncForTest")
 		return
 	}
+	// Delivered without notifyOverrideLock, so a callback that installs another override doesn't deadlock.
 	c.drainToCallback(override.notify)
+}
+
+// loadNotifyOverride returns the installed override, or nil if none is.
+func (c *changeCache) loadNotifyOverride() *notifyOverride {
+	c.notifyOverrideLock.Lock()
+	defer c.notifyOverrideLock.Unlock()
+	return c.notifyOverride
 }
 
 // MergeNotificationsForTest merges ids into the cache's pending notifications, as a release path does once the entries

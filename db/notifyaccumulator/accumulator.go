@@ -80,7 +80,10 @@ func (a *Accumulator) MergeBuffers(bufs []*[]channels.ID) {
 // the cleared spare that Drain just swapped in.
 func (a *Accumulator) _add(ids []channels.ID) {
 	if a.active == nil {
-		a.active = make(channels.Set, len(ids))
+		// No size hint: ids can repeat a channel many times, so its length can far exceed the distinct count, and a
+		// map keeps its size after clear(). Grown from empty, each set reaches its peak distinct count once and keeps
+		// that for reuse.
+		a.active = make(channels.Set)
 	}
 	for _, id := range ids {
 		a.active.Add(id)

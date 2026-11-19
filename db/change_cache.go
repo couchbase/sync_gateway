@@ -66,30 +66,31 @@ const EnableStarChannelLog = true
 //   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	db                    *DatabaseContext
-	logCtx                context.Context                // fix in sg-bucket to ProcessEvent
-	logsDisabled          bool                           // If true, ignore incoming tap changes
-	nextSequence          uint64                         // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
-	publishedNextSequence atomic.Uint64                  // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
-	initialSequence       atomic.Uint64                  // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
-	receivedSeqs          map[uint64]struct{}            // Set of all sequences received
-	pendingLogs           LogPriorityQueue               // Out-of-sequence entries waiting to be cached
-	notifyAcc             notifyaccumulator.Accumulator  // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
-	notifyOverride        atomic.Pointer[notifyOverride] // Set only by tests, to take drained notifications away from the broadcast tick. Atomic because the tick reads it while a test installs it.
-	started               base.AtomicBool                // Set by the Start method
-	stopped               base.AtomicBool                // Set by the Stop method
-	skippedSeqs           *SkippedSequenceSkiplist       // Skipped sequences still pending on the DCP caching feed
-	removeSkippedHook     func(seq uint64)               // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
-	lock                  sync.RWMutex                   // Coordinates access to struct fields
-	options               CacheOptions                   // Cache config
-	terminator            chan bool                      // Signal termination of background goroutines
-	backgroundTasks       []BackgroundTask               // List of background tasks.
-	initTime              time.Time                      // Cache init time - used for latency calculations
-	channelCache          ChannelCache                   // Underlying channel cache
-	lastAddPendingTime    int64                          // The most recent time _addPendingLogs was run, as epoch time
-	internalStats         changeCacheStats               // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback      base.CfgEventNotifyFunc        // Callback for Cfg updates received over the caching feed
-	sgCfgPrefix           string                         // Prefix for SG Cfg doc keys
-	metaKeys              *base.MetadataKeys             // Metadata key formatter
+	logCtx                context.Context               // fix in sg-bucket to ProcessEvent
+	logsDisabled          bool                          // If true, ignore incoming tap changes
+	nextSequence          uint64                        // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
+	publishedNextSequence atomic.Uint64                 // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
+	initialSequence       atomic.Uint64                 // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
+	receivedSeqs          map[uint64]struct{}           // Set of all sequences received
+	pendingLogs           LogPriorityQueue              // Out-of-sequence entries waiting to be cached
+	notifyAcc             notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
+	notifyOverrideLock    sync.Mutex                    // Guards notifyOverride. Exists for tests: in production nothing sets the override, and only the broadcast tick takes this lock, once per tick, so it is never contended.
+	notifyOverride        *notifyOverride               // Set only by tests, to take drained notifications away from the broadcast tick. Guarded by notifyOverrideLock.
+	started               base.AtomicBool               // Set by the Start method
+	stopped               base.AtomicBool               // Set by the Stop method
+	skippedSeqs           *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
+	removeSkippedHook     func(seq uint64)              // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
+	lock                  sync.RWMutex                  // Coordinates access to struct fields
+	options               CacheOptions                  // Cache config
+	terminator            chan bool                     // Signal termination of background goroutines
+	backgroundTasks       []BackgroundTask              // List of background tasks.
+	initTime              time.Time                     // Cache init time - used for latency calculations
+	channelCache          ChannelCache                  // Underlying channel cache
+	lastAddPendingTime    int64                         // The most recent time _addPendingLogs was run, as epoch time
+	internalStats         changeCacheStats              // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback      base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
+	sgCfgPrefix           string                        // Prefix for SG Cfg doc keys
+	metaKeys              *base.MetadataKeys            // Metadata key formatter
 }
 
 // notifyOverride is a test's replacement for the change listener as the destination of drained notifications.
@@ -264,8 +265,14 @@ func (c *changeCache) Stop(ctx context.Context) {
 // change listener's broadcast tick calls it while holding tapNotifier.L, so apply can stamp the channels and the tick
 // broadcast them in that one lock hold. It drains nothing while a test has installed its own notify callback: the test
 // then receives the notifications instead of the listener, as the callback replaces the listener.
+//
+// notifyOverrideLock is held from the check through the drain, so a test that installs a callback can't have a tick
+// that saw no callback drain what is merged after the install returns. Only tests ever set the override, so in
+// production this tick is the lock's only user.
 func (c *changeCache) drainForBroadcast(apply func(channels.Set)) {
-	if c.notifyOverride.Load() != nil {
+	c.notifyOverrideLock.Lock()
+	defer c.notifyOverrideLock.Unlock()
+	if c.notifyOverride != nil {
 		return
 	}
 	c.notifyAcc.Drain(apply)
