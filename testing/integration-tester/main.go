@@ -11,7 +11,7 @@
 //
 // Required environment variables (or use -m for master-mode defaults):
 //
-//	COUCHBASE_SERVER_PROTOCOL, COUCHBASE_SERVER_VERSION, GSI,
+//	COUCHBASE_SERVER_PROTOCOL, GSI,
 //	TARGET_TEST, TARGET_PACKAGE, TLS_SKIP_VERIFY, SG_EDITION
 package main
 
@@ -32,7 +32,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -136,7 +135,7 @@ func (p *Protocol) UnmarshalText(text []byte) error {
 type config struct {
 	// Required
 	CouchbaseServerProtocol Protocol `env:"COUCHBASE_SERVER_PROTOCOL,required"`
-	CouchbaseServerVersion  string   `env:"COUCHBASE_SERVER_VERSION,required"`
+	CouchbaseServerVersion  string   `env:"COUCHBASE_SERVER_VERSION"`
 	TargetTest              string   `env:"TARGET_TEST,required"`
 	TargetPackage           string   `env:"TARGET_PACKAGE,required"`
 	SGEdition               Edition  `env:"SG_EDITION,required"`
@@ -158,6 +157,13 @@ type config struct {
 	SGTestX509        bool `env:"SG_TEST_X509"`
 	SGCBCollectAlways bool `env:"SG_CBCOLLECT_ALWAYS"`
 	SGTestBucketDebug bool `env:"SG_TEST_BUCKET_POOL_DEBUG"`
+}
+
+// masterModeConfig holds the environment variables that -m honours. It hardcodes every other setting.
+type masterModeConfig struct {
+	CouchbaseServerVersion string `env:"COUCHBASE_SERVER_VERSION"`
+	PackageTimeout         string `env:"PACKAGE_TIMEOUT"`
+	MaxParallelPackages    int    `env:"MAX_PARALLEL_PACKAGES"`
 }
 
 // goTestArgs holds the arguments for a single gotestsum invocation.
@@ -233,9 +239,11 @@ Flags:
 	fmt.Fprintf(os.Stderr, `
 Environment variables:
 
+  With -m, every setting is fixed except COUCHBASE_SERVER_VERSION, PACKAGE_TIMEOUT and
+  MAX_PARALLEL_PACKAGES, which are read from the environment. Without -m:
+
   Required:
     COUCHBASE_SERVER_PROTOCOL  Couchbase Server connection protocol (couchbase|couchbases)
-    COUCHBASE_SERVER_VERSION   Couchbase Server version to provision (e.g. enterprise-7.6.6)
     GSI                        Use GSI (global secondary index) for queries (true|false)
     SG_EDITION                 Sync Gateway edition to test (EE|CE)
     TARGET_PACKAGE             Comma-separated package(s) to test (e.g. rest,db or ...)
@@ -243,10 +251,12 @@ Environment variables:
     TLS_SKIP_VERIFY            Skip TLS certificate verification (true|false)
 
   Optional:
+    COUCHBASE_SERVER_VERSION   Couchbase Server Docker Hub tag (e.g. enterprise-8.0.3) or release line (e.g. enterprise-8.0)
+                               to provision (default: the newest enterprise release on Docker Hub)
     DISABLE_REV_CACHE          Disable the revision cache during tests (default: false)
     DETECT_RACES               Enable the Go race detector (default: false)
     FAIL_FAST                  Stop on the first test failure (default: false)
-    MAX_PARALLEL_PACKAGES      Maximum packages tested simultaneously against CBS, also read with -m (default: %d)
+    MAX_PARALLEL_PACKAGES      Maximum packages tested simultaneously against CBS (default: %d)
     MULTI_NODE                 Provision a 3-node Couchbase cluster instead of 1 (default: false)
     PACKAGE_TIMEOUT            Per-package test timeout passed to -test.timeout (default: %s)
     RUN_COUNT                  Number of times to repeat each test run (default: 1)
@@ -271,27 +281,26 @@ func run() int {
 	var cfg config
 	if *masterMode {
 		logger.Info("Running in automated master integration mode")
+		// The only settings -m takes from the environment, so the MainIntegration Jenkins job can tune them.
+		var overrides masterModeConfig
+		if err := env.Parse(&overrides); err != nil {
+			logger.Fatalf("parse environment: %v", err)
+		}
 		cfg = config{
 			TargetPackage:           allPackages,
 			TargetTest:              "ALL",
 			SGEdition:               EditionEE,
 			RunCount:                1,
 			CouchbaseServerProtocol: ProtocolCouchbase,
-			CouchbaseServerVersion:  "enterprise-7.6.12",
+			CouchbaseServerVersion:  overrides.CouchbaseServerVersion,
+			PackageTimeout:          overrides.PackageTimeout,
+			MaxParallelPackages:     overrides.MaxParallelPackages,
 			SGTestBucketDebug:       true,
 			GSI:                     true,
 			TLSSkipVerify:           false,
 			SGCBCollectAlways:       false,
 			RunWalrus:               true,
 			DetectRaces:             false,
-		}
-		// The one setting -m takes from the environment, so the MainIntegration Jenkins job can tune it.
-		if v := os.Getenv("MAX_PARALLEL_PACKAGES"); v != "" {
-			n, err := strconv.Atoi(v)
-			if err != nil {
-				logger.Fatalf("parse MAX_PARALLEL_PACKAGES=%q: %v", v, err)
-			}
-			cfg.MaxParallelPackages = n
 		}
 	} else {
 		if err := env.Parse(&cfg); err != nil {
@@ -591,6 +600,12 @@ func runIntegrationTestsParallel(sigCtx context.Context, edition Edition, flags 
 	if err := initCbdinocluster(); err != nil {
 		logger.Fatal(err)
 	}
+	// Resolved once, so that every package runs against the same tag.
+	serverVersion, err := resolveServerVersion(serverVersion)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	logger.Infof("Running integration tests against Couchbase Server %s", serverVersion)
 
 	ctx, cancel := context.WithCancelCause(sigCtx)
 	defer cancel(nil)

@@ -16,6 +16,9 @@ set -e # Abort on errors
 git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
+# Checked before the integration-tester handoff, which would otherwise pick the newest release when unset.
+: "${COUCHBASE_SERVER_VERSION:?COUCHBASE_SERVER_VERSION environment variable is required to be set.}"
+
 # Jenkins fetches this script from main, so it also has to run revisions that predate integration-tester.
 # Those fall through to the shell runner below.
 if [ -d testing/integration-tester ]; then
@@ -34,7 +37,6 @@ if [ "${1:-}" == "-m" ]; then
     RUN_COUNT="1"
     # CBS server settings
     COUCHBASE_SERVER_PROTOCOL="couchbase"
-    COUCHBASE_SERVER_VERSION="enterprise-7.6.12"
     export SG_TEST_BUCKET_POOL_DEBUG="true"
     GSI="true"
     TLS_SKIP_VERIFY="false"
@@ -43,7 +45,6 @@ fi
 
 REQUIRED_VARS=(
     COUCHBASE_SERVER_PROTOCOL
-    COUCHBASE_SERVER_VERSION
     GSI
     TARGET_TEST
     TARGET_PACKAGE

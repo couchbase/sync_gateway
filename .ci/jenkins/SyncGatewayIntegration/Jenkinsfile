@@ -12,7 +12,7 @@ def slackDetails(helpers) {
     def details = [
         SG_COMMIT: params.SG_COMMIT,
         GIT_COMMIT: helpers.githubCommitLink(env.GIT_COMMIT),
-        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
+        COUCHBASE_SERVER_VERSION: env.COUCHBASE_SERVER_TAG ?: params.COUCHBASE_SERVER_VERSION,
     ]
     def ticketLink = helpers.jiraLinkForBranch(params.SG_COMMIT)
     if (ticketLink) {
@@ -72,10 +72,11 @@ pipeline {
         string(name: 'TARGET_PACKAGE', defaultValue: '...', description: '')
         string(
             name: 'COUCHBASE_SERVER_VERSION',
-            defaultValue: 'enterprise-8.0.2',
+            defaultValue: 'enterprise-8.0',
             description: '''Version of couchbase server to run with. This is docker images:
-enterprise-7.6.7 : couchbase/server:enterprise-7.6.7
+enterprise-8.0.3 : couchbase/server:enterprise-8.0.3
 community-7.6.7 : couchbase/server:community-7.6.7
+An exact tag such as enterprise-8.0.2 runs as given. A release line such as enterprise-8.0 runs the newest Docker Hub tag on that line.
 To use pre-release versions, find the number on https://github.com/orgs/cb-vanilla/packages/container/package/server and use ghcr.io/cb-vanilla/server:enterprise-8.1.0'''
         )
         choice(
@@ -175,6 +176,8 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
+                    // A build parameter takes precedence over env.X, so the resolved tag needs a name of its own.
+                    env.COUCHBASE_SERVER_TAG = load('.ci/jenkinsHelpers.groovy').resolveServerVersion(params.COUCHBASE_SERVER_VERSION)
                     // "<branch> for <whoever triggered it> on <server version>". PARENT_JOB_NAME is only
                     // set for an upstream-triggered build and the build user only for a manual one, so at
                     // most one of the two is present and the space between them collapses when it isn't.
@@ -183,7 +186,7 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                     def parentJobName = params.PARENT_JOB_NAME ? (params.PARENT_JOB_NAME - ~/:\s*$/) : ''
                     def triggeredBy = [parentJobName, buildUser].findAll { it }.join(' ')
                     currentBuild.displayName = params.PARENT_JOB_NAME ? "#${env.BUILD_NUMBER} ${params.PARENT_JOB_NAME}" : "#${env.BUILD_NUMBER}"
-                    currentBuild.description = "${env.GIT_BRANCH} for ${triggeredBy} on ${params.COUCHBASE_SERVER_VERSION}"
+                    currentBuild.description = "${env.GIT_BRANCH} for ${triggeredBy} on ${env.COUCHBASE_SERVER_TAG}"
                 }
             }
         }
@@ -196,17 +199,20 @@ To use pre-release versions, find the number on https://github.com/orgs/cb-vanil
                             // test failures (50 -> UNSTABLE) from a test setup failure or unrecovered panic
                             // (1 -> FAILURE). A plain sh step would collapse both into FAILURE, so the
                             // unstable post block below would never run.
-                            def exitCode = sh(returnStatus: true, script: '''#!/bin/bash
-                                set -eu
-                                echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-                                # ensure any image tag being used is up to date before running
-                                IMAGE=${COUCHBASE_SERVER_VERSION}
-                                if [[ ! "${COUCHBASE_SERVER_VERSION}" =~ ^ghcr\\.io/ ]]; then
-                                    IMAGE="couchbase/server:${COUCHBASE_SERVER_VERSION}"
-                                fi
-                                docker pull "$IMAGE"
-                                "$INTEGRATION_BUILD_SCRIPT"
-                            ''')
+                            def exitCode
+                            withEnv(["COUCHBASE_SERVER_VERSION=${env.COUCHBASE_SERVER_TAG}"]) {
+                                exitCode = sh(returnStatus: true, script: '''#!/bin/bash
+                                    set -eu
+                                    echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+                                    # ensure any image tag being used is up to date before running
+                                    IMAGE=${COUCHBASE_SERVER_VERSION}
+                                    if [[ ! "${COUCHBASE_SERVER_VERSION}" =~ ^ghcr\\.io/ ]]; then
+                                        IMAGE="couchbase/server:${COUCHBASE_SERVER_VERSION}"
+                                    fi
+                                    docker pull "$IMAGE"
+                                    "$INTEGRATION_BUILD_SCRIPT"
+                                ''')
+                            }
                             if (exitCode == 50) {
                                 unstable('At least one integration test failed')
                             } else if (exitCode != 0) {

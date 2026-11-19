@@ -14,6 +14,7 @@
 """Start a Couchbase Server cluster using cbdinocluster."""
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -21,12 +22,19 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
+import urllib.parse
+import urllib.request
 
 # cbdinocluster is pinned by a tool directive in its own module rather than the root go.mod, so
 # invoke it through that module's directory to stay independent of the caller's working directory.
 _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
-DEFAULT_CBS_VERSION = "8.0.1"
+DOCKER_HUB_TAGS_URL = "https://hub.docker.com/v2/repositories/couchbase/server/tags"
+# The newest tag on this line is the default version, so a release on Docker Hub needs no change here.
+DEFAULT_CBS_LINE = "enterprise-"
+# A release line such as 'enterprise-8.0' or '8.0', which resolves to the newest patch on Docker Hub.
+RELEASE_LINE_RE = re.compile(r"(?:(?:enterprise|community)-)?\d+\.\d+")
 DEFAULT_SERVICES = "kv,n1ql,index"
 DEFAULT_MEMORY_MB = 1200
 DEFAULT_NODES = 1
@@ -71,6 +79,47 @@ def ensure_initialized() -> None:
             "--disable-dns",
         ]
     )
+
+
+def docker_hub_tags(name: str) -> list[str]:
+    """Return the most recently updated Docker Hub tags that contain name, retrying transient failures."""
+    query = urllib.parse.urlencode(
+        {"page_size": 100, "ordering": "last_updated", "name": name}
+    )
+    url = f"{DOCKER_HUB_TAGS_URL}?{query}"
+    attempts = 5
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                return [r["name"] for r in json.load(resp)["results"]]
+        except OSError as e:
+            if attempt == attempts:
+                raise RuntimeError(f"Failed to list Docker Hub tags from {url}: {e}")
+            print(f"Listing Docker Hub tags failed ({e}), retrying", flush=True)
+            time.sleep(2 * attempt)
+    raise AssertionError("unreachable")
+
+
+def resolve_version(version: str | None) -> str:
+    """Resolve a release line such as 'enterprise-8.0' to the newest Docker Hub tag on it, and no version
+    to the newest enterprise release. Any other version, such as a full tag or an image, is returned unchanged."""
+    if version and not RELEASE_LINE_RE.fullmatch(version):
+        return version
+    prefix = f"{version}." if version else DEFAULT_CBS_LINE
+    # Anchored, because the name filter is a substring match that also returns prereleases and other lines.
+    tag_re = re.compile(re.escape(prefix) + (r"\d+" if version else r"\d+\.\d+\.\d+"))
+    tags = [t for t in docker_hub_tags(prefix) if tag_re.fullmatch(t)]
+    if not tags:
+        raise RuntimeError(
+            f"Found no Docker Hub tag for Couchbase Server {version or 'enterprise'}"
+        )
+    latest = max(tags, key=lambda t: tuple(int(n) for n in re.findall(r"\d+", t)))
+    print(
+        f"Resolved Couchbase Server {version or 'default'} to {latest}",
+        file=sys.stderr,
+        flush=True,
+    )
+    return latest
 
 
 def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None:
@@ -142,9 +191,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--version",
-        default=os.environ.get("COUCHBASE_SERVER_VERSION", DEFAULT_CBS_VERSION),
-        help="Couchbase Server version to deploy "
-        f"(default: ${{COUCHBASE_SERVER_VERSION}} or {DEFAULT_CBS_VERSION})",
+        default=os.environ.get("COUCHBASE_SERVER_VERSION"),
+        help="Couchbase Server version to deploy. A release line such as enterprise-8.0 runs the newest "
+        "Docker Hub tag on it (default: ${COUCHBASE_SERVER_VERSION} or the newest enterprise release)",
     )
     parser.add_argument(
         "--nodes",
@@ -190,6 +239,11 @@ def main() -> None:
         "Lets parallel callers in one directory each get their own cluster",
     )
     parser.add_argument(
+        "--print-version",
+        action="store_true",
+        help="Print the version that --version resolves to, then exit without allocating a cluster",
+    )
+    parser.add_argument(
         "--init-only",
         action="store_true",
         help="Initialize cbdinocluster if needed, then exit without allocating a cluster",
@@ -202,9 +256,13 @@ def main() -> None:
     )
     opts = parser.parse_args()
 
+    if opts.print_version:
+        print(resolve_version(opts.version))
+        return
     ensure_initialized()
     if opts.init_only:
         return
+    opts.version = resolve_version(opts.version)
 
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
     cluster_id = (

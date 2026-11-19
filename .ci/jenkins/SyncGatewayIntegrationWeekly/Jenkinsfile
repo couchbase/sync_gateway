@@ -7,21 +7,6 @@
 // once a build has evaluated it, so start one build by hand afterwards. Until then the job sits waiting on
 // a timer Jenkins does not know about yet.
 
-// Newest Docker Hub tag on a release line, so that 'enterprise-7.6' resolves to 'enterprise-7.6.12'. The
-// name parameter is a substring match, so the grep drops prereleases and longer lines, and sort -V orders
-// by version rather than lexically, which matters as soon as a line reaches patch 10.
-def latestDockerHubTag(String line) {
-    def tag = sh(returnStdout: true, script: '''#!/bin/bash
-        set -euo pipefail
-        curl -sSf 'https://hub.docker.com/v2/repositories/couchbase/server/tags?page_size=100&name=LINE.' |
-            grep -o '"name":"[^"]*"' | cut -d'"' -f4 | grep -E "^LINE\\.[0-9]+$" | sort -V | tail -1
-    '''.replace('LINE', line)).trim()
-    if (!tag) {
-        error("Found no Docker Hub tag for Couchbase Server line ${line}")
-    }
-    return tag
-}
-
 // Every '<version>-<build number>' tag on the private cb-vanilla server package, in version order. The
 // newest build of a line also carries a bare '<version>' tag, but that one moves from build to build, so the
 // sweep pins the build tag and the record says exactly which image ran. Needs the same credential the child
@@ -110,8 +95,10 @@ pipeline {
                     def sg40 = null
                     def sg41 = null
                     node('very-lightweight-jobs-only') {
-                        ga76 = latestDockerHubTag('enterprise-7.6')
-                        ga80 = latestDockerHubTag('enterprise-8.0')
+                        sh 'curl -sSf --retry 5 --retry-connrefused https://raw.githubusercontent.com/couchbase/sync_gateway/main/.ci/jenkinsHelpers.groovy -o jenkinsHelpers.groovy'
+                        def helpers = load('jenkinsHelpers.groovy')
+                        ga76 = helpers.latestDockerHubTag('enterprise-7.6')
+                        ga80 = helpers.latestDockerHubTag('enterprise-8.0')
                         withCredentials([usernamePassword(credentialsId: 'github_ghcr_pat', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
                             def vanillaTags = cbVanillaTags()
                             tip76 = latestVanillaImage(vanillaTags, '7.6')
