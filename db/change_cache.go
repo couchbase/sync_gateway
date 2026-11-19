@@ -96,6 +96,7 @@ type changeCache struct {
 type notifyOverride struct {
 	notify func(context.Context, channels.Set) // receives each drained set; may keep it, as it is given a copy
 	manual bool                                // true when only FlushNotificationsForTest drains, false when a flusher goroutine does
+	stop   func()                              // stops and waits for this override's flusher goroutine; nil in manual mode
 }
 
 type changeCacheStats struct {

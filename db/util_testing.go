@@ -1764,40 +1764,51 @@ func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Contex
 // goroutine, up to one interval after the entries are cached, so a test must wait for a notification rather than
 // expect it once DocChanged returns.
 func (c *changeCache) SetNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set)) {
-	override := &notifyOverride{notify: notify}
-	c.notifyOverride.Store(override)
-
 	interval := c.options.BroadcastChangesInterval
 	if interval <= 0 {
 		interval = DefaultBroadcastChangesTime
 	}
-	stop := make(chan struct{})
+	stopCh := make(chan struct{})
 	done := make(chan struct{})
+	var stopOnce sync.Once
+	override := &notifyOverride{notify: notify, stop: func() {
+		stopOnce.Do(func() { close(stopCh) })
+		<-done
+	}}
+	c.installNotifyOverride(override)
+
 	go func() {
 		defer close(done)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		// A later setter replaces override, which ends this flusher so that only one goroutine drains for a test.
-		for c.notifyOverride.Load() == override {
+		for running := true; running; {
 			select {
-			case <-stop:
-				return
+			case <-stopCh:
+				running = false
 			case <-ticker.C:
 				c.drainToCallback(override.notify)
 			}
 		}
 	}()
-	t.Cleanup(func() {
-		close(stop)
-		<-done
-	})
+	t.Cleanup(override.stop)
 }
 
 // SetManualNotifyChangeFuncForTest installs the notify callback in place of the change listener, in manual-flush
 // mode: nothing drains the cache's notifications until the test calls FlushNotificationsForTest, so a test controls
 // exactly when they are delivered.
 func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
-	c.notifyOverride.Store(&notifyOverride{notify: notify, manual: true})
+	c.installNotifyOverride(&notifyOverride{notify: notify, manual: true})
+}
+
+// installNotifyOverride replaces the installed override with next. It first stops the replaced override's flusher and
+// waits for it to exit, so no drain into the old callback can follow the replacement and at most one goroutine ever
+// drains for a test. The old override stays installed until then, so the listener's tick can't drain in between.
+// Setters run on the test's goroutine, so two never race each other.
+func (c *changeCache) installNotifyOverride(next *notifyOverride) {
+	if prev := c.notifyOverride.Load(); prev != nil && prev.stop != nil {
+		prev.stop()
+	}
+	c.notifyOverride.Store(next)
 }
 
 // FlushNotificationsForTest delivers every notification merged since the last flush to the installed callback, on

@@ -12,6 +12,7 @@ package changecachetest
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,4 +54,35 @@ func TestManualNotifyDeliversOnFlush(t *testing.T) {
 		cache.FlushNotificationsForTest(t)
 		assert.Len(c, notified, 1)
 	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestReplacedFlusherStopsDraining checks that installing a new notify callback stops the previous callback's flusher
+// before it returns. A flusher still running would take notifications merged after the replacement, and the new
+// callback would never see them.
+func TestReplacedFlusherStopsDraining(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+	cache := database.ChangeCacheForTest(t)
+
+	var oldReceived atomic.Int64
+	cache.SetNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
+		oldReceived.Add(int64(len(chans)))
+	})
+	// Give the flusher time to park on its ticker, where a replacement it only checked for between ticks would go
+	// unnoticed until the next tick had already drained.
+	time.Sleep(10 * time.Millisecond)
+
+	// The callback runs only inside FlushNotificationsForTest on this goroutine, so it needs no lock.
+	var manualReceived int
+	cache.SetManualNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
+		manualReceived += len(chans)
+	})
+
+	cache.MergeNotificationsForTest(t, channels.NewID("afterReplacement", 0))
+	// Long enough for the old flusher to tick several times, had it survived the replacement.
+	time.Sleep(3 * db.DefaultBroadcastChangesTime)
+	cache.FlushNotificationsForTest(t)
+
+	assert.Zero(t, oldReceived.Load(), "the replaced flusher drained into the old callback")
+	assert.Equal(t, 1, manualReceived, "the new callback must receive what was merged after it was installed")
 }
