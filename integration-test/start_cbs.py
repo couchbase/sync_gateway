@@ -114,17 +114,21 @@ def latest_enterprise_version() -> str:
     return latest
 
 
-def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None:
-    """Return the cluster ID recorded in the cwd's state file, if it's still running and
-    matches the requested version/node count/services. Otherwise return None."""
+def find_reusable_cluster(
+    version: str | None, nodes: int, services: str
+) -> tuple[str | None, str | None]:
+    """Check the cluster recorded in the cwd's state file. Return (reusable, mismatched): the
+    cluster ID in the first slot if it's still running and matches the requested version/node
+    count/services, or in the second if it's running but doesn't match. A version of None
+    matches a cluster at any version."""
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
     if not os.path.exists(state_path):
-        return None
+        return None, None
 
     with open(state_path) as f:
         cluster_id = f.read().strip()
     if not cluster_id:
-        return None
+        return None, None
 
     result = subprocess.run(
         [*CBDINOCLUSTER, "get-definition", cluster_id],
@@ -134,13 +138,13 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
     )
     if result.returncode != 0:
         stderr = result.stderr.strip()
-        if "not found" in stderr.lower():
+        if "failed to identify cluster" in stderr or "not found" in stderr.lower():
             print(
                 f"Cluster {cluster_id} recorded in {state_path} is no longer running; "
                 "allocating a new one",
                 flush=True,
             )
-            return None
+            return None, None
         # Unknown failure - don't assume the cluster is gone and silently allocate a duplicate.
         raise RuntimeError(
             f"Failed to check status of cluster {cluster_id} recorded in {state_path}: "
@@ -150,10 +154,13 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
     definition = result.stdout
     version_match = re.search(r"version:\s*(\S+)", definition)
     nodes_match = re.search(r"count:\s*(\S+)", definition)
-    services_match = re.search(r"services:\s*\[([^\]]*)\]", definition)
+    # cbdinocluster writes services as a block list ("- kv" lines), older versions as a flow list.
+    services_match = re.search(
+        r"services:\s*(?:\[([^\]]*)\]|((?:\n\s*-\s*\S+)+))", definition
+    )
     requested_services = {s.strip() for s in services.split(",") if s.strip()}
     existing_services = (
-        {s.strip() for s in services_match.group(1).split(",") if s.strip()}
+        set(re.findall(r"[^\s,\[\]-]+", services_match.group(0).split(":", 1)[1]))
         if services_match
         else None
     )
@@ -161,20 +168,20 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
         version_match is None
         or nodes_match is None
         or existing_services is None
-        or version_match.group(1) != version
+        or (version is not None and version_match.group(1) != version)
         or nodes_match.group(1) != str(nodes)
         or existing_services != requested_services
     ):
         print(
             f"Cluster {cluster_id} recorded in {state_path} doesn't match the requested "
-            f"version={version}/nodes={nodes}/services={sorted(requested_services)}; "
+            f"version={version or 'any'}/nodes={nodes}/services={sorted(requested_services)}; "
             "allocating a new one",
             flush=True,
         )
-        return None
+        return None, cluster_id
 
     print(f"Reusing existing cluster {cluster_id} recorded in {state_path}", flush=True)
-    return cluster_id
+    return cluster_id, None
 
 
 def main() -> None:
@@ -236,6 +243,11 @@ def main() -> None:
         help="Initialize cbdinocluster if needed, then exit without allocating a cluster",
     )
     parser.add_argument(
+        "--resolve-version",
+        action="store_true",
+        help="Print the Couchbase Server version that would be deployed, then exit",
+    )
+    parser.add_argument(
         "--env-file",
         default=os.path.join(os.getcwd(), DEFAULT_ENV_FILE_NAME),
         help="Path to write shell-sourceable 'export SG_TEST_COUCHBASE_SERVER_URL=...' and "
@@ -243,20 +255,23 @@ def main() -> None:
     )
     opts = parser.parse_args()
 
+    if opts.resolve_version:
+        print(opts.version or latest_enterprise_version())
+        return
     ensure_initialized()
     if opts.init_only:
         return
-    opts.version = opts.version or latest_enterprise_version()
 
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
-    cluster_id = (
-        None
+    cluster_id, mismatched_id = (
+        (None, None)
         if opts.no_reuse
         else find_reusable_cluster(opts.version, opts.nodes, opts.services)
     )
 
     allocated = cluster_id is None
     if allocated:
+        opts.version = opts.version or latest_enterprise_version()
         services = ", ".join(s.strip() for s in opts.services.split(",") if s.strip())
 
         # A version containing '/' is a full docker image reference (e.g.
@@ -309,6 +324,10 @@ def main() -> None:
             with open(state_path, "w") as f:
                 f.write(cluster_id + "\n")
             print(f"Wrote cluster ID to {state_path}", flush=True)
+        # Removed only once its replacement exists, since nothing else tracks it after the state file moves on.
+        if mismatched_id:
+            print(f"Removing replaced cluster {mismatched_id}", flush=True)
+            subprocess.run([*CBDINOCLUSTER, "rm", mismatched_id], check=False)
 
     connstr_cmd = [*CBDINOCLUSTER, "connstr", cluster_id]
     connstr_cmd += ["--tls"] if opts.tls else ["--no-tls"]

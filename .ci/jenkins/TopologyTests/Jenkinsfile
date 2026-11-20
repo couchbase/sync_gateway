@@ -4,8 +4,8 @@
 
 // Note for whoever creates this job: its *first* build runs with no parameter values at all. Jenkins
 // registers the parameters{} block when it first evaluates this file, but only applies the defaults from the
-// second build onwards, so that first run dies in .ci/jenkins/integration-build.sh's REQUIRED_VARS check with
-// "COUCHBASE_SERVER_PROTOCOL environment variable is required to be set". Just run it again - it isn't a
+// second build onwards, so that first run dies in .ci/jenkins/integration-build.sh with
+// "COUCHBASE_SERVER_VERSION environment variable is required to be set." Just run it again - it isn't a
 // misconfiguration.
 
 // Details block included in every Slack message for this pipeline (see jenkinsHelpers.groovy).

@@ -14,8 +14,9 @@ import re
 import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+NAME_RE = re.compile(r"""name:\s*['"]COUCHBASE_SERVER_VERSION['"]""")
 PARAM_RE = re.compile(
-    r"name:\s*'COUCHBASE_SERVER_VERSION',\s*(defaultValue|value):\s*'?([^',\s]*)"
+    NAME_RE.pattern + r""",\s*(defaultValue|value):\s*['"]?([^'",\s]*)"""
 )
 
 
@@ -26,7 +27,7 @@ def main() -> int:
         rel = str(path.relative_to(REPO_ROOT))
         matches = PARAM_RE.findall(text)
         # Every declaration must parse, so that a reformatted parameter is not skipped silently.
-        if len(matches) != text.count("name: 'COUCHBASE_SERVER_VERSION'"):
+        if len(matches) != len(NAME_RE.findall(text)):
             print(
                 f"{rel}: cannot parse a COUCHBASE_SERVER_VERSION parameter",
                 file=sys.stderr,

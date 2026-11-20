@@ -600,6 +600,11 @@ func runIntegrationTestsParallel(sigCtx context.Context, edition Edition, flags 
 	if err := initCbdinocluster(); err != nil {
 		logger.Fatal(err)
 	}
+	serverVersion, err := resolveServerVersion(serverVersion)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	logger.Infof("Testing against Couchbase Server %s", serverVersion)
 
 	ctx, cancel := context.WithCancelCause(sigCtx)
 	defer cancel(nil)
