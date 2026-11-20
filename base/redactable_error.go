@@ -12,13 +12,15 @@ package base
 
 import (
 	"fmt"
+	"strings"
 )
 
 // RedactableError is an error that can be used as a drop-in replacement for an error,
 // which has the ability to redact any sensitive data by calling redact() on all of its args.
 type RedactableError struct {
-	fmt  string
-	args []any
+	fmt     string
+	args    []any
+	wrapped []error // errors formatted with %w
 }
 
 var (
@@ -33,9 +35,53 @@ func RedactErrorf(format string, args ...any) *RedactableError {
 		_ = fmt.Errorf(format, args...)
 	}
 	return &RedactableError{
-		fmt:  format,
-		args: args,
+		fmt:     format,
+		args:    args,
+		wrapped: wrappedErrors(format, args),
 	}
+}
+
+// wrapPlaceholder stands in for the error argument at its index, so fmt.Errorf can find the %w arguments without
+// formatting any of the real arguments.
+type wrapPlaceholder int
+
+func (wrapPlaceholder) Error() string { return "" }
+
+// wrappedErrors returns the arguments that fmt.Errorf(format, args...) would wrap with %w.
+func wrappedErrors(format string, args []any) []error {
+	if !strings.ContainsRune(format, 'w') {
+		return nil
+	}
+	var placeholders []any
+	for i, arg := range args {
+		if _, ok := arg.(error); ok {
+			if placeholders == nil {
+				placeholders = make([]any, len(args))
+			}
+			placeholders[i] = wrapPlaceholder(i)
+		}
+	}
+	if placeholders == nil {
+		return nil
+	}
+	// keep ints, which can be * width or precision operands
+	for i, arg := range args {
+		if n, ok := arg.(int); ok {
+			placeholders[i] = n
+		}
+	}
+	var wrapped []error
+	switch typedErr := fmt.Errorf(format, placeholders...).(type) {
+	case interface{ Unwrap() []error }:
+		for _, err := range typedErr.Unwrap() {
+			wrapped = append(wrapped, args[err.(wrapPlaceholder)].(error))
+		}
+	case interface{ Unwrap() error }:
+		if err := typedErr.Unwrap(); err != nil {
+			wrapped = []error{args[err.(wrapPlaceholder)].(error)}
+		}
+	}
+	return wrapped
 }
 
 // Error satisfies the error interface
@@ -56,14 +102,7 @@ func (re *RedactableError) Redact() string {
 	return fmt.Errorf(re.fmt, redactedArgs...).Error()
 }
 
-// Unwrap returns the underlying error(s).
+// Unwrap returns the errors formatted with %w, matching fmt.Errorf.
 func (re *RedactableError) Unwrap() []error {
-	var errs []error
-	for _, arg := range re.args {
-		err, ok := arg.(error)
-		if ok {
-			errs = append(errs, err)
-		}
-	}
-	return errs
+	return re.wrapped
 }
