@@ -3,8 +3,8 @@
 
 // Note for whoever creates this job: its *first* build runs with no parameter values at all. Jenkins
 // registers the parameters{} block when it first evaluates this file, but only applies the defaults from the
-// second build onwards, so that first run dies in .ci/jenkins/integration-build.sh's REQUIRED_VARS check with
-// "COUCHBASE_SERVER_PROTOCOL environment variable is required to be set". Just run it again - it isn't a
+// second build onwards, so that first run dies in .ci/jenkins/integration-build.sh with
+// "COUCHBASE_SERVER_VERSION environment variable is required to be set." Just run it again - it isn't a
 // misconfiguration.
 
 // Details block included in every Slack message for this pipeline (see jenkinsHelpers.groovy).
@@ -72,9 +72,9 @@ pipeline {
         string(name: 'TARGET_PACKAGE', defaultValue: '...', description: '')
         string(
             name: 'COUCHBASE_SERVER_VERSION',
-            defaultValue: 'enterprise-8.0.2',
+            defaultValue: 'enterprise-8.0.3',
             description: '''Version of couchbase server to run with. This is docker images:
-enterprise-7.6.7 : couchbase/server:enterprise-7.6.7
+enterprise-8.0.3 : couchbase/server:enterprise-8.0.3
 community-7.6.7 : couchbase/server:community-7.6.7
 To use pre-release versions, find the number on https://github.com/orgs/cb-vanilla/packages/container/package/server and use ghcr.io/cb-vanilla/server:enterprise-8.1.0'''
         )

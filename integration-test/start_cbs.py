@@ -26,7 +26,8 @@ import textwrap
 # invoke it through that module's directory to stay independent of the caller's working directory.
 _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
-DEFAULT_CBS_VERSION = "8.0.1"
+# Must match the COUCHBASE_SERVER_VERSION defaults in .ci/jenkins, as .ci/check_cbs_version.py checks.
+DEFAULT_CBS_VERSION = "enterprise-8.0.3"
 DEFAULT_SERVICES = "kv,n1ql,index"
 DEFAULT_MEMORY_MB = 1200
 DEFAULT_NODES = 1
@@ -142,8 +143,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--version",
-        default=os.environ.get("COUCHBASE_SERVER_VERSION", DEFAULT_CBS_VERSION),
-        help="Couchbase Server version to deploy "
+        default=os.environ.get("COUCHBASE_SERVER_VERSION") or DEFAULT_CBS_VERSION,
+        help="Couchbase Server Docker Hub tag to deploy, such as enterprise-8.0.3, or a full "
+        "pre-release image, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 "
         f"(default: ${{COUCHBASE_SERVER_VERSION}} or {DEFAULT_CBS_VERSION})",
     )
     parser.add_argument(
