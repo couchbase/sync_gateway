@@ -13,7 +13,7 @@ def slackDetails(helpers) {
     def details = [
         SG_COMMIT: params.SG_COMMIT,
         GIT_COMMIT: helpers.githubCommitLink(env.GIT_COMMIT),
-        COUCHBASE_SERVER_VERSION: env.COUCHBASE_SERVER_TAG ?: params.COUCHBASE_SERVER_VERSION,
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
     ]
     def ticketLink = helpers.jiraLinkForBranch(params.SG_COMMIT)
     if (ticketLink) {
@@ -76,7 +76,7 @@ pipeline {
 
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
-        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0', description: 'An exact Docker Hub tag such as enterprise-8.0.2 runs as given. A release line such as enterprise-8.0 runs the newest tag on that line.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3.')
         booleanParam(name: 'GSI', defaultValue: true, description: '')
         string(name: 'TARGET_TEST', defaultValue: 'ALL', description: '')
         string(name: 'COUCHBASE_SERVER_PROTOCOL', defaultValue: 'couchbase', description: '')
@@ -126,17 +126,14 @@ pipeline {
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
-                    def helpers = load('.ci/jenkinsHelpers.groovy')
-                    // A build parameter takes precedence over env.X, so the resolved tag needs a name of its own.
-                    env.COUCHBASE_SERVER_TAG = helpers.resolveServerVersion(params.COUCHBASE_SERVER_VERSION)
                     // The build history lists the build number alone, so name the parameters that
                     // identify a run here, the same way SyncGatewayIntegration/Jenkinsfile does.
-                    def trigger = helpers.triggeredBy()
+                    def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
                     def targetTest = params.TARGET_TEST == 'ALL' ? '' : params.TARGET_TEST
                     currentBuild.description = [
                         params.SG_COMMIT,
                         trigger ? "for ${trigger}" : '',
-                        "on ${env.COUCHBASE_SERVER_TAG} ${params.SG_EDITION}",
+                        "on ${params.COUCHBASE_SERVER_VERSION} ${params.SG_EDITION}",
                         targetTest,
                     ].findAll { it }.join(' ')
                 }
@@ -149,10 +146,7 @@ pipeline {
                         // .ci/jenkins/integration-build.sh separates test failures (exit 50 -> UNSTABLE) from a
                         // test setup failure or unrecovered panic (exit 1 -> FAILURE). A plain sh step would
                         // collapse both into FAILURE, so the unstable post block below would never run.
-                        def exitCode
-                        withEnv(["COUCHBASE_SERVER_VERSION=${env.COUCHBASE_SERVER_TAG}"]) {
-                            exitCode = sh(script: './.ci/jenkins/integration-build.sh', returnStatus: true)
-                        }
+                        def exitCode = sh(script: './.ci/jenkins/integration-build.sh', returnStatus: true)
                         if (exitCode == 50) {
                             unstable('At least one topology test failed')
                         } else if (exitCode != 0) {

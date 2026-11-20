@@ -31,10 +31,8 @@ import urllib.request
 _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
 DOCKER_HUB_TAGS_URL = "https://hub.docker.com/v2/repositories/couchbase/server/tags"
-# The newest tag on this line is the default version, so a release on Docker Hub needs no change here.
-DEFAULT_CBS_LINE = "enterprise-"
-# A release line such as 'enterprise-8.0' or '8.0', which resolves to the newest patch on Docker Hub.
-RELEASE_LINE_RE = re.compile(r"(?:(?:enterprise|community)-)?\d+\.\d+")
+# With no version given, the newest enterprise release tag on Docker Hub runs.
+DEFAULT_CBS_PREFIX = "enterprise-"
 DEFAULT_SERVICES = "kv,n1ql,index"
 DEFAULT_MEMORY_MB = 1200
 DEFAULT_NODES = 1
@@ -100,24 +98,18 @@ def docker_hub_tags(name: str) -> list[str]:
     raise AssertionError("unreachable")
 
 
-def resolve_version(version: str | None) -> str:
-    """Resolve a release line such as 'enterprise-8.0' to the newest Docker Hub tag on it, and no version
-    to the newest enterprise release. Any other version, such as a full tag or an image, is returned unchanged."""
-    if version and not RELEASE_LINE_RE.fullmatch(version):
-        return version
-    prefix = f"{version}." if version else DEFAULT_CBS_LINE
-    # Anchored, because the name filter is a substring match that also returns prereleases and other lines.
-    tag_re = re.compile(re.escape(prefix) + (r"\d+" if version else r"\d+\.\d+\.\d+"))
-    tags = [t for t in docker_hub_tags(prefix) if tag_re.fullmatch(t)]
+def latest_enterprise_version() -> str:
+    """Return the newest enterprise release tag on Docker Hub, such as 'enterprise-8.0.4'."""
+    # Anchored, because the name filter is a substring match that also returns prereleases.
+    tag_re = re.compile(re.escape(DEFAULT_CBS_PREFIX) + r"\d+\.\d+\.\d+")
+    tags = [t for t in docker_hub_tags(DEFAULT_CBS_PREFIX) if tag_re.fullmatch(t)]
     if not tags:
         raise RuntimeError(
-            f"Found no Docker Hub tag for Couchbase Server {version or 'enterprise'}"
+            "Found no Docker Hub tag for a Couchbase Server enterprise release"
         )
     latest = max(tags, key=lambda t: tuple(int(n) for n in re.findall(r"\d+", t)))
     print(
-        f"Resolved Couchbase Server {version or 'default'} to {latest}",
-        file=sys.stderr,
-        flush=True,
+        f"Using newest Couchbase Server release {latest}", file=sys.stderr, flush=True
     )
     return latest
 
@@ -192,8 +184,8 @@ def main() -> None:
     parser.add_argument(
         "--version",
         default=os.environ.get("COUCHBASE_SERVER_VERSION"),
-        help="Couchbase Server version to deploy. A release line such as enterprise-8.0 runs the newest "
-        "Docker Hub tag on it (default: ${COUCHBASE_SERVER_VERSION} or the newest enterprise release)",
+        help="Couchbase Server version to deploy "
+        "(default: ${COUCHBASE_SERVER_VERSION} or the newest enterprise release on Docker Hub)",
     )
     parser.add_argument(
         "--nodes",
@@ -239,11 +231,6 @@ def main() -> None:
         "Lets parallel callers in one directory each get their own cluster",
     )
     parser.add_argument(
-        "--print-version",
-        action="store_true",
-        help="Print the version that --version resolves to, then exit without allocating a cluster",
-    )
-    parser.add_argument(
         "--init-only",
         action="store_true",
         help="Initialize cbdinocluster if needed, then exit without allocating a cluster",
@@ -256,13 +243,10 @@ def main() -> None:
     )
     opts = parser.parse_args()
 
-    if opts.print_version:
-        print(resolve_version(opts.version))
-        return
     ensure_initialized()
     if opts.init_only:
         return
-    opts.version = resolve_version(opts.version)
+    opts.version = opts.version or latest_enterprise_version()
 
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
     cluster_id = (

@@ -100,30 +100,6 @@ def triggeredBy() {
     return ''
 }
 
-// Newest Docker Hub tag on a release line, so that 'enterprise-7.6' resolves to 'enterprise-7.6.12'. The
-// name parameter is a substring match, so the grep drops prereleases and longer lines, and sort -V orders
-// by version rather than lexically, which matters as soon as a line reaches patch 10.
-def latestDockerHubTag(String line) {
-    def tag = sh(returnStdout: true, script: '''#!/bin/bash
-        set -euo pipefail
-        curl -sSf --retry 5 --retry-connrefused 'https://hub.docker.com/v2/repositories/couchbase/server/tags?page_size=100&name=LINE.' |
-            grep -o '"name":"[^"]*"' | cut -d'"' -f4 | grep -E "^LINE\\.[0-9]+$" | sort -V | tail -1
-    '''.replace('LINE', line)).trim()
-    if (!tag) {
-        error("Found no Docker Hub tag for Couchbase Server line ${line}")
-    }
-    return tag
-}
-
-// Resolves a COUCHBASE_SERVER_VERSION parameter naming a release line, such as 'enterprise-8.0', to the newest
-// Docker Hub tag on it. Any other value, such as a full tag or a ghcr.io image, is returned unchanged.
-def resolveServerVersion(String version) {
-    if (version ==~ /(enterprise|community)-\d+\.\d+/) {
-        return latestDockerHubTag(version)
-    }
-    return version
-}
-
 // Looks up the Slack member ID of whoever manually triggered this build in the UI, via
 // .ci/slack_usernames.yaml (Jenkins usernames are identical to GitHub usernames in this org).
 // Returns null for non-user-triggered builds (e.g. an automatic fan-out from an upstream job,

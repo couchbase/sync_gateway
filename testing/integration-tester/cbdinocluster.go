@@ -63,16 +63,6 @@ func initCbdinocluster() error {
 	return nil
 }
 
-// resolveServerVersion resolves an empty version or a release line such as 'enterprise-8.0' to an exact Docker
-// Hub tag, using the same lookup as start_cbs.py.
-func resolveServerVersion(version string) (string, error) {
-	out, err := tryOutput(startCBSScript, "--print-version", "--version", version)
-	if err != nil {
-		return "", fmt.Errorf("resolve Couchbase Server version %q: %w", version, err)
-	}
-	return strings.TrimSpace(out), nil
-}
-
 // cbdinoPrefix returns the log prefix for cbdinocluster commands run on behalf of a package.
 func cbdinoPrefix(label string) string {
 	return labelPrefix(label) + "cbdinocluster: "

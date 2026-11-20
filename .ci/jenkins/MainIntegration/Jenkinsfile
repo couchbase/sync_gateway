@@ -7,7 +7,7 @@
 def slackDetails(helpers) {
     def details = [
         SG_COMMIT: params.SG_COMMIT,
-        COUCHBASE_SERVER_VERSION: env.COUCHBASE_SERVER_TAG ?: params.COUCHBASE_SERVER_VERSION,
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
         GIT_COMMIT: helpers.githubCommitLink(env.GIT_COMMIT),
     ]
     def ticketLink = helpers.jiraLinkForBranch(params.SG_COMMIT)
@@ -68,7 +68,7 @@ pipeline {
     // whatever this job sets - change those there, not here, and don't report them in Slack from here.
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
-        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'An exact Docker Hub tag such as enterprise-8.0.3 runs as given. A release line such as enterprise-8.0 runs the newest tag on that line. A full ghcr.io/cb-vanilla/server image runs a pre-release build.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'A Docker Hub tag such as enterprise-8.0.3, or a full ghcr.io/cb-vanilla/server image for a pre-release build.')
         string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness.')
         string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '3', description: 'Maximum packages tested at the same time against separate Couchbase Server clusters.')
         string(name: 'PACKAGE_TIMEOUT', defaultValue: '', description: 'Per-package go test timeout. Empty uses the integration-tester default.')
@@ -106,16 +106,13 @@ pipeline {
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
-                    def helpers = load('.ci/jenkinsHelpers.groovy')
-                    // A build parameter takes precedence over env.X, so the resolved tag needs a name of its own.
-                    env.COUCHBASE_SERVER_TAG = helpers.resolveServerVersion(params.COUCHBASE_SERVER_VERSION)
                     // The build history lists the build number alone, so name what identifies a run
                     // here, the same way SyncGatewayIntegration/Jenkinsfile does.
-                    def trigger = helpers.triggeredBy()
+                    def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
                     currentBuild.description = [
                         params.SG_COMMIT,
                         trigger ? "for ${trigger}" : '',
-                        "on ${env.COUCHBASE_SERVER_TAG}",
+                        "on ${params.COUCHBASE_SERVER_VERSION}",
                     ].findAll { it }.join(' ')
                 }
             }
@@ -127,10 +124,7 @@ pipeline {
                         // .ci/jenkins/integration-build.sh separates test failures (exit 50 -> UNSTABLE) from a
                         // test setup failure or unrecovered panic (exit 1 -> FAILURE). A plain sh step would
                         // collapse both into FAILURE, so the unstable post block below would never run.
-                        def exitCode
-                        withEnv(["COUCHBASE_SERVER_VERSION=${env.COUCHBASE_SERVER_TAG}"]) {
-                            exitCode = sh(script: './.ci/jenkins/integration-build.sh -m', returnStatus: true)
-                        }
+                        def exitCode = sh(script: './.ci/jenkins/integration-build.sh -m', returnStatus: true)
                         if (exitCode == 50) {
                             unstable('At least one integration test failed')
                         } else if (exitCode != 0) {

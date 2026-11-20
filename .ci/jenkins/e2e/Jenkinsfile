@@ -7,7 +7,7 @@ def e2eDetails(helpers) {
         Commit: helpers.gitCommitLink(),
         BACKING_STORE: params.BACKING_STORE,
         COUCHBASE_LITE_VERSION: params.COUCHBASE_LITE_VERSION,
-        COUCHBASE_SERVER_VERSION: env.COUCHBASE_SERVER_TAG ?: params.COUCHBASE_SERVER_VERSION,
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
     ]
 }
 
@@ -81,8 +81,8 @@ pipeline {
         )
         string(
             name: 'COUCHBASE_SERVER_VERSION',
-            defaultValue: 'enterprise-8.0',
-            description: 'An exact Docker Hub tag such as enterprise-8.0.2 runs as given. A release line such as enterprise-8.0 runs the newest tag on that line. Only used when BACKING_STORE is cbs.'
+            defaultValue: 'enterprise-8.0.3',
+            description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3. Only used when BACKING_STORE is cbs.'
         )
         string(
             name: 'PYTEST_EXTRA_ARGS',
@@ -132,13 +132,10 @@ pipeline {
                 script {
                     // Posted after the fetch above, and after the checkout since the status needs a SHA.
                     notifyGitHub('running')
-                    def helpers = load('.ci/jenkinsHelpers.groovy')
-                    // A build parameter takes precedence over env.X, so the resolved tag needs a name of its own.
-                    env.COUCHBASE_SERVER_TAG = helpers.resolveServerVersion(params.COUCHBASE_SERVER_VERSION)
                     // The build history lists the build number alone, so name the parameters that
                     // identify a run here, the same way SyncGatewayIntegration/Jenkinsfile does.
-                    def trigger = helpers.triggeredBy()
-                    def backingStore = params.BACKING_STORE == 'cbs' ? "cbs ${env.COUCHBASE_SERVER_TAG}" : params.BACKING_STORE
+                    def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
+                    def backingStore = params.BACKING_STORE == 'cbs' ? "cbs ${params.COUCHBASE_SERVER_VERSION}" : params.BACKING_STORE
                     currentBuild.description = [
                         params.SG_COMMIT,
                         trigger ? "for ${trigger}" : '',
@@ -154,10 +151,7 @@ pipeline {
                         // run_e2e_tests.sh separates test failures (exit 50 -> UNSTABLE) from anything
                         // that stopped the suite running at all (-> FAILURE). A plain sh step would collapse
                         // both into FAILURE, so the unstable post block below would never run.
-                        def exitCode
-                        withEnv(["COUCHBASE_SERVER_VERSION=${env.COUCHBASE_SERVER_TAG}"]) {
-                            exitCode = sh(returnStatus: true, script: '/bin/bash integration-test/e2e/run_e2e_tests.sh')
-                        }
+                        def exitCode = sh(returnStatus: true, script: '/bin/bash integration-test/e2e/run_e2e_tests.sh')
                         if (exitCode == 50) {
                             unstable('At least one e2e test failed')
                         } else if (exitCode != 0) {
