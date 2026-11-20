@@ -45,8 +45,7 @@ const (
 type fuzzCache interface {
 	DocChanged(event sgbucket.FeedEvent, docType db.DocumentType)
 	ProcessPrincipalDocForTest(t testing.TB, ctx context.Context, docID string, docJSON []byte, isUser bool, timeReceived channels.FeedTimestamp)
-	SetManualNotifyChangeFuncForTest(t testing.TB, notify func(context.Context, channels.Set))
-	FlushNotificationsForTest(t testing.TB)
+	DrainNotificationsForTest(tb testing.TB) channels.Set
 	GetNextSequenceForTest(t testing.TB) uint64
 	LastSequence() uint64
 	GetMaxStableCachedForTest(t testing.TB, ctx context.Context) uint64
@@ -226,11 +225,9 @@ func (h *fuzzHarness) start() {
 	h.channelCache = channelCache
 
 	cache := db.NewChangeCacheForTest(t)
-	require.NoError(t, cache.Init(ctx, h.env.dbContext, channelCache, nil, &options, h.env.dbContext.MetadataKeys))
-	// Init leaves the cache locked until Start, and its background tasks take that lock before they read the
-	// notify callback, so installing it here is ordered before every read. After Start it would race them.
-	cache.SetManualNotifyChangeFuncForTest(t, h.recordNotification)
-	// The hook runs under the same lock, so it is installed here for the same reason.
+	require.NoError(t, cache.Init(ctx, h.env.dbContext, channelCache, &options, h.env.dbContext.MetadataKeys))
+	// Init leaves the cache locked until Start, and its background tasks take that lock before they call the hook, so
+	// installing it here is ordered before every call. After Start it would race them.
 	cache.SetRemoveSkippedHookForTest(t, h.recordSkippedRemoved)
 	require.NoError(t, cache.Start(0))
 	h.cache = cache
@@ -251,7 +248,14 @@ func (h *fuzzHarness) stop() {
 	h.channelCache.Stop(h.env.ctx)
 }
 
-func (h *fuzzHarness) recordNotification(_ context.Context, chans channels.Set) {
+// flushCacheNotifications drains whatever the cache has merged since the last drain and records it.
+func (h *fuzzHarness) flushCacheNotifications() {
+	if chans := h.cache.DrainNotificationsForTest(h.t); chans != nil {
+		h.recordNotification(chans)
+	}
+}
+
+func (h *fuzzHarness) recordNotification(chans channels.Set) {
 	names := make([]string, 0, len(chans))
 	for id := range chans {
 		names = append(names, id.Name)
@@ -394,7 +398,7 @@ func (h *fuzzHarness) quiesce() {
 		h.checkAfterOp()
 	}
 	h.beginStep(len(h.ops), fuzzOp{}, "quiesce: flush notifications")
-	h.cache.FlushNotificationsForTest(h.t)
+	h.flushCacheNotifications()
 	h.checkAfterOp()
 	h.checkNoLostWakes()
 }
@@ -447,7 +451,7 @@ func (h *fuzzHarness) step(op fuzzOp) {
 	case opFeedRead:
 		h.feedRead(op.feedIndex(), op.feedLimit())
 	case opFlush:
-		h.cache.FlushNotificationsForTest(h.t)
+		h.flushCacheNotifications()
 		h.checkNoLostWakes()
 	case opStall, opNop:
 		// opStall is RESERVED and opNop is what unknown opcodes decode to.

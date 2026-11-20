@@ -64,16 +64,11 @@ func (db *DatabaseContext) NewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *
 // StartChangeCache is called from the cache benchmarking tool to init the change cache, not to be called
 // from outside test code
 func (db *DatabaseContext) StartChangeCache(t *testing.T, ctx context.Context) {
-	notifyChange := func(ctx context.Context, changedChannels channels.Set) {
-		db.mutationListener.Notify(ctx, changedChannels)
-	}
-
 	// Initialize the change cache
 	if err := db.changeCache.Init(
 		ctx,
 		db,
 		db.channelCache,
-		notifyChange,
 		db.Options.CacheOptions,
 		db.MetadataKeys,
 	); err != nil {
@@ -896,6 +891,31 @@ func (listener *changeListener) NotifyKeyForTest(_ testing.TB, ctx context.Conte
 	listener.notifyKey(ctx, key)
 }
 
+// NotifyForTest stamps channel keys directly, bypassing the change cache's notifications and the broadcast tick, and
+// doesn't broadcast. It is for setting up listener state - seeding keyCounts, or moving keys before a lock-held
+// broadcast - not for driving notifications: a test of the notification path should merge with
+// MergeNotificationsForTest and let a tick deliver. Like the tick, it must not be given principal keys (see
+// _stampKeys); use NotifyKeyForTest for those.
+func (listener *changeListener) NotifyForTest(_ testing.TB, ctx context.Context, keys channels.Set) {
+	if len(keys) == 0 {
+		return
+	}
+	listener.tapNotifier.L.Lock()
+	defer listener.tapNotifier.L.Unlock()
+	listener._stampKeys(keys)
+}
+
+// BroadcastTickForTest runs one broadcast tick on the calling goroutine: it drains the change cache's notifications,
+// stamps them, and broadcasts only if it stamped any, as the listener's own tick does when nothing has changed since
+// its last broadcast. A test that drives ticks itself should set both broadcast intervals long enough that the
+// listener's own ticker never fires during the test, so that every channel stamp comes from a tick it ran.
+func (listener *changeListener) BroadcastTickForTest(t testing.TB, ctx context.Context) {
+	// notifyKey and every tick broadcast what they stamp, so the current count is this tick's lastCount. The exception
+	// is NotifyForTest, which stamps without broadcasting: a test that needs those keys broadcast must follow it with
+	// NotifyKeyForTest, as startHerd's teardown does, not with this.
+	listener.broadcastTick(ctx, listener.CounterForTest(t))
+}
+
 // PrincipalCountsForTest returns copies of keyCounts and principalCounts.  The counter pointers are
 // snapshotted under principalCountsLock, and their values are then read under tapNotifier.L, so the
 // two returned maps are consistent with each other.  principalCounts is returned keyed in the same
@@ -1325,7 +1345,7 @@ func (db *DatabaseContext) RestartChangeListener(t testing.TB, flushCache bool) 
 		require.NoError(t, db.changeCache.Clear(ctx))
 	}
 	var err error
-	db.mutationListener, err = newChangeListener(db.Bucket.GetName(), db.Options.GroupID, db)
+	db.mutationListener, err = newChangeListener(db.Options.GroupID, db)
 	require.NoError(t, err)
 	db.mutationListener.OnChangeCallback = db.changeCache.DocChanged
 	cacheFeedStatsMap := db.DbStats.Database().CacheFeedMapStats
@@ -1742,33 +1762,62 @@ func (c *changeCache) GetMaxStableCachedForTest(_ testing.TB, ctx context.Contex
 	return c._getMaxStableCached(ctx)
 }
 
-// SetNotifyChangeFuncForTest installs the callback invoked when channels receive new entries.
-func (c *changeCache) SetNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
-	c.notifyChangeFunc = notify
-	c.manualNotify = false
+// MergeNotificationsForTest merges ids into the cache's pending notifications, as a release path does once the entries
+// behind them are cached. The next broadcast tick, or DrainNotificationsForTest on a standalone cache, delivers them.
+func (c *changeCache) MergeNotificationsForTest(_ testing.TB, ids ...channels.ID) {
+	c.notifyAcc.Merge(ids)
 }
 
-// SetManualNotifyChangeFuncForTest installs the notify callback and switches the cache to manual-flush
-// mode, the mode in which FlushNotificationsForTest may be called. The cache still notifies inline as it
-// caches entries, so a flush has nothing to deliver yet; once notifications are batched, this mode will
-// leave their delivery to the test's flushes.
-func (c *changeCache) SetManualNotifyChangeFuncForTest(_ testing.TB, notify func(context.Context, channels.Set)) {
-	c.notifyChangeFunc = notify
-	c.manualNotify = true
+// DrainNotificationsForTest drains a standalone cache's notifications on the calling goroutine and returns them, as
+// the broadcast tick does for a database's own cache. The returned set is the test's to keep: the cache reuses the set
+// it drains, so this hands out a copy. Returns nil if nothing was merged since the last drain. It fails the test if
+// called on a database's own cache, where it would race the listener's tick for the notifications.
+func (c *changeCache) DrainNotificationsForTest(tb testing.TB) channels.Set {
+	tb.Helper()
+	c.requireStandaloneForTest(tb)
+	var drained channels.Set
+	c.drainNotifications(func(keys channels.Set) {
+		drained = maps.Clone(keys)
+	})
+	return drained
 }
 
-// FlushNotificationsForTest delivers any pending notifications to the installed callback. It fails the
-// test unless manual-flush mode is installed, so a test can't silently rely on a flush that nothing owns.
-func (c *changeCache) FlushNotificationsForTest(t testing.TB) {
-	t.Helper()
-	if !c.manualNotify {
-		t.Fatalf("FlushNotificationsForTest requires SetManualNotifyChangeFuncForTest")
-		return
+// requireStandaloneForTest fails the test if c is its database's own change cache, which the listener's broadcast tick
+// drains. A test that drains it too would take notifications the listener never sees, so test drainers are limited
+// to standalone caches from NewChangeCacheForTest.
+func (c *changeCache) requireStandaloneForTest(tb testing.TB) {
+	tb.Helper()
+	if c.db != nil && c == &c.db.changeCache {
+		tb.Fatalf("a test may only drain a standalone change cache: the listener's broadcast tick drains the database's own cache")
 	}
-	// There is nothing to drain: each caching-feed path that caches entries (DocChanged, unused sequences
-	// and ranges, principal docs, and InsertPendingEntries) calls the notify callback itself as soon as the
-	// entries are cached.
-	// TODO: CBG-6117 drain the notify accumulator here.
+}
+
+// StartNotifyDrainerForTest drains the cache's notifications every interval until the test ends, discarding them.
+// It is for a cache built without a change listener, such as a benchmark's standalone cache: without a drainer the
+// accumulator only grows, and merges never contend with a drain, so the caching path costs less than in production.
+// The drained set is neither copied nor stamped, as stamping is the listener's cost and not the caching path's.
+func (c *changeCache) StartNotifyDrainerForTest(tb testing.TB, interval time.Duration) {
+	tb.Helper()
+	c.requireStandaloneForTest(tb)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for running := true; running; {
+			select {
+			case <-stop:
+				running = false
+			case <-ticker.C:
+				c.drainNotifications(func(channels.Set) {})
+			}
+		}
+	}()
+	tb.Cleanup(func() {
+		close(stop)
+		<-done
+	})
 }
 
 // ProcessPrincipalDocForTest caches a user or role document body as the caching feed does once it has

@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db/dispatchtracker"
+	"github.com/couchbase/sync_gateway/db/notifyaccumulator"
 )
 
 const (
@@ -65,30 +66,29 @@ const EnableStarChannelLog = true
 //   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	db                    *DatabaseContext
-	logCtx                context.Context                     // fix in sg-bucket to ProcessEvent
-	logsDisabled          bool                                // If true, ignore incoming tap changes
-	nextSequence          uint64                              // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
-	publishedNextSequence atomic.Uint64                       // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
-	initialSequence       atomic.Uint64                       // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
-	receivedSeqs          map[uint64]struct{}                 // Set of all sequences received
-	pendingLogs           LogPriorityQueue                    // Out-of-sequence entries waiting to be cached
-	notifyChangeFunc      func(context.Context, channels.Set) // Client callback that notifies of channel changes
-	manualNotify          bool                                // True when a test has chosen manual-flush mode, which FlushNotificationsForTest requires. Set only by the test setters.
-	started               base.AtomicBool                     // Set by the Start method
-	stopped               base.AtomicBool                     // Set by the Stop method
-	skippedSeqs           *SkippedSequenceSkiplist            // Skipped sequences still pending on the DCP caching feed
-	removeSkippedHook     func(seq uint64)                    // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
-	lock                  sync.RWMutex                        // Coordinates access to struct fields
-	options               CacheOptions                        // Cache config
-	terminator            chan bool                           // Signal termination of background goroutines
-	backgroundTasks       []BackgroundTask                    // List of background tasks.
-	initTime              time.Time                           // Cache init time - used for latency calculations
-	channelCache          ChannelCache                        // Underlying channel cache
-	lastAddPendingTime    int64                               // The most recent time _addPendingLogs was run, as epoch time
-	internalStats         changeCacheStats                    // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback      base.CfgEventNotifyFunc             // Callback for Cfg updates received over the caching feed
-	sgCfgPrefix           string                              // Prefix for SG Cfg doc keys
-	metaKeys              *base.MetadataKeys                  // Metadata key formatter
+	logCtx                context.Context               // fix in sg-bucket to ProcessEvent
+	logsDisabled          bool                          // If true, ignore incoming tap changes
+	nextSequence          uint64                        // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
+	publishedNextSequence atomic.Uint64                 // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
+	initialSequence       atomic.Uint64                 // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
+	receivedSeqs          map[uint64]struct{}           // Set of all sequences received
+	pendingLogs           LogPriorityQueue              // Out-of-sequence entries waiting to be cached
+	notifyAcc             notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
+	started               base.AtomicBool               // Set by the Start method
+	stopped               base.AtomicBool               // Set by the Stop method
+	skippedSeqs           *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
+	removeSkippedHook     func(seq uint64)              // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
+	lock                  sync.RWMutex                  // Coordinates access to struct fields
+	options               CacheOptions                  // Cache config
+	terminator            chan bool                     // Signal termination of background goroutines
+	backgroundTasks       []BackgroundTask              // List of background tasks.
+	initTime              time.Time                     // Cache init time - used for latency calculations
+	channelCache          ChannelCache                  // Underlying channel cache
+	lastAddPendingTime    int64                         // The most recent time _addPendingLogs was run, as epoch time
+	internalStats         changeCacheStats              // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback      base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
+	sgCfgPrefix           string                        // Prefix for SG Cfg doc keys
+	metaKeys              *base.MetadataKeys            // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -161,15 +161,15 @@ func DefaultCacheOptions() CacheOptions {
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
-// notifyChangeFunc is an optional function that will be called to notify of channel changes.
+// Channels that gain entries are not notified from here: they collect in notifyAcc, which the change listener's
+// broadcast tick drains (see drainNotifications).
 // After calling Init(), you must call .Start() to start using the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
 
-func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(context.Context, channels.Set), options *CacheOptions, metaKeys *base.MetadataKeys) error {
+func (c *changeCache) Init(ctx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, options *CacheOptions, metaKeys *base.MetadataKeys) error {
 	c.db = dbContext
 	c.logCtx = ctx
 
-	c.notifyChangeFunc = notifyChange
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
@@ -252,6 +252,13 @@ func (c *changeCache) Stop(ctx context.Context) {
 	c.lock.Unlock()
 }
 
+// drainNotifications passes every channel merged since the last drain to apply, which must not keep the set. The
+// change listener's broadcast tick calls it while holding tapNotifier.L, so the stamp and broadcast share one lock hold.
+// The tick is the only drainer of a database's cache; tests drain only standalone caches (DrainNotificationsForTest).
+func (c *changeCache) drainNotifications(apply func(channels.Set)) {
+	c.notifyAcc.Drain(apply)
+}
+
 // Empty out all channel caches.
 func (c *changeCache) Clear(ctx context.Context) error {
 	c.lock.Lock()
@@ -296,7 +303,7 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	c._setPublishedNextSequence()
 	c.lock.Unlock()
 
-	c.notifyChange(ctx, changedChannels)
+	c.notifyAcc.Merge(changedChannels)
 
 	return nil
 }
@@ -334,7 +341,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 	ctx := c.logCtx
 	docID := string(event.Key)
 	dcpValue := event.Value
-	changedChannelsCombined := channels.Set{}
+	// Channels changed by every entry this event caches. Merged into notifyAcc once, after the last entry is cached,
+	// so that one event's channels are delivered in one drain.
+	var notifyChannels []channels.ID
 
 	timeReceived := channels.NewFeedTimestamp(&event.TimeReceived)
 
@@ -456,9 +465,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 				CollectionID:   event.CollectionID,
 				UnusedSequence: true,
 			}
-			changedChannels := c.processEntry(ctx, change)
-			channelSet := channels.SetFromArrayNoValidate(changedChannels)
-			changedChannelsCombined = changedChannelsCombined.Update(channelSet)
+			notifyChannels = appendChannelIDs(notifyChannels, c.processEntry(ctx, change))
 		}
 		base.DebugfCtx(ctx, base.KeyCache, "Received unused sequences in unused_sequences property for (%q / %q): %v", base.UD(docID), syncData.GetRevTreeID(), syncData.UnusedSequences)
 	}
@@ -505,9 +512,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 					change.UnusedSequence = true // treat as unused sequence when sequence is not channel removal
 				}
 
-				changedChannels := c.processEntry(ctx, change)
-				channelSet := channels.SetFromArrayNoValidate(changedChannels)
-				changedChannelsCombined = changedChannelsCombined.Update(channelSet)
+				notifyChannels = appendChannelIDs(notifyChannels, c.processEntry(ctx, change))
 			}
 		}
 		if len(seqsCached) > 0 {
@@ -552,15 +557,19 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		base.DebugfCtx(ctx, base.KeyChanges, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	}
 
-	changedChannels := c.processEntry(ctx, change)
-	channelSet := channels.SetFromArrayNoValidate(changedChannels)
-	changedChannelsCombined = changedChannelsCombined.Update(channelSet)
+	notifyChannels = appendChannelIDs(notifyChannels, c.processEntry(ctx, change))
 
-	// Notify change listeners for all of the changed channels
-	if c.notifyChangeFunc != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChangeFunc(ctx, changedChannelsCombined)
+	// processEntry has returned, so every entry behind these channels is cached before a feed can be woken for it.
+	c.notifyAcc.Merge(notifyChannels)
+}
+
+// appendChannelIDs appends src to dst, returning src itself when dst is empty. The common event caches one entry,
+// so this avoids copying its channels. processEntry hands each caller a slice of its own, so dst may alias src.
+func appendChannelIDs(dst, src []channels.ID) []channels.ID {
+	if len(dst) == 0 {
+		return src
 	}
-
+	return append(dst, src...)
 }
 
 // FeedLatency measures from timeSaved or the time the cache started working the feed, whichever is
@@ -580,13 +589,6 @@ func FeedLatency(timeSaved, initTime, now time.Time) time.Duration {
 type cachePrincipal struct {
 	Name     string `json:"name"`
 	Sequence uint64 `json:"sequence"`
-}
-
-func (c *changeCache) notifyChange(ctx context.Context, chs []channels.ID) {
-	if c.notifyChangeFunc == nil || len(chs) == 0 {
-		return
-	}
-	c.notifyChangeFunc(ctx, channels.SetFromArrayNoValidate(chs))
 }
 
 func (c *changeCache) Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int) {
@@ -620,19 +622,11 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 	}
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d (unused sequence)", sequence)
 
-	// Since processEntry may unblock pending sequences, if there were any changed channels we need
-	// to notify any change listeners that are working changes feeds for these channels
-	var channelSet channels.Set
+	// processEntry may unblock pending sequences, so the channels it returns need waking too. unusedSeqChannelID is
+	// merged whether or not the sequence was cached, so a buffered or duplicate unused sequence still wakes request_plus
+	// waiters for nothing (TODO: CBG-6120).
 	changedChannels := c.processEntry(ctx, change)
-	if changedChannels == nil {
-		channelSet = channels.SetOfNoValidate(unusedSeqChannelID)
-	} else {
-		channelSet = channels.SetFromArrayNoValidate(changedChannels)
-		channelSet.Add(unusedSeqChannelID)
-	}
-	if c.notifyChangeFunc != nil && len(channelSet) > 0 {
-		c.notifyChangeFunc(ctx, channelSet)
-	}
+	c.notifyAcc.Merge(append(changedChannels, unusedSeqChannelID))
 }
 
 // releaseUnusedSequenceRange will handle unused sequence range arriving over DCP. It will batch remove from skipped or
@@ -641,8 +635,7 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
 
-	allChangedChannels := channels.SetOfNoValidate(unusedSeqChannelID)
-
+	// As in releaseUnusedSequence, unusedSeqChannelID is merged whether or not any of the range was cached.
 	// if range is single value, just run sequence through process entry and return early
 	if fromSequence == toSequence {
 		change := &LogEntry{
@@ -651,21 +644,13 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 			UnusedSequence: true,
 		}
 		changedChannels := c.processEntry(ctx, change)
-		channelSet := channels.SetFromArrayNoValidate(changedChannels)
-		allChangedChannels = allChangedChannels.Update(channelSet)
-		if c.notifyChangeFunc != nil {
-			c.notifyChangeFunc(ctx, allChangedChannels)
-		}
+		c.notifyAcc.Merge(append(changedChannels, unusedSeqChannelID))
 		return
 	}
 
 	// push unused range to either pending or skipped lists based on current state of the change cache
 	changedChannels := c.processUnusedRange(ctx, fromSequence, toSequence, timeReceived)
-	allChangedChannels = allChangedChannels.Update(channels.SetFromArrayNoValidate(changedChannels))
-
-	if c.notifyChangeFunc != nil {
-		c.notifyChangeFunc(ctx, allChangedChannels)
-	}
+	c.notifyAcc.Merge(append(changedChannels, unusedSeqChannelID))
 }
 
 // processUnusedRange handles pushing unused range to pending or skipped lists
@@ -781,8 +766,7 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	base.InfofCtx(ctx, base.KeyChanges, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(ctx, change)
-
-	c.notifyChange(ctx, changedChannels)
+	c.notifyAcc.Merge(changedChannels)
 }
 
 // processEntry handles a newly-arrived LogEntry and returns the changes channels from this revision.
