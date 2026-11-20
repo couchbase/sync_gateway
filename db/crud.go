@@ -552,7 +552,8 @@ func (db *DatabaseCollectionWithUser) documentRevisionForRequest(ctx context.Con
 		_, requestedHistory = trimEncodedRevisionsToAncestor(ctx, requestedHistory, historyFrom, maxHistory)
 	}
 
-	isAuthorized, redactedRevision := db.authorizeUserForChannels(docID, revision.RevID, cv, revision.Channels, revision.Deleted, requestedHistory)
+	isAuthorized, redactedRevision := db.authorizeUserForChannels(docID, revision.RevID, cv, revision.HlvHistory,
+		revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		// client just wanted active revision, not a specific one
 		if requestedVersion == "" {
@@ -603,22 +604,8 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return nil, nil, base.ErrDeltaSourceIsTombstone
 	}
 
-	// If delta is found, check whether it is a delta for the toRevID we want.
-	if initialFromRevision.Delta != nil && (initialFromRevision.Delta.ToCV == toRev || initialFromRevision.Delta.ToRevID == toRev) {
-		// Fetch fresh channel information for toRev: a user xattr update can change the document's
-		// channels without creating a new revision (createNewRevIDSkipped), which causes DocChanged to
-		// evict the toRevision from the revision cache while leaving the delta cache intact.
-		// Similar situation also for local wins in HLV.
-		toRevChannels, toRevDeleted, err := db.getRevisionChannels(ctx, docID, toRev)
-		if err != nil {
-			return nil, nil, err
-		}
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, initialFromRevision.CV, toRevChannels, toRevDeleted, encodeRevisions(ctx, docID, initialFromRevision.Delta.RevisionHistory))
-		if !isAuthorized {
-			return nil, &redactedBody, nil
-		}
-		db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
-		return initialFromRevision.Delta, nil, nil
+	if initialFromRevision.hasDeltaTo(toRev) {
+		return db.cachedDeltaForUser(ctx, docID, toRev, initialFromRevision.Delta)
 	}
 
 	if initialFromRevision.BodyBytes != nil {
@@ -634,18 +621,8 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		}
 
 		// Check if another writer beat us to generating the delta and caching it.
-		if fromRevisionForDiff.Delta != nil && (fromRevisionForDiff.Delta.ToCV == toRev || fromRevisionForDiff.Delta.ToRevID == toRev) {
-			// Fetch fresh channel information for the same reason as the pre-lock delta cache hit path above.
-			toRevChannels, toRevDeleted, err := db.getRevisionChannels(ctx, docID, toRev)
-			if err != nil {
-				return nil, nil, err
-			}
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, fromRevisionForDiff.CV, toRevChannels, toRevDeleted, encodeRevisions(ctx, docID, fromRevisionForDiff.Delta.RevisionHistory))
-			if !isAuthorized {
-				return nil, &redactedBody, nil
-			}
-			db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
-			return fromRevisionForDiff.Delta, nil, nil
+		if fromRevisionForDiff.hasDeltaTo(toRev) {
+			return db.cachedDeltaForUser(ctx, docID, toRev, fromRevisionForDiff.Delta)
 		}
 
 		// Delta can't be generated - returning nil forces a full body replication for toRevId.
@@ -662,7 +639,8 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		}
 
 		deleted := toRevision.Deleted
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRev, toRevision.CV, toRevision.Channels, deleted, toRevision.History)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevision.RevID, toRevision.CV, toRevision.HlvHistory,
+			toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
 		}
@@ -722,7 +700,45 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	return nil, nil, nil
 }
 
-func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, cv *Version, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+// hasDeltaTo returns true if the revision holds a cached delta to toRev.
+func (rev *DocumentRevision) hasDeltaTo(toRev string) bool {
+	return rev.Delta != nil && (rev.Delta.ToCV == toRev || rev.Delta.ToRevID == toRev)
+}
+
+// cachedDeltaForUser returns the cached delta to toRev, or a removal if the user can't see toRev.
+// It returns the same values as GetDelta, so a cache hit in GetDelta can return its result directly.
+func (db *DatabaseCollectionWithUser) cachedDeltaForUser(ctx context.Context, docID, toRev string,
+	delta *RevisionDelta) (*RevisionDelta, *DocumentRevision, error) {
+	// Fetch fresh channel information for toRev: a user xattr update or an HLV local win can change the document's
+	// channels without a new revision, which evicts toRev from the revision cache but leaves the delta cached.
+	toRevChannels, toRevDeleted, err := db.getRevisionChannels(ctx, docID, toRev)
+	if err != nil {
+		return nil, nil, err
+	}
+	var cv *Version
+	if delta.ToCV != "" {
+		toCV, err := ParseVersion(delta.ToCV)
+		if err != nil {
+			return nil, nil, err
+		}
+		cv = &toCV
+	}
+	// RevisionHistory starts at the parent of ToRevID.
+	history := delta.RevisionHistory
+	if delta.ToRevID != "" {
+		history = append([]string{delta.ToRevID}, history...)
+	}
+	isAuthorized, redactedRev := db.authorizeUserForChannels(docID, delta.ToRevID, cv, delta.HlvHistory, toRevChannels,
+		toRevDeleted, encodeRevisions(ctx, docID, history))
+	if !isAuthorized {
+		return nil, &redactedRev, nil
+	}
+	db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
+	return delta, nil, nil
+}
+
+func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, cv *Version, hlvHistory string,
+	channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 
 	if col.user != nil {
 		if err := col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channels); err != nil {
@@ -730,11 +746,12 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
 			redactedRev = DocumentRevision{
-				DocID:   docID,
-				RevID:   revID,
-				History: history,
-				Deleted: isDeleted,
-				CV:      cv,
+				DocID:      docID,
+				RevID:      revID,
+				History:    history,
+				Deleted:    isDeleted,
+				CV:         cv,
+				HlvHistory: hlvHistory,
 			}
 			if isDeleted {
 				// Deletions are denoted by the deleted message property during 2.x replication
