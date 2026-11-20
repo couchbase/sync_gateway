@@ -112,87 +112,76 @@ func NewHTTPError(status int, message string) *HTTPError {
 	return &HTTPError{status, message}
 }
 
-// Attempts to map an error to an HTTP status code and message.
-// Defaults to 500 if it doesn't recognize the error. Returns 200 for a nil error.
+// Attempts to map an error to an HTTP status code and message, matching anywhere in the error's wrap chain. If the
+// chain holds more than one known error, the first check below that matches wins, whatever the wrap depth. Defaults to 500 if it doesn't recognize the error. Returns 200 for a nil error.
 func ErrorAsHTTPStatus(err error) (int, string) {
 	if err == nil {
 		return 200, "OK"
 	}
 
-	unwrappedErr := pkgerrors.Cause(err)
-
-	// Check for SGErrors
-	switch unwrappedErr {
-	case gocb.ErrDocumentNotFound, ErrNotFound:
+	switch {
+	case errors.Is(err, gocb.ErrDocumentNotFound), errors.Is(err, ErrNotFound):
 		return http.StatusNotFound, "missing"
-	case gocb.ErrDocumentExists, ErrAlreadyExists:
+	case errors.Is(err, gocb.ErrDocumentExists), errors.Is(err, ErrAlreadyExists):
 		return http.StatusConflict, "Conflict"
-	case gocb.ErrTimeout:
+	case errors.Is(err, gocb.ErrTimeout):
 		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
-	case gocb.ErrOverload:
+	case errors.Is(err, gocb.ErrOverload):
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrOverload)"
-	case gocb.ErrTemporaryFailure:
+	case errors.Is(err, gocb.ErrTemporaryFailure):
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTemporaryFailure)"
-	case gocb.ErrValueTooLarge:
+	case errors.Is(err, gocb.ErrValueTooLarge), isKVError(err, memd.StatusTooBig):
 		return http.StatusRequestEntityTooLarge, "Document too large!"
-	case ErrViewTimeoutError:
-		return http.StatusServiceUnavailable, unwrappedErr.Error()
-	case ErrReplicationLimitExceeded:
-		return http.StatusServiceUnavailable, unwrappedErr.Error()
+	case errors.Is(err, ErrViewTimeoutError):
+		return http.StatusServiceUnavailable, ErrViewTimeoutError.Error()
+	case errors.Is(err, ErrReplicationLimitExceeded):
+		return http.StatusServiceUnavailable, ErrReplicationLimitExceeded.Error()
+	case errors.Is(err, ErrEmptyDocument):
+		return http.StatusBadRequest, "Document body is empty"
 	}
 
-	// gocb V2 errors
-	if errors.Is(unwrappedErr, gocb.ErrDocumentNotFound) {
-		return http.StatusNotFound, "missing"
+	if httpErr, ok := errors.AsType[*HTTPError](err); ok {
+		return httpErr.Status, httpErr.Message
 	}
-	if errors.Is(unwrappedErr, gocb.ErrDocumentExists) {
-		return http.StatusConflict, "Conflict"
-	}
-	if errors.Is(unwrappedErr, gocb.ErrTimeout) {
-		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
-	}
-	if isKVError(unwrappedErr, memd.StatusTooBig) {
-		return http.StatusRequestEntityTooLarge, "Document too large!"
-	}
-
-	switch unwrappedErr := unwrappedErr.(type) {
-	case *HTTPError:
-		return unwrappedErr.Status, unwrappedErr.Message
-	case *gomemcached.MCResponse:
-		switch unwrappedErr.Status {
+	if mcResponse, ok := errors.AsType[*gomemcached.MCResponse](err); ok {
+		switch mcResponse.Status {
 		case gomemcached.KEY_ENOENT:
 			return http.StatusNotFound, "missing"
 		case gomemcached.KEY_EEXISTS:
 			return http.StatusConflict, "Conflict"
 		case gomemcached.E2BIG:
-			return http.StatusRequestEntityTooLarge, "Too Large: " + string(unwrappedErr.Body)
+			return http.StatusRequestEntityTooLarge, "Too Large: " + string(mcResponse.Body)
 		case gomemcached.TMPFAIL:
 			return http.StatusServiceUnavailable, "Database server is over capacity (gomemcached.TMPFAIL)"
 		default:
-			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
-				string(unwrappedErr.Body), unwrappedErr.Status.String())
+			return http.StatusBadGateway, fmt.Sprintf("%s (%s)", string(mcResponse.Body), mcResponse.Status.String())
 		}
-	case sgbucket.DocTooBigErr:
-		return http.StatusRequestEntityTooLarge, "Document too large!"
-	case sgbucket.CasMismatchErr:
-		return http.StatusConflict, "Conflict"
-	case sgbucket.MissingError:
-		return http.StatusNotFound, "missing"
-	case sgbucket.XattrMissingError:
-		return http.StatusNotFound, "missing"
-	case *sgError:
-		switch unwrappedErr {
-		case ErrNotFound:
-			return http.StatusNotFound, "missing"
-		case ErrEmptyDocument:
-			return http.StatusBadRequest, "Document body is empty"
-		}
-	case *json.SyntaxError, *json.UnmarshalTypeError, *JSONIterError:
-		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
-	case *RetryTimeoutError:
-		return http.StatusGatewayTimeout, unwrappedErr.Error()
 	}
-	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", unwrappedErr)
+	if _, ok := errors.AsType[sgbucket.DocTooBigErr](err); ok {
+		return http.StatusRequestEntityTooLarge, "Document too large!"
+	}
+	if _, ok := errors.AsType[sgbucket.CasMismatchErr](err); ok {
+		return http.StatusConflict, "Conflict"
+	}
+	if _, ok := errors.AsType[sgbucket.MissingError](err); ok {
+		return http.StatusNotFound, "missing"
+	}
+	if _, ok := errors.AsType[sgbucket.XattrMissingError](err); ok {
+		return http.StatusNotFound, "missing"
+	}
+	if syntaxErr, ok := errors.AsType[*json.SyntaxError](err); ok {
+		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", syntaxErr)
+	}
+	if unmarshalTypeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
+		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unmarshalTypeErr)
+	}
+	if jsonIterErr, ok := errors.AsType[*JSONIterError](err); ok {
+		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", jsonIterErr)
+	}
+	if retryTimeoutErr, ok := errors.AsType[*RetryTimeoutError](err); ok {
+		return http.StatusGatewayTimeout, retryTimeoutErr.Error()
+	}
+	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", pkgerrors.Cause(err))
 }
 
 // Returns the standard CouchDB error string for an HTTP error status.
@@ -234,7 +223,7 @@ func IsCounterNonNumeric(err error) bool {
 	if err == nil {
 		return false
 	}
-	if isKVError(pkgerrors.Cause(err), memd.StatusBadDelta) {
+	if isKVError(err, memd.StatusBadDelta) {
 		return true
 	}
 	var jsonTypeErr *json.UnmarshalTypeError

@@ -565,33 +565,21 @@ func (c *Collection) deleteBodyAndXattrs(_ context.Context, k string, xattrKeys 
 	return mutateErr
 }
 
-// isKVError compares the status code of a gocb KeyValueError to the provided code.  Used for nested subdoc errors
-// where gocb doesn't return a typed error for the underlying error.
+// isKVError returns true if any gocb or gocbcore KeyValueError in err's wrap chain has the given status code. Subdoc
+// errors are found through gocbcore.SubDocumentError, which wraps the KeyValueError of the failed path.
 func isKVError(err error, code memd.StatusCode) bool {
-
-	switch typedErr := err.(type) {
-	case gocb.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case *gocb.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case gocbcore.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case *gocbcore.KeyValueError:
-		if typedErr.StatusCode == code {
-			return true
-		}
-	case gocbcore.SubDocumentError:
-		return isKVError(typedErr.InnerError, code)
-	case *gocbcore.SubDocumentError:
-		return isKVError(typedErr.InnerError, code)
+	if kvErr, ok := errors.AsType[*gocb.KeyValueError](err); ok && kvErr.StatusCode == code {
+		return true
 	}
-
+	if kvErr, ok := errors.AsType[gocb.KeyValueError](err); ok && kvErr.StatusCode == code {
+		return true
+	}
+	if kvErr, ok := errors.AsType[*gocbcore.KeyValueError](err); ok && kvErr.StatusCode == code {
+		return true
+	}
+	if kvErr, ok := errors.AsType[gocbcore.KeyValueError](err); ok && kvErr.StatusCode == code {
+		return true
+	}
 	return false
 }
 
