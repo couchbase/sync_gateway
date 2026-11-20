@@ -360,7 +360,10 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		// Import ignored
 		return nil, err
 	default:
-		base.InfofCtx(ctx, base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
+		// sync function rejections are logged where the sync function runs
+		if !isSyncFnRejection(err) {
+			base.InfofCtx(ctx, base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
+		}
 		db.dbStats().SharedBucketImport().ImportErrorCount.Add(1)
 		return nil, err
 

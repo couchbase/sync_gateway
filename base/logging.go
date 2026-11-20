@@ -416,38 +416,28 @@ func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
 	return true
 }
 
-// AssertLogContains asserts that the logs produced by function f contain string s.
-func AssertLogContains(t *testing.T, s string, f func()) {
-	t.Helper()
-	// Temporarily override logger output
+// CaptureConsoleLogs returns the console logs produced by function f. The logs are also written to stderr.
+func CaptureConsoleLogs(f func()) string {
 	b := &bytes.Buffer{}
-	mw := io.MultiWriter(b, os.Stderr)
-	consoleLogger.Load().logger.SetOutput(mw)
-	// Call the given function
+	consoleLogger.Load().logger.SetOutput(io.MultiWriter(b, os.Stderr))
+	defer consoleLogger.Load().logger.SetOutput(os.Stderr)
 	f()
 
 	FlushLogBuffers()
 	consoleLogger.Load().FlushBufferToLog()
-	// do not reset output in defer, since we are accessing b.String() after
-	consoleLogger.Load().logger.SetOutput(os.Stderr)
-	assert.Contains(t, b.String(), s)
+	return b.String()
+}
+
+// AssertLogContains asserts that the logs produced by function f contain string s.
+func AssertLogContains(t *testing.T, s string, f func()) {
+	t.Helper()
+	assert.Contains(t, CaptureConsoleLogs(f), s)
 }
 
 // AssertLogNotContains asserts that the logs produced by function f do not contain string s.
 func AssertLogNotContains(t *testing.T, s string, f func()) {
 	t.Helper()
-	// Temporarily override logger output
-	b := &bytes.Buffer{}
-	mw := io.MultiWriter(b, os.Stderr)
-	consoleLogger.Load().logger.SetOutput(mw)
-	// Call the given function
-	f()
-
-	FlushLogBuffers()
-	consoleLogger.Load().FlushBufferToLog()
-	// do not reset output in defer, since we are accessing b.String() after
-	consoleLogger.Load().logger.SetOutput(os.Stderr)
-	assert.NotContains(t, b.String(), s)
+	assert.NotContains(t, CaptureConsoleLogs(f), s)
 }
 
 // AuditLogContents returns that the audit logs produced by function f.
