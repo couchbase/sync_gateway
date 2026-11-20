@@ -82,7 +82,7 @@ pipeline {
         string(
             name: 'COUCHBASE_SERVER_VERSION',
             defaultValue: 'enterprise-8.0.3',
-            description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3. Only used when BACKING_STORE is cbs.'
+            description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3, or a full image for a pre-release build, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 (tags at https://github.com/orgs/cb-vanilla/packages/container/package/server). Only used when BACKING_STORE is cbs.'
         )
         string(
             name: 'PYTEST_EXTRA_ARGS',

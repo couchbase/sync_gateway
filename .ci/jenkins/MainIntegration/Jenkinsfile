@@ -68,7 +68,7 @@ pipeline {
     // whatever this job sets - change those there, not here, and don't report them in Slack from here.
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
-        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'A Docker Hub tag such as enterprise-8.0.3, or a full ghcr.io/cb-vanilla/server image for a pre-release build.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3, or a full image for a pre-release build, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 (tags at https://github.com/orgs/cb-vanilla/packages/container/package/server).')
         string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness.')
         string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '3', description: 'Maximum packages tested at the same time against separate Couchbase Server clusters.')
         string(name: 'PACKAGE_TIMEOUT', defaultValue: '', description: 'Per-package go test timeout. Empty uses the integration-tester default.')

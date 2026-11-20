@@ -251,7 +251,8 @@ Environment variables:
     TLS_SKIP_VERIFY            Skip TLS certificate verification (true|false)
 
   Optional:
-    COUCHBASE_SERVER_VERSION   Couchbase Server Docker Hub tag to provision (e.g. enterprise-8.0.3)
+    COUCHBASE_SERVER_VERSION   Couchbase Server Docker Hub tag to provision (e.g. enterprise-8.0.3),
+                               or a full pre-release image (e.g. ghcr.io/cb-vanilla/server:enterprise-8.1.0)
                                (default: the start_cbs.py default, which matches the Jenkins jobs)
     DISABLE_REV_CACHE          Disable the revision cache during tests (default: false)
     DETECT_RACES               Enable the Go race detector (default: false)

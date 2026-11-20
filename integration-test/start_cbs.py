@@ -144,7 +144,8 @@ def main() -> None:
     parser.add_argument(
         "--version",
         default=os.environ.get("COUCHBASE_SERVER_VERSION") or DEFAULT_CBS_VERSION,
-        help="Couchbase Server version to deploy "
+        help="Couchbase Server Docker Hub tag to deploy, such as enterprise-8.0.3, or a full "
+        "pre-release image, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 "
         f"(default: ${{COUCHBASE_SERVER_VERSION}} or {DEFAULT_CBS_VERSION})",
     )
     parser.add_argument(

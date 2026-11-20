@@ -76,7 +76,7 @@ pipeline {
 
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
-        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3, or a full image for a pre-release build, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 (tags at https://github.com/orgs/cb-vanilla/packages/container/package/server).')
         booleanParam(name: 'GSI', defaultValue: true, description: '')
         string(name: 'TARGET_TEST', defaultValue: 'ALL', description: '')
         string(name: 'COUCHBASE_SERVER_PROTOCOL', defaultValue: 'couchbase', description: '')
