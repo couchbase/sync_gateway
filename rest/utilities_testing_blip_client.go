@@ -459,8 +459,8 @@ type BlipTesterReplicator struct {
 	bt *BlipTester
 	id string // Generated UUID on creation
 
-	messagesLock sync.RWMutex                         // lock for messages map
-	messages     map[blip.MessageNumber]*blip.Message // Map of blip messages keyed by message number
+	messagesLock sync.RWMutex    // lock for messages
+	messages     []*blip.Message // blip messages sent and received, in the order they were stored
 
 	replicationStats *db.BlipSyncStats // Stats of replications
 }
@@ -485,8 +485,8 @@ func (btcRunner *BlipTestClientRunner) SetSubprotocols(subprotocols []string) {
 func (btr *BlipTesterReplicator) Close() {
 	btr.bt.Close()
 	btr.messagesLock.Lock()
-	btr.messages = make(map[blip.MessageNumber]*blip.Message, 0)
-	btr.messagesLock.Unlock()
+	defer btr.messagesLock.Unlock()
+	btr.messages = nil
 }
 
 // initHandlers sets up the blip client side handles for each message type.
@@ -645,16 +645,12 @@ func (btr *BlipTesterReplicator) handleChanges(ctx context.Context, btc *BlipTes
 
 // handleProposeChanges handles proposeChanges messages on the blip tester client
 func (btr *BlipTesterReplicator) handleProposeChanges(btc *BlipTesterClient) func(msg *blip.Message) {
-	return func(msg *blip.Message) {
-		btc.pullReplication.storeMessage(msg)
-	}
+	return func(msg *blip.Message) {}
 }
 
 // handleRev handles rev messages on the blip tester client
 func (btr *BlipTesterReplicator) handleRev(ctx context.Context, btc *BlipTesterClient) func(msg *blip.Message) {
 	return func(msg *blip.Message) {
-		defer btc.pullReplication.storeMessage(msg)
-
 		btcc := btc.getCollectionClientFromMessage(msg)
 
 		// ignore messages arriving after close
@@ -987,9 +983,8 @@ func newBlipTesterReplication(ctx context.Context, id string, btc *BlipTesterCli
 	})
 
 	r := &BlipTesterReplicator{
-		id:       id,
-		bt:       bt,
-		messages: make(map[blip.MessageNumber]*blip.Message),
+		id: id,
+		bt: bt,
 	}
 
 	r.initHandlers(ctx, btc)
@@ -1964,19 +1959,18 @@ func (btcc *BlipTesterCollectionClient) WaitForDoc(docID string) (data []byte) {
 	return data
 }
 
-// GetMessages returns a map of all messages stored in the Client keyed by serial number. These messages are mutable, but the response of the messages has been received so they should be effectively immutable.
-func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Message {
+// GetMessages returns all messages sent and received by the replicator, in the order they were stored. Sent and
+// received messages are numbered independently, so serial numbers are only unique within one direction. These messages
+// are mutable, but the response of the messages has been received so they should be effectively immutable.
+func (btr *BlipTesterReplicator) GetMessages() []*blip.Message {
 	btr.messagesLock.RLock()
 	defer btr.messagesLock.RUnlock()
 
-	messages := make(map[blip.MessageNumber]*blip.Message, len(btr.messages))
-	for k, v := range btr.messages {
+	for _, msg := range btr.messages {
 		// Read the body before copying, since it might be read asynchronously
-		_, _ = v.Body()
-		messages[k] = v
+		_, _ = msg.Body()
 	}
-
-	return messages
+	return slices.Clone(btr.messages)
 }
 
 // GetAllMessagesSummary returns a pretty-printed set of messages that have been processed by the replicator. This is an expensive operation and should be used with caution.
@@ -1984,12 +1978,14 @@ func (btr *BlipTesterReplicator) GetAllMessagesSummary() string {
 	output := strings.Builder{}
 	messages := btr.GetMessages()
 	output.WriteString("{")
-	// messages are numbered from Sync Gateway, so different replicators (push/pull) can have missing values.
-	for _, msgNum := range slices.Sorted(maps.Keys(messages)) {
-		msg := messages[msgNum]
+	for _, msg := range messages {
 		body, err := msg.Body()
 		require.NoError(btr.TB(), err)
-		fmt.Fprintf(&output, "\t%s:{Properties:%s Body: %s}\n", msg, msg.Properties, string(body))
+		direction := "received"
+		if msg.Outgoing {
+			direction = "sent"
+		}
+		fmt.Fprintf(&output, "\t%-8s %s:{Properties:%s Body: %s}\n", direction, msg, msg.Properties, string(body))
 	}
 	output.WriteString("}")
 	return output.String()
@@ -2009,7 +2005,7 @@ func (btc *BlipTesterClient) printBlipMessages() {
 func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messagesLock.Lock()
 	defer btr.messagesLock.Unlock()
-	btr.messages[msg.SerialNumber()] = msg
+	btr.messages = append(btr.messages, msg)
 }
 
 // WaitForPushRevMessage will return the blip message associated with a specified doc version after the revision
