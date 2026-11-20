@@ -277,15 +277,6 @@ def main() -> None:
         cluster_id = result.stdout.strip()
         print(f"Cluster ID: {cluster_id}", flush=True)
 
-        if not opts.no_reuse:
-            with open(state_path, "w") as f:
-                f.write(cluster_id + "\n")
-            print(f"Wrote cluster ID to {state_path}", flush=True)
-        # Removed only once its replacement exists, since nothing else tracks it after the state file moves on.
-        if recorded and not recorded.matches:
-            print(f"Removing replaced cluster {recorded.cluster_id}", flush=True)
-            subprocess.run([*CBDINOCLUSTER, "rm", recorded.cluster_id], check=False)
-
     connstr_cmd = [*CBDINOCLUSTER, "connstr", cluster_id]
     connstr_cmd += ["--tls"] if opts.tls else ["--no-tls"]
     try:
@@ -302,6 +293,16 @@ def main() -> None:
         raise
     connstr = connstr_result.stdout.strip()
     print(f"Connection string: {connstr}", flush=True)
+
+    if allocated:
+        if not opts.no_reuse:
+            with open(state_path, "w") as f:
+                f.write(cluster_id + "\n")
+            print(f"Wrote cluster ID to {state_path}", flush=True)
+        # Removed only once its replacement is usable, since nothing else tracks it after the state file moves on.
+        if recorded and not recorded.matches:
+            print(f"Removing replaced cluster {recorded.cluster_id}", flush=True)
+            subprocess.run([*CBDINOCLUSTER, "rm", recorded.cluster_id], check=False)
 
     # Connection strings can contain characters the shell would interpret (e.g. ?/& in query
     # params), so quote the values to keep the output safe to source.
