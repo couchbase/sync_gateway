@@ -537,7 +537,6 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 					continue
 				}
 
-				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelID().Name), base.UD(to))
 				select {
 				case <-options.ChangesCtx.Done():
 					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
