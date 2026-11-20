@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -2263,7 +2262,8 @@ func TestDefaultConflictResolverMatchingTimestamps(t *testing.T) {
 		require.NoError(t, err)
 		activeRTCtx := activeRT.Context()
 
-		fixedTime := sgbucket.HLCWallClock()
+		// start above both HLCs and every rosmar CAS, so a backward wall clock step cannot put the tie below them
+		fixedTime := sgtest.NextClockTickForTest(max(activeRT.GetDatabase().GetHLCValueForTest(0), passiveRT.GetDatabase().GetHLCValueForTest(0)))
 		tieClock := func() uint64 { return fixedTime }
 		activeRT.GetDatabase().SetHLCClockForTest(tieClock)
 		passiveRT.GetDatabase().SetHLCClockForTest(tieClock)

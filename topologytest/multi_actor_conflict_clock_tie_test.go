@@ -11,10 +11,9 @@ package topologytest
 import (
 	"testing"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/testing/require"
-	"github.com/couchbaselabs/rosmar"
+	"github.com/couchbase/sync_gateway/testing/sgtest"
 )
 
 // This file supports the forceClockTie dimension of the TestMultiActorConflict* tests in
@@ -50,43 +49,55 @@ func controllableClockPeerCount(topologySpec TopologySpecification) (count int) 
 
 // forceHLCClockTieForTest pins the HLC clocks of every controllable peer in the topology to the same fixed
 // timestamp, forcing each of their next brand-new-document writes to generate an identical HLV current-version
-// Value. Returns the number of peers whose clock was overridden.
+// Value.
 //
-// Unlike a Sync Gateway/Couchbase Lite peer's clock (a fresh instance per peer, discarded with the test), rosmar's
-// clock is a single instance shared by every rosmar bucket in the whole test process. Freezing it here without
-// restoring it would leak into every later test in the process (CAS values frozen in the past, or colliding with
-// already-written docs) - so t is required purely to register a t.Cleanup that restores the real clock once this
-// specific (sub)test finishes, before any sibling or later test runs.
-func forceHLCClockTieForTest(t testing.TB, topology Topology) (forced int) {
+// Rosmar's clock is shared by every rosmar bucket in the process, so t registers a cleanup that restores it before
+// any later test runs.
+//
+// Wall clock jumps (for example an NTP step on a CI agent):
+//   - Forward, before this call: safe. Every frozen clock takes the same, later fixed time.
+//   - Backward, before this call: safe for a new document on Sync Gateway and Couchbase Lite peers, because the
+//     fixed time starts above each peer's highest HLC value. An update can still miss the tie when the document's
+//     HLV gives a Sync Gateway peer a higher floor, for example an imported CAS.
+//   - Backward, rosmar: not covered. Rosmar has no accessor for its highest CAS, so a doc can get a CAS below its
+//     previous CAS, and the mock XDCR then skips that write.
+//   - Any jump while frozen: no effect on frozen clocks. A Couchbase Server bucket keeps its own clock, and
+//     correctVersionAheadOfCAS waits (up to 1s) when a Sync Gateway version is ahead of the server CAS.
+func forceHLCClockTieForTest(t testing.TB, topology Topology) {
 	t.Helper()
 	ctx := base.TestCtx(t)
-	fixedTime := sgbucket.HLCWallClock()
-	tieClock := func() uint64 { return fixedTime }
+	var highestHLC uint64
+	var setClocks []func(func() uint64)
 	rosmarClockSet := false
 	for name, peer := range topology.peers.NonImportSortedPeers() {
 		switch peer.Type() {
 		case PeerTypeSyncGateway:
 			p, ok := peer.(*SyncGatewayPeer)
 			require.True(t, ok, "peer %s (%T) is a PeerTypeSyncGateway but not a *SyncGatewayPeer", name, peer)
-			p.rt.GetDatabase().SetHLCClockForTest(tieClock)
-			forced++
+			dbCtx := p.rt.GetDatabase()
+			highestHLC = max(highestHLC, dbCtx.GetHLCValueForTest(0))
+			setClocks = append(setClocks, dbCtx.SetHLCClockForTest)
 		case PeerTypeCouchbaseLite, PeerTypeCouchbaseLiteV3:
 			p, ok := peer.(*CouchbaseLiteMockPeer)
 			require.True(t, ok, "peer %s (%T) is a %s but not a *CouchbaseLiteMockPeer", name, peer, peer.Type())
-			p.getSingleSGBlipClient().btc.SetHLCClockForTest(tieClock)
-			forced++
+			btc := p.getSingleSGBlipClient().btc
+			highestHLC = max(highestHLC, btc.GetHLCValueForTest())
+			setClocks = append(setClocks, btc.SetHLCClockForTest)
 		case PeerTypeCouchbaseServer:
 			if !base.UnitTestUrlIsWalrus() {
 				base.InfofCtx(ctx, base.KeySGTest, "forceHLCClockTieForTest: not overriding clock for peer %s (%T), Couchbase Server-backed peers can only have their clock forced when backed by rosmar", name, peer)
 				continue
 			}
 			if !rosmarClockSet {
-				rosmar.SetClockForTest(tieClock)
-				t.Cleanup(func() { rosmar.SetClockForTest(sgbucket.HLCWallClock) })
+				setClocks = append(setClocks, func(clock func() uint64) { sgtest.SetRosmarClockForTest(t, clock) })
 				rosmarClockSet = true
 			}
-			forced++
 		} // exhaustive:enforce
 	}
-	return forced
+	// HLC.Now drops the logical bits of the clock value, so the next physical tick keeps every peer strictly above.
+	fixedTime := sgtest.NextClockTickForTest(highestHLC)
+	tieClock := func() uint64 { return fixedTime }
+	for _, setClock := range setClocks {
+		setClock(tieClock)
+	}
 }
