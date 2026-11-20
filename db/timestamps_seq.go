@@ -91,6 +91,15 @@ func (ts *TimestampsSeqArray) isDue(now int64, updateFrequency time.Duration) bo
 	return now >= ts.newestTimestamp()+int64(updateFrequency/time.Second)
 }
 
+// purgeSequence returns the sequence of the oldest entry if it is at or before purgeTimestamp (epoch seconds), and 0
+// otherwise. Between two trims a newer entry can also be old enough, so the result can be one entry behind.
+func (ts *TimestampsSeqArray) purgeSequence(purgeTimestamp int64) uint64 {
+	if !ts.isEmpty() && ts.oldestTimestamp() <= purgeTimestamp {
+		return ts.Timestamps[0].Seq
+	}
+	return 0
+}
+
 // PurgeIntervalFunc returns the interval after which timestamps entries are no longer needed.
 type PurgeIntervalFunc func() time.Duration
 
@@ -109,6 +118,7 @@ type TimestampsManager struct {
 	nowFunc                     func() time.Time
 	backgroundTasks             []BackgroundTask
 	terminator                  chan bool
+	started                     base.AtomicBool // set once Start has added the background task, so that tests can read it without a lock
 	stopped                     base.AtomicBool
 	dbName                      string
 	testUpdateFrequencyOverride *time.Duration
@@ -156,6 +166,12 @@ func (tm *TimestampsManager) purgeInterval() time.Duration {
 	return base.DefaultClientPartitionWindow
 }
 
+// purgeTimestamp returns the start of the purge interval that ends at now, in epoch seconds. trim and GetPurgeSequence
+// both use it, so that the entry that trim keeps is the entry that gives the purge sequence.
+func (tm *TimestampsManager) purgeTimestamp(now int64) int64 {
+	return now - int64(tm.purgeInterval()/time.Second)
+}
+
 // updateFrequency returns the minimum time between two entries: the purge interval split across
 // NumTimestampsEntries, but never less than 10 minutes.
 func (tm *TimestampsManager) updateFrequency() time.Duration {
@@ -187,9 +203,6 @@ func (tm *TimestampsManager) entryDue() bool {
 // is logged rather than returned, because NewBackgroundTask stops on an error; the array still shows the entry as due,
 // so the next check retries.
 func (tm *TimestampsManager) checkEntry(ctx context.Context) error {
-	if !tm.entryDue() {
-		return nil
-	}
 	if err := tm.addEntry(ctx); err != nil {
 		base.WarnfCtx(ctx, "Unable to add timestamps entry, retrying in %v: %v", tm.checkInterval(), err)
 	}
@@ -215,6 +228,7 @@ func (tm *TimestampsManager) Start(ctx context.Context) error {
 		return err
 	}
 	tm.backgroundTasks = append(tm.backgroundTasks, bgt)
+	tm.started.Set(true)
 	return nil
 }
 
@@ -281,8 +295,7 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 			}
 			timestampsSeqArray.append(lastSeq, now)
 			// trim after the append, so that the new entry counts when the array is trimmed
-			purgeTimestamp := now - int64(tm.purgeInterval()/time.Second)
-			timestampsSeqArray.trim(purgeTimestamp)
+			timestampsSeqArray.trim(tm.purgeTimestamp(now))
 		}
 
 		newValBytes, err = base.JSONMarshal(timestampsSeqArray)
@@ -306,4 +319,29 @@ func (tm *TimestampsManager) addEntry(ctx context.Context) error {
 	}
 	tm.updateTimestampsArray(updatedTimestampsSeqArray)
 	return nil
+}
+
+// LoadTimestampsSeqArray replaces the in-memory array with the timestamps document as it is stored, without an append
+// or a trim. If the document is missing or cannot be parsed, it returns the error and keeps the in-memory array.
+func (tm *TimestampsManager) LoadTimestampsSeqArray(ctx context.Context) error {
+	var tsSeqArray TimestampsSeqArray
+	_, err := tm.metadataStore.Get(ctx, tm.metaKeys.TimestampsSeqKey(), &tsSeqArray)
+	if err != nil {
+		return err
+	}
+	tm.updateTimestampsArray(tsSeqArray)
+	return nil
+}
+
+// GetPurgeSequence returns the sequence that was current at the start of the purge interval, from the in-memory array.
+// If the array is empty, it loads the timestamps document first. It returns 0 if the oldest entry is newer than the
+// start of the purge interval, or if the array is still empty.
+func (tm *TimestampsManager) GetPurgeSequence(ctx context.Context) uint64 {
+	if tm.timestampsSeqArray.Load().isEmpty() {
+		err := tm.LoadTimestampsSeqArray(ctx)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error loading timestamps sequence from DB: %v", err)
+		}
+	}
+	return tm.timestampsSeqArray.Load().purgeSequence(tm.purgeTimestamp(tm.nowFunc().Unix()))
 }

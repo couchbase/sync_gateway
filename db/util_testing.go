@@ -445,6 +445,11 @@ func SuspendSequenceBatching() func() {
 	return func() { MaxSequenceIncrFrequency = oldFrequency }
 }
 
+// IsRunningForTest returns true if Start ran its background task and Stop has not been called.
+func (tm *TimestampsManager) IsRunningForTest() bool {
+	return tm.started.IsTrue() && !tm.stopped.IsTrue()
+}
+
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
 	collection, err := dbc.GetDefaultDatabaseCollection()

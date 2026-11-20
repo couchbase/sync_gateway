@@ -2901,6 +2901,15 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(
 		return
 	}
 
+	if col.dbCtx.Options.EnableChannelHistoryCompaction {
+		if purgeSeq := col.dbCtx.TimestampsManager.GetPurgeSequence(ctx); purgeSeq != 0 {
+			if compactedChannels := doc.CompactHistory(purgeSeq, nil); len(compactedChannels) > 0 {
+				base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Compacted channel history at purge sequence %d for channels %s",
+					base.UD(doc.ID), purgeSeq, base.UD(compactedChannels))
+			}
+		}
+	}
+
 	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
 	return updatedExpiry, newRevID, newDoc, oldBodyJSON, retDocSequence, retUnusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
