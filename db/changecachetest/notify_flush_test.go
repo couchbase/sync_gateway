@@ -11,44 +11,62 @@ licenses/APL2.txt.
 package changecachetest
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-func TestManualNotifyDeliversInline(t *testing.T) {
+// TestDrainNotifications checks that each drain returns only what was merged since the last one, and that an empty
+// drain returns nil.
+func TestDrainNotifications(t *testing.T) {
 	database, ctx := db.SetupTestDB(t)
 	defer database.Close(ctx)
 
-	collection, ctx := db.GetSingleDatabaseCollectionWithUser(ctx, t, database)
-	collection.ChannelMapper = channels.NewChannelMapper(ctx, channels.DocChannelsSyncFunction, database.Options.JavascriptTimeout)
-	expected := channels.NewID("zero", collection.GetCollectionID())
+	cacheOptions := db.DefaultCacheOptions()
+	cache := db.NewChangeCacheForTest(t)
+	require.NoError(t, cache.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, cache.Start(0))
+	defer cache.Stop(ctx)
 
-	// Capacity 1 with a non-blocking send: further matching notifications must never block the caching feed.
-	notified := make(chan struct{}, 1)
-	cache := database.ChangeCacheForTest(t)
-	cache.SetManualNotifyChangeFuncForTest(t, func(_ context.Context, chans channels.Set) {
-		if !chans.Contains(expected) {
-			return
-		}
-		select {
-		case notified <- struct{}{}:
-		default:
-		}
-	})
+	first, second := channels.NewID("first", 0), channels.NewID("second", 0)
+	cache.MergeNotificationsForTest(t, first)
+	assert.Equal(t, channels.SetOfNoValidate(first), cache.DrainNotificationsForTest(t))
+	cache.MergeNotificationsForTest(t, second)
+	assert.Equal(t, channels.SetOfNoValidate(second), cache.DrainNotificationsForTest(t), "only what was merged since the last drain")
+	assert.Nil(t, cache.DrainNotificationsForTest(t), "an empty drain returns nil")
+}
 
-	_, _, err := collection.Put(ctx, "manualNotifyDoc", db.Body{"channels": []string{"zero"}})
-	require.NoError(t, err)
+// fatalRecorder records a Fatalf instead of stopping the test, so a test can check that a helper refuses a call.
+type fatalRecorder struct {
+	testing.TB
+	fatal bool
+}
 
-	// The caching feed notifies inline: DocChanged calls the notify callback as soon as processEntry has
-	// cached the entry, so the channel arrives without a flush.
-	select {
-	case <-notified:
-	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for notify")
-	}
+func (r *fatalRecorder) Helper() {}
+
+func (r *fatalRecorder) Fatalf(string, ...any) { r.fatal = true }
+
+// TestDrainNotificationsRefusesDatabaseCache checks that a test can't drain the database's own cache, which the
+// listener's broadcast tick drains: the test would take notifications the listener never sees.
+func TestDrainNotificationsRefusesDatabaseCache(t *testing.T) {
+	database, ctx := db.SetupTestDB(t)
+	defer database.Close(ctx)
+
+	recorder := &fatalRecorder{TB: t}
+	database.ChangeCacheForTest(t).DrainNotificationsForTest(recorder)
+	require.True(t, recorder.fatal, "draining the database's own cache must fail the test")
+
+	standalone := db.NewChangeCacheForTest(t)
+	cacheOptions := db.DefaultCacheOptions()
+	require.NoError(t, standalone.Init(ctx, database.DatabaseContext, database.DatabaseContext.ChannelCacheForTest(t),
+		&cacheOptions, database.DatabaseContext.MetadataKeys))
+	require.NoError(t, standalone.Start(0))
+	defer standalone.Stop(ctx)
+	recorder = &fatalRecorder{TB: t}
+	standalone.DrainNotificationsForTest(recorder)
+	require.False(t, recorder.fatal, "a standalone cache may be drained")
 }

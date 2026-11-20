@@ -647,7 +647,7 @@ func runIntegrationTestsParallel(sigCtx context.Context, edition Edition, flags 
 			}
 
 			// Collect server diagnostics before the cluster is deallocated.
-			if cbcollectAlways || filesContainsAny([]string{results[i].logFile}, "server logs for details", "Timed out after 1m0s waiting for a bucket to become available") {
+			if cbcollectAlways || filesContainsAny([]string{results[i].logFile}, cbcollectTriggers...) {
 				if err := collectLogs(p.shortName(), clusterID, "cbcollect_"+p.fileName()+".zip"); err != nil {
 					nonFatal.add(fmt.Errorf("cbcollect for %s: %w", p, err))
 				}
@@ -975,6 +975,14 @@ func firstLevel(run string, start, levelEnd, end int) string {
 		end = levelEnd
 	}
 	return run[start:end]
+}
+
+// cbcollectTriggers are log substrings that point to a Couchbase Server problem worth a cbcollect.
+var cbcollectTriggers = []string{
+	"server logs for details",
+	"Timed out after 1m0s waiting for a bucket to become available",
+	"Couldn't create test bucket",
+	"couldn't reload database: unambiguous timeout",
 }
 
 // filesContainsAny returns true if any of the given substrings appear in any of the files.

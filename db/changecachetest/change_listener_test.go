@@ -424,15 +424,18 @@ func TestUserWaiterNotifyCounterInvariant(t *testing.T) {
 
 	// A *channel* whose name happens to collide with a principal doc key in collection 0
 	// (principalDocCollectionIDForChannelID == base.DefaultCollectionID == 0, and
-	// channels.IsValidChannel only rejects empty/comma names) must go through Notify, never
-	// notifyKey - so it must NOT create a principalCounts entry.  Documented as benign: the only
-	// consequence is a spurious user-count check that finds nothing changed, never a missed one.
+	// channels.IsValidChannel only rejects empty/comma names) reaches the listener through the change
+	// cache's notifications and the broadcast tick, never notifyKey - so it must NOT create a
+	// principalCounts entry.  Documented as benign: the only consequence is a spurious user-count check
+	// that finds nothing changed, never a missed one.
 	collidingKey := channels.NewID(database.MetadataKeys.UserKey("collision-victim"), 0)
-	listener.Notify(ctx, channels.SetOfNoValidate(collidingKey))
+	database.ChangeCacheForTest(t).MergeNotificationsForTest(t, collidingKey)
+	// The listener's own tick may drain the merge first, which stamps the key just the same.
+	listener.BroadcastTickForTest(t, ctx)
 	keyCounts, principalCounts := listener.PrincipalCountsForTest(t)
 	_, hasPrincipalCounter := principalCounts[collidingKey]
-	require.False(t, hasPrincipalCounter, "Notify must not create a principalCounts entry")
-	require.NotZero(t, keyCounts[collidingKey], "Notify should still have advanced keyCounts")
+	require.False(t, hasPrincipalCounter, "a drained channel must not create a principalCounts entry")
+	require.NotZero(t, keyCounts[collidingKey], "the tick should still have advanced keyCounts")
 }
 
 // TestUserWaiterBeforeFirstNotify asserts that two independent waiters registered against a

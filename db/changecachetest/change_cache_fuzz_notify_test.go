@@ -81,9 +81,8 @@ func (n fuzzNotification) String() string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-// fuzzNotifyState is the notification tracker, guarded by fuzzHarness.notifyLock. The notify callback runs on
-// whichever goroutine caches entries, including the cache's background task, so everything it reads or writes is
-// kept here.
+// fuzzNotifyState is the notification tracker, guarded by fuzzHarness.notifyLock. The notify callback runs only
+// inside the harness's flushes, but the checks read this state too, so it is kept behind one lock.
 type fuzzNotifyState struct {
 	claims    map[uint64]fuzzClaim
 	uncovered map[string][]uint64 // key -> readable changes no notification has covered
