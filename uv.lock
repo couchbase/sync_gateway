@@ -173,14 +173,14 @@ wheels = [
 
 [[package]]
 name = "pytest-httpserver"
-version = "1.2.0"
+version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "werkzeug" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/ff/81c955e8fbb0323e817d178dd653de90c81896e819a5df65c1e1c327155a/pytest_httpserver-1.2.0.tar.gz", hash = "sha256:d07744ce2efaafa0575ed3081d416b999c773b09e84aa95065138bedc3e12352", size = 71860, upload-time = "2026-10-05T19:00:25.597Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/08/2c52d0cb7ba7eadca1d529a6d32d034c256b1f1fdacab0f4428f5a3695ec/pytest_httpserver-1.2.1.tar.gz", hash = "sha256:fbad14449e1acfacf24a4d6e2de3211a8654597f03e296af4a833b51836467bc", size = 77385, upload-time = "2026-11-10T22:36:38.261Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/34/aa11718873f8cd3d9b3c58938e537af0c2d9cb108160357f5db2af6ddd66/pytest_httpserver-1.2.0-py3-none-any.whl", hash = "sha256:749937892dbf909c8b703503b491be66fc24073e7988bf9b4d783af4f33da942", size = 23392, upload-time = "2026-10-05T19:00:26.998Z" },
+    { url = "https://files.pythonhosted.org/packages/31/0e/aebc401b72f99f1673438562bb0e9b39e442bdfbff90c47a125ef7d2438f/pytest_httpserver-1.2.1-py3-none-any.whl", hash = "sha256:3f440eebbaea9c7b26a4ee83bb331b7d25ade45f849150c040d64f9f15be91a0", size = 24521, upload-time = "2026-11-10T22:36:39.453Z" },
 ]
 
 [[package]]
@@ -227,7 +227,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=9.2.0" },
-    { name = "pytest-httpserver", specifier = ">=1.2.0" },
+    { name = "pytest-httpserver", specifier = ">=1.2.1" },
     { name = "ruff", specifier = ">=0.17.5" },
     { name = "trustme", specifier = ">=1.2.1" },
     { name = "ty", specifier = "==0.0.105" },

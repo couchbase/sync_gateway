@@ -38,7 +38,7 @@ extend-select = ["I", "B006"] # isort, mutable default argument
 [dependency-groups]
 dev = [
   "pytest>=9.2.0",
-  "pytest-httpserver>=1.2.0",
+  "pytest-httpserver>=1.2.1",
   "ruff>=0.17.5",
   "trustme>=1.2.1",
   "ty==0.0.105", # pre-release, pin exactly
