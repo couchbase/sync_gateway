@@ -47,7 +47,7 @@ source cbs.env                    # SG_TEST_COUCHBASE_SERVER_URL, CBS_CLUSTER_ID
 SG_TEST_BACKING_STORE=Couchbase go test -count=1 -p 1 -timeout 45m ./...
 ```
 
-Useful flags: `--env-file` (default `./cbs.env`), `--version` (default: the newest enterprise release on Docker Hub), `--nodes`,
+Useful flags: `--env-file` (default `./cbs.env`), `--version` (default: the version the Jenkins jobs use), `--nodes`,
 `--services` (default `kv,n1ql,index`), `--kv-memory-mb`/`--index-memory-mb`, `--tls`, `--purpose`.
 
 The allocated cluster ID is recorded in `.cbdinocluster-sg-cluster-id` in the working directory

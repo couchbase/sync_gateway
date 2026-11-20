@@ -63,19 +63,6 @@ func initCbdinocluster() error {
 	return nil
 }
 
-// resolveServerVersion returns serverVersion, or the newest release that start_cbs.py picks when it is empty. It
-// runs once so every package tests against the same version.
-func resolveServerVersion(serverVersion string) (string, error) {
-	if serverVersion != "" {
-		return serverVersion, nil
-	}
-	out, err := tryOutput(startCBSScript, "--resolve-version")
-	if err != nil {
-		return "", fmt.Errorf("resolve Couchbase Server version: %w", err)
-	}
-	return strings.TrimSpace(out), nil
-}
-
 // cbdinoPrefix returns the log prefix for cbdinocluster commands run on behalf of a package.
 func cbdinoPrefix(label string) string {
 	return labelPrefix(label) + "cbdinocluster: "
@@ -124,7 +111,10 @@ func allocateClusterOnce(label, serverVersion string, protocol Protocol, multiNo
 	if multiNode {
 		nodes = "3"
 	}
-	args := []string{"--no-reuse", "--version", serverVersion, "--nodes", nodes, "--purpose", clusterPurpose, "--env-file", envFile}
+	args := []string{"--no-reuse", "--nodes", nodes, "--purpose", clusterPurpose, "--env-file", envFile}
+	if serverVersion != "" {
+		args = append(args, "--version", serverVersion)
+	}
 	if protocol == ProtocolCouchbases {
 		args = append(args, "--tls")
 	}

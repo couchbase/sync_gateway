@@ -251,8 +251,8 @@ Environment variables:
     TLS_SKIP_VERIFY            Skip TLS certificate verification (true|false)
 
   Optional:
-    COUCHBASE_SERVER_VERSION   Couchbase Server Docker Hub tag to provision (e.g. enterprise-8.0.4)
-                               (default: the newest enterprise release on Docker Hub, chosen by start_cbs.py)
+    COUCHBASE_SERVER_VERSION   Couchbase Server Docker Hub tag to provision (e.g. enterprise-8.0.3)
+                               (default: the start_cbs.py default, which matches the Jenkins jobs)
     DISABLE_REV_CACHE          Disable the revision cache during tests (default: false)
     DETECT_RACES               Enable the Go race detector (default: false)
     FAIL_FAST                  Stop on the first test failure (default: false)
@@ -600,11 +600,6 @@ func runIntegrationTestsParallel(sigCtx context.Context, edition Edition, flags 
 	if err := initCbdinocluster(); err != nil {
 		logger.Fatal(err)
 	}
-	serverVersion, err := resolveServerVersion(serverVersion)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	logger.Infof("Testing against Couchbase Server %s", serverVersion)
 
 	ctx, cancel := context.WithCancelCause(sigCtx)
 	defer cancel(nil)

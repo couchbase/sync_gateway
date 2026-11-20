@@ -16,7 +16,7 @@ set -e # Abort on errors
 git config --global --replace-all url."git@github.com:".insteadOf "https://github.com/"
 export GOPRIVATE=github.com/couchbaselabs/go-fleecedelta
 
-# Checked before the integration-tester handoff, which would otherwise pick the newest release when unset.
+# Checked before the integration-tester handoff, which would otherwise use the start_cbs.py default when unset.
 : "${COUCHBASE_SERVER_VERSION:?COUCHBASE_SERVER_VERSION environment variable is required to be set.}"
 
 # Jenkins fetches this script from main, so it also has to run revisions that predate integration-tester.

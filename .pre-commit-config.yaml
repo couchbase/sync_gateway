@@ -56,10 +56,10 @@ repos:
         pass_filenames: false
 
       - id: jenkins-cbs-version
-        name: Jenkinsfile COUCHBASE_SERVER_VERSION defaults match
+        name: COUCHBASE_SERVER_VERSION defaults match
         language: system
         entry: python3 .ci/check_cbs_version.py
-        files: ^(\.ci/jenkins/.*Jenkinsfile|\.ci/check_cbs_version\.py)$
+        files: ^(\.ci/jenkins/.*Jenkinsfile|\.ci/check_cbs_version\.py|integration-test/start_cbs\.py)$
         pass_filenames: false
 
       - id: redocly-lint

@@ -7,13 +7,15 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-"""Fail unless every Jenkinsfile gives COUCHBASE_SERVER_VERSION the same default."""
+"""Fail unless every Jenkinsfile and start_cbs.py give COUCHBASE_SERVER_VERSION the same default."""
 
 import pathlib
 import re
 import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+START_CBS = "integration-test/start_cbs.py"
+START_CBS_RE = re.compile(r"""^DEFAULT_CBS_VERSION = ['"]([^'"]*)['"]$""", re.MULTILINE)
 NAME_RE = re.compile(r"""name:\s*['"]COUCHBASE_SERVER_VERSION['"]""")
 PARAM_RE = re.compile(
     NAME_RE.pattern + r""",\s*(defaultValue|value):\s*['"]?([^'",\s]*)"""
@@ -36,6 +38,12 @@ def main() -> int:
         for kind, value in matches:
             if kind == "defaultValue":
                 defaults[rel] = value
+
+    start_cbs = START_CBS_RE.findall((REPO_ROOT / START_CBS).read_text())
+    if len(start_cbs) != 1:
+        print(f"{START_CBS}: cannot parse DEFAULT_CBS_VERSION", file=sys.stderr)
+        return 1
+    defaults[START_CBS] = start_cbs[0]
 
     if len(set(defaults.values())) > 1:
         print("COUCHBASE_SERVER_VERSION defaults differ:", file=sys.stderr)
