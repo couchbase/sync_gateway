@@ -426,7 +426,9 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not imported")
 	} else if importErr != nil {
 		// Treat any other failure to perform an on-demand import as not found
-		base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), importErr)
+		if !isSyncFnRejection(importErr) {
+			base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), importErr)
+		}
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not found")
 	}
 	return docOut, nil
@@ -3058,7 +3060,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Migrated document %q to use xattr.", base.UD(key))
-			} else {
+			} else if !isSyncFnRejection(err) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
 			}
 		} else if doc != nil {
@@ -3863,6 +3865,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
+				err = &syncFnRejectionError{err: err}
 				col.dbStats().Security().NumDocsRejected.Add(1)
 				col.collectionStats.SyncFunctionRejectCount.Add(1)
 				if isAccessError(err) {
@@ -3947,6 +3950,24 @@ func validateRoleAccessMap(ctx context.Context, roleAccess channels.AccessMap) b
 
 func isAccessError(err error) bool {
 	return base.ContainsString(base.SyncFnAccessErrors, err.Error())
+}
+
+// syncFnRejectionError wraps an error from a sync function rejection, which is logged where the sync function runs,
+// so callers can avoid logging the same rejection again.
+type syncFnRejectionError struct {
+	err error
+}
+
+func (e *syncFnRejectionError) Error() string { return e.err.Error() }
+
+// Cause lets base.ErrorAsHTTPStatus find the wrapped *base.HTTPError.
+func (e *syncFnRejectionError) Cause() error { return e.err }
+
+func (e *syncFnRejectionError) Unwrap() error { return e.err }
+
+func isSyncFnRejection(err error) bool {
+	var rejectionErr *syncFnRejectionError
+	return errors.As(err, &rejectionErr)
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions for the default collection

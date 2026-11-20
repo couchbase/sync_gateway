@@ -1958,8 +1958,9 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		}
 		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
-			// Probably the validator rejected the doc
-			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+			if !isSyncFnRejection(err) {
+				base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+			}
 			access = nil
 			channels = nil
 		}
