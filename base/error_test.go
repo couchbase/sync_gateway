@@ -235,6 +235,36 @@ func errorAsHTTPStatusTestCases() []errorAsHTTPStatusTestCase {
 			expectedText: "Document too large!",
 		},
 		{
+			name:         "*gocb.KeyValueError StatusTooBig only",
+			err:          &gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocb.KeyValueError StatusTooBig only",
+			err:          gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "*gocbcore.KeyValueError StatusTooBig only",
+			err:          &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocbcore.KeyValueError StatusTooBig only",
+			err:          gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocbcore.SubDocumentError StatusTooBig only",
+			err:          gocbcore.SubDocumentError{InnerError: &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig}},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
 			name:         "*gocb.KeyValueError ErrDocumentNotFound",
 			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDocumentNotFound), StatusCode: memd.StatusKeyNotFound},
 			expectedCode: http.StatusNotFound,

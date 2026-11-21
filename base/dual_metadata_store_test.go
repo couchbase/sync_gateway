@@ -17,8 +17,11 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
+	gocbcore "github.com/couchbase/gocbcore/v10"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // newTestMetadataStore returns a MetadataStore backed by two distinct DataStores in the
@@ -231,6 +234,21 @@ func TestIsCounterNonNumeric(t *testing.T) {
 	rosmarShape := json.Unmarshal([]byte(`{"last_seq":42}`), &dest)
 	require.Error(t, rosmarShape)
 	assert.True(t, IsCounterNonNumeric(rosmarShape))
+
+	badDeltaErrs := map[string]error{
+		"*gocb.KeyValueError":       &gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusBadDelta},
+		"gocb.KeyValueError":        gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusBadDelta},
+		"*gocbcore.KeyValueError":   &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusBadDelta},
+		"gocbcore.KeyValueError":    gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusBadDelta},
+		"gocbcore.SubDocumentError": gocbcore.SubDocumentError{InnerError: &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusBadDelta}},
+	}
+	for name, err := range badDeltaErrs {
+		t.Run(name, func(t *testing.T) {
+			assert.True(t, IsCounterNonNumeric(err))
+			assert.True(t, IsCounterNonNumeric(fmt.Errorf("wrapped: %w", err)))
+			assert.True(t, IsCounterNonNumeric(pkgerrors.Wrap(err, "wrapped")))
+		})
+	}
 
 	// Sanity: an unrelated error should NOT be classified as non-numeric.
 	assert.False(t, IsCounterNonNumeric(errors.New("unrelated")))
