@@ -729,6 +729,10 @@ func fuzzSeeds() map[string][]byte {
 	}
 	return map[string][]byte{
 		"abandonedDuringTimeouts": abandonedDuringTimeoutsSeed(180),
+		// An unused sequence that waits in pending, and later one delivered twice, must not wake request_plus waiters:
+		// the unused key is notified when an unused sequence becomes readable, not when it arrives.
+		"unusedBufferedThenDuplicated": newScriptBuilder().config(cfg).
+			Unused().Unused().DeliverAt(2, 1).Flush().Deliver(1).Flush().Duplicate(1).Flush().Bytes(),
 		"inOrderWrites": newScriptBuilder().config(cfg).
 			Write(0, chanMask("A"), false).Deliver(1).
 			Write(1, chanMask("A", "B"), false).Deliver(1).

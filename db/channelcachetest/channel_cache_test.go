@@ -45,10 +45,10 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
-	cache.AddToCache(ctx, db.MakeLogEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(ctx, db.MakeLogEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(ctx, db.MakeLogEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
-	cache.AddToCache(ctx, db.MakeLogEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeLogEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeLogEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeLogEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeLogEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
 
 	database.UpdateCalculatedStats(ctx)
 
@@ -78,10 +78,10 @@ func TestChannelCacheCurrentVersion(t *testing.T) {
 	_, err = cache.GetChanges(ctx, channels.NewID("chanD", collectionID), db.GetChangesOptionsWithCtxOnly(t))
 	require.NoError(t, err)
 
-	cache.AddToCache(ctx, db.MakeTestLogEntryWithCV(1, "doc1", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test1", 123))
-	cache.AddToCache(ctx, db.MakeTestLogEntryWithCV(2, "doc2", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test2", 1234))
-	cache.AddToCache(ctx, db.MakeTestLogEntryWithCV(3, "doc3", "1-a", []string{"chanC", "chanD"}, collectionID, "test3", 12345))
-	cache.AddToCache(ctx, db.MakeTestLogEntryWithCV(4, "doc4", "1-a", []string{"chanC"}, collectionID, "test4", 123456))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeTestLogEntryWithCV(1, "doc1", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test1", 123))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeTestLogEntryWithCV(2, "doc2", "1-a", []string{"chanB", "chanC", "chanD"}, collectionID, "test2", 1234))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeTestLogEntryWithCV(3, "doc3", "1-a", []string{"chanC", "chanD"}, collectionID, "test3", 12345))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeTestLogEntryWithCV(4, "doc4", "1-a", []string{"chanC"}, collectionID, "test4", 123456))
 
 	// assert on channel cache entries for 'chanC'
 	entriesChanC, err := cache.GetChanges(ctx, channels.NewID("chanC", collectionID), db.GetChangesOptionsWithZeroSeq(t))
@@ -418,9 +418,9 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	queryEntry := db.MakeTestLogEntryForChannels(1, channelNames)
 	queryHandler.SeedEntries(db.LogEntries{queryEntry})
 
-	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
+	// Send entry to the cache.  Don't reuse queryEntry here, as dispatch strips out the channels property
 	logEntry := db.MakeTestLogEntryForChannels(1, channelNames)
-	cache.AddToCache(ctx, logEntry)
+	db.DispatchEntryForTest(t, ctx, cache, logEntry)
 
 	workerCount := 25
 	getChangesCount := 400
@@ -493,9 +493,9 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	queryEntry := db.MakeTestLogEntryForChannels(1, channelNames)
 	queryHandler.SeedEntries(db.LogEntries{queryEntry})
 
-	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
+	// Send entry to the cache.  Don't reuse queryEntry here, as dispatch strips out the channels property
 	logEntry := db.MakeTestLogEntryForChannels(1, channelNames)
-	cache.AddToCache(ctx, logEntry)
+	db.DispatchEntryForTest(t, ctx, cache, logEntry)
 
 	workerCount := 25
 	getChangesCount := 400
@@ -563,9 +563,9 @@ func TestChannelCacheBypass(t *testing.T) {
 	queryEntry := db.MakeTestLogEntryForChannels(1, channelNames)
 	queryHandler.SeedEntries(db.LogEntries{queryEntry})
 
-	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
+	// Send entry to the cache.  Don't reuse queryEntry here, as dispatch strips out the channels property
 	logEntry := db.MakeTestLogEntryForChannels(1, channelNames)
-	cache.AddToCache(ctx, logEntry)
+	db.DispatchEntryForTest(t, ctx, cache, logEntry)
 
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
 	for c := 1; c <= channelCount; c++ {
@@ -1327,67 +1327,10 @@ func TestChannelCacheRemoveByCollection(t *testing.T) {
 	})
 }
 
-// TestChannelCacheAddUnusedSequence covers which sequence a released range advances the cache's
-// high sequence and publish cursor to. Getting either wrong leaves the high sequence behind, which stalls changes
-// feeds, and leaves the cursor behind, which gives a channel cache created afterwards a looser
-// validFrom than the sequences already released justify.
-func TestChannelCacheAddUnusedSequence(t *testing.T) {
-	newCache := func(t *testing.T) *db.ChannelCacheImplForTest {
-		ctx := base.TestCtx(t)
-		cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
-			db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			cache.Stop(ctx)
-		})
-		return cache
-	}
-	// validFromOfNewCache creates a cache for a channel nothing has been dispatched to and returns its validFrom.
-	validFromOfNewCache := func(t *testing.T, cache *db.ChannelCacheImplForTest) uint64 {
-		single, err := db.GetSingleChannelCacheForTest(t, base.TestCtx(t), cache, channels.NewID("A", base.DefaultCollectionID))
-		require.NoError(t, err)
-		impl, ok := db.AsSingleChannelCacheImplForTest(t, single)
-		require.True(t, ok)
-		validFrom, _ := impl.GetCachedChanges(db.ChangesOptions{})
-		return validFrom
-	}
-
-	t.Run("range advances to its end sequence", func(t *testing.T) {
-		cache := newCache(t)
-		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
-		assert.Equal(t, uint64(9), cache.GetHighCacheSequence())
-		assert.Equal(t, uint64(9), cache.PublishCursorForTest(t))
-	})
-
-	t.Run("single sequence advances to itself", func(t *testing.T) {
-		cache := newCache(t)
-		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5})
-		assert.Equal(t, uint64(5), cache.GetHighCacheSequence())
-		assert.Equal(t, uint64(5), cache.PublishCursorForTest(t))
-		assert.Equal(t, uint64(6), validFromOfNewCache(t, cache))
-	})
-
-	t.Run("principal advances to itself", func(t *testing.T) {
-		cache := newCache(t)
-		cache.AddPrincipal(&db.LogEntry{Sequence: 7})
-		assert.Equal(t, uint64(7), cache.GetHighCacheSequence())
-		assert.Equal(t, uint64(7), cache.PublishCursorForTest(t))
-		assert.Equal(t, uint64(8), validFromOfNewCache(t, cache))
-	})
-
-	// A cache created after a released range starts after the range, so it doesn't claim to cover
-	// sequences that were released before it existed.
-	t.Run("cache created after a range is valid from after its end", func(t *testing.T) {
-		cache := newCache(t)
-		cache.AddUnusedSequence(&db.LogEntry{Sequence: 5, EndSequence: 9})
-		assert.Equal(t, uint64(10), validFromOfNewCache(t, cache))
-	})
-}
-
-// TestChannelCacheAddToCacheStarChannel covers the star-channel bookkeeping in AddToCache: a
+// TestChannelCacheDispatchEntryStarChannel covers the star-channel bookkeeping in dispatchEntry: a
 // document the sync function did not place in "*" must still reach the star channel cache, and a
 // document in no channels at all must be handled without incident.
-func TestChannelCacheAddToCacheStarChannel(t *testing.T) {
+func TestChannelCacheDispatchEntryStarChannel(t *testing.T) {
 	ctx := base.TestCtx(t)
 	cache, err := db.NewChannelCacheForTest(t, ctx, "testDb", db.DefaultCacheOptions().ChannelCacheOptions,
 		db.QueryHandlerFactoryForTest, channels.NewActiveChannels(&base.SgwIntStat{}), newTestCacheStats(t))
@@ -1398,7 +1341,7 @@ func TestChannelCacheAddToCacheStarChannel(t *testing.T) {
 	namedCache, _ := cache.AddChannelCacheForTest(t, ctx, channels.NewID("chanA", base.DefaultCollectionID))
 
 	entry := db.MakeTestLogEntryForChannels(1, []string{"chanA"})
-	cache.AddToCache(ctx, entry)
+	db.DispatchEntryForTest(t, ctx, cache, entry)
 
 	assert.True(t, verifyChannelSequences(namedCache.LogsForTest(t), []uint64{1}))
 	assert.True(t, verifyChannelSequences(starCache.LogsForTest(t), []uint64{1}),
@@ -1406,7 +1349,7 @@ func TestChannelCacheAddToCacheStarChannel(t *testing.T) {
 
 	// A document the sync function placed in no channels at all still belongs in "*", since that
 	// is the all-docs channel. It must also not upset the allocation sized from the channel count.
-	cache.AddToCache(ctx, db.MakeTestLogEntryForChannels(2, nil))
+	db.DispatchEntryForTest(t, ctx, cache, db.MakeTestLogEntryForChannels(2, nil))
 	assert.True(t, verifyChannelSequences(namedCache.LogsForTest(t), []uint64{1}))
 	assert.True(t, verifyChannelSequences(starCache.LogsForTest(t), []uint64{1, 2}),
 		"a doc in no channels still reaches the star channel")

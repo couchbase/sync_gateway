@@ -307,7 +307,7 @@ func TestMultiChannelChangesWithTriggeredSequence(t *testing.T) {
 	// deliver seq 7 even though it arrived after the initial feed was established.
 	db.WriteDirect(t, collection, []string{"DEF"}, 7)
 	// WaitForSequenceNotSkipped(7) blocks until seq 7 has been removed from the skipped queue,
-	// which happens inside processEntry (change_cache.go) after _addToCache completes. This is
+	// which happens inside processEntry (change_cache.go) once seq 7 has been cached. This is
 	// the correct gate here: WaitForSequence(7) would return immediately because nextSequence is
 	// already 10 (advanced when seq 9 was processed), so it would not wait for seq 7's DCP event
 	// to actually be received and cached — causing a race on CI where the subsequent PostChanges

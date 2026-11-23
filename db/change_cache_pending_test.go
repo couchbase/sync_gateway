@@ -22,10 +22,10 @@ import (
 )
 
 // TestAddPendingLogs stays in package db: it holds changeCache.lock across _pushRangeToPending
-// and _addPendingLogs, and a held lock can't cross a package boundary.
+// and _releasePending, and a held lock can't cross a package boundary.
 //   - Test age-based eviction of sequences and ranges from pending logs.
 //   - Adds to pending logs directly via heap.Push with backdated TimeReceived,
-//     triggers eviction with call to _addPendingLogs
+//     triggers eviction with call to _releasePending
 //   - tests duplicate handling when popping pending entries
 //   - reproduces CBG-4215
 func TestAddPendingLogs(t *testing.T) {
@@ -184,8 +184,10 @@ func TestAddPendingLogs(t *testing.T) {
 					testChangeCache._pushRangeToPending(incomingRange.start, incomingRange.end, backdatedTimeReceived)
 				}
 			}
-			// Call _addPendingLogs to trigger eviction from pendingLogs based on age
-			_ = testChangeCache._addPendingLogs(ctx)
+			// Call _releasePending to trigger eviction from pendingLogs based on age, then dispatch what it released
+			// as the end of an ordering lock hold would
+			testChangeCache._releasePending(ctx)
+			_ = testChangeCache._dispatchReleased(ctx)
 			assert.Equal(t, int(testCase.expectedNextSequence), int(testChangeCache.nextSequence), "Cache nextSequence doesn't match expected")
 			testChangeCache.lock.Unlock()
 			if len(testCase.expectedCached) > 0 {
@@ -243,9 +245,11 @@ func TestAddPendingLogsStaleRangeAdvancesHighCacheSequence(t *testing.T) {
 		testChangeCache.lock.Lock()
 		defer testChangeCache.lock.Unlock()
 		testChangeCache.nextSequence = 5
-		testChangeCache.channelCache.AddUnusedSequence(&LogEntry{Sequence: 4})
+		testChangeCache.channelCache.advancePublishCursor(4)
+		testChangeCache.channelCache.updateHighCacheSequence(4)
 		testChangeCache._pushRangeToPending(3, 8, channels.NewFeedTimestampFromNow())
-		_ = testChangeCache._addPendingLogs(ctx)
+		testChangeCache._releasePending(ctx)
+		_ = testChangeCache._dispatchReleased(ctx)
 		require.Equal(t, uint64(9), testChangeCache.nextSequence)
 	}()
 

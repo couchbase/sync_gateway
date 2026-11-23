@@ -1844,7 +1844,8 @@ func (s *SkippedSequenceSkiplist) GetOldestForTest(_ testing.TB) uint64 {
 
 // ProcessUnusedSequenceRangeAtSkippedForTest removes a released range from the skipped list.
 func (s *SkippedSequenceSkiplist) ProcessUnusedSequenceRangeAtSkippedForTest(_ testing.TB, ctx context.Context, fromSequence, toSequence uint64) int64 {
-	return s.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+	numSeqs, _ := s.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+	return numSeqs
 }
 
 // NewSingleChannelCacheForTest builds a single channel cache directly, bypassing the channel
@@ -2232,6 +2233,17 @@ type ValidFromHooksForTest = validFromHooks
 // is used concurrently.
 func (c *channelCacheImpl) SetValidFromHooksForTest(_ testing.TB, hooks ValidFromHooksForTest) {
 	c.validFromHooks = &hooks
+}
+
+// DispatchEntryForTest does for a single entry what the change cache does for each lock hold's released entries:
+// raise the publish cursor, insert the entry into its channel caches, then raise the high cache sequence. Returns the
+// channels to notify. For channel cache tests that run without a change cache.
+func DispatchEntryForTest(_ testing.TB, ctx context.Context, cache ChannelCache, change *LogEntry) []channels.ID {
+	seq := max(change.Sequence, change.EndSequence)
+	cache.advancePublishCursor(seq)
+	changed := cache.dispatchEntry(ctx, change, nil)
+	cache.updateHighCacheSequence(seq)
+	return changed
 }
 
 // AdvancePublishCursorForTest raises the publish cursor to seq without dispatching anything. It models a sequence

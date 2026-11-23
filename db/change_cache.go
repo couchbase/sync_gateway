@@ -65,30 +65,33 @@ const EnableStarChannelLog = true
 //   - Perform sequence buffering to ensure documents are received in sequence order
 //   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	db                    *DatabaseContext
-	logCtx                context.Context               // fix in sg-bucket to ProcessEvent
-	logsDisabled          bool                          // If true, ignore incoming tap changes
-	nextSequence          uint64                        // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
-	publishedNextSequence atomic.Uint64                 // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
-	initialSequence       atomic.Uint64                 // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
-	receivedSeqs          map[uint64]struct{}           // Set of all sequences received
-	pendingLogs           LogPriorityQueue              // Out-of-sequence entries waiting to be cached
-	notifyAcc             notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
-	started               base.AtomicBool               // Set by the Start method
-	stopped               base.AtomicBool               // Set by the Stop method
-	skippedSeqs           *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
-	removeSkippedHook     func(seq uint64)              // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
-	lock                  sync.RWMutex                  // Coordinates access to struct fields
-	options               CacheOptions                  // Cache config
-	terminator            chan bool                     // Signal termination of background goroutines
-	backgroundTasks       []BackgroundTask              // List of background tasks.
-	initTime              time.Time                     // Cache init time - used for latency calculations
-	channelCache          ChannelCache                  // Underlying channel cache
-	lastAddPendingTime    int64                         // The most recent time _addPendingLogs was run, as epoch time
-	internalStats         changeCacheStats              // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback      base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
-	sgCfgPrefix           string                        // Prefix for SG Cfg doc keys
-	metaKeys              *base.MetadataKeys            // Metadata key formatter
+	db                        *DatabaseContext
+	logCtx                    context.Context               // fix in sg-bucket to ProcessEvent
+	logsDisabled              bool                          // If true, ignore incoming tap changes
+	nextSequence              uint64                        // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
+	publishedNextSequence     atomic.Uint64                 // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
+	initialSequence           atomic.Uint64                 // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
+	receivedSeqs              map[uint64]struct{}           // Set of all sequences received
+	pendingLogs               LogPriorityQueue              // Out-of-sequence entries waiting to be cached
+	notifyAcc                 notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
+	started                   base.AtomicBool               // Set by the Start method
+	stopped                   base.AtomicBool               // Set by the Stop method
+	skippedSeqs               *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
+	removeSkippedHook         func(seq uint64)              // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
+	released                  []*LogEntry                   // Entries released by ordering during the current lock hold, waiting for _dispatchReleased. Guarded by the lock; empty between holds.
+	releasedRemoveSkipped     []uint64                      // Late sequences released during the current lock hold, removed from skippedSeqs once _dispatchReleased has cached them. Guarded by the lock; empty between holds.
+	releasedUnusedFromSkipped bool                          // Set when the current lock hold removed an unused range from skippedSeqs, so _dispatchReleased wakes request_plus waiters. Only ordering reads or writes it, under the lock, within one hold; false between holds. TODO: CBG-6120 - carry it by value on the hold's final run, so consumers never share it.
+	lock                      sync.RWMutex                  // Coordinates access to struct fields
+	options                   CacheOptions                  // Cache config
+	terminator                chan bool                     // Signal termination of background goroutines
+	backgroundTasks           []BackgroundTask              // List of background tasks.
+	initTime                  time.Time                     // Cache init time - used for latency calculations
+	channelCache              ChannelCache                  // Underlying channel cache
+	lastAddPendingTime        int64                         // The most recent time _releasePending was run, as epoch time
+	internalStats             changeCacheStats              // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback          base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
+	sgCfgPrefix               string                        // Prefix for SG Cfg doc keys
+	metaKeys                  *base.MetadataKeys            // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -289,7 +292,7 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 	c.lock.Unlock()
 }
 
-// Triggers addPendingLogs if it hasn't been run in CachePendingSeqMaxWait.  Error returned to fulfil BackgroundTaskFunc signature.
+// Triggers _releasePending if it hasn't been run in CachePendingSeqMaxWait.  Error returned to fulfil BackgroundTaskFunc signature.
 func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 
 	lastAddPendingLogsTime := atomic.LoadInt64(&c.lastAddPendingTime)
@@ -297,11 +300,10 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 		return nil
 	}
 
-	// Trigger _addPendingLogs to process any entries that have been pending too long:
-	c.lock.Lock()
-	changedChannels := c._addPendingLogs(ctx)
-	c._setPublishedNextSequence()
-	c.lock.Unlock()
+	// Release any entries that have been pending too long:
+	changedChannels := c.orderAndDispatch(ctx, func() {
+		c._releasePending(ctx)
+	})
 
 	c.notifyAcc.Merge(changedChannels)
 
@@ -622,11 +624,10 @@ func (c *changeCache) releaseUnusedSequence(ctx context.Context, sequence uint64
 	}
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d (unused sequence)", sequence)
 
-	// processEntry may unblock pending sequences, so the channels it returns need waking too. unusedSeqChannelID is
-	// merged whether or not the sequence was cached, so a buffered or duplicate unused sequence still wakes request_plus
-	// waiters for nothing (TODO: CBG-6120).
+	// processEntry may unblock pending sequences, so the channels it returns need waking too. They include
+	// unusedSeqChannelID only if an unused entry was released; a buffered or duplicate unused sequence wakes nobody.
 	changedChannels := c.processEntry(ctx, change)
-	c.notifyAcc.Merge(append(changedChannels, unusedSeqChannelID))
+	c.notifyAcc.Merge(changedChannels)
 }
 
 // releaseUnusedSequenceRange will handle unused sequence range arriving over DCP. It will batch remove from skipped or
@@ -635,7 +636,6 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 
 	base.InfofCtx(ctx, base.KeyCache, "Received #%d-#%d (unused sequence range)", fromSequence, toSequence)
 
-	// As in releaseUnusedSequence, unusedSeqChannelID is merged whether or not any of the range was cached.
 	// if range is single value, just run sequence through process entry and return early
 	if fromSequence == toSequence {
 		change := &LogEntry{
@@ -644,31 +644,39 @@ func (c *changeCache) releaseUnusedSequenceRange(ctx context.Context, fromSequen
 			UnusedSequence: true,
 		}
 		changedChannels := c.processEntry(ctx, change)
-		c.notifyAcc.Merge(append(changedChannels, unusedSeqChannelID))
+		c.notifyAcc.Merge(changedChannels)
 		return
 	}
 
 	// push unused range to either pending or skipped lists based on current state of the change cache
 	changedChannels := c.processUnusedRange(ctx, fromSequence, toSequence, timeReceived)
-	c.notifyAcc.Merge(append(changedChannels, unusedSeqChannelID))
+	c.notifyAcc.Merge(changedChannels)
 }
 
 // processUnusedRange handles pushing unused range to pending or skipped lists
 func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) []channels.ID {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	defer c._setPublishedNextSequence()
+	return c.orderAndDispatch(ctx, func() {
+		c._orderUnusedRange(ctx, fromSequence, toSequence, timeReceived)
+	})
+}
 
+// _orderUnusedRange is the ordering half of processUnusedRange. Callers must hold c.lock.
+func (c *changeCache) _orderUnusedRange(ctx context.Context, fromSequence, toSequence uint64, timeReceived channels.FeedTimestamp) {
 	var numSkipped int64
-	var changedChannels []channels.ID
 	if toSequence < c.nextSequence {
 		// batch remove from skipped
-		numSkipped = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+		var removed bool
+		numSkipped, removed = c.skippedSeqs.processUnusedSequenceRangeAtSkipped(ctx, fromSequence, toSequence)
+		// The range is now readable and may raise the stable sequence, but no entry is released for it, so it needs
+		// its own wake. It is a hold flag rather than a merge by the caller so that the wake is sent with the rest of
+		// the hold's dispatch: once dispatch is asynchronous (CBG-6120) it must follow the watermark, or a woken
+		// request_plus waiter could read the stable sequence too early, park again and never be woken.
+		c.releasedUnusedFromSkipped = c.releasedUnusedFromSkipped || removed
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
 		// unblock any pending sequences we can after new range(s) have been pushed to pending
-		changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
+		c._releasePending(ctx)
 		c.internalStats.pendingSeqLen = len(c.pendingLogs)
 	} else {
 		// An unused sequence range than includes c.nextSequence in the middle of the range
@@ -682,7 +690,6 @@ func (c *changeCache) processUnusedRange(ctx context.Context, fromSequence, toSe
 	if numSkipped == 0 {
 		c.db.BroadcastSlowMode.CompareAndSwap(true, false)
 	}
-	return changedChannels
 }
 
 // _pushRangeToPending will push an unused sequence range to pendingLogs
@@ -769,16 +776,21 @@ func (c *changeCache) processPrincipalDoc(ctx context.Context, docID string, doc
 	c.notifyAcc.Merge(changedChannels)
 }
 
-// processEntry handles a newly-arrived LogEntry and returns the changes channels from this revision.
-// This can be any existing, removed or newly added channels. Its possible for channels slice returned to have duplicates
-// in it. It is the callers responsibility to de-duplicate before notifying any changes.
+// processEntry handles a newly-arrived LogEntry and returns the channels changed by every entry it caches: this
+// revision's existing, removed or newly added channels, plus those of any pending entries it releases. The slice can
+// contain duplicates. It is the caller's responsibility to de-duplicate before notifying any changes.
 func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []channels.ID {
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	return c.orderAndDispatch(ctx, func() {
+		c._orderEntry(ctx, change)
+	})
+}
+
+// _orderEntry is the ordering half of processEntry: it decides whether change is released now, held in pending, or
+// ignored as a duplicate. Callers must hold c.lock.
+func (c *changeCache) _orderEntry(ctx context.Context, change *LogEntry) {
 	if c.logsDisabled {
-		return nil
+		return
 	}
-	defer c._setPublishedNextSequence()
 
 	sequence := change.Sequence
 	if change.Sequence > c.internalStats.highSeqFeed {
@@ -795,7 +807,7 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 		// but this change is subsequently pushed to skipped before acquiring cache mutex in this function
 		if !c.WasSkipped(sequence) {
 			base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
-			return nil
+			return
 		} else {
 			change.Skipped = true
 		}
@@ -804,16 +816,15 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 	// Check if this is a duplicate of a pending sequence
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.DebugfCtx(ctx, base.KeyCache, "  Ignoring duplicate of #%d", sequence)
-		return nil
+		return
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 
-	changedChannels := make([]channels.ID, 0, len(change.Channels))
 	if sequence == c.nextSequence || c.nextSequence == 0 {
-		// This is the expected next sequence so we can add it now:
-		changedChannels = c._addToCache(ctx, change)
-		// Also add any pending sequences that are now contiguous:
-		changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
+		// This is the expected next sequence so we can release it now:
+		c._releaseEntry(change)
+		// Also release any pending sequences that are now contiguous:
+		c._releasePending(ctx)
 	} else if sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
@@ -829,8 +840,8 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 		}
 
 		if numPending > c.options.CachePendingSeqMaxNum {
-			// Too many pending; add the oldest one:
-			changedChannels = append(changedChannels, c._addPendingLogs(ctx)...)
+			// Too many pending; release the oldest one:
+			c._releasePending(ctx)
 		}
 	} else if sequence > c.initialSequence.Load() {
 		// Out-of-order sequence received!
@@ -842,21 +853,29 @@ func (c *changeCache) processEntry(ctx context.Context, change *LogEntry) []chan
 			base.DebugfCtx(ctx, base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
 		}
 
-		changedChannels = append(changedChannels, c._addToCache(ctx, change)...)
-		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
-		// in cache
-		err := c.RemoveSkipped(sequence)
-		if err != nil {
-			base.DebugfCtx(ctx, base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
-		}
+		c._releaseEntry(change)
+		// Removed from skipped only once _dispatchReleased has cached it, so that lowSequence doesn't get incremented
+		// until results are available in cache
+		c.releasedRemoveSkipped = append(c.releasedRemoveSkipped, sequence)
 	}
+}
+
+// orderAndDispatch is the single lock hold every ordering entry point goes through. order decides what is
+// released, then _dispatchReleased caches it before the lock is released, so no other ordering call can observe a
+// released entry that isn't cached yet. Returns the channels to notify for everything cached.
+func (c *changeCache) orderAndDispatch(ctx context.Context, order func()) []channels.ID {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	order()
+	changedChannels := c._dispatchReleased(ctx)
+	c._setPublishedNextSequence()
 	return changedChannels
 }
 
-// Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
-// flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []channels.ID {
-
+// _releaseEntry moves the ordering state past change and queues it for dispatch at the end of the lock hold. It
+// doesn't touch the channel caches. Callers must hold c.lock.
+func (c *changeCache) _releaseEntry(change *LogEntry) {
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
@@ -865,41 +884,80 @@ func (c *changeCache) _addToCache(ctx context.Context, change *LogEntry) []chann
 		c.nextSequence = change.EndSequence + 1
 	}
 	delete(c.receivedSeqs, change.Sequence)
-
-	// If unused sequence, notify the cache and return
-	if change.UnusedSequence {
-		c.channelCache.AddUnusedSequence(change)
-		return nil
-	}
-
-	if change.IsPrincipal {
-		c.channelCache.AddPrincipal(change)
-		return nil
-	}
-
-	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
-	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := c.channelCache.AddToCache(ctx, change)
-	if base.LogDebugEnabled(ctx, base.KeyChanges) {
-		base.DebugfCtx(ctx, base.KeyChanges, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
-	}
-
-	if change.TimeReceived != 0 {
-		c.db.DbStats.Database().DCPCachingCount.Add(1)
-		c.db.DbStats.Database().DCPCachingTime.Add(change.TimeReceived.Since())
-	}
-
-	return updatedChannels
+	c.released = append(c.released, change)
 }
 
-// _addPendingLogs Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
-// waiting too long for nextSequence, move nextSequence to skipped queue.
-// Returns the channels that changed. This may return the same channel more than once, channels should be deduplicated
-// before notifying the changes.
-func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
-	// pre allocate slice for changed channels, give size 5 to allow for some headroom so we
-	// aren't constantly growing the slice
-	changedChannels := make([]channels.ID, 0, 5)
+// _dispatchReleased caches the entries released during this lock hold and returns the channels to notify. The
+// publish cursor is raised before any channel cache is looked up, so a channel cache created concurrently either
+// receives these entries or starts above them (see addChannelCache). The high cache sequence is raised once all of
+// them are cached, and only then do late sequences leave the skipped list, so neither the high nor the stable
+// sequence passes an entry before it can be read. Unused sequences and principals have no channels; they only move
+// the high cache sequence. An unused entry, or an unused range removed from skippedSeqs, adds unusedSeqChannelID once
+// per hold, so request_plus waiters are woken when an unused sequence becomes readable rather than when it arrives.
+// Callers must hold c.lock.
+//
+// TODO: CBG-6120 - dispatch moves onto consumer goroutines. Ordering will cut the released entries into runs and
+// hand them off instead of calling this under the lock.
+func (c *changeCache) _dispatchReleased(ctx context.Context) []channels.ID {
+	if len(c.released) == 0 && !c.releasedUnusedFromSkipped {
+		return nil
+	}
+
+	var highSeq uint64
+	numChannels := 0
+	notifyUnused := c.releasedUnusedFromSkipped
+	for _, change := range c.released {
+		highSeq = max(highSeq, change.Sequence, change.EndSequence)
+		if change.UnusedSequence {
+			notifyUnused = true
+		} else if !change.IsPrincipal {
+			numChannels += len(change.Channels) + 1 // +1 for the star channel
+		}
+	}
+	if notifyUnused {
+		numChannels++
+	}
+	c.channelCache.advancePublishCursor(highSeq)
+
+	changedChannels := make([]channels.ID, 0, numChannels)
+	if notifyUnused {
+		changedChannels = append(changedChannels, unusedSeqChannelID)
+	}
+	for _, change := range c.released {
+		if change.UnusedSequence || change.IsPrincipal {
+			continue
+		}
+		start := len(changedChannels)
+		changedChannels = c.channelCache.dispatchEntry(ctx, change, changedChannels)
+		if base.LogDebugEnabled(ctx, base.KeyChanges) {
+			base.DebugfCtx(ctx, base.KeyChanges, " #%d ==> channels %v", change.Sequence, base.UD(changedChannels[start:]))
+		}
+		if change.TimeReceived != 0 {
+			c.db.DbStats.Database().DCPCachingCount.Add(1)
+			c.db.DbStats.Database().DCPCachingTime.Add(change.TimeReceived.Since())
+		}
+	}
+	c.channelCache.updateHighCacheSequence(highSeq)
+
+	for _, sequence := range c.releasedRemoveSkipped {
+		if err := c.RemoveSkipped(sequence); err != nil {
+			base.DebugfCtx(ctx, base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
+		}
+	}
+
+	// Nil the slots before truncating: truncation alone leaves the backing array pointing at these entries, and the GC
+	// would keep them alive until a later hold of the same size overwrote the slots.
+	clear(c.released)
+	c.released = c.released[:0]
+	c.releasedRemoveSkipped = c.releasedRemoveSkipped[:0]
+	c.releasedUnusedFromSkipped = false
+	return changedChannels
+}
+
+// _releasePending releases the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
+// waiting too long for nextSequence, move nextSequence to skipped queue. Released entries are cached by
+// _dispatchReleased at the end of the lock hold. Callers must hold c.lock.
+func (c *changeCache) _releasePending(ctx context.Context) {
 	var isNext bool
 
 	for len(c.pendingLogs) > 0 {
@@ -908,17 +966,17 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
 
 		if isNext {
 			oldestPending = c._popPendingLog(ctx)
-			changedChannels = append(changedChannels, c._addToCache(ctx, oldestPending)...)
+			c._releaseEntry(oldestPending)
 		} else if oldestPending.Sequence < c.nextSequence {
 			// oldest pending is lower than next sequence, should be ignored
 			base.InfofCtx(ctx, base.KeyCache, "Oldest entry in pending logs %v (%d, %d) is earlier than cache next sequence (%d), ignoring as sequence has already been cached", base.UD(oldestPending.DocID), oldestPending.Sequence, oldestPending.EndSequence, c.nextSequence)
 			oldestPending = c._popPendingLog(ctx)
 
 			// If the oldestPending was a range that extended past nextSequence, the part past nextSequence is
-			// still unreleased. Release it through _addToCache like any other entry, so nextSequence and the
-			// channel cache's high sequence move together.
+			// still unreleased. Release it like any other entry, so nextSequence and the channel cache's high
+			// sequence move together.
 			if oldestPending.IsUnusedRange() && oldestPending.EndSequence >= c.nextSequence {
-				changedChannels = append(changedChannels, c._addToCache(ctx, oldestPending)...)
+				c._releaseEntry(oldestPending)
 			}
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || c.pendingLogs[0].TimeReceived.OlderOrEqual(c.options.CachePendingSeqMaxWait) {
 			//  Skip all sequences up to the oldest Pending
@@ -933,7 +991,6 @@ func (c *changeCache) _addPendingLogs(ctx context.Context) []channels.ID {
 	c.internalStats.pendingSeqLen = len(c.pendingLogs)
 
 	atomic.StoreInt64(&c.lastAddPendingTime, time.Now().UnixNano())
-	return changedChannels
 }
 
 // _popPendingLog pops the next pending LogEntry from the c.pendingLogs heap.  When the popped entry is an unused range,
