@@ -680,6 +680,15 @@ func TestErrorAsHTTPStatus(t *testing.T) {
 // checks in ErrorAsHTTPStatus picks the status, not which error is outermost.
 func TestErrorAsHTTPStatusMultipleKnownErrors(t *testing.T) {
 	errBucketGone := errors.New("bucket does not exist")
+	// isKVError checks only the first KeyValueError of each type, to keep the code simple. No caller puts two KV errors
+	// of the same type in one chain.
+	firstKVErrorOnlyJoined := errors.Join(
+		&gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusKeyNotFound},
+		&gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig})
+	firstKVErrorOnlyNested := &gocbcore.KeyValueError{
+		InnerError: &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+		StatusCode: memd.StatusKeyNotFound,
+	}
 	testCases := []errorAsHTTPStatusTestCase{
 		{
 			name:         "unknown error then gocb.ErrTimeout",
@@ -772,6 +781,18 @@ func TestErrorAsHTTPStatusMultipleKnownErrors(t *testing.T) {
 			err:          RedactErrorf("%v: %w", ErrNotFound, ErrAlreadyExists),
 			expectedCode: http.StatusConflict,
 			expectedText: "Conflict",
+		},
+		{
+			name:         "only the first gocb.KeyValueError status is checked",
+			err:          firstKVErrorOnlyJoined,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", firstKVErrorOnlyJoined),
+		},
+		{
+			name:         "only the outer gocbcore.KeyValueError status is checked",
+			err:          firstKVErrorOnlyNested,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", firstKVErrorOnlyNested),
 		},
 		{
 			name:         "MultiError does not unwrap",
