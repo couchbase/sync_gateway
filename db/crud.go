@@ -728,12 +728,13 @@ func (db *DatabaseCollectionWithUser) cachedDeltaForUser(ctx context.Context, do
 	if delta.ToRevID != "" {
 		history = append([]string{delta.ToRevID}, history...)
 	}
+	// A removal built from the cached delta is still a cache hit, as a cache miss counts before the access check.
+	db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docID, delta.ToRevID, cv, delta.HlvHistory, toRevChannels,
 		toRevDeleted, encodeRevisions(ctx, docID, history))
 	if !isAuthorized {
 		return nil, &redactedRev, nil
 	}
-	db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
 	return delta, nil, nil
 }
 
