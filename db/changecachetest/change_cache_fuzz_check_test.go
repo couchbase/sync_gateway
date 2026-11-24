@@ -480,16 +480,23 @@ func (h *fuzzHarness) checkReadServedBy(name string, since uint64, limit int, be
 // checkNoNeedlessWait is called right after a delivery, before any time has passed. The cache releases contiguous
 // sequences as they arrive, so a feed never waits for the pending time-out on a sequence the cache has already been
 // given: once every sequence from the previous nextSequence up to N has been delivered or replayed from a
-// recent_sequences list, nextSequence must have reached N+1. Only a sequence that really is missing may hold it back.
+// recent_sequences list, nextSequence must have reached N+1. Only a sequence that really is missing may hold it back,
+// or a lock hold's budget: a hold releases at most a budget's worth, leaving the rest in pending for the next hold to
+// resume. So nextSequence may fall short only if a hold during this delivery ran out of budget with entries it could
+// have released. The last hold of a delivery always resumes such a drain, so a shortfall after a delivery whose holds
+// all had budget to spare is a drain that was never resumed.
 //
 // A sequence counts as given if a delivery claimed it. Dropped and abandoned sequences are never claimed, so they hold
 // nextSequence back, which is right: the cache has not been given them. A sequence at or above the previous nextSequence
 // cannot be in the skipped list, so a claimed one is always either processed or waiting behind a gap. Principals and
 // unused ranges are claimed like any other sequence, a Duplicate delivery claims nothing new, and the pending overflow
 // can only move nextSequence further, so the lower bound holds in each case.
-func (h *fuzzHarness) checkNoNeedlessWait(nextBefore uint64) {
+func (h *fuzzHarness) checkNoNeedlessWait(nextBefore, partialDrainsBefore uint64) {
 	h.t.Helper()
 	next, _, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	if _, partialDrains, _ := h.cache.DispatchStateForTest(h.t); partialDrains > partialDrainsBefore {
+		return
+	}
 	// failf must not run with notifyLock held, so read the claims first.
 	lowestUnclaimed, waiting := func() (uint64, []uint64) {
 		h.notifyLock.Lock()

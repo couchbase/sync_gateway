@@ -30,6 +30,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db/dispatchtracker"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 	"github.com/couchbase/sync_gateway/testing/sgtest"
@@ -1725,9 +1726,30 @@ func (dbc *DatabaseContext) ChangeCacheForTest(_ testing.TB) *changeCache {
 	return &dbc.changeCache
 }
 
-// ProcessEntryForTest caches a single entry and returns the channels it was added to.
-func (c *changeCache) ProcessEntryForTest(_ testing.TB, ctx context.Context, change *LogEntry) []channels.ID {
-	return c.processEntry(ctx, change)
+// ProcessEntryForTest handles a single entry as the caching feed does: it is cached, with any pending entries it
+// releases, or held in pending.
+func (c *changeCache) ProcessEntryForTest(_ testing.TB, ctx context.Context, change *LogEntry) {
+	c.processEntry(ctx, change)
+}
+
+// SetDispatchLimitsForTest replaces the run size and completion tracker capacity, so a test can fill the tracker and
+// cut cascades short with a handful of entries. capacity must be a power of two, and runSize at least 1. Call between
+// Init and Start: Init leaves the cache locked until Start, so nothing can be using the tracker yet.
+func (c *changeCache) SetDispatchLimitsForTest(tb testing.TB, runSize int, capacity uint64) {
+	tb.Helper()
+	require.GreaterOrEqual(tb, runSize, 1)
+	tracker, err := dispatchtracker.NewForTest(capacity)
+	require.NoError(tb, err)
+	c.tracker = tracker
+	c.runSize = runSize
+}
+
+// DispatchStateForTest reports, under the lock, the number of entries waiting in pending, the number of lock holds
+// that stopped releasing because their budget ran out, and the ticket the next run will take.
+func (c *changeCache) DispatchStateForTest(_ testing.TB) (numPending int, numPartialDrains, nextTicket uint64) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return len(c.pendingLogs), c.numPartialDrains, c.nextTicket
 }
 
 // UpdateStatsForTest applies the cache's running stats to the database expvars.

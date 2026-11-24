@@ -16,7 +16,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
@@ -33,7 +32,7 @@ func TestChangeCacheNotifiesUnusedSequences(t *testing.T) {
 	// changeCache is the part of the change cache these tests drive. Its type is unexported from db.
 	type changeCache interface {
 		DocChanged(event sgbucket.FeedEvent, docType db.DocumentType)
-		ProcessEntryForTest(tb testing.TB, ctx context.Context, change *db.LogEntry) []channels.ID
+		ProcessEntryForTest(tb testing.TB, ctx context.Context, change *db.LogEntry)
 		SkippedSeqsForTest(tb testing.TB) *db.SkippedSequenceSkiplist
 		GetMaxStableCachedForTest(tb testing.TB, ctx context.Context) uint64
 		Stop(ctx context.Context)
@@ -146,15 +145,16 @@ func TestChangeCacheNotifiesUnusedSequences(t *testing.T) {
 		tc := newCache(t, func(o *db.CacheOptions) {
 			o.CachePendingSeqMaxNum = 0
 		})
-		_ = tc.cache.ProcessEntryForTest(t, tc.ctx, db.MakeTestLogEntry(102, "doc102", "1-a"))
+		tc.cache.ProcessEntryForTest(t, tc.ctx, db.MakeTestLogEntry(102, "doc102", "1-a"))
 		require.True(t, tc.cache.SkippedSeqsForTest(t).Contains(101))
 		require.Equal(t, uint64(100), tc.cache.GetMaxStableCachedForTest(t, tc.ctx), "101 is skipped, so the stable sequence stops below it")
 		_ = tc.notified.flush(t)
 
 		unused(tc, 101)
 		require.False(t, tc.cache.SkippedSeqsForTest(t).Contains(101))
-		// The watermark was already 102. What the wake is for is the stable sequence, which 101 was holding back.
-		requireUnusedWake(t, tc, 102, "101 left the skipped list, which raises the stable sequence")
+		// The watermark was already 102, so the wake is sent as 101 is released from the skipped list, like any unused
+		// sequence that becomes readable.
+		requireUnusedWake(t, tc, 102, "101 left the skipped list")
 		assert.Equal(t, uint64(102), tc.cache.GetMaxStableCachedForTest(t, tc.ctx), "stable sequence when waiters are woken")
 	})
 
@@ -162,15 +162,16 @@ func TestChangeCacheNotifiesUnusedSequences(t *testing.T) {
 		tc := newCache(t, func(o *db.CacheOptions) {
 			o.CachePendingSeqMaxNum = 0
 		})
-		_ = tc.cache.ProcessEntryForTest(t, tc.ctx, db.MakeTestLogEntry(105, "doc105", "1-a"))
+		tc.cache.ProcessEntryForTest(t, tc.ctx, db.MakeTestLogEntry(105, "doc105", "1-a"))
 		require.True(t, tc.cache.SkippedSeqsForTest(t).Contains(101))
 		require.Equal(t, uint64(100), tc.cache.GetMaxStableCachedForTest(t, tc.ctx), "101-104 are skipped, so the stable sequence stops below them")
 		_ = tc.notified.flush(t)
 
 		unusedRange(tc, 101, 104)
 		require.False(t, tc.cache.SkippedSeqsForTest(t).Contains(101))
-		// As above, the watermark was already 105 and the wake is for the stable sequence.
-		requireUnusedWake(t, tc, 105, "101-104 left the skipped list, which raises the stable sequence")
+		// No entry is released for the range, so the wake comes from the hold's final run. The watermark was already
+		// 105, since the hold that skipped 101-104 released 105.
+		requireUnusedWake(t, tc, 105, "101-104 left the skipped list")
 		assert.Equal(t, uint64(105), tc.cache.GetMaxStableCachedForTest(t, tc.ctx), "stable sequence when waiters are woken")
 
 		unusedRange(tc, 101, 104)
