@@ -199,7 +199,16 @@ pipeline {
             // An empty archive is tolerated so that a failure before Sync Gateway produces any log
             // (checkout, curl, Couchbase Server startup) doesn't throw here, skip the junit step, and
             // mask the real cause.
-            archiveArtifacts(artifacts: 'couchbase-lite-tests/environment/local/sync_gateway*.log', allowEmptyArchive: true, followSymlinks: false)
+            archiveArtifacts(artifacts: [
+                'couchbase-lite-tests/environment/local/sync_gateway*.log', // Sync Gateway console output
+                // The rest land in pytest's working directory, so ** keeps them if that directory changes.
+                'couchbase-lite-tests/**/testserver.log',                   // pytest client log, incl. bucket cleanup and eviction
+                'couchbase-lite-tests/**/session.log',                      // LogSlurp aggregate, only when LogSlurp runs
+                'couchbase-lite-tests/**/http_log/**',                      // per-request HTTP logs to every server
+                'couchbase-lite-tests/**/browser_log/**',                   // JavaScript test server browser console
+                'couchbase-lite-tests/**/*-sgcollectinfo-*.zip',            // --sgcollect-on-test-failure
+                'couchbase-lite-tests/**/cbcollect-*.zip',                  // --cbcollect-on-test-failure
+            ].join(','), allowEmptyArchive: true, followSymlinks: false)
             // This is a standalone job rather than a GitHub branch source, so there is no check run to
             // publish to - without this the junit step logs "[Checks API] No suitable checks publisher found".
             junit(allowEmptyResults: true, skipPublishingChecks: true, testResults: 'couchbase-lite-tests/tests/**/junit*.xml')
