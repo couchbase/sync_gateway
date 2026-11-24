@@ -454,7 +454,7 @@ type BlipTestClientRunner struct {
 	supportedSubprotocols       []string                     // subprotocols supported by all clients created by this runner
 }
 
-// BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
+// BlipTesterReplicator is a BlipTester which stores every message sent and received, in the order they were stored
 type BlipTesterReplicator struct {
 	bt *BlipTester
 	id string // Generated UUID on creation
