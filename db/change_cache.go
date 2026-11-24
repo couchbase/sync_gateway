@@ -867,7 +867,7 @@ func (c *changeCache) _orderEntry(ctx context.Context, change *LogEntry) {
 
 		c._releaseEntry(change)
 		// Removed from skipped only once the run holding it has cached it, so that lowSequence doesn't get incremented
-		// until results are available in cache. Record lat sequence position in c.released.
+		// until results are available in cache. Record late sequence position in c.released.
 		c.releasedLate = append(c.releasedLate, len(c.released)-1)
 	}
 }

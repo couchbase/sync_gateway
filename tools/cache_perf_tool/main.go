@@ -489,7 +489,7 @@ func (s *throughputSeries) _steadyBounds(windowSecs int64) (start throughputSamp
 }
 
 // avgCachingTimeMs is the running mean time to cache one sequence, in ms - DCPCachingTime and
-// DCPCachingCount are both accumulated at the same point in _dispatchReleased, so they cover the same
+// DCPCachingCount are both accumulated at the same point in dispatchRun, so they cover the same
 // entries. Guarded so a run that has not cached anything yet reports 0 rather than NaN, which would
 // otherwise land in the CSV.
 func avgCachingTimeMs(timeNano, count int64) float64 {
@@ -539,7 +539,7 @@ func printEndofTestStatsFile(ctx context.Context, dbContext *db.DatabaseContext)
 	// same series, so they agree with it exactly.
 	//
 	// These count sequences that were CACHED, which is narrower than sequences processed:
-	// DCPCachingCount is incremented in _dispatchReleased (db/change_cache.go), which skips
+	// DCPCachingCount is incremented in dispatchRun (db/change_cache_dispatch.go), which skips
 	// UnusedSequence and IsPrincipal entries, so a sequence only lands here if it reached the
 	// channel dispatch. The deduplicated sequences a -rapidUpdateDocs event replays via
 	// RecentSequences are marked UnusedSequence unless they are channel removals, so they are ordered
