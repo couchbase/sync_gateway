@@ -5047,7 +5047,7 @@ func TestResyncSyncFnRejectionLogging(t *testing.T) {
 	_, err = collection.UpdateSyncFun(ctx, `function(doc, oldDoc) { if (!doc.type) { throw({forbidden: "Missing required property"}); } channel(doc.channels); }`)
 	require.NoError(t, err)
 
-	logs := base.CaptureConsoleLogs(func() {
+	logs := base.CaptureConsoleLogs(t, func() {
 		require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
 	})
 	assert.Contains(t, logs, "Sync fn rejected doc")

@@ -1279,3 +1279,31 @@ func (b *syncBuffer) Bytes() []byte {
 	defer b.mu.Unlock()
 	return b.buf.Bytes()
 }
+
+// CaptureConsoleLogs returns the console logs produced by function f. The logs are also written to stderr.
+func CaptureConsoleLogs(t testing.TB, f func()) string {
+	t.Helper()
+	b := &bytes.Buffer{}
+	// A deferred reset in this function would run after b.String() is evaluated, while other goroutines can still
+	// write to b. The closure restores the output (and takes the logger mutex) before the read, even if f panics.
+	func() {
+		consoleLogger.Load().logger.SetOutput(io.MultiWriter(b, os.Stderr))
+		defer consoleLogger.Load().logger.SetOutput(os.Stderr)
+		f()
+		FlushLogBuffers()
+		consoleLogger.Load().FlushBufferToLog()
+	}()
+	return b.String()
+}
+
+// AssertLogContains asserts that the logs produced by function f contain string s.
+func AssertLogContains(t *testing.T, s string, f func()) {
+	t.Helper()
+	assert.Contains(t, CaptureConsoleLogs(t, f), s)
+}
+
+// AssertLogNotContains asserts that the logs produced by function f do not contain string s.
+func AssertLogNotContains(t *testing.T, s string, f func()) {
+	t.Helper()
+	assert.NotContains(t, CaptureConsoleLogs(t, f), s)
+}

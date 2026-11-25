@@ -20,8 +20,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/couchbase/sync_gateway/testing/assert"
 )
 
 // GetLogKeys returns log keys in a map
@@ -414,33 +412,6 @@ func LogLevelEnabled(ctx context.Context, level LogLevel, logKey LogKey) bool {
 		return false
 	}
 	return true
-}
-
-// CaptureConsoleLogs returns the console logs produced by function f. The logs are also written to stderr.
-func CaptureConsoleLogs(f func()) string {
-	b := &bytes.Buffer{}
-	// A deferred reset in this function would run after b.String() is evaluated, while other goroutines can still
-	// write to b. The closure restores the output (and takes the logger mutex) before the read, even if f panics.
-	func() {
-		consoleLogger.Load().logger.SetOutput(io.MultiWriter(b, os.Stderr))
-		defer consoleLogger.Load().logger.SetOutput(os.Stderr)
-		f()
-		FlushLogBuffers()
-		consoleLogger.Load().FlushBufferToLog()
-	}()
-	return b.String()
-}
-
-// AssertLogContains asserts that the logs produced by function f contain string s.
-func AssertLogContains(t *testing.T, s string, f func()) {
-	t.Helper()
-	assert.Contains(t, CaptureConsoleLogs(f), s)
-}
-
-// AssertLogNotContains asserts that the logs produced by function f do not contain string s.
-func AssertLogNotContains(t *testing.T, s string, f func()) {
-	t.Helper()
-	assert.NotContains(t, CaptureConsoleLogs(f), s)
 }
 
 // AuditLogContents returns that the audit logs produced by function f.

@@ -89,7 +89,7 @@ func TestImportFailureLogging(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				logs := base.CaptureConsoleLogs(func() {
+				logs := base.CaptureConsoleLogs(t, func() {
 					if mode == ImportFromFeed {
 						NewImportListener(ctx, "", db.DatabaseContext).ImportFeedEvent(ctx, collection, event)
 					} else {
