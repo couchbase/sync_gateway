@@ -11,6 +11,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -23,7 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -421,12 +422,12 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, importOpts, cas)
 
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// If the import was cancelled due to filter, treat as 404 not imported
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not imported")
 	} else if importErr != nil {
 		// Treat any other failure to perform an on-demand import as not found
-		if !isSyncFnRejection(importErr) {
+		if !errors.Is(importErr, base.ErrSyncFunctionRejection) {
 			base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), importErr)
 		}
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not found")
@@ -1153,7 +1154,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	}
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
 		doc.SyncData = SyncData{History: make(RevTree)}
 	} else if importErr != nil {
@@ -2560,7 +2561,7 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
-			err = errors.Wrap(err, "Error adding attachment")
+			err = pkgerrors.Wrap(err, "Error adding attachment")
 		}
 	}
 	return err
@@ -3060,7 +3061,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Migrated document %q to use xattr.", base.UD(key))
-			} else if !isSyncFnRejection(err) {
+			} else if !errors.Is(err, base.ErrSyncFunctionRejection) && !errors.Is(err, base.ErrImportCancelledFilter) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
 			}
 		} else if doc != nil {
@@ -3863,9 +3864,8 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
-				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
-				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
-				err = &syncFnRejectionError{err: err}
+				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(revID), err)
+				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(revID), base.UD(body), base.UD(oldJson))
 				col.dbStats().Security().NumDocsRejected.Add(1)
 				col.collectionStats.SyncFunctionRejectCount.Add(1)
 				if isAccessError(err) {
@@ -3950,24 +3950,6 @@ func validateRoleAccessMap(ctx context.Context, roleAccess channels.AccessMap) b
 
 func isAccessError(err error) bool {
 	return base.ContainsString(base.SyncFnAccessErrors, err.Error())
-}
-
-// syncFnRejectionError wraps an error from a sync function rejection, which is logged where the sync function runs,
-// so callers can avoid logging the same rejection again.
-type syncFnRejectionError struct {
-	err error
-}
-
-func (e *syncFnRejectionError) Error() string { return e.err.Error() }
-
-// Cause lets base.ErrorAsHTTPStatus find the wrapped *base.HTTPError.
-func (e *syncFnRejectionError) Cause() error { return e.err }
-
-func (e *syncFnRejectionError) Unwrap() error { return e.err }
-
-func isSyncFnRejection(err error) bool {
-	var rejectionErr *syncFnRejectionError
-	return errors.As(err, &rejectionErr)
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions for the default collection

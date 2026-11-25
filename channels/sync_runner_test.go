@@ -82,7 +82,7 @@ func assertRejected(t *testing.T, result any, err *base.HTTPError) {
 	t.Helper()
 	r, ok := result.(*ChannelMapperOutput)
 	assert.True(t, ok)
-	assert.Equal[error](t, r.Rejection, err)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(err), r.Rejection)
 }
 
 func assertNotRejected(t *testing.T, result any) {

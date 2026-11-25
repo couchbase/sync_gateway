@@ -152,7 +152,7 @@ func NewSyncRunnerWithLogging(ctx context.Context, funcSource string, timeout ti
 				if len(call.ArgumentList) > 1 {
 					message = call.Argument(1).String()
 				}
-				runner.output.Rejection = base.NewHTTPError(int(status), message)
+				runner.output.Rejection = base.NewSyncFunctionRejectionError(base.NewHTTPError(int(status), message))
 			}
 		}
 		return otto.UndefinedValue()

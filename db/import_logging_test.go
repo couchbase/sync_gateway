@@ -44,6 +44,8 @@ func TestImportFailureLogging(t *testing.T) {
 			importFilter: `function(doc) { return doc.type == "mobile"; }`,
 			modes:        []ImportMode{ImportOnDemand, ImportFromFeed},
 			expectedLogs: []string{"excluded by document import function"},
+			// the import filter rejection is already logged, so the import does not log it again
+			unexpectedLogs: []string{"Error importing doc", "Unable to import doc", "Did not import doc", "Did not update document"},
 		},
 		{
 			// an on-demand import reloads the document on a cas mismatch, so only a feed import can fail this way

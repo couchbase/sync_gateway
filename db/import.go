@@ -361,7 +361,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		return nil, err
 	default:
 		// sync function rejections are logged where the sync function runs
-		if !isSyncFnRejection(err) {
+		if !errors.Is(err, base.ErrSyncFunctionRejection) {
 			base.InfofCtx(ctx, base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
 		}
 		db.dbStats().SharedBucketImport().ImportErrorCount.Add(1)
