@@ -431,6 +431,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
 					entry.AuditReadEvent(h.ctx())
+					logChanges(h.ctx(), entry)
 				}
 
 			case <-heartbeat:
@@ -463,6 +464,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	return nil, forceClose
 }
 
+// logChanges logs each entry written to a REST changes feed.
+func logChanges(ctx context.Context, entries ...*db.ChangeEntry) {
+	for _, entry := range entries {
+		base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed sending %+v", base.UD(entry))
+	}
+}
+
 // This is the core functionality of both the HTTP and WebSocket-based continuous change feed.
 // It defers to a callback function 'send()' to actually send the changes to the client.
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
@@ -490,6 +498,7 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 	return h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 		var err error
 		if changes != nil {
+			logChanges(h.ctx(), changes...)
 			for _, change := range changes {
 				data, _ := base.JSONMarshal(change)
 				if _, err = h.response.Write(data); err != nil {
@@ -556,6 +565,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		_, forceClose = h.generateContinuousChanges(inChannels, wsoptions, func(changes []*db.ChangeEntry) error {
 			var data []byte
 			if changes != nil {
+				logChanges(h.ctx(), changes...)
 				data, _ = base.JSONMarshal(changes)
 			} else if !caughtUp {
 				caughtUp = true

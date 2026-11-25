@@ -1115,8 +1115,6 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				lastSentLowSeq = lowSequence
 
 				// Send the entry, and repeat the loop:
-				base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed sending %+v %s", base.UD(minEntry), base.UD(to))
-
 				if options.ChangesCtx.Err() != nil {
 					return
 				}

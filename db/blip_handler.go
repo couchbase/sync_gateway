@@ -500,7 +500,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	}
 
 	forceClose, err := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
-		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
 				// If change is a removal and we're running with protocol V3 and change change is not a tombstone
@@ -601,6 +600,22 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, changeVersion Change
 	return changeRow
 }
 
+// changesBatchLogString formats changes rows from buildChangesRow as "[seq,docID,rev,deletedFlags]", separated by commas.
+func changesBatchLogString(changeArray [][]any) string {
+	var sb strings.Builder
+	for i, row := range changeArray {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		fmt.Fprintf(&sb, "[%v,%s,%v", row[0], base.UD(row[1]).Redact(), row[2])
+		if len(row) > 3 {
+			fmt.Fprintf(&sb, ",%v", row[3])
+		}
+		sb.WriteString("]")
+	}
+	return sb.String()
+}
+
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]any, ignoreNoConflicts bool) error {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
@@ -616,6 +631,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]a
 	}
 
 	if len(changeArray) > 0 {
+		if base.LogDebugEnabled(bh.loggingCtx, base.KeySync) {
+			base.DebugfCtx(bh.loggingCtx, base.KeySync, "Sending %d changes: %s", len(changeArray), changesBatchLogString(changeArray))
+		}
 		// Check for user updates before creating the db copy for handleChangesResponse
 		if err := bh.refreshUser(); err != nil {
 			return err
