@@ -111,7 +111,10 @@ func allocateClusterOnce(label, serverVersion string, protocol Protocol, multiNo
 	if multiNode {
 		nodes = "3"
 	}
-	args := []string{"--no-reuse", "--version", serverVersion, "--nodes", nodes, "--purpose", clusterPurpose, "--env-file", envFile}
+	args := []string{"--no-reuse", "--nodes", nodes, "--purpose", clusterPurpose, "--env-file", envFile}
+	if serverVersion != "" {
+		args = append(args, "--version", serverVersion)
+	}
 	if protocol == ProtocolCouchbases {
 		args = append(args, "--tls")
 	}

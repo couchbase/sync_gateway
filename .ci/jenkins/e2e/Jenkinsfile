@@ -79,42 +79,10 @@ pipeline {
                 ]
             )
         )
-        activeChoiceHtml(
+        string(
             name: 'COUCHBASE_SERVER_VERSION',
-            description: 'Version of Couchbase Server',
-            choiceType: 'ET_FORMATTED_HTML',
-            omitValueField: true,
-            script: groovyScript(
-                script: [
-                    script: '''
-                        import jenkins.model.Jenkins
-                        def defaultVal = ""
-                        def errorMsg = ""
-                        try {
-                            def envVarsNodePropertyList = Jenkins.instance.globalNodeProperties.getAll(hudson.slaves.EnvironmentVariablesNodeProperty)
-                            if (envVarsNodePropertyList && envVarsNodePropertyList[0]) {
-                                defaultVal = envVarsNodePropertyList[0].envVars.get("DEFAULT_COUCHBASE_SERVER_VERSION") ?: ""
-                            }
-                        } catch (Throwable t) {
-                            errorMsg = "Exception retrieving default: " + t.toString().replace("'", "&apos;").replace("<", "&lt;").replace(">", "&gt;")
-                        }
-                        defaultVal = defaultVal.replace("'", "&apos;").replace("<", "&lt;").replace(">", "&gt;")
-                        def html = "<input name='value' value='" + defaultVal + "' class='setting-input' type='text'>"
-                        if (errorMsg) {
-                            html += "<div class='description' style='color: #d9534f; margin-top: 5px;'>" + errorMsg + "</div>"
-                        }
-                        return html
-                    ''',
-                    sandbox: false
-                ],
-                fallbackScript: [
-                    script: '''
-                        return "<input name='value' value='' class='setting-input' type='text' placeholder='Enter COUCHBASE_SERVER_VERSION...'>" +
-                               "<div class='description' style='color: #d9534f; margin-top: 5px;'>Error: Script approval required or execution failed. Check Jenkins script approvals if this is not populated. Please enter the version manually.</div>"
-                    ''',
-                    sandbox: false
-                ]
-            )
+            defaultValue: 'enterprise-8.0.3',
+            description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3, or a full image for a pre-release build, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 (tags at https://github.com/orgs/cb-vanilla/packages/container/package/server). Only used when BACKING_STORE is cbs.'
         )
         string(
             name: 'PYTEST_EXTRA_ARGS',

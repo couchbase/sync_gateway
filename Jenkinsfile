@@ -210,13 +210,11 @@ pipeline {
                                         [backingStore: 'cbs'],
                                     ]
                                     def couchbaseLiteVersion = env.DEFAULT_COUCHBASE_LITE_VERSION
-                                    def couchbaseServerVersion = env.DEFAULT_COUCHBASE_SERVER_VERSION
                                     e2eModes.each { mode ->
                                         build job: 'Couchbase Lite E2E', wait: false, parameters: [
                                             string(name: 'SG_COMMIT', value: env.SG_COMMIT),
                                             string(name: 'BACKING_STORE', value: mode.backingStore),
                                             string(name: 'COUCHBASE_LITE_VERSION', value: couchbaseLiteVersion),
-                                            string(name: 'COUCHBASE_SERVER_VERSION', value: couchbaseServerVersion),
                                         ]
                                     }
                                 }

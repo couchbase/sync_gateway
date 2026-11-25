@@ -3,10 +3,11 @@
 // for a complete summary.
 
 // Details block included in every Slack message for this pipeline (see jenkinsHelpers.groovy).
-// Server version and edition are deliberately absent - see the note on parameters below.
+// Edition is deliberately absent - see the note on parameters below.
 def slackDetails(helpers) {
     def details = [
         SG_COMMIT: params.SG_COMMIT,
+        COUCHBASE_SERVER_VERSION: params.COUCHBASE_SERVER_VERSION,
         GIT_COMMIT: helpers.githubCommitLink(env.GIT_COMMIT),
     ]
     def ticketLink = helpers.jiraLinkForBranch(params.SG_COMMIT)
@@ -62,13 +63,15 @@ pipeline {
         githubProjectProperty(projectUrlStr: 'https://github.com/couchbase/sync_gateway/')
     }
 
-    // Only the parameters the run actually honours. The -m block in .ci/jenkins/integration-build.sh
-    // hardcodes the server version, edition, target test and package, GSI and TLS settings, overwriting
+    // Only the parameters the run actually honours. integration-build.sh -m (testing/integration-tester)
+    // hardcodes the edition, target test and package, GSI and TLS settings, overwriting
     // whatever this job sets - change those there, not here, and don't report them in Slack from here.
     parameters {
         string(name: 'SG_COMMIT', defaultValue: 'main', description: 'Revision of Sync Gateway to build.')
+        string(name: 'COUCHBASE_SERVER_VERSION', defaultValue: 'enterprise-8.0.3', description: 'Docker Hub tag of couchbase/server, such as enterprise-8.0.3, or a full image for a pre-release build, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 (tags at https://github.com/orgs/cb-vanilla/packages/container/package/server).')
         string(name: 'SG_TEST_BUCKET_POOL_SIZE', defaultValue: '4', description: 'Number of buckets created by the test harness.')
         string(name: 'MAX_PARALLEL_PACKAGES', defaultValue: '3', description: 'Maximum packages tested at the same time against separate Couchbase Server clusters.')
+        string(name: 'PACKAGE_TIMEOUT', defaultValue: '', description: 'Per-package go test timeout. Empty uses the integration-tester default.')
     }
 
     stages {
@@ -106,7 +109,11 @@ pipeline {
                     // The build history lists the build number alone, so name what identifies a run
                     // here, the same way SyncGatewayIntegration/Jenkinsfile does.
                     def trigger = load('.ci/jenkinsHelpers.groovy').triggeredBy()
-                    currentBuild.description = [params.SG_COMMIT, trigger ? "for ${trigger}" : ''].findAll { it }.join(' ')
+                    currentBuild.description = [
+                        params.SG_COMMIT,
+                        trigger ? "for ${trigger}" : '',
+                        "on ${params.COUCHBASE_SERVER_VERSION}",
+                    ].findAll { it }.join(' ')
                 }
             }
         }
