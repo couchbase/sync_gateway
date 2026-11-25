@@ -220,28 +220,24 @@ func TestDispatchRunsAndBudget(t *testing.T) {
 
 // TestCutRuns covers how a lock hold's released entries are cut into runs: how many runs, which entries each holds,
 // its ticket, and where each lets the watermark move. Every released entry must be in exactly one run, in release
-// order. Each late sequence must be on the run that holds it, so that it leaves skippedSeqs only once it is cached,
-// whichever order the runs finish in. The skipped-range flag is on the final run only.
+// order.
 func TestCutRuns(t *testing.T) {
 	const firstTicket = 7
 
-	// wantRun is a run's expected entries, by sequence, releasedThrough, and late sequences.
+	// wantRun is a run's expected entries, by sequence, and releasedThrough.
 	type wantRun struct {
 		seqs            []uint64
 		releasedThrough uint64
-		removeSkipped   []uint64
 	}
 	for _, test := range []struct {
 		name     string
 		runSize  int
 		released []*LogEntry
-		late     []int // positions in released of late sequences
 		want     []wantRun
 	}{
 		{
-			name:    "nothing released gets one empty run",
+			name:    "nothing released cuts no runs",
 			runSize: 3,
-			want:    []wantRun{{seqs: []uint64{}, releasedThrough: 9}},
 		},
 		{
 			name:     "fewer than a run",
@@ -303,33 +299,22 @@ func TestCutRuns(t *testing.T) {
 			},
 		},
 		{
-			name:     "a late sequence goes on the run that holds it, not the final run",
-			runSize:  2,
-			released: []*LogEntry{{Sequence: 3}, {Sequence: 20}, {Sequence: 21}, {Sequence: 22}, {Sequence: 23}},
-			late:     []int{0},
+			name:     "an unused range released from skipped ends an inner run at a run size of one",
+			runSize:  1,
+			released: []*LogEntry{{Sequence: 3, EndSequence: 6, UnusedSequence: true}, {Sequence: 20}, {Sequence: 21}},
 			want: []wantRun{
-				{seqs: []uint64{3, 20}, releasedThrough: 20, removeSkipped: []uint64{3}},
-				{seqs: []uint64{21, 22}, releasedThrough: 22},
-				{seqs: []uint64{23}, releasedThrough: 23},
+				{seqs: []uint64{3}, releasedThrough: 6},
+				{seqs: []uint64{20}, releasedThrough: 20},
+				{seqs: []uint64{21}, releasedThrough: 21},
 			},
 		},
 		{
-			name:     "late sequences on either side of a run boundary go on different runs",
-			runSize:  2,
-			released: []*LogEntry{{Sequence: 20}, {Sequence: 3}, {Sequence: 4}, {Sequence: 21}},
-			late:     []int{1, 2},
+			name:     "a late sequence ends an inner run at a run size of one",
+			runSize:  1,
+			released: []*LogEntry{{Sequence: 3, Skipped: true}, {Sequence: 20}, {Sequence: 21}},
 			want: []wantRun{
-				{seqs: []uint64{20, 3}, releasedThrough: 3, removeSkipped: []uint64{3}},
-				{seqs: []uint64{4, 21}, releasedThrough: 21, removeSkipped: []uint64{4}},
-			},
-		},
-		{
-			name:     "two late sequences in one run",
-			runSize:  3,
-			released: []*LogEntry{{Sequence: 3}, {Sequence: 4}, {Sequence: 20}, {Sequence: 21}},
-			late:     []int{0, 1},
-			want: []wantRun{
-				{seqs: []uint64{3, 4, 20}, releasedThrough: 20, removeSkipped: []uint64{3, 4}},
+				{seqs: []uint64{3}, releasedThrough: 3},
+				{seqs: []uint64{20}, releasedThrough: 20},
 				{seqs: []uint64{21}, releasedThrough: 21},
 			},
 		},
@@ -344,12 +329,10 @@ func TestCutRuns(t *testing.T) {
 				nextSequence = max(nextSequence, entry.Sequence+1)
 			}
 			c := &changeCache{
-				runSize:                   test.runSize,
-				nextTicket:                firstTicket,
-				nextSequence:              nextSequence,
-				released:                  test.released,
-				releasedLate:              test.late,
-				releasedUnusedFromSkipped: true,
+				runSize:      test.runSize,
+				nextTicket:   firstTicket,
+				nextSequence: nextSequence,
+				released:     test.released,
 			}
 			var runs []dispatchRun
 			c._cutRuns(func(run dispatchRun) {
@@ -365,17 +348,14 @@ func TestCutRuns(t *testing.T) {
 				assert.Equal(t, test.want[i].seqs, seqs, "run %d entries", i)
 				assert.Equal(t, test.want[i].releasedThrough, run.releasedThrough, "run %d releasedThrough", i)
 				assert.Equal(t, uint64(firstTicket+i), run.ticket, "run %d ticket", i)
-				assert.Equal(t, test.want[i].removeSkipped, run.removeSkipped, "run %d late sequences", i)
-				assert.Equal(t, i == len(runs)-1, run.unusedFromSkipped, "only the final run carries the skipped-range flag")
 			}
 			assert.Equal(t, uint64(firstTicket+len(runs)), c.nextTicket, "one ticket per run")
 		})
 	}
 }
 
-// TestLateSequenceRemovedByItsRun covers late sequences through ordering, cutting and dispatch: a late arrival's hold
-// records where in the release it is, and it must leave skippedSeqs from the run that holds it, even when the hold
-// also resumes a cut-short cascade over several runs. Removing it from any later run would, once runs finish out of
+// TestLateSequenceRemovedByItsRun covers late sequences through ordering, cutting and dispatch: a late arrival must
+// leave skippedSeqs from the run that holds it, even when its hold also resumes a cut-short cascade over several runs. Removing it from any later run would, once runs finish out of
 // order, let the stable sequence pass it before it is cached.
 func TestLateSequenceRemovedByItsRun(t *testing.T) {
 	// 1 and 2 are skipped, then arrive late, each in its own hold. Before they do, a cascade from 3 is cut short by

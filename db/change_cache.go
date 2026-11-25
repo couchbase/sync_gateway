@@ -65,39 +65,37 @@ const EnableStarChannelLog = true
 //   - Perform sequence buffering to ensure documents are received in sequence order
 //   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	db                        *DatabaseContext
-	logCtx                    context.Context               // fix in sg-bucket to ProcessEvent
-	logsDisabled              bool                          // If true, ignore incoming tap changes
-	nextSequence              uint64                        // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
-	publishedNextSequence     atomic.Uint64                 // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
-	initialSequence           atomic.Uint64                 // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
-	receivedSeqs              map[uint64]struct{}           // Set of all sequences received
-	pendingLogs               LogPriorityQueue              // Out-of-sequence entries waiting to be cached
-	notifyAcc                 notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
-	started                   base.AtomicBool               // Set by the Start method
-	stopped                   base.AtomicBool               // Set by the Stop method
-	skippedSeqs               *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
-	removeSkippedHook         func(seq uint64)              // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
-	released                  []*LogEntry                   // Entries released by ordering during the current lock hold, waiting for _dispatchReleased. Guarded by the lock; empty between holds.
-	releasedLate              []int                         // Positions in released of the late sequences released during the current lock hold, ascending. Each leaves skippedSeqs once the run holding it is cached. Guarded by the lock; empty between holds.
-	releasedUnusedFromSkipped bool                          // Set when the current lock hold removed an unused range from skippedSeqs, so the hold's final run wakes waiters on the unused key (see _orderUnusedRange). Only ordering reads or writes it, under the lock, within one hold; false between holds. The run carries it by value.
-	tracker                   *dispatchtracker.Tracker      // Retires runs in ticket order and gives the watermark. Created by Init.
-	runSize                   int                           // Maximum number of entries in one run: dispatchtracker.RunSize, smaller in tests.
-	nextTicket                uint64                        // Ticket for the next run. Guarded by the lock; starts at 1.
-	releaseBudget             int                           // Entries the current lock hold may still release: one run's worth for each free tracker slot. Guarded by the lock; set at the start of each hold.
-	numPartialDrains          uint64                        // Lock holds that left releasable entries in pending because their budget ran out. Guarded by the lock. TODO: CBG-6120 - publish as the dispatch_partial_drains stat.
-	retiredScratch            []*[]channels.ID              // Reused to collect the buffers of runs the tracker retires. Guarded by the lock.
-	lock                      sync.RWMutex                  // Coordinates access to struct fields
-	options                   CacheOptions                  // Cache config
-	terminator                chan bool                     // Signal termination of background goroutines
-	backgroundTasks           []BackgroundTask              // List of background tasks.
-	initTime                  time.Time                     // Cache init time - used for latency calculations
-	channelCache              ChannelCache                  // Underlying channel cache
-	lastAddPendingTime        int64                         // The most recent time _releasePending was run, as epoch time
-	internalStats             changeCacheStats              // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
-	cfgEventCallback          base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
-	sgCfgPrefix               string                        // Prefix for SG Cfg doc keys
-	metaKeys                  *base.MetadataKeys            // Metadata key formatter
+	db                    *DatabaseContext
+	logCtx                context.Context               // fix in sg-bucket to ProcessEvent
+	logsDisabled          bool                          // If true, ignore incoming tap changes
+	nextSequence          uint64                        // Next consecutive sequence number to add; the sequence buffering state. Read and advanced only by the ordering code under the lock, which sees it change mid-section. Code outside the lock should use getPublishedNextSequence().
+	publishedNextSequence atomic.Uint64                 // nextSequence as of the last lock release, for lock-free readers. Stored under the lock just before every release, so it never moves backwards. Read via getPublishedNextSequence().
+	initialSequence       atomic.Uint64                 // DB's current sequence at startup time. Atomic because DocChanged reads it without the lock, and the feed starts before Start sets it.
+	receivedSeqs          map[uint64]struct{}           // Set of all sequences received
+	pendingLogs           LogPriorityQueue              // Out-of-sequence entries waiting to be cached
+	notifyAcc             notifyaccumulator.Accumulator // Channels whose caches gained entries since the last drain. Merged after the entries are cached; drained by the change listener's broadcast tick.
+	started               base.AtomicBool               // Set by the Start method
+	stopped               base.AtomicBool               // Set by the Stop method
+	skippedSeqs           *SkippedSequenceSkiplist      // Skipped sequences still pending on the DCP caching feed
+	removeSkippedHook     func(seq uint64)              // Called with each sequence that leaves skippedSeqs on arrival, so tests can observe late arrivals. Read and called under the lock.
+	released              []*LogEntry                   // Entries released by ordering during the current lock hold, waiting for _dispatchReleased. Guarded by the lock; empty between holds.
+	tracker               *dispatchtracker.Tracker      // Retires runs in ticket order and gives the watermark. Created by Init.
+	runSize               int                           // Maximum number of entries in one run: dispatchtracker.RunSize, smaller in tests.
+	nextTicket            uint64                        // Ticket for the next run. Guarded by the lock; starts at 1.
+	releaseBudget         int                           // Entries the current lock hold may still release: one run's worth for each free tracker slot. Guarded by the lock; set at the start of each hold.
+	numPartialDrains      uint64                        // Lock holds that left releasable entries in pending because their budget ran out. Guarded by the lock. TODO: CBG-6120 - publish as the dispatch_partial_drains stat.
+	retiredScratch        []*[]channels.ID              // Reused to collect the buffers of runs the tracker retires. Guarded by the lock.
+	lock                  sync.RWMutex                  // Coordinates access to struct fields
+	options               CacheOptions                  // Cache config
+	terminator            chan bool                     // Signal termination of background goroutines
+	backgroundTasks       []BackgroundTask              // List of background tasks.
+	initTime              time.Time                     // Cache init time - used for latency calculations
+	channelCache          ChannelCache                  // Underlying channel cache
+	lastAddPendingTime    int64                         // The most recent time _releasePending was run, as epoch time
+	internalStats         changeCacheStats              // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback      base.CfgEventNotifyFunc       // Callback for Cfg updates received over the caching feed
+	sgCfgPrefix           string                        // Prefix for SG Cfg doc keys
+	metaKeys              *base.MetadataKeys            // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -576,6 +574,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent, docType DocumentType)
 		base.DebugfCtx(ctx, base.KeyChanges, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	}
 
+	// Each processEntry call is ordered separately, and the channels of what it caches are merged for notification
+	// once the watermark covers those entries. So one event's unused sequences, recent-sequence removals and revision
+	// can wake a feed in separate broadcasts. That costs at most an extra wake, since a feed is only woken for entries
+	// it can already read.
 	c.processEntry(ctx, change)
 }
 
@@ -672,20 +674,26 @@ func (c *changeCache) _orderUnusedRange(ctx context.Context, fromSequence, toSeq
 		// does: it has no entries to cache, so there is nothing a reader could reach before it is readable. The
 		// stable sequence may rise at once, but the watermark still bounds it below anything not yet cached.
 		//
-		// No entry is released for the range, so its wake on the unused key comes from a hold flag, sent once the
-		// watermark has passed the range, as every other wake is. While dispatch is synchronous the watermark always
-		// has by the time the range arrives: the hold that skipped it released past it, and that hold's runs retired
+		// Waiters on the unused key are woken by releasing the range as an unused entry, so the wake is sent once the
+		// watermark has passed the range, as every other wake is. It skips _releaseEntry: nextSequence is already past
+		// the range, and it was never in receivedSeqs. While dispatch is synchronous the watermark always has passed
+		// the range by the time it arrives: the hold that skipped it released past it, and that hold's runs retired
 		// before it ended. Once runs are cached asynchronously (CBG-6120) they may still be in flight. With runs of 2:
 		//
 		//	hold H1  skips 101-104, releases 105-108 as t1 [105 106] and t2 [107 108]   watermark 100
-		//	hold H2  101-104 arrives, leaves skippedSeqs and sets the flag; one run, t3  watermark 100
+		//	hold H2  101-104 arrives, leaves skippedSeqs, is released as t3 [101-104]   watermark 100
 		//	         t1 and t2 are cached                                               watermark 108
 		//	         t3 retires, which runs in ticket order put after t2, and wakes     watermark 108
 		//
-		// Waking as the range arrives would send the wake with the watermark at 100. Every run of H2 retires after
-		// H1's runs, so any of them could carry the flag; the final run does, since a hold that released nothing has
-		// only that one.
-		c.releasedUnusedFromSkipped = c.releasedUnusedFromSkipped || removed
+		// Waking as the range arrives would send the wake with the watermark at 100.
+		//
+		// This is the only ordering call in its hold, so the entry is first in the release and only a resumed drain,
+		// of higher sequences, can follow it. It ends an inner run only at a run size of 1, and that run's
+		// releasedThrough, the range's end, is then below the watermark, which only ever rises.
+		if removed {
+			c.released = append(c.released, &LogEntry{Sequence: fromSequence, EndSequence: toSequence, UnusedSequence: true})
+			c.releaseBudget--
+		}
 	} else if fromSequence >= c.nextSequence {
 		// whole range to pending
 		c._pushRangeToPending(fromSequence, toSequence, timeReceived)
@@ -866,9 +874,12 @@ func (c *changeCache) _orderEntry(ctx context.Context, change *LogEntry) {
 		}
 
 		c._releaseEntry(change)
-		// Removed from skipped only once the run holding it has cached it, so that lowSequence doesn't get incremented
-		// until results are available in cache. Record late sequence position in c.released.
-		c.releasedLate = append(c.releasedLate, len(c.released)-1)
+		// The run holding it removes it from skipped once it is cached (see dispatchRun), so that lowSequence doesn't
+		// get incremented until results are available in cache.
+		//
+		// TODO: CBG-6120 - once runs are cached without c.lock, the sequence has left receivedSeqs but is still in
+		// skippedSeqs until its run removes it, so a duplicate arriving in that window passes WasSkipped and is released
+		// again. It must stay visible to the duplicate check until its run has removed it from skippedSeqs.
 	}
 }
 

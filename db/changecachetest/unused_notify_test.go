@@ -133,7 +133,7 @@ func TestChangeCacheNotifiesUnusedSequences(t *testing.T) {
 
 			// Nothing else arrives: only the background task, skipping 101 once it has waited too long, releases 102.
 			// Sleep just past the deadline so the task and the test never wake at the same fake instant, then wait for
-			// the task to finish, including its merge after it releases the lock.
+			// the task's lock hold, which caches 102 and merges its wake, to finish.
 			time.Sleep(pendingMaxWait + time.Nanosecond)
 			synctest.Wait()
 			requireUnusedWake(t, tc, 102, "the background release made 102 readable")
