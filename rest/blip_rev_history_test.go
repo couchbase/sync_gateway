@@ -217,11 +217,11 @@ func TestBlipPullRevHistoryAfterChange(t *testing.T) {
 	}
 }
 
-// TestISGRPullRemovedTombstoneHistory deletes a doc on the passive peer so that the tombstone leaves the replication
+// TestISGRPullRemovedTombstoneRevTreeHistory deletes a doc on the passive peer so that the tombstone leaves the replication
 // user's channels, then makes sure that the active peer stores the tombstone as a child of rev 1. The passive peer
 // sends the removal as a full rev, a delta cache miss or a delta cache hit, and on V4 the active peer builds its
 // revtree from the revTree property.
-func TestISGRPullRemovedTombstoneHistory(t *testing.T) {
+func TestISGRPullRemovedTombstoneRevTreeHistory(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	const (
 		docID         = "doc1"
