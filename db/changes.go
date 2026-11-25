@@ -307,7 +307,9 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 				sendChannelFeedError(options.ChangesCtx, feed)
 				return
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "[revocationChangesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID().Name))
+			if len(changes) > 0 {
+				base.DebugfCtx(ctx, base.KeyChanges, "[revocationChangesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID().Name))
+			}
 
 			sentChanges := 0
 			for _, logEntry := range changes {
@@ -512,7 +514,9 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 				sendChannelFeedError(options.ChangesCtx, feed)
 				return
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID().Name))
+			if len(changes) > 0 {
+				base.DebugfCtx(ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID().Name))
+			}
 
 			// Now write each log entry to the 'feed' channel in turn:
 			sentChanges := 0
@@ -537,7 +541,6 @@ func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleCha
 					continue
 				}
 
-				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelID().Name), base.UD(to))
 				select {
 				case <-options.ChangesCtx.Done():
 					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))

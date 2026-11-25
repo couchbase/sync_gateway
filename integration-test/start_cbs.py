@@ -14,6 +14,7 @@
 """Start a Couchbase Server cluster using cbdinocluster."""
 
 import argparse
+import dataclasses
 import os
 import re
 import shlex
@@ -26,7 +27,8 @@ import textwrap
 # invoke it through that module's directory to stay independent of the caller's working directory.
 _TOOLS_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools")
 CBDINOCLUSTER = ["go", "-C", _TOOLS_MODULE_DIR, "tool", "cbdinocluster"]
-DEFAULT_CBS_VERSION = "8.0.1"
+# Must match the COUCHBASE_SERVER_VERSION defaults in .ci/jenkins, as .ci/check_cbs_version.py checks.
+DEFAULT_CBS_VERSION = "enterprise-8.0.3"
 DEFAULT_SERVICES = "kv,n1ql,index"
 DEFAULT_MEMORY_MB = 1200
 DEFAULT_NODES = 1
@@ -40,6 +42,8 @@ DEFAULT_ENV_FILE_NAME = "cbs.env"
 # cbdinocluster keeps its configuration in a single file in the user's home directory, written by
 # 'cbdinocluster init'. Every other subcommand fails to load its config until that file exists.
 CBDINOCLUSTER_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".cbdinocluster")
+# Lowercase stderr fragments from 'cbdinocluster get-definition' that mean the cluster is gone.
+CLUSTER_NOT_FOUND_ERRORS = ("failed to identify cluster", "not found")
 
 
 def run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -73,9 +77,20 @@ def ensure_initialized() -> None:
     )
 
 
-def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None:
-    """Return the cluster ID recorded in the cwd's state file, if it's still running and
-    matches the requested version/node count/services. Otherwise return None."""
+@dataclasses.dataclass(frozen=True)
+class RecordedCluster:
+    """A running cluster from the cwd's state file, and whether it matches the request."""
+
+    cluster_id: str
+    matches: bool
+
+
+def find_reusable_cluster(opts: argparse.Namespace) -> RecordedCluster | None:
+    """Check the cluster recorded in the cwd's state file against the requested version, node
+    count and services. Return None for --no-reuse or if no recorded cluster is still running."""
+    if opts.no_reuse:
+        return None
+    version, nodes, services = opts.version, opts.nodes, opts.services
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
     if not os.path.exists(state_path):
         return None
@@ -93,7 +108,7 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
     )
     if result.returncode != 0:
         stderr = result.stderr.strip()
-        if "not found" in stderr.lower():
+        if any(e in stderr.lower() for e in CLUSTER_NOT_FOUND_ERRORS):
             print(
                 f"Cluster {cluster_id} recorded in {state_path} is no longer running; "
                 "allocating a new one",
@@ -109,10 +124,13 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
     definition = result.stdout
     version_match = re.search(r"version:\s*(\S+)", definition)
     nodes_match = re.search(r"count:\s*(\S+)", definition)
-    services_match = re.search(r"services:\s*\[([^\]]*)\]", definition)
+    # cbdinocluster writes services as a block list ("- kv" lines), older versions as a flow list.
+    services_match = re.search(
+        r"services:\s*(?:\[([^\]]*)\]|((?:\n\s*-\s*\S+)+))", definition
+    )
     requested_services = {s.strip() for s in services.split(",") if s.strip()}
     existing_services = (
-        {s.strip() for s in services_match.group(1).split(",") if s.strip()}
+        set(re.findall(r"[^\s,\[\]-]+", services_match.group(0).split(":", 1)[1]))
         if services_match
         else None
     )
@@ -130,10 +148,10 @@ def find_reusable_cluster(version: str, nodes: int, services: str) -> str | None
             "allocating a new one",
             flush=True,
         )
-        return None
+        return RecordedCluster(cluster_id, matches=False)
 
     print(f"Reusing existing cluster {cluster_id} recorded in {state_path}", flush=True)
-    return cluster_id
+    return RecordedCluster(cluster_id, matches=True)
 
 
 def main() -> None:
@@ -142,8 +160,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--version",
-        default=os.environ.get("COUCHBASE_SERVER_VERSION", DEFAULT_CBS_VERSION),
-        help="Couchbase Server version to deploy "
+        default=os.environ.get("COUCHBASE_SERVER_VERSION") or DEFAULT_CBS_VERSION,
+        help="Couchbase Server Docker Hub tag to deploy, such as enterprise-8.0.3, or a full "
+        "pre-release image, such as ghcr.io/cb-vanilla/server:enterprise-8.1.0 "
         f"(default: ${{COUCHBASE_SERVER_VERSION}} or {DEFAULT_CBS_VERSION})",
     )
     parser.add_argument(
@@ -207,11 +226,8 @@ def main() -> None:
         return
 
     state_path = os.path.join(os.getcwd(), STATE_FILE_NAME)
-    cluster_id = (
-        None
-        if opts.no_reuse
-        else find_reusable_cluster(opts.version, opts.nodes, opts.services)
-    )
+    recorded = find_reusable_cluster(opts)
+    cluster_id = recorded.cluster_id if recorded and recorded.matches else None
 
     allocated = cluster_id is None
     if allocated:
@@ -263,11 +279,6 @@ def main() -> None:
         cluster_id = result.stdout.strip()
         print(f"Cluster ID: {cluster_id}", flush=True)
 
-        if not opts.no_reuse:
-            with open(state_path, "w") as f:
-                f.write(cluster_id + "\n")
-            print(f"Wrote cluster ID to {state_path}", flush=True)
-
     connstr_cmd = [*CBDINOCLUSTER, "connstr", cluster_id]
     connstr_cmd += ["--tls"] if opts.tls else ["--no-tls"]
     try:
@@ -284,6 +295,16 @@ def main() -> None:
         raise
     connstr = connstr_result.stdout.strip()
     print(f"Connection string: {connstr}", flush=True)
+
+    if allocated:
+        if not opts.no_reuse:
+            with open(state_path, "w") as f:
+                f.write(cluster_id + "\n")
+            print(f"Wrote cluster ID to {state_path}", flush=True)
+        # Removed only once its replacement is usable, since nothing else tracks it after the state file moves on.
+        if recorded and not recorded.matches:
+            print(f"Removing replaced cluster {recorded.cluster_id}", flush=True)
+            subprocess.run([*CBDINOCLUSTER, "rm", recorded.cluster_id], check=False)
 
     # Connection strings can contain characters the shell would interpret (e.g. ?/& in query
     # params), so quote the values to keep the output safe to source.
