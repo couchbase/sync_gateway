@@ -64,7 +64,6 @@ func (c BlipTesterClientConflictResolverType) IsValid() bool {
 type BlipTesterClientOpts struct {
 	ClientDeltas                  bool // Support deltas on the client side
 	Username                      string
-	SendRevocations               bool
 	SkipCollectionsInitialization bool
 
 	AllowCreationWithoutBlipTesterClientRunner bool // Allow the client to be created outside of a BlipTesterClientRunner.Run subtest
@@ -1515,6 +1514,8 @@ type BlipTesterPullOptions struct {
 	DocIDs      []string
 	RequestPlus bool
 	Since       string
+	// SendRevocations requests revocation messages. Defaults to true when nil.
+	SendRevocations *bool
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
@@ -1532,7 +1533,7 @@ func (btcc *BlipTesterCollectionClient) StartPullSince(options BlipTesterPullOpt
 		subChangesRequest.Properties[db.SubChangesRequestPlus] = "true"
 	}
 
-	if btcc.parent.BlipTesterClientOpts.SendRevocations {
+	if options.SendRevocations == nil || *options.SendRevocations {
 		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
 	}
 
