@@ -128,13 +128,13 @@ func (s *SkippedSequenceSkiplist) getStats() SkippedSequenceStats {
 
 // processUnusedSequenceRangeAtSkipped will batch remove unused sequence range from skipped sequences, if duplicate
 // sequences are present, we will iterate through skipped list removing the non-duplicate sequences. Returns number of
-// sequences left in list
-func (s *SkippedSequenceSkiplist) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) int64 {
+// sequences left in list, and whether the range was removed.
+func (s *SkippedSequenceSkiplist) processUnusedSequenceRangeAtSkipped(ctx context.Context, fromSequence, toSequence uint64) (numSeqs int64, removed bool) {
 	// batch remove from skipped
 	_, numSeqs, err := s.list.Remove(skiplist.SkippedSequenceEntry{Start: fromSequence, End: toSequence})
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyCache, "Unused sequence range #%d to #%d not present in skipped list. Err: %v", fromSequence, toSequence, err)
-		return numSeqs
+		return numSeqs, false
 	}
-	return numSeqs
+	return numSeqs, true
 }

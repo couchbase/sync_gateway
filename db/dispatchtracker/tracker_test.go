@@ -199,6 +199,20 @@ func TestZeroedSlotNotDone(t *testing.T) {
 	}
 }
 
+// TestCompleteReturnsHighestReleasedThrough covers a batch whose newest run has a lower releasedThrough than an
+// earlier one, as a run ending in a late sequence does: the watermark must be the highest of the batch.
+func TestCompleteReturnsHighestReleasedThrough(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tr := newTestTracker(t, 8)
+	bufs := newBuffers(3)
+
+	_, _ = tr.Complete(ctx, 3, 104, bufs.byTicket[3], nil)
+	_, _ = tr.Complete(ctx, 2, 200, bufs.byTicket[2], nil)
+	passed, watermark := tr.Complete(ctx, 1, 150, bufs.byTicket[1], nil)
+	assert.Equal(t, []uint64{1, 2, 3}, bufs.tickets(t, passed))
+	assert.Equal(t, uint64(200), watermark, "the watermark ticket 2 reached, not ticket 3's lower releasedThrough")
+}
+
 // TestCompleteRandomOrder issues tickets whenever there is room and completes a random outstanding one,
 // over many wraps, checking each call against a model of which tickets are done.
 func TestCompleteRandomOrder(t *testing.T) {

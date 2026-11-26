@@ -33,8 +33,8 @@ package changecachetest
 // Config header, one byte per field, in this order:
 //
 //	0  consumers          1-8                   RESERVED
-//	1  run size           1-32                  RESERVED
-//	2  tracker capacity   {1,2,4,8,16}          RESERVED
+//	1  run size           1-32                  maximum entries in one run
+//	2  tracker capacity   {1,2,4,8,16}          completion tracker capacity, in runs
 //	3  pending max num    3-50                  CachePendingSeqMaxNum
 //	4  channel max length 3-20                  ChannelCacheMaxLength
 //	5  flags              bit0: create "*" channel cache at start
@@ -127,8 +127,8 @@ func (c opCode) String() string {
 // the range its byte decodes to.
 type fuzzConfig struct {
 	Consumers       int // RESERVED
-	RunSize         int // RESERVED
-	TrackerCapacity int // RESERVED
+	RunSize         int
+	TrackerCapacity int
 	PendingMaxNum   int
 	ChannelMaxLen   int
 	Flags           uint8 // the raw flags byte, so bits not yet used survive a round trip
@@ -170,6 +170,15 @@ func decodeConfig(b []byte) fuzzConfig {
 	}
 	copy(cfg.Spare[:], h[11:])
 	return cfg
+}
+
+// withLargestLimits returns c with the largest run size and tracker capacity a header can give. A lock hold may then
+// release 512 entries, more than any script allocates in practice, so every cascade drains in one hold as it does in
+// production.
+func (c fuzzConfig) withLargestLimits() fuzzConfig {
+	c.RunSize = 32
+	c.TrackerCapacity = trackerCapacities[len(trackerCapacities)-1]
+	return c
 }
 
 // starChannel reports whether the run starts with a "*" channel cache.

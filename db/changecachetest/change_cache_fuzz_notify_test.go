@@ -28,10 +28,6 @@ import (
 // sequences. A sequence is readable once it has been processed: below nextSequence and not in the skipped list. A
 // notification covers every readable change for the keys it names that no earlier notification covered.
 
-// fuzzCheckUnusedKeyWakes says whether N1 and N2 apply to the unused-sequence key.
-// TODO: CBG-6148 enable once the unused-sequence key is notified for the entry that becomes readable rather than for the arriving event
-const fuzzCheckUnusedKeyWakes = false
-
 // fuzzRoute is how a sequence reaches the channel caches once it is processed, which decides what it changes.
 type fuzzRoute uint8
 
@@ -170,7 +166,6 @@ func (h *fuzzHarness) refreshLocked(next uint64, skipped []uint64) {
 // so it can read the cache's state.
 func (h *fuzzHarness) trackNotification(chans channels.Set) {
 	next, _, skipped := h.cache.SequenceStateForTest(h.t, h.env.ctx)
-	unusedID := db.UnusedSeqChannelIDForTest()
 	h.notifyLock.Lock()
 	defer h.notifyLock.Unlock()
 	h.refreshLocked(next, skipped)
@@ -185,8 +180,7 @@ func (h *fuzzHarness) trackNotification(chans channels.Set) {
 		newly := len(st.uncovered[key])
 		delete(st.uncovered, key)
 		n.covered = append(n.covered, newly)
-		isUnused := key == unusedID.Name
-		if newly == 0 && wasted == "" && (!isUnused || fuzzCheckUnusedKeyWakes) {
+		if newly == 0 && wasted == "" {
 			wasted = key
 		}
 	}
@@ -236,7 +230,7 @@ func (h *fuzzHarness) checkNoLostWakes() {
 		defer h.notifyLock.Unlock()
 		var lost []string
 		for key, seqs := range h.notify.uncovered {
-			if len(seqs) > 0 && (fuzzCheckUnusedKeyWakes || key != db.UnusedSeqChannelIDForTest().Name) {
+			if len(seqs) > 0 {
 				lost = append(lost, fmt.Sprintf("%s%v", key, seqs))
 			}
 		}

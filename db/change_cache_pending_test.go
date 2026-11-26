@@ -21,11 +21,11 @@ import (
 	"github.com/couchbase/sync_gateway/testing/require"
 )
 
-// TestAddPendingLogs stays in package db: it holds changeCache.lock across _pushRangeToPending
-// and _addPendingLogs, and a held lock can't cross a package boundary.
+// TestAddPendingLogs stays in package db: it pushes to pending and releases within one ordering lock hold, which
+// can't be driven from outside the package.
 //   - Test age-based eviction of sequences and ranges from pending logs.
 //   - Adds to pending logs directly via heap.Push with backdated TimeReceived,
-//     triggers eviction with call to _addPendingLogs
+//     triggers eviction with call to _releasePending
 //   - tests duplicate handling when popping pending entries
 //   - reproduces CBG-4215
 func TestAddPendingLogs(t *testing.T) {
@@ -171,23 +171,22 @@ func TestAddPendingLogs(t *testing.T) {
 			}
 
 			// process overlapping unused sequence ranges that should end up going to pending without duplicates
-			// acquire cache lock to push to pending logs
-			testChangeCache.lock.Lock()
 			backdatedTimeReceived := channels.NewFeedTimestamp(new(time.Now().Add(-1 * time.Hour)))
-			for i, incomingRange := range testCase.incoming {
-				if incomingRange.end == 0 {
-					// treat as a document pushed to pending
-					logEntry := MakeLogEntry(incomingRange.start, fmt.Sprintf("doc%d", i), "1-abc", []string{testChannelID.Name}, testChannelID.CollectionID)
-					logEntry.TimeReceived = backdatedTimeReceived
-					heap.Push(&testChangeCache.pendingLogs, logEntry)
-				} else {
-					testChangeCache._pushRangeToPending(incomingRange.start, incomingRange.end, backdatedTimeReceived)
+			testChangeCache.orderAndDispatch(ctx, func() {
+				for i, incomingRange := range testCase.incoming {
+					if incomingRange.end == 0 {
+						// treat as a document pushed to pending
+						logEntry := MakeLogEntry(incomingRange.start, fmt.Sprintf("doc%d", i), "1-abc", []string{testChannelID.Name}, testChannelID.CollectionID)
+						logEntry.TimeReceived = backdatedTimeReceived
+						heap.Push(&testChangeCache.pendingLogs, logEntry)
+					} else {
+						testChangeCache._pushRangeToPending(incomingRange.start, incomingRange.end, backdatedTimeReceived)
+					}
 				}
-			}
-			// Call _addPendingLogs to trigger eviction from pendingLogs based on age
-			_ = testChangeCache._addPendingLogs(ctx)
-			assert.Equal(t, int(testCase.expectedNextSequence), int(testChangeCache.nextSequence), "Cache nextSequence doesn't match expected")
-			testChangeCache.lock.Unlock()
+				// Trigger eviction from pendingLogs based on age
+				testChangeCache._releasePending(ctx)
+			})
+			assert.Equal(t, int(testCase.expectedNextSequence), int(testChangeCache.GetNextSequenceForTest(t)), "Cache nextSequence doesn't match expected")
 			if len(testCase.expectedCached) > 0 {
 				testChangeCache.requireWaitForSequence(t, testCase.expectedNextSequence-1)
 				cachedEntries, err := testChangeCache.getChannelCache().GetCachedChanges(ctx, testChannelID)
@@ -239,15 +238,14 @@ func TestAddPendingLogsStaleRangeAdvancesHighCacheSequence(t *testing.T) {
 
 	// Ordering has released through 4 and expects 5. The range 3-8 overlaps what was already released, so it is
 	// popped as stale rather than cached, but 5-8 are still sequences the feed will never deliver.
-	func() {
-		testChangeCache.lock.Lock()
-		defer testChangeCache.lock.Unlock()
+	testChangeCache.orderAndDispatch(ctx, func() {
 		testChangeCache.nextSequence = 5
-		testChangeCache.channelCache.AddUnusedSequence(&LogEntry{Sequence: 4})
+		testChangeCache.channelCache.advancePublishCursor(4)
+		testChangeCache.channelCache.updateHighCacheSequence(4)
 		testChangeCache._pushRangeToPending(3, 8, channels.NewFeedTimestampFromNow())
-		_ = testChangeCache._addPendingLogs(ctx)
-		require.Equal(t, uint64(9), testChangeCache.nextSequence)
-	}()
+		testChangeCache._releasePending(ctx)
+	})
+	require.Equal(t, uint64(9), testChangeCache.GetNextSequenceForTest(t))
 
 	assert.Equal(t, uint64(8), testChangeCache.channelCache.GetHighCacheSequence())
 }

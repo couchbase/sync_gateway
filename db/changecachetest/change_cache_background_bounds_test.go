@@ -22,7 +22,8 @@ import (
 
 // TestChangeCacheBackgroundTaskBounds pins how long the cache's two housekeeping tasks take at worst. Each task wakes
 // every half of its max wait. The fuzz harness only checks that the cache ends in a consistent state, so a task that
-// ran at the wrong interval would otherwise pass.
+// ran at the wrong interval would otherwise pass. The tests in this file run with the largest dispatch limits, so that
+// no lock hold's budget cuts a release short and changes the timing they pin.
 func TestChangeCacheBackgroundTaskBounds(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelWarn, base.KeyAll)
 	env := newFuzzEnv(t)
@@ -55,7 +56,7 @@ func TestChangeCacheBackgroundTaskBounds(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					h := newFuzzHarness(t, env, defaultFuzzConfig())
+					h := newFuzzHarness(t, env, defaultFuzzConfig().withLargestLimits())
 					h.start()
 					defer h.stop()
 
@@ -98,7 +99,7 @@ func TestChangeCacheBackgroundTaskBounds(t *testing.T) {
 	// first wake-up after that comes no later than 1.5 times the max wait.
 	t.Run("skipped sequence is abandoned", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			h := newFuzzHarness(t, env, defaultFuzzConfig())
+			h := newFuzzHarness(t, env, defaultFuzzConfig().withLargestLimits())
 			h.start()
 			defer h.stop()
 
@@ -129,7 +130,7 @@ func TestChangeCachePendingCapacityBoundary(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelWarn, base.KeyAll)
 	env := newFuzzEnv(t)
 	synctest.Test(t, func(t *testing.T) {
-		cfg := defaultFuzzConfig()
+		cfg := defaultFuzzConfig().withLargestLimits()
 		cfg.PendingMaxNum = 3
 		h := newFuzzHarness(t, env, cfg)
 		h.start()

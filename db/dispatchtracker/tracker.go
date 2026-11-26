@@ -114,7 +114,9 @@ func (t *Tracker) HasRoom(next uint64) bool {
 
 // Complete records that run ticket has finished, then retires every consecutive finished ticket from head.
 // The retired runs' changed buffers are appended to passed (pass a reused scratch slice to avoid allocating)
-// in ticket order, and releasedThrough is that of the newest retired ticket. If head did not move, passed
+// in ticket order, and releasedThrough is the highest of the retired tickets'. That is usually the newest
+// ticket's, but a run ending in a late sequence can carry a lower releasedThrough than the run before it, and
+// returning that would hold back a watermark the earlier run had already reached. If head did not move, passed
 // comes back with nothing appended and releasedThrough is 0.
 //
 // Only bookkeeping happens under the mutex. Publishing the watermark and merging the buffers is the
@@ -142,7 +144,7 @@ func (t *Tracker) Complete(ctx context.Context, ticket, releasedThrough uint64, 
 	for h := head; t.slots[h&t.mask].ticket == h; h++ {
 		hs := &t.slots[h&t.mask]
 		passed = append(passed, hs.changed)
-		watermark = hs.releasedThrough
+		watermark = max(watermark, hs.releasedThrough)
 		// ticket and releasedThrough stay as harmless leftovers: they name an older ticket than any head
 		// that can reach this slot again.
 		hs.changed = nil

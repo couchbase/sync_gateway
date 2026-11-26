@@ -51,6 +51,8 @@ type fuzzCache interface {
 	GetMaxStableCachedForTest(t testing.TB, ctx context.Context) uint64
 	SkippedSeqsForTest(t testing.TB) *db.SkippedSequenceSkiplist
 	SequenceStateForTest(t testing.TB, ctx context.Context) (nextSequence, maxStable uint64, skipped []uint64)
+	SetDispatchLimitsForTest(tb testing.TB, runSize int, capacity uint64)
+	DispatchStateForTest(tb testing.TB) (numPending int, numPartialDrains, nextTicket uint64)
 	Start(initialSequence uint64) error
 	Stop(ctx context.Context)
 }
@@ -227,8 +229,11 @@ func (h *fuzzHarness) start() {
 	cache := db.NewChangeCacheForTest(t)
 	require.NoError(t, cache.Init(ctx, h.env.dbContext, channelCache, &options, h.env.dbContext.MetadataKeys))
 	// Init leaves the cache locked until Start, and its background tasks take that lock before they call the hook, so
-	// installing it here is ordered before every call. After Start it would race them.
+	// installing it here is ordered before every call. After Start it would race them. The same goes for the limits.
 	cache.SetRemoveSkippedHookForTest(t, h.recordSkippedRemoved)
+	// Tiny limits make a lock hold's budget, capacity times run size, bind within a few entries, so cascades are cut
+	// short and resumed, and tickets wrap around the tracker, all the time.
+	cache.SetDispatchLimitsForTest(t, h.cfg.RunSize, uint64(h.cfg.TrackerCapacity))
 	require.NoError(t, cache.Start(0))
 	h.cache = cache
 
@@ -380,9 +385,21 @@ func (h *fuzzHarness) quiesce() {
 		h.deliver(ev)
 		h.checkAfterOp()
 	}
-	h.beginStep(len(h.ops), fuzzOp{}, "quiesce: time out pending")
-	h.timeoutPending()
-	h.checkAfterOp()
+	// Each background release is limited to a lock hold's budget, so it may take several to empty pending. Every run
+	// of the task takes at least the oldest pending entry out, since by then it has waited the full max wait. Only the
+	// first timeout can miss the task, when a delivery rather than the task last drained pending, as the task then
+	// waits a full max wait from that delivery. So the pending count plus two timeouts always suffice.
+	numPending, _, _ := h.cache.DispatchStateForTest(h.t)
+	maxTimeouts := numPending + 2
+	for timeouts := 0; timeouts == 0 || numPending > 0; timeouts++ {
+		if timeouts == maxTimeouts {
+			h.failf("quiesce: %d entries still pending after %d timeouts", numPending, timeouts)
+		}
+		h.beginStep(len(h.ops), fuzzOp{}, "quiesce: time out pending")
+		h.timeoutPending()
+		h.checkAfterOp()
+		numPending, _, _ = h.cache.DispatchStateForTest(h.t)
+	}
 	if h.dropped {
 		// The sequences of dropped events were never delivered, so they are skipped until the cache abandons them. The
 		// cleanup acts only on a sequence that has been skipped for its full max wait and wakes every half of it, so one
@@ -627,6 +644,7 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 	h.pinLateLogs()
 	h.resetSkippedRemoved()
 	nextBefore, _, _ := h.cache.SequenceStateForTest(h.t, h.env.ctx)
+	_, partialDrainsBefore, _ := h.cache.DispatchStateForTest(h.t)
 	h.claimSequences(ev)
 	if ev.kind == eventDoc {
 		h.model.delivered[ev.rev.seq] = true
@@ -646,7 +664,7 @@ func (h *fuzzHarness) deliver(ev *fuzzEvent) {
 		h.cache.ProcessPrincipalDocForTest(h.t, h.env.ctx, ev.docID, ev.json, ev.isUser, received)
 	}
 	h.checkLateLog(ev)
-	h.checkNoNeedlessWait(nextBefore)
+	h.checkNoNeedlessWait(nextBefore, partialDrainsBefore)
 }
 
 func (h *fuzzHarness) createChannelCache(name string) {
@@ -729,6 +747,29 @@ func fuzzSeeds() map[string][]byte {
 	}
 	return map[string][]byte{
 		"abandonedDuringTimeouts": abandonedDuringTimeoutsSeed(180),
+		"cascadeOverBudget":       cascadeOverBudgetSeed(),
+		// With the smallest limits a lock hold releases one entry. 1 arriving late releases only itself, and the
+		// duplicates, which release nothing of their own, must each resume the drain.
+		"resumedByDuplicate": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("B"), false).Write(2, chanMask("A"), false).
+			Withhold().Deliver(1).Deliver(1).DeliverLate().Flush().Duplicate(0).Flush().Duplicate(0).Flush().Bytes(),
+		// As above, but an unused range pushed to pending is what resumes the drain.
+		"resumedByUnusedRange": newScriptBuilder().config(cfg).
+			Write(0, chanMask("A"), false).Write(1, chanMask("B"), false).Write(2, chanMask("A"), false).UnusedRange(2).
+			Withhold().Deliver(1).Deliver(1).DeliverLate().Flush().Deliver(1).Flush().Bytes(),
+		// An unused range arriving after it was skipped releases nothing, so the hold dispatches an empty run, which
+		// still has to wake request_plus waiters.
+		"skippedRangeOnly": newScriptBuilder().config(cfg).
+			UnusedRange(3).Write(0, chanMask("A"), false).Withhold().Deliver(1).TimeoutPending().Flush().
+			DeliverLate().Flush().Bytes(),
+		// As above, but the background release left entries in pending, so the range's hold also resumes the drain.
+		"skippedRangeResumesDrain": newScriptBuilder().config(cfg).
+			UnusedRange(3).Write(0, chanMask("A"), false).Write(1, chanMask("B"), false).Write(2, chanMask("A"), false).
+			Withhold().Deliver(1).Deliver(1).Deliver(1).TimeoutPending().Flush().DeliverLate().Flush().Bytes(),
+		// An unused sequence that waits in pending, and later one delivered twice, must not wake request_plus waiters:
+		// the unused key is notified when an unused sequence becomes readable, not when it arrives.
+		"unusedBufferedThenDuplicated": newScriptBuilder().config(cfg).
+			Unused().Unused().DeliverAt(2, 1).Flush().Deliver(1).Flush().Duplicate(1).Flush().Bytes(),
 		"inOrderWrites": newScriptBuilder().config(cfg).
 			Write(0, chanMask("A"), false).Deliver(1).
 			Write(1, chanMask("A", "B"), false).Deliver(1).
@@ -940,6 +981,30 @@ func abandonedDuringTimeoutsSeed(timeouts int) []byte {
 	return b.DeliverLate().Bytes()
 }
 
+// cascadeOverBudgetSeed withholds the first of a run of writes until the rest wait in pending, so its late arrival
+// releases a cascade four times a lock hold's budget. The cascade is then released over several holds: a later
+// delivery and the background release each resume it where the last hold stopped.
+func cascadeOverBudgetSeed() []byte {
+	const numWrites = 17
+	b := newScriptBuilder().config(func(c *fuzzConfig) {
+		c.RunSize = 2
+		c.TrackerCapacity = 2
+		c.PendingMaxNum = numWrites + 3 // nothing is skipped for want of room in pending
+		c.ChannelMaxLen = 20
+		c.FeedMasks = [fuzzNumFeeds]uint8{chanMask("A"), chanMask("A", "B"), chanMask("C", "D", "E"), chanMask("B", "E")}
+	})
+	for i := range numWrites {
+		b.Write(i%fuzzNumDocs, chanMask(fuzzChannelNames[i%fuzzNumChans]), false)
+	}
+	b.Withhold()
+	for range numWrites - 1 {
+		b.Deliver(1)
+	}
+	return b.DeliverLate().Flush().FeedRead(0).
+		Write(0, chanMask("A"), false).Deliver(1).Flush().FeedRead(1).
+		TimeoutPending().Flush().FeedRead(2).Bytes()
+}
+
 // FuzzChangeCacheDispatch feeds arbitrary scripts to a real change cache. It checks that the cache neither
 // panics, hangs nor races, and that what it holds and reports agrees with the simulated bucket: see
 // change_cache_fuzz_check_test.go for the properties.
@@ -1006,16 +1071,24 @@ func TestFuzzScriptDecodeTotal(t *testing.T) {
 	assert.Len(t, ops, fuzzMaxOps)
 }
 
+// TestFuzzHarnessDeterministic runs every named seed twice and checks the runs agree. Most seeds leave the run size and
+// tracker capacity at their smallest, where a lock hold can release only one entry, so each also runs with the largest
+// limits, which no seed's script can exhaust: that keeps covering the scenario the seed was written for as production
+// runs it, with every cascade drained in one hold.
 func TestFuzzHarnessDeterministic(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelWarn, base.KeyAll)
 	env := newFuzzEnv(t)
 	for name, seed := range fuzzSeeds() {
-		t.Run(name, func(t *testing.T) {
-			first := runFuzzScript(t, env, seed)
-			second := runFuzzScript(t, env, seed)
-			assert.Equal(t, first, second)
-			assert.NotEmpty(t, first.Notifications, "a seed script should cache something")
-		})
+		cfg, ops := decodeScript(seed)
+		unlimited := (&scriptBuilder{cfg: cfg.withLargestLimits(), ops: ops}).Bytes()
+		for variant, script := range map[string][]byte{"seedLimits": seed, "unlimited": unlimited} {
+			t.Run(name+"/"+variant, func(t *testing.T) {
+				first := runFuzzScript(t, env, script)
+				second := runFuzzScript(t, env, script)
+				assert.Equal(t, first, second)
+				assert.NotEmpty(t, first.Notifications, "a seed script should cache something")
+			})
+		}
 	}
 }
 

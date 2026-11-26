@@ -34,8 +34,8 @@ const feedBatchLimit = 7
 
 // validFromHarness models "every write ever made" against a channel cache whose query handler is shared
 // with the test. A write has two independent halves: publishing it to the bucket (seeding the query
-// handler, which is what a query fallback can see) and dispatching it to the channel cache (AddToCache,
-// which is what the cache feed does). write does both back to back; seedOnly and dispatch allow later tests
+// handler, which is what a query fallback can see) and dispatching it to the channel cache (DispatchEntryForTest,
+// which is what the change cache does for each released entry). write does both back to back; seedOnly and dispatch allow later tests
 // to separate them, so a test can place other actions (cache creation, eviction) between the two halves.
 type validFromHarness struct {
 	t     *testing.T
@@ -95,8 +95,8 @@ func (h *validFromHarness) channelID(name string) channels.ID {
 	return channels.NewID(name, base.DefaultCollectionID)
 }
 
-// entry builds a fresh log entry. Entries are never shared between the query handler and AddToCache, because
-// AddToCache clears the entry's Channels.
+// entry builds a fresh log entry. Entries are never shared between the query handler and dispatch, because
+// dispatch clears the entry's Channels.
 func (h *validFromHarness) entry(seq uint64, docID string, channelNames []string, skipped bool) *db.LogEntry {
 	entry := db.MakeLogEntry(seq, docID, "1-abc", channelNames, base.DefaultCollectionID)
 	entry.Skipped = skipped
@@ -145,7 +145,7 @@ func (h *validFromHarness) tryDispatch(seq uint64) error {
 	if !ok {
 		return fmt.Errorf("sequence %d was not seeded, or is already dispatched", seq)
 	}
-	h.cache.AddToCache(h.ctx, h.entry(seq, pending.docID, pending.channels, pending.skipped))
+	db.DispatchEntryForTest(h.t, h.ctx, h.cache, h.entry(seq, pending.docID, pending.channels, pending.skipped))
 	return nil
 }
 
@@ -451,14 +451,14 @@ func requireFinished[T any](t testing.TB, done <-chan T, msg string) (res T) {
 	return // not reachable
 }
 
-// waitForCursor waits for the publish cursor to reach seq. AddToCache advances the cursor as its first action, so
-// this tells a hook the dispatching goroutine has published before the hook goes on.
+// waitForCursor waits for the publish cursor to reach seq. DispatchEntryForTest advances the cursor as its first
+// action, so this tells a hook the dispatching goroutine has published before the hook goes on.
 func waitForCursor(t testing.TB, cache *db.ChannelCacheImplForTest, seq uint64) {
 	t.Helper()
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.GreaterOrEqual(c, cache.PublishCursorForTest(t), seq)
 	}, fenceJoinTimeout, time.Millisecond,
-		"publish cursor did not reach %d: AddToCache must advance the cursor before it looks up (and can block on) a channel cache", seq)
+		"publish cursor did not reach %d: dispatch must advance the cursor before it looks up (and can block on) a channel cache", seq)
 }
 
 // dispatchAsync dispatches a seeded sequence on its own goroutine, delivering the result on the returned channel.
@@ -974,10 +974,9 @@ const (
 	fenceBenchColdPerEntry = 3  // cold channels each entry is also in
 )
 
-// BenchmarkChannelCacheFenceContention measures how long AddToCache callers stall while hot channels' caches are
+// BenchmarkChannelCacheFenceContention measures how long dispatching goroutines stall while hot channels' caches are
 // evicted and recreated at a fixed, paced rate (as compaction followed by a new request would). Each entry is in one
-// hot channel plus a few cold ones. It reports per-AddToCache latency percentiles and per-creation latency. It uses
-// only test APIs that also exist before the publish cursor was introduced, so the same file runs against older code.
+// hot channel plus a few cold ones. It reports per-dispatch latency percentiles and per-creation latency.
 func BenchmarkChannelCacheFenceContention(b *testing.B) {
 	for _, dispatchers := range []int{1, 8} {
 		for _, rate := range []int{0, 100, 1000} {
@@ -1022,7 +1021,7 @@ func benchChannelCacheFence(b *testing.B, numDispatchers, recreateRate int) {
 		require.NoError(b, err)
 	}
 
-	// Entries are built up front: AddToCache clears Channels, so they can't be reused.
+	// Entries are built up front: dispatch clears Channels, so they can't be reused.
 	n := uint64(b.N)
 	entries := make([]*db.LogEntry, n)
 	for i := range entries {
@@ -1086,7 +1085,7 @@ func benchChannelCacheFence(b *testing.B, numDispatchers, recreateRate int) {
 				entry := entries[i]
 				entry.Sequence = nextSeq.Add(1)
 				start := time.Now()
-				cache.AddToCache(ctx, entry)
+				db.DispatchEntryForTest(b, ctx, cache, entry)
 				lat = append(lat, time.Since(start))
 			}
 			latencies[d] = lat

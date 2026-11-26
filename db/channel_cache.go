@@ -40,14 +40,16 @@ type ChannelCache interface {
 	// Initializes the cache high sequence value
 	Init(initialSequence uint64)
 
-	// Adds an entry to the cache, returns set of channels it was added to
-	AddToCache(ctx context.Context, change *LogEntry) []channels.ID
+	// advancePublishCursor raises the publish cursor to seq. Must be called before an entry at or below seq is
+	// dispatched, so that channel caches created concurrently fence it correctly.
+	advancePublishCursor(seq uint64)
 
-	// Notifies the cache of a principal update.  Updates the cache's high sequence
-	AddPrincipal(change *LogEntry)
+	// dispatchEntry inserts a released entry into its active channel caches and appends the channels to notify to
+	// changed, returning the extended slice. It leaves the publish cursor and high cache sequence to the caller.
+	dispatchEntry(ctx context.Context, change *LogEntry, changed []channels.ID) []channels.ID
 
-	// Notifies the cache of an unused sequence update. Updates the cache's high sequence
-	AddUnusedSequence(change *LogEntry)
+	// updateHighCacheSequence raises the high cache sequence to seq, once every entry at or below it is cached.
+	updateHighCacheSequence(seq uint64)
 
 	// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
 	Remove(ctx context.Context, collectionID uint32, docIDs []string, startTime time.Time) (count int)
@@ -205,9 +207,8 @@ func (c *channelCacheImpl) GetHighCacheSequence() uint64 {
 	return highSeq
 }
 
-// Updates the high cache sequence if the incoming sequence is higher than current
-// Note: doesn't require compareAndSet on update, as cache expects AddToCache to only be called from
-// a single goroutine
+// Updates the high cache sequence if the incoming sequence is higher than current. It never lowers it, so late
+// sequences leave it unchanged.
 func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
 	c.seqLock.Lock()
 	if sequence > c.highCacheSequence {
@@ -223,36 +224,15 @@ func (c *channelCacheImpl) getSingleChannelCache(ctx context.Context, ch channel
 	return c.getChannelCache(ctx, ch)
 }
 
-func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
-	c.advancePublishCursor(change.Sequence)
-	c.updateHighCacheSequence(change.Sequence)
-}
-
-// Add unused Sequence notifies the cache of an unused sequence update. Updates the cache's high sequence
-func (c *channelCacheImpl) AddUnusedSequence(change *LogEntry) {
-	if change.EndSequence > 0 {
-		c.advancePublishCursor(change.EndSequence)
-		c.updateHighCacheSequence(change.EndSequence)
-	} else {
-		c.advancePublishCursor(change.Sequence)
-		c.updateHighCacheSequence(change.Sequence)
-	}
-}
-
-// Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
-// flag indicates whether it was a change arriving out of sequence
-func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) []channels.ID {
-
-	// The cursor must be at or above this sequence before any channel cache lookup below, so that a cache created
-	// concurrently either is found by the lookup or fences this sequence out via its validFrom. See addChannelCache.
-	c.advancePublishCursor(change.Sequence)
-
+// dispatchEntry inserts a released entry into the caches of its active channels, and appends the channels that
+// should be notified of it to changed: its active channels, any channel it was removed from by this revision, and the
+// star channel. Channels are appended even when they have no active cache, for the case where the number of
+// connected changes channels exceeds cache capacity. The caller must have raised the publish cursor to at least
+// change.Sequence before calling, so that a channel cache created concurrently either is found by the lookups below
+// or fences this sequence out via its validFrom (see addChannelCache), and raises the high cache sequence afterwards.
+func (c *channelCacheImpl) dispatchEntry(ctx context.Context, change *LogEntry, changed []channels.ID) []channels.ID {
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
-
-	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
-	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := make([]channels.ID, 0, len(ch)+1) // +1 for the star channel
 
 	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
 	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
@@ -278,7 +258,7 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) []c
 				}
 			}
 			// Need to notify even if channel isn't active, for case where number of connected changes channels exceeds cache capacity
-			updatedChannels = append(updatedChannels, channelID)
+			changed = append(changed, channelID)
 		}
 	}
 
@@ -291,11 +271,10 @@ func (c *channelCacheImpl) AddToCache(ctx context.Context, change *LogEntry) []c
 				channelCache.AddLateSequence(change)
 			}
 		}
-		updatedChannels = append(updatedChannels, starChannelID)
+		changed = append(changed, starChannelID)
 	}
 
-	c.updateHighCacheSequence(change.Sequence)
-	return updatedChannels
+	return changed
 }
 
 // Remove purges the given doc IDs from all channel caches and returns the number of items removed.

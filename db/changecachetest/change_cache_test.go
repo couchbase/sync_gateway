@@ -1762,7 +1762,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			b.ResetTimer()
 			for b.Loop() {
 				entry := bm.feed.Next()
-				_ = changeCache.ProcessEntryForTest(b, ctx, entry)
+				changeCache.ProcessEntryForTest(b, ctx, entry)
 			}
 		})
 	}
@@ -1984,7 +1984,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
+	testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
 
 	// update cache stats for assertions
 	testChangeCache.UpdateStatsForTest(t, ctx)
@@ -1998,7 +1998,7 @@ func TestProcessSkippedEntry(t *testing.T) {
 	currNumSkippedSeqs := dbContext.DbStats.CacheStats.NumCurrentSeqsSkipped.Value()
 	for range 10 {
 		en := feed.Next()
-		_ = testChangeCache.ProcessEntryForTest(t, ctx, en)
+		testChangeCache.ProcessEntryForTest(t, ctx, en)
 		// A late sequence leaves the skipped list only once it has been cached.
 		require.NoError(t, testChangeCache.WaitForSequenceNotSkippedForTest(t, ctx, en.Sequence, db.DefaultWaitForSequence))
 		testChangeCache.UpdateStatsForTest(t, ctx)
@@ -2059,7 +2059,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
+	testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
 
 	// update cache stats for assertions
 	testChangeCache.UpdateStatsForTest(t, ctx)
@@ -2081,7 +2081,7 @@ func TestProcessSkippedEntryStats(t *testing.T) {
 			Sequence: arrivingSeqs[j],
 		}
 
-		_ = testChangeCache.ProcessEntryForTest(t, ctx, newEntry)
+		testChangeCache.ProcessEntryForTest(t, ctx, newEntry)
 		// A late sequence leaves the skipped list only once it has been cached.
 		require.NoError(t, testChangeCache.WaitForSequenceNotSkippedForTest(t, ctx, newEntry.Sequence, db.DefaultWaitForSequence))
 		// assert on skipped sequence slice stats
@@ -2137,7 +2137,7 @@ func TestSkippedSequenceCompact(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
+	testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
 
 	// assert this pushes an entry on the skipped sequence slice
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2195,7 +2195,7 @@ func TestReleasedSequenceRangeHandlingEverythingSkipped(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
+	testChangeCache.ProcessEntryForTest(t, ctx, highEntry)
 
 	// assert that skipped list is filled and next seq at cache is updated
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2261,7 +2261,7 @@ func TestReleasedSequenceRangeHandlingEverythingPending(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// process unused sequence range
 	testChangeCache.ReleaseUnusedSequenceRangeForTest(t, ctx, 21, 25, channels.NewFeedTimestampFromNow())
@@ -2329,7 +2329,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingAndProcessPending(t *test
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert on stats after unblocking pending
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2394,7 +2394,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert on cache stats:
 	// - Sequence 1 should be skipped
@@ -2417,7 +2417,7 @@ func TestReleasedSequenceRangeHandlingEverythingPendingLowPendingCapacity(t *tes
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert we update cache as expected
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2498,7 +2498,7 @@ func TestReleasedSequenceRangeHandlingSingleSequence(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		testChangeCache.UpdateStatsForTest(t, ctx)
@@ -2567,7 +2567,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase1(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert that the pending list + next sequence is as we expect (not immediately hitting skipped sequence handling)
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2636,7 +2636,7 @@ func TestReleasedSequenceRangeHandlingEdgeCase2(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert that the skipped list is filled
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2707,7 +2707,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	entry = &db.LogEntry{
 		Sequence:     18,
@@ -2715,7 +2715,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert skipped is filled
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2764,7 +2764,7 @@ func TestReleasedSequenceRangeHandlingDuplicateSequencesInSkipped(t *testing.T) 
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert on stats
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2819,7 +2819,7 @@ func TestBroadcastFrequencyAfterSkippedCompact(t *testing.T) {
 		RevID:        "1-abcdefabcdefabcdef",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = testChangeCache.ProcessEntryForTest(t, ctx, entry)
+	testChangeCache.ProcessEntryForTest(t, ctx, entry)
 
 	// assert on stats
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2904,7 +2904,7 @@ func TestUnblockPendingWithUnusedRange(t *testing.T) {
 		SourceID:     "sourceA",
 		TimeReceived: channels.NewFeedTimestampFromNow(),
 	}
-	_ = database.ChangeCacheForTest(t).ProcessEntryForTest(t, ctx, highEntry)
+	database.ChangeCacheForTest(t).ProcessEntryForTest(t, ctx, highEntry)
 
 	// assert that pending list is populated with above entry
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2967,14 +2967,14 @@ func TestChangeCacheLastSequence(t *testing.T) {
 
 			// Three contiguous entries advance it by exactly three.
 			for seq := initialSequence + 1; seq <= initialSequence+3; seq++ {
-				_ = testChangeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc_%d", seq), "1-abc"))
+				testChangeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc_%d", seq), "1-abc"))
 			}
 			require.Equal(t, initialSequence+4, testChangeCache.NextSequenceForTest(t))
 			assert.Equal(t, initialSequence+3, testChangeCache.LastSequence())
 
 			// An entry past the next expected sequence is buffered as pending rather than
 			// cached, so the cache is still up-to-date only with the last contiguous sequence.
-			_ = testChangeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(initialSequence+5, "doc_gap", "1-abc"))
+			testChangeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(initialSequence+5, "doc_gap", "1-abc"))
 			require.Equal(t, initialSequence+4, testChangeCache.NextSequenceForTest(t))
 			assert.Equal(t, initialSequence+3, testChangeCache.LastSequence())
 		})
@@ -3358,7 +3358,7 @@ func TestDocChangedSkippedRecentSequence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Arrive at 103 out of order, leaving 101 and 102 to be given up on and pushed to skipped.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "otherDoc", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "otherDoc", "1-a"))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, changeCache.WasSkipped(101), "101 should have been given up on")
 	}, 10*time.Second, 10*time.Millisecond)
@@ -3550,7 +3550,7 @@ func TestProcessEntryRouting(t *testing.T) {
 		require.NoError(t, changeCache.Start(initialSequence))
 		defer changeCache.Stop(ctx)
 
-		_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
+		changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
 		changeCache.UpdateStatsForTest(t, ctx)
 
 		assert.Equal(t, uint64(102), changeCache.NextSequenceForTest(t))
@@ -3582,7 +3582,7 @@ func TestProcessEntryRouting(t *testing.T) {
 		// skipped, so it is not what runs here.)
 		entry := db.MakeTestLogEntryForChannels(initialSequence, []string{"ABC"})
 		entry.CollectionID = collectionID
-		_ = changeCache.ProcessEntryForTest(t, ctx, entry)
+		changeCache.ProcessEntryForTest(t, ctx, entry)
 
 		cached, err := database.DatabaseContext.ChannelCacheForTest(t).GetCachedChanges(ctx, abcChannel)
 		require.NoError(t, err)
@@ -3601,7 +3601,7 @@ func TestProcessEntryRouting(t *testing.T) {
 		defer changeCache.Stop(ctx)
 
 		// 103 arrives with 101 and 102 missing, so it waits.
-		_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+		changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
 		changeCache.UpdateStatsForTest(t, ctx)
 
 		assert.Equal(t, uint64(101), changeCache.NextSequenceForTest(t), "a buffered entry does not advance the feed")
@@ -3630,7 +3630,7 @@ func TestSkippedSequenceBookkeeping(t *testing.T) {
 	defer changeCache.Stop(ctx)
 
 	// Arriving at 103 leaves 101 and 102 to be given up on and pushed to skipped.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, changeCache.WasSkipped(101))
 		assert.True(c, changeCache.WasSkipped(102))
@@ -3669,7 +3669,7 @@ func TestReleaseUnusedSequenceRange(t *testing.T) {
 	defer changeCache.Stop(ctx)
 
 	// 101 and 102 are given up on, leaving the feed throttled while they are outstanding.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, changeCache.WasSkipped(101))
 		assert.True(c, changeCache.WasSkipped(102))
@@ -3703,7 +3703,7 @@ func TestDocChangedUnusedSequenceRangeKey(t *testing.T) {
 	defer changeCache.Stop(ctx)
 
 	// 103 waits on 101 and 102.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
 	require.Equal(t, uint64(101), changeCache.NextSequenceForTest(t))
 
 	rangeEvent := func(key string) sgbucket.FeedEvent {
@@ -3836,12 +3836,12 @@ func TestMaxStableCachedWithSkippedSequence(t *testing.T) {
 	defer changeCache.Stop(ctx)
 
 	// With no gaps, everything cached is stable.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
 	changeCache.UpdateStatsForTest(t, ctx)
 	require.Equal(t, uint64(101), database.DbStats.Cache().HighSeqStable.Value())
 
 	// 103 arrives leaving 102 behind, which is eventually given up on.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, changeCache.WasSkipped(102))
 	}, 10*time.Second, 10*time.Millisecond)
@@ -3869,11 +3869,11 @@ func TestWaitForSequenceNotSkipped(t *testing.T) {
 	defer changeCache.Stop(ctx)
 
 	// A sequence already delivered and never skipped needs no wait at all.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(101, "doc101", "1-a"))
 	require.NoError(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 101, time.Second))
 
 	// Leave 102 skipped, then resolve it by delivering it.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(103, "doc103", "1-a"))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.True(c, changeCache.WasSkipped(102))
 	}, 10*time.Second, 10*time.Millisecond)
@@ -3882,7 +3882,7 @@ func TestWaitForSequenceNotSkipped(t *testing.T) {
 	assert.Error(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 102, 50*time.Millisecond),
 		"a sequence still in the skipped list is not resolved")
 
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(102, "doc102", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(102, "doc102", "1-a"))
 	assert.NoError(t, changeCache.WaitForSequenceNotSkippedForTest(t, ctx, 102, 5*time.Second),
 		"once delivered, the sequence is resolved")
 }
@@ -3902,14 +3902,14 @@ func TestChangeCacheUpdatePublishNextSequence(t *testing.T) {
 	require.Equal(t, initialNextSequence, initialPublishedNextSequence)
 
 	// An in-order entry advances nextSequence by 1. processEntry is synchronous, so no wait is needed.
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(1, "doc1", "1-a"))
 	assert.Equal(t, initialNextSequence+1, changeCache.GetNextSequenceForTest(t))
 	assert.Equal(t, initialPublishedNextSequence+1, changeCache.GetPublishedNextSequenceForTest(t))
 
 	// Add an entry that goes to pending. Only the InsertPendingEntries background task can release it,
 	// skipping 2-9 once the low pending max wait expires.
 	pendingSeq := uint64(10)
-	_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(pendingSeq, "doc2", "1-a"))
+	changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(pendingSeq, "doc2", "1-a"))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		assert.Equal(c, pendingSeq+1, changeCache.GetNextSequenceForTest(t))
 		assert.Equal(c, pendingSeq+1, changeCache.GetPublishedNextSequenceForTest(t))
@@ -3974,7 +3974,7 @@ func TestChangeCachePublishedNextSequenceConcurrent(t *testing.T) {
 	for writer := range numWriters {
 		writersWg.Go(func() {
 			for seq := startSequence + uint64(writer); seq <= lastSequence; seq += numWriters {
-				_ = changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"))
+				changeCache.ProcessEntryForTest(t, ctx, db.MakeTestLogEntry(seq, fmt.Sprintf("doc%d", seq), "1-a"))
 			}
 		})
 	}
