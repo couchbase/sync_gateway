@@ -2323,9 +2323,8 @@ func TestRevocationMessage(t *testing.T) {
 		revocationTester.addRole("user", "foo")
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        "user",
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:     "user",
+			ClientDeltas: false,
 		})
 		defer btc.Close()
 
@@ -2437,9 +2436,8 @@ func TestRevocationNoRev(t *testing.T) {
 		revocationTester.addRole("user", "foo")
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        "user",
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:     "user",
+			ClientDeltas: false,
 		})
 		defer btc.Close()
 
@@ -2534,9 +2532,8 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 		revocationTester.addRole("user", "foo")
 
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        "user",
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:     "user",
+			ClientDeltas: false,
 		})
 		defer btc.Close()
 
@@ -2604,8 +2601,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 		// 4. Try to sync
 		bt := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        "bilbo",
-			SendRevocations: true,
+			Username: "bilbo",
 		})
 		defer bt.Close()
 

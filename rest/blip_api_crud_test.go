@@ -2282,9 +2282,8 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 		const user = "user"
 		rt.CreateUser(user, []string{"A", "B"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        user,
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:     user,
+			ClientDeltas: false,
 		})
 		defer btc.Close()
 
@@ -2364,9 +2363,8 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 		const user = "user"
 		rt.CreateUser(user, []string{"A", "B"})
 		btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-			Username:        user,
-			ClientDeltas:    false,
-			SendRevocations: true,
+			Username:     user,
+			ClientDeltas: false,
 		})
 		defer btc.Close()
 

@@ -49,8 +49,7 @@ func TestChannelFilterRemovalFromChannel(t *testing.T) {
 				rt.CreateUser(bob, []string{"A"})
 
 				btc := btcRunner.NewBlipTesterClientOptsWithRT(rt, &BlipTesterClientOpts{
-					Username:        alice,
-					SendRevocations: false,
+					Username: alice,
 				})
 				defer btc.Close()
 
