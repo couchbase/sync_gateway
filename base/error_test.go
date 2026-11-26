@@ -12,6 +12,7 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,9 +20,13 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
+	gocbcore "github.com/couchbase/gocbcore/v10"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/testing/assert"
+	"github.com/couchbaselabs/rosmar"
+	pkgerrors "github.com/pkg/errors"
 )
 
 func TestError(t *testing.T) {
@@ -34,111 +39,876 @@ func TestError(t *testing.T) {
 	assert.Equal(t, message, sgError.Error())
 }
 
+type errorAsHTTPStatusTestCase struct {
+	name         string
+	err          error
+	expectedCode int
+	expectedText string
+}
+
+func errorAsHTTPStatusTestCases() []errorAsHTTPStatusTestCase {
+	return []errorAsHTTPStatusTestCase{
+		{
+			name:         "nil",
+			err:          nil,
+			expectedCode: http.StatusOK,
+			expectedText: http.StatusText(http.StatusOK),
+		},
+		{
+			name:         "gocb.ErrDocumentNotFound",
+			err:          gocb.ErrDocumentNotFound,
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "gocb.ErrDocumentExists",
+			err:          gocb.ErrDocumentExists,
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "gocb.ErrTimeout",
+			err:          gocb.ErrTimeout,
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name:         "gocb.ErrOverload",
+			err:          gocb.ErrOverload,
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database server is over capacity (gocb.ErrOverload)",
+		},
+		{
+			name:         "gocb.ErrTemporaryFailure",
+			err:          gocb.ErrTemporaryFailure,
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database server is over capacity (gocb.ErrTemporaryFailure)",
+		},
+		{
+			name:         "gocb.ErrValueTooLarge",
+			err:          gocb.ErrValueTooLarge,
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "ErrViewTimeoutError",
+			err:          ErrViewTimeoutError,
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: ErrViewTimeoutError.Error(),
+		},
+		{
+			name:         "HTTPError",
+			err:          &HTTPError{Status: http.StatusForbidden, Message: http.StatusText(http.StatusForbidden)},
+			expectedCode: http.StatusForbidden,
+			expectedText: http.StatusText(http.StatusForbidden),
+		},
+		{
+			name:         "MCResponse KEY_ENOENT",
+			err:          &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT},
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "MCResponse KEY_EEXISTS",
+			err:          &gomemcached.MCResponse{Status: gomemcached.KEY_EEXISTS},
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "MCResponse E2BIG",
+			err:          &gomemcached.MCResponse{Status: gomemcached.E2BIG},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Too Large: ",
+		},
+		{
+			name:         "MCResponse TMPFAIL",
+			err:          &gomemcached.MCResponse{Status: gomemcached.TMPFAIL},
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database server is over capacity (gomemcached.TMPFAIL)",
+		},
+		{
+			name:         "MCResponse unhandled status",
+			err:          &gomemcached.MCResponse{Status: gomemcached.ROLLBACK},
+			expectedCode: http.StatusBadGateway,
+			expectedText: fmt.Sprintf(" (%s)", gomemcached.ROLLBACK.String()),
+		},
+		{
+			name:         "sgbucket.DocTooBigErr",
+			err:          sgbucket.DocTooBigErr{},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "sgbucket.MissingError",
+			err:          sgbucket.MissingError{},
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "ErrNotFound",
+			err:          ErrNotFound,
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "ErrEmptyDocument",
+			err:          ErrEmptyDocument,
+			expectedCode: http.StatusBadRequest,
+			expectedText: "Document body is empty",
+		},
+		{
+			name:         "json.SyntaxError",
+			err:          &json.SyntaxError{},
+			expectedCode: http.StatusBadRequest,
+			expectedText: fmt.Sprintf("Invalid JSON: \"%v\"", (&json.SyntaxError{}).Error()),
+		},
+		{
+			name:         "json.UnmarshalTypeError",
+			err:          &json.UnmarshalTypeError{Value: "FakeValue", Type: reflect.TypeOf(1)},
+			expectedCode: http.StatusBadRequest,
+			expectedText: fmt.Sprintf("Invalid JSON: \"%v\"", (&json.UnmarshalTypeError{Value: "FakeValue", Type: reflect.TypeOf(1)}).Error()),
+		},
+		{
+			name:         "JSONIterError",
+			err:          &JSONIterError{E: &json.SyntaxError{}},
+			expectedCode: http.StatusBadRequest,
+			expectedText: fmt.Sprintf("Invalid JSON: \"%v\"", (&JSONIterError{E: &json.SyntaxError{}}).Error()),
+		},
+		{
+			name:         "RetryTimeoutError",
+			err:          &RetryTimeoutError{},
+			expectedCode: http.StatusGatewayTimeout,
+			expectedText: (&RetryTimeoutError{}).Error(),
+		},
+		{
+			name:         "ErrAlreadyExists",
+			err:          ErrAlreadyExists,
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "ErrReplicationLimitExceeded",
+			err:          ErrReplicationLimitExceeded,
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: ErrReplicationLimitExceeded.Error(),
+		},
+		{
+			name:         "wrapped gocb.ErrDocumentNotFound",
+			err:          fmt.Errorf("wrapped: %w", gocb.ErrDocumentNotFound),
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "wrapped gocb.ErrDocumentExists",
+			err:          fmt.Errorf("wrapped: %w", gocb.ErrDocumentExists),
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "wrapped gocb.ErrTimeout",
+			err:          fmt.Errorf("wrapped: %w", gocb.ErrTimeout),
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name:         "*gocb.KeyValueError StatusTooBig",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrValueTooLarge), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocb.KeyValueError StatusTooBig",
+			err:          gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrValueTooLarge), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "*gocbcore.KeyValueError StatusTooBig",
+			err:          &gocbcore.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocbcore.ErrValueTooLarge), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocbcore.KeyValueError StatusTooBig",
+			err:          gocbcore.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocbcore.ErrValueTooLarge), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "*gocb.KeyValueError StatusTooBig only",
+			err:          &gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocb.KeyValueError StatusTooBig only",
+			err:          gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "*gocbcore.KeyValueError StatusTooBig only",
+			err:          &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocbcore.KeyValueError StatusTooBig only",
+			err:          gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "gocbcore.SubDocumentError StatusTooBig only",
+			err:          gocbcore.SubDocumentError{InnerError: &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig}},
+			expectedCode: http.StatusRequestEntityTooLarge,
+			expectedText: "Document too large!",
+		},
+		{
+			name:         "*gocb.KeyValueError ErrDocumentNotFound",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDocumentNotFound), StatusCode: memd.StatusKeyNotFound},
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "*gocb.KeyValueError ErrDocumentExists",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDocumentExists), StatusCode: memd.StatusKeyExists},
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "*gocb.KeyValueError ErrTemporaryFailure",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrTemporaryFailure), StatusCode: memd.StatusTmpFail},
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database server is over capacity (gocb.ErrTemporaryFailure)",
+		},
+		{
+			name:         "gocb.ErrOverload in ncError",
+			err:          fmt.Errorf("ncError: %w", gocb.ErrOverload),
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database server is over capacity (gocb.ErrOverload)",
+		},
+		{
+			name:         "*gocb.TimeoutError ErrAmbiguousTimeout",
+			err:          &gocb.TimeoutError{InnerError: fmt.Errorf("ncError: %w", error(gocb.ErrAmbiguousTimeout))},
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name:         "gocbcore.SubDocumentError StatusSubDocPathNotFound",
+			err:          gocbcore.SubDocumentError{InnerError: &gocbcore.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocbcore.ErrPathNotFound), StatusCode: memd.StatusSubDocPathNotFound}},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", gocbcore.SubDocumentError{InnerError: &gocbcore.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocbcore.ErrPathNotFound), StatusCode: memd.StatusSubDocPathNotFound}}),
+		},
+		{
+			name:         "sgbucket.CasMismatchErr",
+			err:          sgbucket.CasMismatchErr{},
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "sgbucket.XattrMissingError",
+			err:          sgbucket.XattrMissingError{},
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "pkgerrors wrapped ErrNotFound",
+			err:          pkgerrors.Wrap(ErrNotFound, "wrapped"),
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "unhandled sgError",
+			err:          ErrUpdateCancel,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrUpdateCancel),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrCasMismatch",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrCasMismatch), StatusCode: memd.StatusKeyExists},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrCasMismatch), StatusCode: memd.StatusKeyExists}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrPathNotFound",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPathNotFound), StatusCode: memd.StatusSubDocPathNotFound},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPathNotFound), StatusCode: memd.StatusSubDocPathNotFound}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrPathExists",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPathExists), StatusCode: memd.StatusSubDocPathExists},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPathExists), StatusCode: memd.StatusSubDocPathExists}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrPathMismatch",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPathMismatch), StatusCode: memd.StatusSubDocPathMismatch},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPathMismatch), StatusCode: memd.StatusSubDocPathMismatch}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrDeltaInvalid",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDeltaInvalid), StatusCode: memd.StatusBadDelta},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDeltaInvalid), StatusCode: memd.StatusBadDelta}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrCollectionNotFound",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrCollectionNotFound), StatusCode: memd.StatusCollectionUnknown},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrCollectionNotFound), StatusCode: memd.StatusCollectionUnknown}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrScopeNotFound",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrScopeNotFound), StatusCode: memd.StatusScopeUnknown},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrScopeNotFound), StatusCode: memd.StatusScopeUnknown}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrAuthenticationFailure",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrAuthenticationFailure), StatusCode: memd.StatusAccessError},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrAuthenticationFailure), StatusCode: memd.StatusAccessError}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrInternalServerFailure",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrInternalServerFailure), StatusCode: memd.StatusInternalError},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrInternalServerFailure), StatusCode: memd.StatusInternalError}),
+		},
+		{
+			// TODO: CBG-6046 transient error should map to 503
+			name:         "*gocb.KeyValueError ErrRateLimitedFailure",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrRateLimitedFailure), StatusCode: memd.StatusRateLimitedMaxCommands},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrRateLimitedFailure), StatusCode: memd.StatusRateLimitedMaxCommands}),
+		},
+		{
+			name:         "*gocb.KeyValueError ErrQuotaLimitedFailure",
+			err:          &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrQuotaLimitedFailure), StatusCode: memd.StatusRateLimitedScopeSizeLimitExceeded},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.KeyValueError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrQuotaLimitedFailure), StatusCode: memd.StatusRateLimitedScopeSizeLimitExceeded}),
+		},
+		{
+			// TODO: CBG-6046 transient error should map to 503
+			name:         "gocb.ErrCircuitBreakerOpen in ncError",
+			err:          fmt.Errorf("ncError: %w", gocb.ErrCircuitBreakerOpen),
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", fmt.Errorf("ncError: %w", gocb.ErrCircuitBreakerOpen)),
+		},
+		{
+			name:         "gocb.ErrRequestCanceled in ncError",
+			err:          fmt.Errorf("ncError: %w", gocb.ErrRequestCanceled),
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", fmt.Errorf("ncError: %w", gocb.ErrRequestCanceled)),
+		},
+		{
+			name:         "gocb.ErrServiceNotAvailable in ncError",
+			err:          fmt.Errorf("ncError: %w", gocb.ErrServiceNotAvailable),
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", fmt.Errorf("ncError: %w", gocb.ErrServiceNotAvailable)),
+		},
+		{
+			name:         "gocb.ErrShutdown",
+			err:          gocb.ErrShutdown,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", gocb.ErrShutdown),
+		},
+		{
+			name:         "*gocb.TimeoutError ErrUnambiguousTimeout",
+			err:          &gocb.TimeoutError{InnerError: fmt.Errorf("ncError: %w", error(gocb.ErrUnambiguousTimeout))},
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name:         "*gocb.QueryError ErrIndexNotFound",
+			err:          &gocb.QueryError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrIndexNotFound)},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.QueryError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrIndexNotFound)}),
+		},
+		{
+			name:         "*gocb.QueryError ErrPlanningFailure",
+			err:          &gocb.QueryError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPlanningFailure)},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.QueryError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrPlanningFailure)}),
+		},
+		{
+			name:         "*gocb.QueryError ErrIndexFailure",
+			err:          &gocb.QueryError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrIndexFailure)},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.QueryError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrIndexFailure)}),
+		},
+		{
+			name:         "*gocb.ViewError ErrViewNotFound",
+			err:          &gocb.ViewError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrViewNotFound)},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.ViewError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrViewNotFound)}),
+		},
+		{
+			name:         "*gocb.ViewError ErrDesignDocumentNotFound",
+			err:          &gocb.ViewError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDesignDocumentNotFound)},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &gocb.ViewError{InnerError: fmt.Errorf("ncError: %w", gocb.ErrDesignDocumentNotFound)}),
+		},
+		{
+			name:         "sgbucket.ViewError",
+			err:          sgbucket.ViewError{From: "view", Reason: "reason"},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", sgbucket.ViewError{From: "view", Reason: "reason"}),
+		},
+		{
+			name:         "rosmar.ErrBucketClosed",
+			err:          rosmar.ErrBucketClosed,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", rosmar.ErrBucketClosed),
+		},
+		{
+			name:         "sgbucket.ErrCasFailureShouldRetry",
+			err:          sgbucket.ErrCasFailureShouldRetry,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", sgbucket.ErrCasFailureShouldRetry),
+		},
+		{
+			name:         "sgbucket.ErrPathNotFound",
+			err:          sgbucket.ErrPathNotFound,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", sgbucket.ErrPathNotFound),
+		},
+		{
+			name:         "sgbucket.ErrPathExists",
+			err:          sgbucket.ErrPathExists,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", sgbucket.ErrPathExists),
+		},
+		{
+			name:         "sgbucket.ErrPathMismatch",
+			err:          sgbucket.ErrPathMismatch,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", sgbucket.ErrPathMismatch),
+		},
+		{
+			name:         "ErrImportCancelledPurged",
+			err:          ErrImportCancelledPurged,
+			expectedCode: http.StatusNotFound,
+			expectedText: "Import Cancelled Due to Purge",
+		},
+		{
+			// TODO: CBG-6046 transient error should map to 503
+			name:         "ErrTimeout",
+			err:          ErrTimeout,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrTimeout),
+		},
+		{
+			name:         "ErrRevTreeAddRevFailure",
+			err:          ErrRevTreeAddRevFailure,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrRevTreeAddRevFailure),
+		},
+		{
+			name:         "ErrImportCancelled",
+			err:          ErrImportCancelled,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrImportCancelled),
+		},
+		{
+			name:         "ErrAlreadyImported",
+			err:          ErrAlreadyImported,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrAlreadyImported),
+		},
+		{
+			name:         "ErrImportCasFailure",
+			err:          ErrImportCasFailure,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrImportCasFailure),
+		},
+		{
+			name:         "ErrImportCancelledFilter",
+			err:          ErrImportCancelledFilter,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrImportCancelledFilter),
+		},
+		{
+			name:         "ErrDocumentMigrated",
+			err:          ErrDocumentMigrated,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrDocumentMigrated),
+		},
+		{
+			name:         "ErrFatalBucketConnection",
+			err:          ErrFatalBucketConnection,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrFatalBucketConnection),
+		},
+		{
+			name:         "ErrAuthError",
+			err:          ErrAuthError,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrAuthError),
+		},
+		{
+			name:         "ErrIndexerError",
+			err:          ErrIndexerError,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrIndexerError),
+		},
+		{
+			name:         "ErrChannelFeed",
+			err:          ErrChannelFeed,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrChannelFeed),
+		},
+		{
+			name:         "ErrXattrNotFound",
+			err:          ErrXattrNotFound,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrXattrNotFound),
+		},
+		{
+			name:         "ErrXattrPartialFound",
+			err:          ErrXattrPartialFound,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrXattrPartialFound),
+		},
+		{
+			name:         "ErrPartialViewErrors",
+			err:          ErrPartialViewErrors,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrPartialViewErrors),
+		},
+		{
+			name:         "ErrDeltaSourceIsTombstone",
+			err:          ErrDeltaSourceIsTombstone,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrDeltaSourceIsTombstone),
+		},
+		{
+			name:         "ErrConfigVersionMismatch",
+			err:          ErrConfigVersionMismatch,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrConfigVersionMismatch),
+		},
+		{
+			name:         "ErrConfigRegistryRollback",
+			err:          ErrConfigRegistryRollback,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrConfigRegistryRollback),
+		},
+		{
+			name:         "ErrConfigRegistryReloadRequired",
+			err:          ErrConfigRegistryReloadRequired,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrConfigRegistryReloadRequired),
+		},
+		{
+			name:         "ErrSkippedSequencesMissing",
+			err:          ErrSkippedSequencesMissing,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", ErrSkippedSequencesMissing),
+		},
+		{
+			name:         "SyncFnDryRunError HTTPError",
+			err:          &SyncFnDryRunError{Err: &HTTPError{Status: http.StatusForbidden, Message: "forbidden"}},
+			expectedCode: http.StatusForbidden,
+			expectedText: "forbidden",
+		},
+		{
+			name:         "ImportFilterDryRunError HTTPError",
+			err:          &ImportFilterDryRunError{Err: &HTTPError{Status: http.StatusForbidden, Message: "forbidden"}},
+			expectedCode: http.StatusForbidden,
+			expectedText: "forbidden",
+		},
+		{
+			name:         "FleeceDeltaError",
+			err:          FleeceDeltaError{e: fmt.Errorf("fleece failure")},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", FleeceDeltaError{e: fmt.Errorf("fleece failure")}),
+		},
+		{
+			name:         "MultiError ErrNotFound",
+			err:          &MultiError{Errors: []error{ErrNotFound}},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &MultiError{Errors: []error{ErrNotFound}}),
+		},
+		{
+			name:         "unrecognized error",
+			err:          &json.UnsupportedTypeError{Type: reflect.TypeOf(3.14)},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", (&json.UnsupportedTypeError{Type: reflect.TypeOf(3.14)}).Error()),
+		},
+	}
+}
+
+// errorAsHTTPStatusWrappers are the ways Sync Gateway code wraps errors before they reach ErrorAsHTTPStatus.
+var errorAsHTTPStatusWrappers = []struct {
+	name string
+	wrap func(error) error
+}{
+	{"fmt.Errorf", func(err error) error { return fmt.Errorf("wrapped: %w", err) }},
+	{"pkgerrors.Wrap", func(err error) error { return pkgerrors.Wrap(err, "wrapped") }},
+	{"pkgerrors.Wrap of fmt.Errorf", func(err error) error { return pkgerrors.Wrap(fmt.Errorf("wrapped: %w", err), "wrapped") }},
+	{"RedactErrorf", func(err error) error { return RedactErrorf("wrapped: %w", err) }},
+}
+
 func TestErrorAsHTTPStatus(t *testing.T) {
-	code, text := ErrorAsHTTPStatus(nil)
-	assert.Equal(t, http.StatusOK, code)
-	assert.Equal(t, http.StatusText(http.StatusOK), text)
+	for _, tc := range errorAsHTTPStatusTestCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			code, text := ErrorAsHTTPStatus(tc.err)
+			assert.Equal(t, tc.expectedCode, code)
+			assert.Equal(t, tc.expectedText, text)
+			if tc.err == nil {
+				return
+			}
+			for _, wrapper := range errorAsHTTPStatusWrappers {
+				t.Run(wrapper.name, func(t *testing.T) {
+					code, text := ErrorAsHTTPStatus(wrapper.wrap(tc.err))
+					assert.Equal(t, tc.expectedCode, code)
+					// the 500 message includes the wrapper's text
+					if tc.expectedCode != http.StatusInternalServerError {
+						assert.Equal(t, tc.expectedText, text)
+					}
+				})
+			}
+		})
+	}
+}
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrDocumentNotFound)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
+// TestErrorAsHTTPStatusMultipleKnownErrors shows that when a chain holds more than one known error, the order of the
+// checks in ErrorAsHTTPStatus picks the status, not which error is outermost.
+func TestErrorAsHTTPStatusMultipleKnownErrors(t *testing.T) {
+	errBucketGone := errors.New("bucket does not exist")
+	// isKVError checks only the first KeyValueError of each type, to keep the code simple. No caller puts two KV errors
+	// of the same type in one chain.
+	firstKVErrorOnlyJoined := errors.Join(
+		&gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusKeyNotFound},
+		&gocb.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig})
+	firstKVErrorOnlyNested := &gocbcore.KeyValueError{
+		InnerError: &gocbcore.KeyValueError{InnerError: errors.New("ncError"), StatusCode: memd.StatusTooBig},
+		StatusCode: memd.StatusKeyNotFound,
+	}
+	testCases := []errorAsHTTPStatusTestCase{
+		{
+			name:         "unknown error then gocb.ErrTimeout",
+			err:          fmt.Errorf("%w: %w", errBucketGone, gocb.ErrTimeout),
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name:         "gocb.ErrTemporaryFailure then gocb.ErrTimeout",
+			err:          errors.Join(fmt.Errorf("vb1: %w", gocb.ErrTemporaryFailure), fmt.Errorf("vb2: %w", gocb.ErrTimeout)),
+			expectedCode: http.StatusServiceUnavailable,
+			expectedText: "Database timeout error (gocb.ErrTimeout)",
+		},
+		{
+			name:         "HTTPError then ErrNotFound",
+			err:          fmt.Errorf("%w: %w", &HTTPError{Status: http.StatusForbidden, Message: "forbidden"}, ErrNotFound),
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "ErrNotFound then HTTPError",
+			err:          fmt.Errorf("%w: %w", ErrNotFound, &HTTPError{Status: http.StatusForbidden, Message: "forbidden"}),
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "ErrAlreadyExists then ErrNotFound",
+			err:          errors.Join(ErrAlreadyExists, ErrNotFound),
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "gocb.ErrDocumentExists wrapping gocb.ErrTimeout",
+			err:          fmt.Errorf("%w: %w", gocb.ErrDocumentExists, fmt.Errorf("inner: %w", gocb.ErrTimeout)),
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "gocb.ErrTimeout wrapping gocb.ErrDocumentNotFound",
+			err:          fmt.Errorf("%w: %w", gocb.ErrTimeout, fmt.Errorf("inner: %w", gocb.ErrDocumentNotFound)),
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "KeyValueError StatusTooBig wrapping gocb.ErrDocumentNotFound",
+			err:          &gocb.KeyValueError{InnerError: gocb.ErrDocumentNotFound, StatusCode: memd.StatusTooBig},
+			expectedCode: http.StatusNotFound,
+			expectedText: "missing",
+		},
+		{
+			name:         "two HTTPErrors",
+			err:          errors.Join(&HTTPError{Status: http.StatusForbidden, Message: "forbidden"}, &HTTPError{Status: http.StatusUnauthorized, Message: "unauthorized"}),
+			expectedCode: http.StatusForbidden,
+			expectedText: "forbidden",
+		},
+		{
+			name: "deep HTTPError in first branch then shallow HTTPError",
+			err: fmt.Errorf("%w: %w",
+				fmt.Errorf("inner: %w", &HTTPError{Status: http.StatusUnauthorized, Message: "unauthorized"}),
+				&HTTPError{Status: http.StatusForbidden, Message: "forbidden"}),
+			expectedCode: http.StatusUnauthorized,
+			expectedText: "unauthorized",
+		},
+		{
+			name:         "HTTPError then ErrEmptyDocument",
+			err:          errors.Join(&HTTPError{Status: http.StatusForbidden, Message: "forbidden"}, ErrEmptyDocument),
+			expectedCode: http.StatusBadRequest,
+			expectedText: "Document body is empty",
+		},
+		{
+			name:         "json.SyntaxError then MCResponse KEY_EEXISTS",
+			err:          errors.Join(&json.SyntaxError{}, &gomemcached.MCResponse{Status: gomemcached.KEY_EEXISTS}),
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "RetryTimeoutError then json.SyntaxError",
+			err:          errors.Join(&RetryTimeoutError{}, &json.SyntaxError{}),
+			expectedCode: http.StatusBadRequest,
+			expectedText: fmt.Sprintf("Invalid JSON: \"%v\"", &json.SyntaxError{}),
+		},
+		{
+			name:         "sgbucket.CasMismatchErr then sgbucket.MissingError",
+			err:          errors.Join(sgbucket.CasMismatchErr{}, sgbucket.MissingError{}),
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "RedactErrorf ErrNotFound with %v then ErrAlreadyExists with %w",
+			err:          RedactErrorf("%v: %w", ErrNotFound, ErrAlreadyExists),
+			expectedCode: http.StatusConflict,
+			expectedText: "Conflict",
+		},
+		{
+			name:         "only the first gocb.KeyValueError status is checked",
+			err:          firstKVErrorOnlyJoined,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", firstKVErrorOnlyJoined),
+		},
+		{
+			name:         "only the outer gocbcore.KeyValueError status is checked",
+			err:          firstKVErrorOnlyNested,
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", firstKVErrorOnlyNested),
+		},
+		{
+			name:         "MultiError does not unwrap",
+			err:          &MultiError{Errors: []error{ErrNotFound, ErrAlreadyExists}},
+			expectedCode: http.StatusInternalServerError,
+			expectedText: fmt.Sprintf("Internal error: %v", &MultiError{Errors: []error{ErrNotFound, ErrAlreadyExists}}),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, text := ErrorAsHTTPStatus(tc.err)
+			assert.Equal(t, tc.expectedCode, code)
+			assert.Equal(t, tc.expectedText, text)
+		})
+	}
+}
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrDocumentExists)
-	assert.Equal(t, http.StatusConflict, code)
-	assert.Equal(t, "Conflict", text)
+// TestErrorAsHTTPStatusWrappedInternalError shows which wrapped internal errors map to a different status than they
+// did when ErrorAsHTTPStatus found the root error with pkgerrors.Cause. handler.writeError logs only a status of 500 or
+// more, so an error that moves from 500 to 4xx is no longer logged.
+func TestErrorAsHTTPStatusWrappedInternalError(t *testing.T) {
+	testCases := []struct {
+		name         string
+		err          error
+		previousCode int
+		expectedCode int
+	}{
+		{
+			name:         "config write CAS mismatch with RedactErrorf",
+			err:          RedactErrorf("Error writing %q: %w", MD("_sync:dbconfig:db"), sgbucket.CasMismatchErr{}),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusConflict,
+		},
+		{
+			name:         "ErrNotFound with fmt.Errorf",
+			err:          fmt.Errorf("failed to get registry: %w", ErrNotFound),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusNotFound,
+		},
+		{
+			name:         "ErrAlreadyExists with fmt.Errorf",
+			err:          fmt.Errorf("failed to create: %w", ErrAlreadyExists),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusConflict,
+		},
+		{
+			name:         "HTTPError with fmt.Errorf",
+			err:          fmt.Errorf("sync fn: %w", &HTTPError{Status: http.StatusForbidden, Message: "forbidden"}),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusForbidden,
+		},
+		{
+			name:         "HTTPError with RedactErrorf",
+			err:          RedactErrorf("sync fn: %w", &HTTPError{Status: http.StatusForbidden, Message: "forbidden"}),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusForbidden,
+		},
+		{
+			// errors.Is already found gocb sentinels through fmt.Errorf
+			name:         "gocb.KeyValueError not found with fmt.Errorf",
+			err:          fmt.Errorf("failed to get registry: %w", gocb.KeyValueError{InnerError: gocb.ErrDocumentNotFound}),
+			previousCode: http.StatusNotFound,
+			expectedCode: http.StatusNotFound,
+		},
+		{
+			name:         "unknown error then gocb.ErrTimeout",
+			err:          fmt.Errorf("%w: %w", errors.New("bucket does not exist"), gocb.ErrTimeout),
+			previousCode: http.StatusServiceUnavailable,
+			expectedCode: http.StatusServiceUnavailable,
+		},
+		{
+			name:         "unknown error then gocb.ErrTemporaryFailure",
+			err:          fmt.Errorf("%w: %w", errors.New("bucket does not exist"), gocb.ErrTemporaryFailure),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusServiceUnavailable,
+		},
+		{
+			name:         "ErrNotFound with pkgerrors.Wrap",
+			err:          pkgerrors.Wrap(ErrNotFound, "failed to get registry"),
+			previousCode: http.StatusNotFound,
+			expectedCode: http.StatusNotFound,
+		},
+		{
+			name:         "ErrNotFound with %v",
+			err:          RedactErrorf("failed to get registry: %v", ErrNotFound),
+			previousCode: http.StatusInternalServerError,
+			expectedCode: http.StatusInternalServerError,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, _ := ErrorAsHTTPStatus(tc.err)
+			assert.Equal(t, tc.expectedCode, code, "previous status was %d", tc.previousCode)
+		})
+	}
+}
 
-	code, text = ErrorAsHTTPStatus(gocb.ErrTimeout)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database timeout error (gocb.ErrTimeout)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrOverload)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gocb.ErrOverload)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrTemporaryFailure)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gocb.ErrTemporaryFailure)", text)
-
-	code, text = ErrorAsHTTPStatus(gocb.ErrValueTooLarge)
-	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
-	assert.Equal(t, "Document too large!", text)
-
-	code, text = ErrorAsHTTPStatus(ErrViewTimeoutError)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, ErrViewTimeoutError.Error(), text)
-
-	fakeHTTPError := &HTTPError{Status: http.StatusForbidden, Message: http.StatusText(http.StatusForbidden)}
-	code, text = ErrorAsHTTPStatus(fakeHTTPError)
-	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, http.StatusText(http.StatusForbidden), text)
-
-	fakeMCResponse := &gomemcached.MCResponse{Status: gomemcached.KEY_ENOENT}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.KEY_EEXISTS}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusConflict, code)
-	assert.Equal(t, "Conflict", text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.E2BIG}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
-	assert.Equal(t, "Too Large: "+string(fakeMCResponse.Body), text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.TMPFAIL}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusServiceUnavailable, code)
-	assert.Equal(t, "Database server is over capacity (gomemcached.TMPFAIL)", text)
-
-	fakeMCResponse = &gomemcached.MCResponse{Status: gomemcached.ROLLBACK}
-	code, text = ErrorAsHTTPStatus(fakeMCResponse)
-	assert.Equal(t, http.StatusBadGateway, code)
-	assert.Equal(t, fmt.Sprintf("%s (%s)", string(fakeMCResponse.Body), fakeMCResponse.Status.String()), text)
-
-	fakeDocTooBigErr := sgbucket.DocTooBigErr{}
-	code, text = ErrorAsHTTPStatus(fakeDocTooBigErr)
-	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
-	assert.Equal(t, "Document too large!", text)
-
-	fakeMissingError := sgbucket.MissingError{}
-	code, text = ErrorAsHTTPStatus(fakeMissingError)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	code, text = ErrorAsHTTPStatus(ErrNotFound)
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "missing", text)
-
-	code, text = ErrorAsHTTPStatus(ErrEmptyDocument)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, "Document body is empty", text)
-
-	fakeSyntaxError := &json.SyntaxError{}
-	code, text = ErrorAsHTTPStatus(fakeSyntaxError)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, fmt.Sprintf("Invalid JSON: \"%v\"", fakeSyntaxError.Error()), text)
-
-	fakeUnmarshalTypeError := &json.UnmarshalTypeError{Value: "FakeValue", Type: reflect.TypeOf(1)}
-	code, text = ErrorAsHTTPStatus(fakeUnmarshalTypeError)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, fmt.Sprintf("Invalid JSON: \"%v\"", fakeUnmarshalTypeError.Error()), text)
-
-	fakeJSONIterError := &JSONIterError{E: fakeSyntaxError}
-	code, text = ErrorAsHTTPStatus(fakeJSONIterError)
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Equal(t, fmt.Sprintf("Invalid JSON: \"%v\"", fakeJSONIterError.Error()), text)
-
-	fakeRetryTimeoutError := &RetryTimeoutError{}
-	code, text = ErrorAsHTTPStatus(fakeRetryTimeoutError)
-	assert.Equal(t, http.StatusGatewayTimeout, code)
-	assert.Equal(t, fakeRetryTimeoutError.Error(), text)
-
-	fakeUnsupportedTypeError := &json.UnsupportedTypeError{Type: reflect.TypeOf(3.14)}
-	code, text = ErrorAsHTTPStatus(fakeUnsupportedTypeError)
-	assert.Equal(t, http.StatusInternalServerError, code)
-	assert.Equal(t, fmt.Sprintf("Internal error: %v", fakeUnsupportedTypeError.Error()), text)
+func BenchmarkErrorAsHTTPStatus(b *testing.B) {
+	for _, tc := range errorAsHTTPStatusTestCases() {
+		b.Run(tc.name, func(b *testing.B) {
+			for b.Loop() {
+				ErrorAsHTTPStatus(tc.err)
+			}
+		})
+		if tc.err == nil {
+			continue
+		}
+		for _, wrapper := range errorAsHTTPStatusWrappers {
+			wrappedErr := wrapper.wrap(tc.err)
+			b.Run(tc.name+"/"+wrapper.name, func(b *testing.B) {
+				for b.Loop() {
+					ErrorAsHTTPStatus(wrappedErr)
+				}
+			})
+		}
+	}
 }
 
 func TestCouchHTTPErrorName(t *testing.T) {
