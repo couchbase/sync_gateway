@@ -1956,14 +1956,15 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		if err != nil {
 			return
 		}
-		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+		revChannels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 		if err != nil {
-			// Probably the validator rejected the doc
-			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+			if !errors.Is(err, base.ErrSyncFunctionRejection) {
+				base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+			}
 			access = nil
-			channels = nil
+			revChannels = nil
 		}
-		rev.Channels = channels
+		rev.Channels = revChannels
 
 		if rev.ID == doc.GetRevTreeID() {
 			if regenerateSequences {
@@ -1977,7 +1978,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, err := doc.updateChannels(ctx, channels)
+			changedChannels, err := doc.updateChannels(ctx, revChannels)
 			changed = len(doc.Access.updateAccess(ctx, doc, access)) +
 				len(doc.RoleAccess.updateAccess(ctx, doc, roles)) +
 				len(changedChannels)

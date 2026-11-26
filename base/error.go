@@ -83,6 +83,10 @@ var (
 
 	// ErrInvalidJSON is returned when the JSON being unmarshalled cannot be parsed.
 	ErrInvalidJSON = HTTPErrorf(http.StatusBadRequest, "Invalid JSON")
+
+	// ErrSyncFunctionRejection matches, with errors.Is, a document rejection from the sync function, such as throw()
+	// or a failed requireAccess(). Create one with NewSyncFunctionRejectionError.
+	ErrSyncFunctionRejection = errors.New("Sync function rejection")
 )
 
 func (e *sgError) Error() string {
@@ -117,6 +121,10 @@ func NewHTTPError(status int, message string) *HTTPError {
 func ErrorAsHTTPStatus(err error) (int, string) {
 	if err == nil {
 		return 200, "OK"
+	}
+
+	if rejection, ok := errors.AsType[*syncFunctionRejectionError](err); ok {
+		return rejection.err.Status, rejection.err.Message
 	}
 
 	unwrappedErr := pkgerrors.Cause(err)
@@ -435,6 +443,22 @@ func (e *SyncFnDryRunError) Unwrap() error {
 	}
 	return e.Err
 }
+
+// syncFunctionRejectionError is a sync function rejection. It keeps the message of the *HTTPError it wraps.
+type syncFunctionRejectionError struct {
+	err *HTTPError
+}
+
+// NewSyncFunctionRejectionError returns an error for a sync function rejection that matches ErrSyncFunctionRejection.
+func NewSyncFunctionRejectionError(err *HTTPError) error {
+	return &syncFunctionRejectionError{err: err}
+}
+
+func (e *syncFunctionRejectionError) Error() string { return e.err.Error() }
+
+func (e *syncFunctionRejectionError) Unwrap() error { return e.err }
+
+func (e *syncFunctionRejectionError) Is(target error) bool { return target == ErrSyncFunctionRejection }
 
 const importFilterErrorPrefix = "Error returned from Import Filter"
 

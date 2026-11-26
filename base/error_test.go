@@ -288,3 +288,14 @@ func TestIsCollectionOutdatedError(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncFunctionRejectionError(t *testing.T) {
+	err := NewSyncFunctionRejectionError(HTTPErrorf(http.StatusForbidden, "bad"))
+	assert.ErrorIs(t, err, ErrSyncFunctionRejection)
+	assert.NotErrorIs(t, HTTPErrorf(http.StatusForbidden, "bad"), ErrSyncFunctionRejection)
+	assert.Equal(t, "403 bad", err.Error())
+
+	status, message := ErrorAsHTTPStatus(fmt.Errorf("wrapped: %w", err))
+	assert.Equal(t, http.StatusForbidden, status)
+	assert.Equal(t, "bad", message)
+}

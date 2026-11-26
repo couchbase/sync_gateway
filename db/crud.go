@@ -11,6 +11,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -23,7 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -421,12 +422,14 @@ func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid str
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, xattrs, importOpts, cas)
 
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// If the import was cancelled due to filter, treat as 404 not imported
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not imported")
 	} else if importErr != nil {
 		// Treat any other failure to perform an on-demand import as not found
-		base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), importErr)
+		if !errors.Is(importErr, base.ErrSyncFunctionRejection) {
+			base.DebugfCtx(ctx, base.KeyImport, "Unable to import doc %q during on demand import for get - will be treated as not found.  Reason: %v", base.UD(docid), importErr)
+		}
 		return nil, base.HTTPErrorf(http.StatusNotFound, "Not found")
 	}
 	return docOut, nil
@@ -1151,7 +1154,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 	}
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, importOpts) // nolint:staticcheck
 
-	if importErr == base.ErrImportCancelledFilter {
+	if errors.Is(importErr, base.ErrImportCancelledFilter) {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
 		doc.SyncData = SyncData{History: make(RevTree)}
 	} else if importErr != nil {
@@ -2558,7 +2561,7 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
-			err = errors.Wrap(err, "Error adding attachment")
+			err = pkgerrors.Wrap(err, "Error adding attachment")
 		}
 	}
 	return err
@@ -3058,7 +3061,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Migrated document %q to use xattr.", base.UD(key))
-			} else {
+			} else if !errors.Is(err, base.ErrSyncFunctionRejection) && !errors.Is(err, base.ErrImportCancelledFilter) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
 			}
 		} else if doc != nil {
@@ -3861,8 +3864,8 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
-				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
-				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
+				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(revID), err)
+				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(revID), base.UD(body), base.UD(oldJson))
 				col.dbStats().Security().NumDocsRejected.Add(1)
 				col.collectionStats.SyncFunctionRejectCount.Add(1)
 				if isAccessError(err) {

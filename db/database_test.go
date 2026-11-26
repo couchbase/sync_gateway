@@ -5032,3 +5032,24 @@ func TestRevTreeConflictCheck(t *testing.T) {
 	}
 
 }
+
+// TestResyncSyncFnRejectionLogging checks that resync logs a sync function rejection once, where the sync function runs.
+func TestResyncSyncFnRejectionLogging(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD)
+	db, ctx := SetupTestDB(t)
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+
+	docID := t.Name()
+	_, _, err := collection.Put(ctx, docID, Body{"channels": "A"})
+	require.NoError(t, err)
+
+	_, err = collection.UpdateSyncFun(ctx, `function(doc, oldDoc) { if (!doc.type) { throw({forbidden: "Missing required property"}); } channel(doc.channels); }`)
+	require.NoError(t, err)
+
+	logs := base.CaptureConsoleLogs(t, func() {
+		require.NoError(t, collection.ResyncDocument(ctx, docID, getBucketDocument(t, collection.DatabaseCollection, docID), false))
+	})
+	assert.Contains(t, logs, "Sync fn rejected doc")
+	assert.NotContains(t, logs, "Error calling sync()")
+}

@@ -226,8 +226,8 @@ func (il *importListener) ImportFeedEvent(ctx context.Context, collection *Datab
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.DebugfCtx(ctx, base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
-			} else if err == base.ErrImportCancelledFilter {
-				// No logging required - filter info already logged during importDoc
+			} else if errors.Is(err, base.ErrSyncFunctionRejection) || errors.Is(err, base.ErrImportCancelledFilter) {
+				// No logging required - already logged by the import filter or the sync function
 			} else {
 				base.DebugfCtx(ctx, base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 			}

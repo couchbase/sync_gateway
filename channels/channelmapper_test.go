@@ -10,6 +10,7 @@ package channels
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -247,30 +248,52 @@ func TestChannelMapperUnderscoreLib(t *testing.T) {
 	assert.Equal(t, BaseSetOf(t, "foo"), res.Channels)
 }
 
-// Validation by calling reject()
-func TestChannelMapperReject(t *testing.T) {
-	ctx := base.TestCtx(t)
-	mapper := NewChannelMapper(ctx, `function(doc) {reject(403, "bad");}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, "bad"), res.Rejection)
+// A rejection from reject() or throw() with a forbidden or unauthorized property is a sync function rejection.
+func TestChannelMapperRejection(t *testing.T) {
+	testCases := []struct {
+		name           string
+		syncFn         string
+		expectedStatus int
+	}{
+		{name: "reject", syncFn: `function(doc) {reject(403, "bad");}`, expectedStatus: http.StatusForbidden},
+		{name: "throw forbidden", syncFn: `function(doc) {throw({forbidden: "bad"});}`, expectedStatus: http.StatusForbidden},
+		{name: "throw unauthorized", syncFn: `function(doc) {throw({unauthorized: "bad"});}`, expectedStatus: http.StatusUnauthorized},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			mapper := NewChannelMapper(ctx, testCase.syncFn, 0)
+			res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+			require.NoError(t, err)
+			assert.Equal(t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(testCase.expectedStatus, "bad")), res.Rejection)
+			assert.ErrorIs(t, res.Rejection, base.ErrSyncFunctionRejection)
+			status, message := base.ErrorAsHTTPStatus(res.Rejection)
+			assert.Equal(t, testCase.expectedStatus, status)
+			assert.Equal(t, "bad", message)
+		})
+	}
 }
 
-// Rejection by calling throw()
-func TestChannelMapperThrow(t *testing.T) {
-	ctx := base.TestCtx(t)
-	mapper := NewChannelMapper(ctx, `function(doc) {throw({forbidden:"bad"});}`, 0)
-	res, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, "bad"), res.Rejection)
-}
-
-// Test other runtime exception
+// Any other exception, such as a runtime error or throw() without a forbidden or unauthorized property, is an error
+// from the sync function and not a rejection.
 func TestChannelMapperException(t *testing.T) {
-	ctx := base.TestCtx(t)
-	mapper := NewChannelMapper(ctx, `function(doc) {(nil)[5];}`, 0)
-	_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.True(t, err != nil)
+	testCases := []struct {
+		name   string
+		syncFn string
+	}{
+		{name: "runtime error", syncFn: `function(doc) {(nil)[5];}`},
+		{name: "throw string", syncFn: `function(doc) {throw("bad");}`},
+		{name: "throw Error", syncFn: `function(doc) {throw(new Error("bad"));}`},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			mapper := NewChannelMapper(ctx, testCase.syncFn, 0)
+			_, err := mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, base.ErrSyncFunctionRejection)
+		})
+	}
 }
 
 // Test the public API
@@ -296,7 +319,7 @@ func TestCheckUser(t *testing.T) {
 	var linus = map[string]any{"name": "linus", "channels": []string{}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(403, base.SyncFnErrorWrongUser)), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owner": "sally"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -317,7 +340,7 @@ func TestCheckUserArray(t *testing.T) {
 	var linus = map[string]any{"name": "linus", "channels": []string{}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally", "joe"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorWrongUser), res.Rejection)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(403, base.SyncFnErrorWrongUser)), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"owners": ["sally"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -338,7 +361,7 @@ func TestCheckRole(t *testing.T) {
 	var linus = map[string]any{"name": "linus", "roles": []string{"boy", "musician"}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(403, base.SyncFnErrorMissingRole)), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"role": "girl"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -359,7 +382,7 @@ func TestCheckRoleArray(t *testing.T) {
 	var linus = map[string]any{"name": "linus", "roles": map[string]int{"boy": 1, "musician": 1}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["girl"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(403, base.SyncFnErrorMissingRole)), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"roles": ["girl"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -380,7 +403,7 @@ func TestCheckAccess(t *testing.T) {
 	var linus = map[string]any{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "work"}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess)), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channel": "magic"}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -401,7 +424,7 @@ func TestCheckAccessArray(t *testing.T) {
 	var linus = map[string]any{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["work"]}`), `{}`, emptyMetaMap(), linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal[error](t, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess), res.Rejection)
+	assert.Equal[error](t, base.NewSyncFunctionRejectionError(base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess)), res.Rejection)
 
 	res, err = mapper.MapToChannelsAndAccess(ctx, parse(t, `{"channels": ["magic"]}`), `{}`, emptyMetaMap(), nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
