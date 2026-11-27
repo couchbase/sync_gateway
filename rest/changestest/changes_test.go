@@ -261,6 +261,49 @@ func TestChangesSinceLogging(t *testing.T) {
 }
 
 // Test for wrong _changes entries for user joining a populated channel
+// TestChangesSentLogging checks that each REST changes feed type logs each entry it sends.
+func TestChangesSentLogging(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+	version := rt.PutDoc("doc1", `{}`)
+	rt.WaitForPendingChanges()
+	expected := fmt.Sprintf("MultiChangesFeed sending <ud>{Seq:%d, ID:doc1, Changes:[map[rev:%s]]}</ud>", rt.GetDocumentSequence("doc1"), version.RevTreeID)
+
+	// Requests go inside AssertLogContains and assertions outside it, because the helper does not restore the logger on a failure.
+	for _, feed := range []string{"normal", "longpoll", "continuous"} {
+		t.Run(feed, func(t *testing.T) {
+			var resp *rest.TestResponse
+			base.AssertLogContains(t, expected, func() {
+				resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?timeout=100&feed="+feed, "")
+			})
+			rest.RequireStatus(t, resp, http.StatusOK)
+		})
+	}
+
+	t.Run("websocket", func(t *testing.T) {
+		srv := httptest.NewServer(rt.TestAdminHandler())
+		defer srv.Close()
+		wsURL := strings.Replace(srv.URL, "http://", "ws://", 1) + "/" + rt.GetSingleKeyspace() + "/_changes?feed=websocket"
+		var err error
+		base.AssertLogContains(t, expected, func() {
+			var conn *websocket.Conn
+			conn, err = websocket.Dial(wsURL, "", srv.URL)
+			if err != nil {
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			if err = websocket.Message.Send(conn, `{"timeout":100}`); err != nil {
+				return
+			}
+			var received []byte
+			err = websocket.Message.Receive(conn, &received)
+		})
+		require.NoError(t, err)
+	})
+}
+
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyAccess, base.KeyCRUD, base.KeyChanges)

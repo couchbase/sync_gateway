@@ -325,3 +325,13 @@ func TestSendRevClosedConnectionHoldsPushCheckpoint(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 	require.Never(t, marked.Load, 100*time.Millisecond, 10*time.Millisecond)
 }
+
+func TestChangesBatchLogString(t *testing.T) {
+	changeArray := [][]any{
+		{SequenceID{Seq: 5}, "doc1", "1-abc"},
+		{SequenceID{Seq: 7, TriggeredBy: 3}, "doc2", "2-def", changesDeletedFlagDeleted},
+		{SequenceID{Seq: 8}, "doc3", "3-abc", changesDeletedFlagRevoked | changesDeletedFlagRemoved},
+		{SequenceID{Seq: 9}, "doc4", "4-abc", true},
+	}
+	assert.Equal(t, "[5,<ud>doc1</ud>,1-abc],[3:7,<ud>doc2</ud>,2-def,1],[8,<ud>doc3</ud>,3-abc,6],[9,<ud>doc4</ud>,4-abc,true]", changesBatchLogString(changeArray))
+}
