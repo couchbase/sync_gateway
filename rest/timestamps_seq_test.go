@@ -31,7 +31,7 @@ func TestTimestampsOfflineOnline(t *testing.T) {
 	require.NoError(t, err)
 
 	rt.TakeDbOffline()
-	assert.Nil(t, rt.GetDatabase().TimestampsManager, "an offline database must not run a timestamps manager")
+	assert.False(t, rt.GetDatabase().TimestampsManager.IsRunningForTest(), "an offline database must not run a timestamps manager")
 
 	// make the newest entry older than the update frequency, so that coming online adds one
 	key := rt.GetDatabase().MetadataKeys.TimestampsSeqKey()

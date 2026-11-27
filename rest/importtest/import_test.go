@@ -15,6 +15,7 @@ import (
 	"log"
 	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -2821,5 +2822,103 @@ func TestCbgtGetPoolsDefaultForBucket(t *testing.T) {
 		body, err := cbgt.GetPoolsDefaultForBucket(base.UnitTestUrl(), bucketName, scopes)
 		require.NoError(t, err, "scopes=%t", scopes)
 		require.NotEmpty(t, body, "scopes=%t", scopes)
+	}
+}
+
+// TestImportDocsThatExistBeforeStart makes sure that the documents in the bucket before the database starts are
+// imported without errors. The import feed can update them before the timestamps manager starts.
+func TestImportDocsThatExistBeforeStart(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const numDocs = 1000
+	dataStore := tb.DefaultDataStore(ctx)
+	for i := range numDocs {
+		added, err := dataStore.Add(ctx, fmt.Sprintf("doc%d", i), 0, map[string]any{"foo": i})
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
+	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb,
+		AutoImport:       new(true),
+		// compaction makes the import call GetPurgeSequence
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{EnableChannelHistoryCompaction: new(true)}},
+	})
+	defer rt.Close()
+
+	importStats := rt.GetDatabase().DbStats.SharedBucketImportStats
+	base.RequireWaitForStat(t, importStats.ImportCount.Value, numDocs)
+	assert.Equal(t, int64(0), importStats.ImportErrorCount.Value())
+}
+
+// TestImportCompactsChannelHistoryOnStart makes sure that the documents imported when a database starts have their
+// channel history compacted, if the timestamps document already covers the removals.
+func TestImportCompactsChannelHistoryOnStart(t *testing.T) {
+	ctx := base.TestCtx(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close(ctx)
+
+	const window = 24 * time.Hour
+	rtConfig := func() *rest.RestTesterConfig {
+		return &rest.RestTesterConfig{
+			CustomTestBucket: tb.NoCloseClone(),
+			SyncFn:           channels.DocChannelsSyncFunction,
+			AutoImport:       new(true),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				ClientPartitionWindowSecs:      new(int(window.Seconds())),
+				EnableChannelHistoryCompaction: new(true),
+			}},
+		}
+	}
+	isChannelA := func(entry db.ChannelSetEntry) bool { return entry.Name == "A" }
+
+	// the first database adds and removes channel A twice, so that its first period moves to the channel set history
+	const numDocs = 100
+	rt := rest.NewRestTesterDefaultCollection(t, rtConfig())
+	for i := range numDocs {
+		docID := fmt.Sprintf("doc%d", i)
+		version := rt.PutDoc(docID, `{"channels": ["A", "B"]}`)
+		version = rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
+		version = rt.UpdateDoc(docID, version, `{"channels": ["A", "B"]}`)
+		rt.UpdateDoc(docID, version, `{"channels": ["B"]}`)
+	}
+	collection, collectionCtx := rt.GetSingleTestDatabaseCollection()
+	doc, err := collection.GetDocument(collectionCtx, "doc0", db.DocUnmarshalAll)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(doc.ChannelSet, isChannelA), "precondition: channel A must be in the channel set: %+v", doc.ChannelSet)
+	require.True(t, slices.ContainsFunc(doc.ChannelSetHistory, isChannelA), "precondition: channel A must be in the channel set history: %+v", doc.ChannelSetHistory)
+
+	// an entry older than the client partition window, which covers every removal
+	lastSeq, err := rt.GetDatabase().LastSequence(ctx)
+	require.NoError(t, err)
+	tsKey := rt.GetDatabase().MetadataKeys.TimestampsSeqKey()
+	require.NoError(t, rt.MetadataStore().Set(ctx, tsKey, 0, nil, db.TimestampsSeqArray{Timestamps: []db.TimestampsSeqPair{
+		{Seq: lastSeq, Timestamp: time.Now().Add(-window - time.Hour).Unix()},
+	}}))
+	rt.Close()
+
+	// writes outside Sync Gateway, which the next database imports when it starts
+	dataStore := tb.DefaultDataStore(ctx)
+	for i := range numDocs {
+		require.NoError(t, dataStore.Set(ctx, fmt.Sprintf("doc%d", i), 0, nil, map[string]any{"channels": []string{"B"}, "val": i}))
+	}
+
+	rt = rest.NewRestTesterDefaultCollection(t, rtConfig())
+	defer rt.Close()
+	require.Equal(t, tsKey, rt.GetDatabase().MetadataKeys.TimestampsSeqKey())
+	importStats := rt.GetDatabase().DbStats.SharedBucketImportStats
+	base.RequireWaitForStat(t, importStats.ImportCount.Value, numDocs)
+	require.Equal(t, int64(0), importStats.ImportErrorCount.Value())
+
+	collection, collectionCtx = rt.GetSingleTestDatabaseCollection()
+	for i := range numDocs {
+		doc, err := collection.GetDocument(collectionCtx, fmt.Sprintf("doc%d", i), db.DocUnmarshalAll)
+		require.NoError(t, err)
+		_, inChannels := doc.Channels["A"]
+		assert.False(t, inChannels, "%s: channel A must be removed from doc.Channels", doc.ID)
+		assert.False(t, slices.ContainsFunc(doc.ChannelSet, isChannelA), "%s: channel A must be removed from the channel set: %+v", doc.ID, doc.ChannelSet)
+		assert.False(t, slices.ContainsFunc(doc.ChannelSetHistory, isChannelA), "%s: channel A must be removed from the channel set history: %+v", doc.ID, doc.ChannelSetHistory)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/testing/assert"
 	"github.com/couchbase/sync_gateway/testing/require"
 )
@@ -261,6 +262,141 @@ func TestTimestampsSeqArrayTrim(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTimestampsSeqArrayPurgeSequence makes sure that purgeSequence returns the sequence of the oldest entry if it is
+// at or before the purge timestamp, and 0 otherwise.
+func TestTimestampsSeqArrayPurgeSequence(t *testing.T) {
+	entries := []TimestampsSeqPair{{Seq: 10, Timestamp: 100}, {Seq: 20, Timestamp: 200}, {Seq: 30, Timestamp: 300}}
+	tests := []struct {
+		name           string
+		entries        []TimestampsSeqPair
+		purgeTimestamp int64
+		expected       uint64
+	}{
+		{name: "empty array", entries: nil, purgeTimestamp: 100, expected: 0},
+		{name: "purge timestamp before every entry", entries: entries, purgeTimestamp: 50, expected: 0},
+		{name: "purge timestamp one second before the oldest entry", entries: entries, purgeTimestamp: 99, expected: 0},
+		{name: "purge timestamp equals the oldest entry", entries: entries, purgeTimestamp: 100, expected: 10},
+		{name: "purge timestamp between two entries", entries: entries, purgeTimestamp: 150, expected: 10},
+		// an untrimmed array uses the oldest entry, even when a newer entry is also old enough
+		{name: "purge timestamp equals a middle entry", entries: entries, purgeTimestamp: 200, expected: 10},
+		{name: "purge timestamp after every entry", entries: entries, purgeTimestamp: 400, expected: 10},
+		{name: "single entry before the purge timestamp", entries: entries[:1], purgeTimestamp: 150, expected: 10},
+		{name: "single entry after the purge timestamp", entries: entries[:1], purgeTimestamp: 50, expected: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			array := TimestampsSeqArray{Timestamps: slices.Clone(test.entries)}
+			assert.Equal(t, test.expected, array.purgeSequence(test.purgeTimestamp))
+			assert.Equal(t, test.entries, array.Timestamps, "purgeSequence must not change the array")
+		})
+	}
+}
+
+// TestTimestampsManagerGetPurgeSequence makes sure that GetPurgeSequence uses the clock and the purge interval to
+// choose the purge timestamp.
+func TestTimestampsManagerGetPurgeSequence(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+	clock := newTestClock(clockStart)
+	purgeInterval := time.Duration(NumTimestampsEntries) * time.Hour
+	var intervalToUse atomic.Int64
+	intervalToUse.Store(int64(purgeInterval))
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return time.Duration(intervalToUse.Load()) },
+		nowFunc:           clock.Now,
+	})
+
+	// an empty array makes GetPurgeSequence load the timestamps document, which does not exist
+	t.Run("empty array", func(t *testing.T) {
+		assert.Equal(t, uint64(0), tm.GetPurgeSequence(ctx))
+	})
+
+	ago := func(d time.Duration) int64 { return clockStart.Add(-d).Unix() }
+	tm.updateTimestampsArray(TimestampsSeqArray{Timestamps: []TimestampsSeqPair{
+		{Seq: 1, Timestamp: ago(purgeInterval + time.Hour)},
+		{Seq: 2, Timestamp: ago(purgeInterval - time.Hour)},
+		{Seq: 3, Timestamp: ago(time.Hour)},
+	}})
+
+	t.Run("oldest entry before the start of the purge interval", func(t *testing.T) {
+		assert.Equal(t, uint64(1), tm.GetPurgeSequence(ctx))
+	})
+
+	t.Run("newer entry also old enough before a trim", func(t *testing.T) {
+		clock.Advance(2 * time.Hour)
+		assert.Equal(t, uint64(1), tm.GetPurgeSequence(ctx))
+	})
+
+	t.Run("every entry at or before the purge timestamp", func(t *testing.T) {
+		clock.Set(clockStart.Add(purgeInterval))
+		assert.Equal(t, uint64(1), tm.GetPurgeSequence(ctx))
+	})
+
+	t.Run("oldest entry newer than the purge timestamp", func(t *testing.T) {
+		clock.Set(clockStart)
+		intervalToUse.Store(int64(purgeInterval * 2))
+		assert.Equal(t, uint64(0), tm.GetPurgeSequence(ctx))
+	})
+
+	t.Run("non-positive purge interval uses the default window", func(t *testing.T) {
+		clock.Set(clockStart)
+		intervalToUse.Store(0)
+		tm.updateTimestampsArray(TimestampsSeqArray{Timestamps: []TimestampsSeqPair{
+			{Seq: 5, Timestamp: ago(base.DefaultClientPartitionWindow + time.Hour)},
+			{Seq: 6, Timestamp: ago(time.Hour)},
+		}})
+		assert.Equal(t, uint64(5), tm.GetPurgeSequence(ctx))
+	})
+}
+
+// TestTimestampsManagerGetPurgeSequenceAfterTrims makes sure that the purge sequence is 0 on a new database until the
+// entries cover the purge interval, and that it moves forward only when a trim removes the oldest entry.
+func TestTimestampsManagerGetPurgeSequenceAfterTrims(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	ctx := base.TestCtx(t)
+	defer testBucket.Close(ctx)
+
+	clock := newTestClock(clockStart)
+	var seq atomic.Uint64
+	// a purge interval of NumTimestampsEntries hours gives an update frequency of one hour
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:   func(context.Context) (uint64, error) { return seq.Load(), nil },
+		nowFunc:           clock.Now,
+		dbName:            t.Name(),
+	})
+
+	// the first call on a new database writes the empty in-memory array
+	require.NoError(t, tm.addEntry(ctx))
+	require.True(t, tm.timestampsSeqArray.Load().isEmpty())
+	assert.Equal(t, uint64(0), tm.GetPurgeSequence(ctx))
+
+	// one entry every hour, from clockStart (seq 100) to clockStart + NumTimestampsEntries hours
+	for i := 0; i <= NumTimestampsEntries; i++ {
+		clock.Set(clockStart.Add(time.Duration(i) * time.Hour))
+		seq.Store(uint64(100 * (i + 1)))
+		require.NoError(t, tm.addEntry(ctx))
+		if i < NumTimestampsEntries {
+			assert.Equal(t, uint64(0), tm.GetPurgeSequence(ctx), "entries do not cover the purge interval after %d hours", i)
+		}
+	}
+	assert.Equal(t, uint64(100), tm.GetPurgeSequence(ctx))
+	assert.Len(t, tm.timestampsSeqArray.Load().Timestamps, NumTimestampsEntries+1)
+
+	// the entry at clockStart + 1h is now old enough too, but the array is not trimmed until the next entry
+	clock.Advance(90 * time.Minute)
+	assert.Equal(t, uint64(100), tm.GetPurgeSequence(ctx))
+
+	seq.Store(uint64(100 * (NumTimestampsEntries + 2)))
+	require.NoError(t, tm.addEntry(ctx))
+	assert.Equal(t, uint64(200), tm.GetPurgeSequence(ctx))
 }
 
 // TestTimestampsManagerEntryDue makes sure that entryDue is true for an empty array or once the newest entry is older than the update frequency.
@@ -1176,6 +1312,33 @@ func TestTimestampsManagerStop(t *testing.T) {
 	require.NotPanics(t, func() { tm.Stop(ctx) })
 }
 
+// TestTimestampsManagerIsRunningForTest makes sure that IsRunningForTest is false before Start and after Stop, and that
+// it can be called while Start runs on another goroutine, as it does when a database comes online asynchronously.
+func TestTimestampsManagerIsRunningForTest(t *testing.T) {
+	ctx := t.Context()
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return NumTimestampsEntries * time.Hour },
+		getSequenceFunc:   func(context.Context) (uint64, error) { return 0, nil },
+		dbName:            t.Name(),
+	})
+	require.False(t, tm.IsRunningForTest())
+
+	startErr := make(chan error)
+	go func() { startErr <- tm.Start(ctx) }()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.True(c, tm.IsRunningForTest())
+	}, 10*time.Second, time.Millisecond)
+	require.NoError(t, <-startErr)
+
+	tm.Stop(ctx)
+	require.False(t, tm.IsRunningForTest())
+}
+
 // TestTimestampsManagerStartCorruptDoc makes sure that Start resets a timestamps document that can't be parsed to an
 // empty array, replaces the in-memory copy with it, and starts the background task, so that recording heals by itself.
 func TestTimestampsManagerStartCorruptDoc(t *testing.T) {
@@ -1544,4 +1707,251 @@ func TestTimestampsManagerKVIdleOps(t *testing.T) {
 			assert.Equal(t, testCase.expectedKVOps, kvOps.Value())
 		})
 	}
+}
+
+// TestTimestampsDatabaseCompactsChannelHistory makes sure that a document write removes the channel history that
+// ended at or before the purge sequence, and keeps the history that is newer than the purge interval.
+func TestTimestampsDatabaseCompactsChannelHistory(t *testing.T) {
+	clock := newTestClock(clockStart)
+	// a purge interval of NumTimestampsEntries hours gives an update frequency of one hour
+	purgeInterval := time.Duration(NumTimestampsEntries) * time.Hour
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		ClientPartitionWindow:          &purgeInterval,
+		TestTimestampsNowFunc:          clock.Now,
+		EnableChannelHistoryCompaction: true,
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
+	tm := db.TimestampsManager
+
+	const docID = "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"channels": []string{"A", "B"}})
+	require.NoError(t, err)
+	// update writes a new revision of the document, which runs the compaction
+	update := func(body Body) *Document {
+		t.Helper()
+		body[BodyRev] = revID
+		var doc *Document
+		revID, doc, err = collection.Put(ctx, docID, body)
+		require.NoError(t, err)
+		storedDoc, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+		require.NoError(t, err)
+		require.Equal(t, doc.Sequence, storedDoc.Sequence)
+		return storedDoc
+	}
+	// historyNames returns the names of the channels that have a removal in the document's channel history
+	historyNames := func(doc *Document) []string {
+		var names []string
+		for _, entry := range append(slices.Clone(doc.ChannelSet), doc.ChannelSetHistory...) {
+			if entry.End != 0 {
+				names = append(names, entry.Name)
+			}
+		}
+		return names
+	}
+
+	hasChannel := func(doc *Document, name string) bool {
+		_, ok := doc.Channels[name]
+		return ok
+	}
+
+	// clockStart: remove A, then record the entry that covers the removal
+	doc := update(Body{"channels": []string{"B"}})
+	removedA := doc.Sequence
+	require.ElementsMatch(t, []string{"A"}, historyNames(doc))
+	require.NoError(t, tm.addEntry(ctx))
+	entryAtStart := tm.timestampsSeqArray.Load().Timestamps
+	require.Len(t, entryAtStart, 1)
+	require.GreaterOrEqual(t, entryAtStart[0].Seq, removedA)
+
+	// clockStart + 1h: remove B, after the first entry. The allocator releases its unused sequences 1.5s after it
+	// reserves them, so a write an hour later gets a sequence above the first entry.
+	db.sequences.releaseUnusedSequences(ctx)
+	clock.Advance(time.Hour)
+	doc = update(Body{"channels": []string{}})
+	removedB := doc.Sequence
+	require.Greater(t, removedB, entryAtStart[0].Seq)
+	require.ElementsMatch(t, []string{"A", "B"}, historyNames(doc))
+
+	// one entry every hour, up to one hour before the first entry is a purge interval old
+	for clock.Now().Before(clockStart.Add(purgeInterval)) {
+		require.NoError(t, tm.addEntry(ctx))
+		clock.Advance(time.Hour)
+	}
+	clock.Advance(-time.Hour)
+
+	t.Run("no history is compacted before the entries cover the purge interval", func(t *testing.T) {
+		require.Equal(t, uint64(0), tm.GetPurgeSequence(ctx))
+		doc := update(Body{"val": 1})
+		assert.ElementsMatch(t, []string{"A", "B"}, historyNames(doc))
+		assert.True(t, hasChannel(doc, "A"), "channel A must stay in doc.Channels")
+		assert.True(t, hasChannel(doc, "B"), "channel B must stay in doc.Channels")
+	})
+
+	t.Run("history removed before the oldest entry is compacted", func(t *testing.T) {
+		clock.Set(clockStart.Add(purgeInterval))
+		require.NoError(t, tm.addEntry(ctx))
+		require.Equal(t, entryAtStart[0].Seq, tm.GetPurgeSequence(ctx))
+		doc := update(Body{"val": 2})
+		assert.ElementsMatch(t, []string{"B"}, historyNames(doc))
+		assert.False(t, hasChannel(doc, "A"), "channel A must be removed from doc.Channels")
+		assert.True(t, hasChannel(doc, "B"), "channel B must stay in doc.Channels")
+	})
+
+	t.Run("history newer than the purge interval is compacted after the next trim", func(t *testing.T) {
+		clock.Set(clockStart.Add(purgeInterval + time.Hour))
+		require.NoError(t, tm.addEntry(ctx))
+		require.GreaterOrEqual(t, tm.GetPurgeSequence(ctx), removedB)
+		doc := update(Body{"val": 3})
+		assert.Empty(t, historyNames(doc))
+		assert.False(t, hasChannel(doc, "A"), "channel A must be removed from doc.Channels")
+		assert.False(t, hasChannel(doc, "B"), "channel B must be removed from doc.Channels")
+	})
+}
+
+// TestTimestampsDatabaseCompactionDisabled makes sure that a document write keeps all channel history when channel
+// history compaction is disabled, even if the purge sequence covers the removal.
+func TestTimestampsDatabaseCompactionDisabled(t *testing.T) {
+	clock := newTestClock(clockStart)
+	purgeInterval := time.Duration(NumTimestampsEntries) * time.Hour
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{
+		ClientPartitionWindow:          &purgeInterval,
+		TestTimestampsNowFunc:          clock.Now,
+		EnableChannelHistoryCompaction: false,
+	})
+	defer db.Close(ctx)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(ctx, t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
+
+	const docID = "doc1"
+	revID, _, err := collection.Put(ctx, docID, Body{"channels": []string{"A"}})
+	require.NoError(t, err)
+	revID, doc, err := collection.Put(ctx, docID, Body{"channels": []string{}, BodyRev: revID})
+	require.NoError(t, err)
+	db.TimestampsManager.updateTimestampsArray(TimestampsSeqArray{Timestamps: []TimestampsSeqPair{
+		{Seq: doc.Sequence, Timestamp: clockStart.Add(-purgeInterval).Unix()},
+	}})
+	require.Equal(t, doc.Sequence, db.TimestampsManager.GetPurgeSequence(ctx))
+
+	_, _, err = collection.Put(ctx, docID, Body{"val": 1, BodyRev: revID})
+	require.NoError(t, err)
+	stored, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	_, hasA := stored.Channels["A"]
+	assert.True(t, hasA, "channel A must stay in doc.Channels")
+	assert.True(t, slices.ContainsFunc(stored.ChannelSet, func(entry ChannelSetEntry) bool {
+		return entry.Name == "A" && entry.End == doc.Sequence
+	}), "the removal of channel A must stay in the channel set: %+v", stored.ChannelSet)
+}
+
+// TestTimestampsDatabaseImportBeforeStart makes sure that a document imported before StartOnlineProcesses starts the
+// TimestampsManager is compacted. The import feed starts before the TimestampsManager, so it can import documents first.
+func TestTimestampsDatabaseImportBeforeStart(t *testing.T) {
+	clock := newTestClock(clockStart)
+	purgeInterval := time.Duration(NumTimestampsEntries) * time.Hour
+	tb := base.GetTestBucket(t)
+	defer tb.Close(base.TestCtx(t))
+	scopes := GetScopesOptions(t, tb, 1)
+	for _, scope := range scopes {
+		for name := range scope.Collections {
+			scope.Collections[name] = CollectionOptions{Sync: new(channels.DocChannelsSyncFunction)}
+		}
+	}
+	opts := DatabaseContextOptions{
+		ClientPartitionWindow:          &purgeInterval,
+		TestTimestampsNowFunc:          clock.Now,
+		EnableChannelHistoryCompaction: true,
+		Scopes:                         scopes,
+	}
+	AddOptionsFromEnvironmentVariables(&opts)
+
+	// a running node removes channel A twice, and the timestamps document has an entry a purge interval old that covers
+	// the second removal. Adding A again moves its first period to the channel set history.
+	runningDB, runningCtx := SetupTestDBForBucketWithOptions(t, tb.NoCloseClone(), opts)
+	defer runningDB.Close(runningCtx)
+	runningCollection, runningCtx := GetSingleDatabaseCollectionWithUser(runningCtx, t, runningDB)
+	const docID = "doc1"
+	revID, _, err := runningCollection.Put(runningCtx, docID, Body{"channels": []string{"A", "B"}})
+	require.NoError(t, err)
+	revID, _, err = runningCollection.Put(runningCtx, docID, Body{"channels": []string{"B"}, BodyRev: revID})
+	require.NoError(t, err)
+	revID, _, err = runningCollection.Put(runningCtx, docID, Body{"channels": []string{"A", "B"}, BodyRev: revID})
+	require.NoError(t, err)
+	_, doc, err := runningCollection.Put(runningCtx, docID, Body{"channels": []string{"B"}, BodyRev: revID})
+	require.NoError(t, err)
+	removedA := doc.Sequence
+	require.True(t, slices.ContainsFunc(doc.ChannelSetHistory, func(entry ChannelSetEntry) bool { return entry.Name == "A" }),
+		"precondition: the first period of channel A must be in the channel set history: %+v", doc.ChannelSetHistory)
+	runningDB.TimestampsManager.CreateTSDocForTest(t, runningCtx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{
+		{Seq: removedA, Timestamp: clockStart.Add(-purgeInterval).Unix()},
+	}})
+	_, err = runningCollection.dataStore.WriteCas(runningCtx, docID, 0, doc.Cas, []byte(`{"channels": ["B"], "val": 1}`), 0)
+	require.NoError(t, err)
+
+	// a starting node imports the write before StartOnlineProcesses
+	ctx := base.TestCtx(t)
+	startingDBCtx, err := NewDatabaseContext(ctx, "db", tb.NoCloseClone(), false, opts)
+	require.NoError(t, err)
+	ctx = startingDBCtx.AddDatabaseLogContext(ctx)
+	defer startingDBCtx.Close(ctx)
+	startingDB, err := CreateDatabase(startingDBCtx)
+	require.NoError(t, err)
+	collection, ctx := GetSingleDatabaseCollectionWithUser(addDatabaseAndTestUserContext(ctx, startingDB), t, startingDB)
+	assert.Equal(t, removedA, startingDB.TimestampsManager.GetPurgeSequence(ctx), "the purge sequence must come from the timestamps document before Start")
+
+	value, xattrs, cas, err := collection.dataStore.GetWithXattrs(ctx, docID, collection.syncGlobalSyncMouRevSeqNoAndUserXattrKeys())
+	require.NoError(t, err)
+	importedDoc, err := collection.ImportDocRaw(ctx, docID, value, xattrs, importDocOptions{mode: ImportFromFeed, revSeqNo: RetrieveDocRevSeqNo(t, xattrs[base.VirtualXattrRevSeqNo])}, cas)
+	require.NoError(t, err)
+	stored, err := collection.GetDocument(ctx, docID, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, importedDoc.Sequence, stored.Sequence)
+	_, hasA := stored.Channels["A"]
+	assert.False(t, hasA, "an import before Start must remove channel A from doc.Channels")
+	assert.False(t, slices.ContainsFunc(stored.ChannelSet, func(entry ChannelSetEntry) bool { return entry.Name == "A" }),
+		"an import before Start must remove channel A from the channel set: %+v", stored.ChannelSet)
+	assert.False(t, slices.ContainsFunc(stored.ChannelSetHistory, func(entry ChannelSetEntry) bool { return entry.Name == "A" }),
+		"an import before Start must remove channel A from the channel set history: %+v", stored.ChannelSetHistory)
+}
+
+// TestTimestampsManagerStartAddEntryError makes sure that if the addEntry in Start fails, the purge sequence comes from
+// the timestamps document without a wait for the next check of the background task.
+func TestTimestampsManagerStartAddEntryError(t *testing.T) {
+	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close(ctx)
+
+	clock := newTestClock(clockStart)
+	purgeInterval := time.Duration(NumTimestampsEntries) * time.Hour
+	var failNext atomic.Bool
+	failNext.Store(true)
+	tm := NewTimestampsManager(TimestampsMgrOpts{
+		metadataStore:     testBucket.GetMetadataStore(),
+		metaKeys:          base.NewMetadataKeys(t.Name()),
+		purgeIntervalFunc: func() time.Duration { return purgeInterval },
+		getSequenceFunc: func(context.Context) (uint64, error) {
+			if failNext.CompareAndSwap(true, false) {
+				return 0, errors.New("sequence unavailable")
+			}
+			return 10, nil
+		},
+		nowFunc: clock.Now,
+		dbName:  t.Name(),
+	})
+	// another node recorded sequence 5 a purge interval ago
+	const purgeSeq = 5
+	tm.CreateTSDocForTest(t, ctx, TimestampsSeqArray{Timestamps: []TimestampsSeqPair{
+		{Seq: purgeSeq, Timestamp: clockStart.Add(-purgeInterval).Unix()},
+	}})
+
+	require.NoError(t, tm.Start(ctx), "a failed addEntry must not stop the database from coming online")
+	defer tm.Stop(ctx)
+	require.False(t, failNext.Load(), "Start must call getSequenceFunc")
+	// the background task checks every 10 minutes, far longer than this wait
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, uint64(purgeSeq), tm.GetPurgeSequence(ctx))
+	}, 10*time.Second, 10*time.Millisecond)
 }

@@ -187,7 +187,7 @@ type DatabaseContext struct {
 	numVBuckets                        uint16                            // Number of vbuckets in the bucket
 	SameSiteCookieMode                 http.SameSite
 	DBStateManager                     *DatabaseStateMgr  // Manager used to manage the state of processes across nodes
-	TimestampsManager                  *TimestampsManager // Records the cluster sequence over time in the timestamps_seq document, set when online processes start
+	TimestampsManager                  *TimestampsManager // Records the cluster sequence over time in the timestamps_seq document, started when online processes start
 
 	scopeName string // name of the single scope for the database
 }
@@ -233,6 +233,7 @@ type DatabaseContextOptions struct {
 	ConfigPrincipals                 *ConfigPrincipals
 	TestPurgeIntervalOverride        *time.Duration    // If set, use this value for db.GetMetadataPurgeInterval - test seam to force specific purge interval for tests
 	TestVersionPruningWindowOverride *time.Duration    // If set, use this value for db.GetVersionPruningWindow - test seam to force specific pruning window for tests
+	TestTimestampsNowFunc            func() time.Time  // If set, the clock of the TimestampsManager - test seam to control the purge sequence
 	LoggingConfig                    *base.DbLogConfig // Per-database log configuration
 	MaxConcurrentChangesBatches      *int              // Maximum number of changes batches to process concurrently per replication
 	MaxConcurrentRevs                *int              // Maximum number of revs to process concurrently per replication
@@ -638,6 +639,20 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	distributedResync := dbContext.useShardedDCP()
 	dbContext.ResyncManager = NewResyncManagerDCP(dbContext, distributedResync)
 	dbContext.AsyncIndexInitManager = NewAsyncIndexInitManager(metadataStore, dbContext.MetadataKeys)
+
+	// The timestamps document and the sequence read use the same store, so that both count as idle KV ops
+	idleMetadataStore := base.NewIdleKVOpDataStore(dbContext.MetadataStore)
+	timestampsMgrOpts := TimestampsMgrOpts{
+		metadataStore:     idleMetadataStore,
+		metaKeys:          dbContext.MetadataKeys,
+		purgeIntervalFunc: dbContext.ClientPartitionWindow,
+		getSequenceFunc: func(ctx context.Context) (uint64, error) {
+			return base.GetCounter(ctx, idleMetadataStore, dbContext.MetadataKeys.SyncSeqKey())
+		},
+		dbName:  dbContext.Name,
+		nowFunc: options.TestTimestampsNowFunc,
+	}
+	dbContext.TimestampsManager = NewTimestampsManager(timestampsMgrOpts)
 
 	var joinResync resyncJoinFunc
 	if distributedResync {
@@ -2625,22 +2640,9 @@ func (db *DatabaseContext) StartOnlineProcesses(ctx context.Context) (returnedEr
 
 	db.startReplications(ctx)
 
-	// The timestamps document and the sequence read use the same store, so that both count as idle KV ops
-	idleMetadataStore := base.NewIdleKVOpDataStore(db.MetadataStore)
-	timestampsMgrOpts := TimestampsMgrOpts{
-		metadataStore:     idleMetadataStore,
-		metaKeys:          db.MetadataKeys,
-		purgeIntervalFunc: db.ClientPartitionWindow,
-		getSequenceFunc: func(ctx context.Context) (uint64, error) {
-			return base.GetCounter(ctx, idleMetadataStore, db.MetadataKeys.SyncSeqKey())
-		},
-		dbName: db.Name,
-	}
-	db.TimestampsManager = NewTimestampsManager(timestampsMgrOpts)
-
-	err = db.TimestampsManager.Start(ctx)
-	if err != nil {
-		return err
+	timestampsMgrErr := db.TimestampsManager.Start(ctx)
+	if timestampsMgrErr != nil {
+		return timestampsMgrErr
 	}
 
 	return nil
