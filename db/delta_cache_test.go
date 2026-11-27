@@ -289,7 +289,7 @@ func TestGetDeltaStaleChannelAfterUserXattrUpdate(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, delta, "authorized user must receive delta for the channel they have access to")
 		assert.Nil(t, redactedRev, "expected no redaction for the authorized user")
-		assert.Equal(t, hitsBefore+1, db.DbStats.DeltaSync().DeltaCacheHit.Value(), "expected a delta cache hit for authorized user")
+		assert.Equal(t, hitsBefore+2, db.DbStats.DeltaSync().DeltaCacheHit.Value(), "expected a delta cache hit for each user")
 	}
 
 	t.Run("CV", func(t *testing.T) {
